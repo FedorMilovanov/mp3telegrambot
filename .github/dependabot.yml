@@ -1,13 +1,13 @@
 version: 2
 
-# Two pip entries on purpose:
+# Policy: dependency updates are proposed automatically, reviewed as PRs and
+# merged only after `Required PR Gate` is green (the gate includes the
+# dependency audit).
 #
-#   1. the YouTube downloader pair moves *daily* — YouTube extractor breakage is
-#      the most frequent production failure, so its updates must not wait for a
-#      weekly window;
-#   2. everything else moves *weekly* in grouped PRs, with `ignore` keeping the
-#      YouTube pair out of this entry so a dependency never gets two competing
-#      PRs.
+# Dependabot rejects two configs with the same (ecosystem, directory,
+# target-branch), so the YouTube downloader pair cannot get its own pip entry:
+# it is the first group below instead, and the other groups exclude it. Groups
+# are evaluated in order, so `youtube-downloader` always wins for that pair.
 #
 # The previous configuration allowed only yt-dlp/yt-dlp-ejs with
 # `open-pull-requests-limit: 1`, which is why 40+ pins in requirements-lock.txt
@@ -16,42 +16,35 @@ updates:
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
+      # Daily, but grouped: extractor breakage in yt-dlp is a production
+      # incident and must not wait for a weekly window, while routine
+      # minor/patch bumps arrive as one PR per group instead of forty.
       interval: "daily"
-      time: "06:00"
-      timezone: "Europe/Paris"
-    open-pull-requests-limit: 3
-    rebase-strategy: "auto"
-    commit-message:
-      prefix: "deps(youtube)"
-    allow:
-      - dependency-name: "yt-dlp"
-      - dependency-name: "yt-dlp-ejs"
-    groups:
-      youtube-downloader:
-        patterns:
-          - "yt-dlp"
-          - "yt-dlp-ejs"
-
-  - package-ecosystem: "pip"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
       time: "06:00"
       timezone: "Europe/Paris"
     open-pull-requests-limit: 5
     rebase-strategy: "auto"
     commit-message:
       prefix: "deps"
-    ignore:
-      - dependency-name: "yt-dlp"
-      - dependency-name: "yt-dlp-ejs"
     groups:
+      # 1. yt-dlp and its EJS helper must always move together.
+      youtube-downloader:
+        patterns:
+          - "yt-dlp"
+          - "yt-dlp-ejs"
+      # 2. Routine bumps: one PR for the whole group.
       pip-minor-and-patch:
         patterns: ["*"]
+        exclude-patterns:
+          - "yt-dlp"
+          - "yt-dlp-ejs"
         update-types: ["minor", "patch"]
+      # 3. Major bumps stay separate: each one needs its own review and run.
       pip-major:
         patterns: ["*"]
+        exclude-patterns:
+          - "yt-dlp"
+          - "yt-dlp-ejs"
         update-types: ["major"]
 
   - package-ecosystem: "npm"

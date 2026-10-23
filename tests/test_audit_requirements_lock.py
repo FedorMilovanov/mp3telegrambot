@@ -140,9 +140,8 @@ def test_dependabot_covers_every_ecosystem() -> None:
     assert 'package-ecosystem: "pip"' in config
     assert 'package-ecosystem: "npm"' in config
     assert 'package-ecosystem: "github-actions"' in config
-    # Only the deliberate daily YouTube entry may narrow the scope; a global
-    # allow-list is what kept most pins from ever being proposed.
-    assert config.count("allow:") == 1
+    # A global allow-list is what kept most pins from ever being proposed.
+    assert "allow:" not in config
     assert "open-pull-requests-limit: 1\n" not in config
     assert (ROOT / "vot_helper" / "package-lock.json").is_file()
 
