@@ -313,3 +313,12 @@ python tools/audit_requirements_lock.py   # требует pip-audit в PATH
 - не публикуйте `.env`, OAuth-токены, cookies и Telegram API hash;
 - после изменения аудиомикса или QA-политики меняйте cache fingerprint;
 - проверяйте startup-логи после обновления FFmpeg, yt-dlp, Node/Deno или Gemini-моделей.
+
+## Лицензия
+
+Проект распространяется по лицензии [MIT](LICENSE) — © 2026 Fedor Milovanov.
+MIT разрешает использовать, изменять и распространять код, в том числе в закрытых
+проектах, при единственном условии: сохранить текст лицензии и строку копирайта.
+
+Версия пакета объявлена в [`core/version.py`](core/version.py) и печатается командой
+`mp3bot --version` (или `python bot_new.py --version`) — без зависимостей, БД и сети.

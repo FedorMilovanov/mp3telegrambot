@@ -1,3 +1,54 @@
+[build-system]
+# setuptools>=77 — первый релиз с SPDX-строкой `license` и `license-files`
+# (PEP 639). На более старых сборка либо падает на этих полях, либо пишет в
+# метаданные устаревшую таблицу [project.license].
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mp3bot"
+description = "Telegram-бот: конвертация медиа, AI-анализ, дубляж и субтитры"
+readme = "README.md"
+# Только free tier — осознанное ограничение deployment'а (см.
+# docs/dependency-policy.md), а не техдолг: платный ключ не является
+# зависимостью проекта.
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+dynamic = ["version", "dependencies"]
+classifiers = [
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: Multimedia :: Sound/Audio :: Conversion",
+]
+
+# Версия живёт в core/version.py, зависимости — в requirements.txt: два
+# единственных источника, которые уже проверяются гейтами (lock == closure).
+# Дублировать пины в pyproject.toml означало бы третье место правды.
+[project.scripts]
+mp3bot = "bot_new:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "core.version.__version__" }
+dependencies = { file = ["requirements.txt"] }
+
+# Явный список: автопоиск в flat-layout нашёл бы и tests, и tools/voxcpm2/
+# examples, и корневой __init__.py. Пакеты перечислены ровно те, что нужны
+# рантайму и CLI; tests/ и docs/ в wheel не попадают.
+[tool.setuptools]
+# Без этой строки в wheel нет ни bot_new.py, ни main.py: точки входа
+# `mp3bot` и `python bot_new.py` падают с ImportError уже после установки.
+# Проверяется сборкой в tests/test_packaging_metadata.py.
+py-modules = ["bot", "bot_new", "main"]
+
+[tool.setuptools.packages.find]
+include = ["core*", "services*", "pipelines*", "handlers*", "converters*", "tools*"]
+exclude = ["tests*", "docs*", "vot_helper*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

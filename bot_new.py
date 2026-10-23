@@ -19,6 +19,26 @@ def _configure_stdio() -> None:
 
 
 _configure_stdio()
+
+
+def _handle_version_flag(argv: list[str]) -> None:
+    """`mp3bot --version` до любой тяжёлой инициализации.
+
+    Версия — единственный вопрос, на который установленный пакет обязан
+    отвечать без зависимостей, без БД и без сети: иначе проверка «что
+    установлено у пользователя» требует рабочего рантайма. Поэтому флаг
+    обрабатывается здесь, до chdir, до чтения .env и до импорта main.
+    """
+    if not {"--version", "-V"} & set(argv):
+        return
+    from core.version import __version__
+
+    print(f"mp3bot {__version__}")
+    raise SystemExit(0)
+
+
+_handle_version_flag(sys.argv[1:])
+
 _PROJECT_ROOT = Path(__file__).resolve().parent
 os.chdir(_PROJECT_ROOT)
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
@@ -180,5 +200,15 @@ except (RuntimeBootstrapError, sqlite3.Error, OSError, RuntimeError, ValueError)
 
 emit_service_bootstrap_diagnostics()
 
+
+def main() -> int:
+    """Точка входа `python bot_new.py` и консольной команды `mp3bot`.
+
+    Импорт этого модуля уже выполнил bootstrap, поэтому ``main`` только
+    передаёт владение жизненным циклом сервису и возвращает его код выхода.
+    """
+    return run_bot_process(_main_module)
+
+
 if __name__ == "__main__":
-    raise SystemExit(run_bot_process(_main_module))
+    raise SystemExit(main())
