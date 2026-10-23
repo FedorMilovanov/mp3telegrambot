@@ -20,12 +20,26 @@ ROOT = Path(__file__).resolve().parents[1]
 LOCK = ROOT / "requirements-lock.txt"
 
 
-def _report(vulns: list[dict[str, object]], package: str = "demo") -> str:
+def _locked() -> dict[str, str]:
+    return audit_tool.locked_versions(LOCK)
+
+
+def _report(
+    vulns: list[dict[str, object]], package: str = "pdfkit"
+) -> str:
+    """A report that covers the whole lock, with ``vulns`` on one package.
+
+    Coverage is part of the policy now, so a fake report must look like a real
+    one: every locked distribution, at the pinned version.
+    """
+    locked = _locked()
+    assert package in locked, f"{package} is not in the lock"
     return json.dumps(
         {
             "dependencies": [
-                {"name": package, "version": "1.0.0", "vulns": vulns},
-                {"name": "clean", "version": "2.0.0", "vulns": []},
+                {"name": name, "version": version,
+                 "vulns": vulns if name == package else []}
+                for name, version in sorted(locked.items())
             ]
         }
     )
@@ -58,7 +72,7 @@ def test_clean_lock_has_no_blockers_but_flags_an_unused_exception(
 
 def test_unknown_vulnerability_is_blocking(fake_pip_audit) -> None:
     fake_pip_audit["stdout"] = _report(
-        [{"id": "CVE-2099-0001", "fix_versions": ["1.0.1"]}]
+        [{"id": "CVE-2099-0001", "fix_versions": ["1.0.1"]}], package="requests"
     )
     report = audit_tool.audit(LOCK)
     assert [entry["id"] for entry in report["blocking"]] == ["CVE-2099-0001"]
@@ -95,7 +109,7 @@ def test_reviewed_exception_is_allowed_until_its_review_date(fake_pip_audit) -> 
 
 def test_exception_does_not_cover_a_different_package(fake_pip_audit) -> None:
     fake_pip_audit["stdout"] = _report(
-        [{"id": "PYSEC-2026-2860", "fix_versions": []}], package="someone-else"
+        [{"id": "PYSEC-2026-2860", "fix_versions": []}], package="requests"
     )
     report = audit_tool.audit(LOCK)
     assert report["blocking"]
@@ -105,6 +119,66 @@ def test_exception_for_an_absent_advisory_is_stale(fake_pip_audit) -> None:
     report = audit_tool.audit(LOCK)
     assert report["stale_allow_list_entries"] == ["PYSEC-2026-2860"]
     assert audit_tool.main([]) == 1
+
+
+def test_empty_report_fails_closed(fake_pip_audit) -> None:
+    """An empty report and a clean report must not look the same."""
+    for payload in ("{}", '{"dependencies": []}', ""):
+        fake_pip_audit["stdout"] = payload
+        report = audit_tool.audit(LOCK)
+        assert [entry["id"] for entry in report["blocking"]] == ["REPORT_EMPTY"], payload
+
+
+def test_report_missing_a_locked_package_fails_closed(fake_pip_audit) -> None:
+    payload = json.loads(_report([]))
+    payload["dependencies"] = [
+        item for item in payload["dependencies"] if item["name"] != "requests"
+    ]
+    fake_pip_audit["stdout"] = json.dumps(payload)
+
+    report = audit_tool.audit(LOCK)
+    assert [entry["id"] for entry in report["blocking"]] == ["REPORT_MISSING_PACKAGE"]
+    assert report["blocking"][0]["package"] == "requests"
+
+
+def test_report_auditing_a_different_version_fails_closed(fake_pip_audit) -> None:
+    payload = json.loads(_report([]))
+    for item in payload["dependencies"]:
+        if item["name"] == "pillow":
+            item["version"] = "11.3.0"
+    fake_pip_audit["stdout"] = json.dumps(payload)
+
+    report = audit_tool.audit(LOCK)
+    assert [entry["id"] for entry in report["blocking"]] == ["REPORT_VERSION_MISMATCH"]
+    assert "11.3.0" in report["blocking"][0]["reason"]
+
+
+def test_unreadable_report_is_not_treated_as_clean(fake_pip_audit) -> None:
+    fake_pip_audit["stdout"] = "WARNING: something went wrong"
+    with pytest.raises(SystemExit, match="did not return JSON"):
+        audit_tool.audit(LOCK)
+
+
+def test_renamed_report_key_fails_closed(fake_pip_audit) -> None:
+    fake_pip_audit["stdout"] = json.dumps({"deps": [{"name": "requests", "version": "1"}]})
+    report = audit_tool.audit(LOCK)
+    assert [entry["id"] for entry in report["blocking"]] == ["REPORT_EMPTY"]
+
+
+def test_coverage_survives_a_name_normalisation_difference(fake_pip_audit) -> None:
+    payload = json.loads(_report([]))
+    for item in payload["dependencies"]:
+        if item["name"] == "python-dotenv":
+            item["name"] = "python_dotenv"
+    fake_pip_audit["stdout"] = json.dumps(payload)
+    assert audit_tool.audit(LOCK)["blocking"] == []
+
+
+def test_locked_versions_reads_every_pin() -> None:
+    locked = audit_tool.locked_versions(LOCK)
+    assert len(locked) == 70
+    assert locked["pillow"].startswith("13.")
+    assert all(locked.values()), "every entry must carry a version"
 
 
 def test_allow_list_entries_carry_a_reason_and_a_review_date() -> None:
