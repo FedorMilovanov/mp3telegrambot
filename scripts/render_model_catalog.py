@@ -30,6 +30,9 @@ sys.path.insert(0, str(ROOT))
 
 from core.model_catalog import (  # noqa: E402  (path bootstrap above)
     CATALOG_VERSION,
+    FREE_TIER_ONLY,
+    FREE_TIER_SOURCE,
+    ROLE_MODELS,
     MODEL_LIVE,
     MODEL_PRIMARY,
     MODEL_REASONING,
@@ -40,8 +43,12 @@ from core.model_catalog import (  # noqa: E402  (path bootstrap above)
     ROLE_ENV,
     access_limited_models,
     deprecated_aliases,
+    free_tier_models,
+    paid_only_models,
+    role_free_tier,
     scheduled_migrations,
     shutdown_models,
+    unverified_free_tier_models,
 )
 
 GENERATED_NOTE = (
@@ -68,31 +75,69 @@ ENV_ROLE_MAP: dict[str, str] = {
     "MP3BOT_REASONING_MODEL": MODEL_REASONING,
 }
 
-_ROLE_TABLE_HEADER = (
-    "| Роль | Модель | Кто использует |\n"
-    "|---|---|---|\n"
-    "| `primary` (semantic) | `{primary}` | Synopsis, LiveDub QA, Factory, publication, info cards |\n"
-    "| `utility` (mechanical) | `{utility}` | только служебные/косметические задачи |\n"
-    "| `fallback` | `{fallback}` | по умолчанию выключен: cross-model downgrade запрещён политикой |\n"
-    "| `tts` | `{tts}` | доступно, пока не используется |\n"
-    "| `tts_lite` | `{tts_lite}` | доступно, пока не используется |\n"
-    "| `transcribe` | `{transcribe}` | доступно, пока не используется |\n"
-    "| `live` | `{live}` | доступно, пока не используется |\n"
-    "| `reasoning` | `{reasoning}` | доступно, пока не используется |\n"
+_ROLE_ROWS = (
+    ("primary", "semantic", "Synopsis, LiveDub QA, Factory, publication, info cards"),
+    ("utility", "mechanical", "только служебные/косметические задачи"),
+    ("fallback", "downgrade", "по умолчанию выключен: cross-model downgrade запрещён"),
+    ("tts", "speech", "доступно, пока не используется"),
+    ("tts_lite", "speech", "доступно, пока не используется"),
+    ("transcribe", "speech", "доступно, пока не используется"),
+    ("live", "realtime", "доступно, пока не используется"),
+    ("reasoning", "reasoning", "нет бесплатной модели: 4 Argon только paid tier"),
 )
+
+_FREE_TIER_MARK = {True: "✅ free", False: "❌ paid only", None: "—"}
 
 
 def _role_table() -> str:
-    return _ROLE_TABLE_HEADER.format(
-        primary=MODEL_PRIMARY,
-        utility=MODEL_UTILITY,
-        fallback="(не задан)",
-        tts=MODEL_TTS,
-        tts_lite=MODEL_TTS_LITE,
-        transcribe=MODEL_TRANSCRIBE,
-        live=MODEL_LIVE,
-        reasoning=MODEL_REASONING,
-    )
+    lines = [
+        "| Роль | Модель | Free tier | Кто использует |",
+        "|---|---|---|---|",
+    ]
+    for role, kind, usage in _ROLE_ROWS:
+        model = ROLE_MODELS.get(role, "")
+        free = _FREE_TIER_MARK[role_free_tier(role)]
+        lines.append(
+            f"| `{role}` ({kind}) | `{model or '(не задан)'}` | {free} | {usage} |"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def _free_tier_section() -> str:
+    free = sorted(free_tier_models())
+    paid = sorted(paid_only_models())
+    unknown = sorted(unverified_free_tier_models())
+    parts = [
+        "### Бесплатные ключи (основное ограничение deployment'а)",
+        "",
+        f"Режим: `FREE_TIER_ONLY = {FREE_TIER_ONLY}` — проект работает на бесплатных "
+        "ключах Gemini, поэтому платная модель не может быть маршрутом по умолчанию.",
+        f"Источник: {FREE_TIER_SOURCE}.",
+        "",
+        "**Бесплатно (free tier):**",
+        "",
+        ", ".join(f"`{model}`" for model in free),
+        "",
+        "**Только paid tier — бесплатный ключ получит отказ:**",
+        "",
+        ", ".join(f"`{model}`" for model in paid) or "—",
+        "",
+        "**Не проверено / модель выключена:**",
+        "",
+        ", ".join(f"`{model}`" for model in unknown) or "—",
+        "",
+        "Что это значит на практике:",
+        "",
+        "- лимиты free tier считаются **на Google Cloud project и на модель**, а не "
+        "на ключ; несколько ключей одного проекта квоту не умножают;",
+        "- четыре слота `GEMINI_API_KEY`..`_4` имеют смысл только как четыре разных "
+        "проекта (`GEMINI_QUOTA_DOMAIN*` фиксирует это локально);",
+        "- апгрейд на платную модель — это не «одна строка», а осознанное решение: "
+        "сначала `FREE_TIER_ONLY = False`, потом правка роли;",
+        "- `reasoning`-роль пуста намеренно: бесплатной reasoning-модели у Google нет.",
+        "",
+    ]
+    return "\n".join(parts)
 
 
 def _override_lines() -> str:
@@ -105,6 +150,14 @@ def _override_lines() -> str:
                 lines.append(f"# {name}={ENV_ROLE_MAP[name]}")
     lines.append("# MP3BOT_FALLBACK_MODEL=")
     lines.append("# ↑ пусто = cross-model downgrade выключен (рекомендуется).")
+    lines.append(
+        "# ↑ reasoning пуст намеренно: бесплатной reasoning-модели нет, "
+        "gemini-4-argon — только paid tier."
+    )
+    lines.append(
+        "# Платные модели (недоступные на free tier) отклоняются: причина "
+        "пишется в лог при старте."
+    )
     return "\n".join(lines)
 
 
@@ -144,6 +197,7 @@ def _catalog_section() -> str:
         "### Роли",
         "",
         _role_table(),
+        _free_tier_section(),
         "### Устаревшие alias'ы (провайдер сам перенаправляет запрос)",
         "",
         "| Alias | Deprecated | Реальная модель |",
@@ -254,7 +308,8 @@ def render_all(root: Path = ROOT) -> dict[Path, str]:
         f"{GENERATED_NOTE}\n\n"
         "## Как менять модель\n\n"
         "1. Отредактируйте одну строку в `core/model_catalog.py` — `ROLE_MODELS[ROLE_PRIMARY]`\n"
-        "   (для служебной модели — `ROLE_UTILITY`).\n"
+        "   (для служебной модели — `ROLE_UTILITY`). Новая модель обязана быть\n"
+        "   доступна на free tier: платная модель ломает все бесплатные ключи.\n"
         "2. Запустите `python scripts/render_model_catalog.py`.\n"
         "3. Запустите `python tools/verify_repo.py`.\n\n"
         "Продовый код импортирует роли (`MODEL_PRIMARY`, `MODEL_UTILITY`, ...), а не\n"
@@ -264,7 +319,7 @@ def render_all(root: Path = ROOT) -> dict[Path, str]:
         "`docs/translation_editorial_review.md` и `scripts/migrate-gemini-38.ps1`.\n\n"
         "### Проверка схемы (upgrade drill)\n\n"
         "```bash\n"
-        "python scripts/model_upgrade_drill.py --model gemini-4-argon\n"
+        "python scripts/model_upgrade_drill.py --model gemini-3.6-flash\n"
         "```\n\n"
         "Дрилл подменяет `ROLE_PRIMARY`, убеждается, что `--check` фиксирует\n"
         "рассинхронизацию, прогоняет генератор и контрактные тесты, затем\n"

@@ -17,6 +17,7 @@ from core.model_catalog import (
     access_limited_models,
     current_models_outside_routing,
     deprecated_aliases,
+    paid_only_models,
     preview_models,
     scheduled_migrations,
     shutdown_models,
@@ -49,7 +50,7 @@ def test_deprecated_alias_names_its_real_target(alias: str) -> None:
     assert replacement in diagnostic.message
 
 
-@pytest.mark.parametrize("model", sorted(scheduled_migrations()))
+@pytest.mark.parametrize("model", sorted(set(scheduled_migrations()) - paid_only_models()))
 def test_scheduled_migration_reports_exact_deadline(model: str) -> None:
     deadline, replacement = scheduled_migrations()[model]
     diagnostic = classify_gemini_model(model)
@@ -74,7 +75,7 @@ def test_access_limited_models_are_not_reported_as_shutdown(model: str) -> None:
     assert access_limited_models()[model] in diagnostic.message
 
 
-@pytest.mark.parametrize("model", sorted(preview_models()))
+@pytest.mark.parametrize("model", sorted(preview_models() - paid_only_models()))
 def test_preview_models_are_not_reported_as_stable(model: str) -> None:
     diagnostic = classify_gemini_model(model)
     assert diagnostic.level == "warning"
@@ -82,11 +83,23 @@ def test_preview_models_are_not_reported_as_stable(model: str) -> None:
     assert MODEL_PRIMARY in diagnostic.message
 
 
-@pytest.mark.parametrize("model", sorted(current_models_outside_routing()))
+@pytest.mark.parametrize(
+    "model", sorted(set(current_models_outside_routing()) - paid_only_models())
+)
 def test_current_models_outside_routing_are_described(model: str) -> None:
     diagnostic = classify_gemini_model(model)
     assert diagnostic.level == "warning"
     assert "актуальная модель" in diagnostic.message
+    assert MODEL_PRIMARY in diagnostic.message
+
+
+@pytest.mark.parametrize("model", sorted(paid_only_models()))
+def test_paid_only_models_are_errors_under_the_free_tier_policy(model: str) -> None:
+    """A paid-only model cannot work on a free key, whatever else it is."""
+    diagnostic = classify_gemini_model(model)
+    assert diagnostic.level == "error"
+    assert "paid tier" in diagnostic.message
+    assert "free tier" in diagnostic.message
     assert MODEL_PRIMARY in diagnostic.message
 
 

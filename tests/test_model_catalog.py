@@ -13,12 +13,61 @@ import pytest
 from core import model_catalog as catalog
 
 
+EMPTY_BY_DESIGN = {catalog.ROLE_FALLBACK, catalog.ROLE_REASONING}
+
+
 def test_every_role_has_a_model_or_is_intentionally_empty() -> None:
     for role in catalog.ROLE_MODELS:
         value = catalog.ROLE_MODELS[role]
         assert isinstance(value, str)
-        if role != catalog.ROLE_FALLBACK:
+        if role not in EMPTY_BY_DESIGN:
             assert value, f"role {role} must have a model"
+
+
+def test_empty_roles_have_no_free_tier_model_to_offer() -> None:
+    """Reasoning stays empty because every reasoning candidate is paid-only."""
+    assert catalog.ROLE_MODELS[catalog.ROLE_REASONING] == ""
+    paid_only = catalog.paid_only_models()
+    assert "gemini-4-argon" in paid_only
+    assert not any(
+        model in paid_only for model in catalog.ROLE_MODELS.values() if model
+    )
+
+
+def test_role_routes_are_free_tier_only() -> None:
+    """This deployment runs on free keys: no default route may be paid-only."""
+    assert catalog.FREE_TIER_ONLY is True
+    for role, model in catalog.ROLE_MODELS.items():
+        if not model:
+            continue
+        assert catalog.is_free_tier(model), f"{role} -> {model} is not free-tier"
+    assert catalog.route_problems() == []
+
+
+def test_paid_only_env_override_is_reported() -> None:
+    import os
+
+    os.environ["MP3BOT_PRIMARY_MODEL"] = "gemini-4-argon"
+    try:
+        problems = catalog.route_problems()
+    finally:
+        del os.environ["MP3BOT_PRIMARY_MODEL"]
+    assert any("paid-only" in problem and "primary" in problem for problem in problems)
+
+
+def test_unknown_model_is_never_assumed_free() -> None:
+    assert catalog.is_free_tier("gemini-does-not-exist") is False
+    assert not catalog.is_free_tier("")
+
+
+def test_free_tier_views_are_disjoint() -> None:
+    free = catalog.free_tier_models()
+    paid = catalog.paid_only_models()
+    unknown = catalog.unverified_free_tier_models()
+    assert free.isdisjoint(paid)
+    assert free.isdisjoint(unknown)
+    assert paid.isdisjoint(unknown)
+    assert free | paid | unknown == catalog.all_model_ids()
 
 
 def test_role_models_are_current_catalog_entries() -> None:
@@ -144,7 +193,17 @@ def test_upgrade_drill_touches_exactly_one_line() -> None:
     """A model upgrade must be a one-line catalog edit plus the renderer."""
     source = Path(catalog.__file__ or "").read_text(encoding="utf-8")
     drill = importlib.import_module("scripts.model_upgrade_drill")
-    swapped = drill._swap_catalog(source, "gemini-4-argon")
+    # Any *different* free-tier current model proves the one-line property, and
+    # stays valid while the upgrade drill temporarily swaps the primary route.
+    target = next(
+        model
+        for model in sorted(catalog.free_tier_models())
+        if model != catalog.MODEL_PRIMARY
+        and (spec := catalog.model_spec(model)) is not None
+        and spec.status == "current"
+        and catalog.is_free_tier(model)
+    )
+    swapped = drill._swap_catalog(source, target)
 
     diff = [
         (before, after)
@@ -153,4 +212,15 @@ def test_upgrade_drill_touches_exactly_one_line() -> None:
     ]
     assert len(diff) == 1
     assert "ROLE_PRIMARY" in diff[0][0]
-    assert "gemini-4-argon" in diff[0][1]
+    assert target in diff[0][1]
+
+
+def test_migration_targets_are_free_tier_models() -> None:
+    """No announced migration may point at a model the free tier refuses."""
+    for model, spec in catalog._MODELS.items():
+        target = spec.replacement
+        if not target or target not in catalog.all_model_ids():
+            continue
+        assert catalog.is_free_tier(target), (
+            f"{model} migrates to paid-only {target}"
+        )

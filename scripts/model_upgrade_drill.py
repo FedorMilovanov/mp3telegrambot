@@ -5,10 +5,14 @@ The drill swaps ``ROLE_PRIMARY`` in ``core/model_catalog.py`` for another model
 from the same catalog, re-renders every generated artifact, runs the model
 contract test suite, and then restores the repository exactly as it was.
 
+The target must be free-tier eligible: this deployment runs on free keys, so a
+paid-only model is rejected before anything is touched (``--allow-paid``
+overrides the check for the deliberate "what would billing change" experiment).
+
 Usage::
 
-    python scripts/model_upgrade_drill.py --model gemini-4-argon
-    python scripts/model_upgrade_drill.py --model gemini-4-argon --full
+    python scripts/model_upgrade_drill.py --model gemini-3.6-flash
+    python scripts/model_upgrade_drill.py --model gemini-3.6-flash --full
 
 What a green run proves:
 
@@ -32,7 +36,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from core.model_catalog import MODEL_PRIMARY, model_spec  # noqa: E402
+from core.model_catalog import (  # noqa: E402
+    FREE_TIER_ONLY,
+    MODEL_PRIMARY,
+    is_free_tier,
+    model_spec,
+)
 
 CATALOG = ROOT / "core" / "model_catalog.py"
 RENDER = ROOT / "scripts" / "render_model_catalog.py"
@@ -90,6 +99,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="run the whole test suite instead of the model contract subset",
     )
+    parser.add_argument(
+        "--allow-paid",
+        action="store_true",
+        help="allow a model that the free tier does not serve (default: refuse)",
+    )
     args = parser.parse_args(argv)
 
     if args.model == MODEL_PRIMARY:
@@ -97,6 +111,13 @@ def main(argv: list[str] | None = None) -> int:
     spec = model_spec(args.model)
     if spec is None:
         raise SystemExit(f"{args.model} is not present in core/model_catalog.py")
+    if FREE_TIER_ONLY and not is_free_tier(args.model) and not args.allow_paid:
+        raise SystemExit(
+            f"{args.model} is not available on the free tier "
+            f"(free_tier={spec.free_tier}). This deployment runs on free keys, so "
+            "the upgrade would take every route down. Use a free-tier model, or "
+            "pass --allow-paid for a deliberate billing experiment."
+        )
 
     original = CATALOG.read_bytes()
     status = 1

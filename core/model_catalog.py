@@ -34,7 +34,16 @@ stale ``.env`` keeps working after a catalog bump::
 The catalog itself is dependency-free: it is imported by pre-main policy
 modules before ``core.globals`` exists, so it must never import repository code.
 
-Catalog snapshot: 2026-10-22 (Gemini API models / deprecations / changelog).
+Free-tier policy
+----------------
+This deployment runs on **free-tier Gemini keys only**. Models that the pricing
+page lists as "Not available" on the free tier cannot be used at all — the
+request fails without a billing-enabled project. The catalog therefore records
+free-tier availability next to every model and refuses to make a paid-only
+model the default for any role (``FREE_TIER_ONLY`` / ``route_problems()``).
+
+Catalog snapshot: 2026-10-22 (Gemini API models / deprecations / changelog),
+free-tier availability verified 2026-10-23.
 """
 from __future__ import annotations
 
@@ -45,6 +54,14 @@ from typing import Final
 
 CATALOG_VERSION: Final[str] = "2026-10-22"
 POLICY: Final[str] = f"project-gemini-routing-{CATALOG_VERSION}"
+
+# This deployment is operated with free-tier API keys only. Flip to ``False``
+# only when a billing-enabled project is provisioned on purpose.
+FREE_TIER_ONLY: Final[bool] = True
+FREE_TIER_SOURCE: Final[str] = (
+    "https://ai.google.dev/gemini-api/docs/pricing (Standard, 'Free Tier' column), "
+    "verified 2026-10-23"
+)
 
 # ── Roles ─────────────────────────────────────────────────────────────────────
 # A role is the stable contract. The model behind it may change at any time.
@@ -69,7 +86,10 @@ ROLE_MODELS: Final[dict[str, str]] = {
     ROLE_TTS_LITE: "gemini-3.8-flash-lite-tts",
     ROLE_TRANSCRIBE: "gemini-3.5-transcribe",
     ROLE_LIVE: "gemini-3.8-live",
-    ROLE_REASONING: "gemini-4-argon",
+    # No free-tier reasoning model exists: ``gemini-4-argon`` is paid-only
+    # ("Not available" on the free tier). The role stays unconfigured until a
+    # billing-enabled project is an explicit decision.
+    ROLE_REASONING: "",
 }
 
 # Environment overrides per role. Order matters: the first non-empty wins, so a
@@ -108,6 +128,9 @@ class ModelSpec:
     status: str
     # Filled in from ROLE_MODELS so a role assignment is declared exactly once.
     roles: tuple[str, ...] = ()
+    # Free-tier availability, filled in from _FREE_TIER. ``None`` means "not
+    # verified or not callable" (e.g. a shut-down model), never "free".
+    free_tier: bool | None = None
     replacement: str = ""
     deadline: str = ""
     deprecated_since: str = ""
@@ -123,7 +146,8 @@ _BASE_MODELS: Final[dict[str, ModelSpec]] = {
     "gemini-4-argon": _spec(
         "gemini-4-argon",
         4,
-        note="flagship reasoning (unified 1M context); review cost before switching",
+        note="flagship reasoning (unified 1M context); paid tier only, "
+        "not available on the free tier",
     ),
     "gemini-3.8-flash": _spec(
         "gemini-3.8-flash",
@@ -240,7 +264,9 @@ _BASE_MODELS: Final[dict[str, ModelSpec]] = {
         "gemini-2.5-pro",
         2,
         status="access_limited",
-        replacement="gemini-4-argon",
+        # 4 Argon would be the natural successor, but it is paid-only and this
+        # deployment runs on free keys, so the free Flash route is the honest one.
+        replacement="gemini-3.8-flash",
     ),
     # ── Current previews (valid, not this deployment's stable route) ────────
     "gemini-3.1-pro-preview": _spec(
@@ -248,6 +274,7 @@ _BASE_MODELS: Final[dict[str, ModelSpec]] = {
         3,
         status="preview",
         replacement="gemini-3.8-flash",
+        note="paid tier only, not available on the free tier",
     ),
     "gemini-3-flash-preview": _spec(
         "gemini-3-flash-preview",
@@ -287,6 +314,39 @@ _BASE_MODELS: Final[dict[str, ModelSpec]] = {
     },
 }
 
+# ── Free-tier availability ────────────────────────────────────────────────────
+# Source: ai.google.dev/gemini-api/docs/pricing, column "Free Tier", Standard
+# serving, verified 2026-10-23. ``False`` = "Not available" on the free tier:
+# the request fails unless the project has billing enabled.
+_FREE_TIER: Final[dict[str, bool]] = {
+    # ── Free of charge on the free tier (current routes of this deployment) ──
+    "gemini-3.8-flash": True,
+    "gemini-3.6-flash": True,
+    "gemini-3.5-flash-lite": True,
+    "gemini-3.8-flash-tts": True,
+    "gemini-3.8-flash-lite-tts": True,
+    "gemini-3.5-transcribe": True,
+    "gemini-3.8-live": True,
+    "gemini-3.8-live-extended-thinking": True,
+    # Aliases resolve to the free models above, so they are free as well.
+    "gemini-3.7-flash": True,
+    "gemini-3.5-flash": True,
+    # ── Free, but leaving the service or limited to existing projects ────────
+    "gemini-3.1-flash-lite": True,
+    "gemini-3.1-flash-tts-preview": True,
+    "gemini-2.5-flash-preview-tts": True,
+    "gemini-2.5-flash-native-audio-preview-12-2025": True,
+    "gemini-2.5-pro": True,
+    "gemini-2.5-flash": True,
+    "gemini-2.5-flash-lite": True,
+    "gemini-3-flash-preview": True,
+    # ── Paid only: not available on the free tier ────────────────────────────
+    "gemini-4-argon": False,
+    "gemini-3.1-pro-preview": False,
+    "gemini-2.5-pro-preview-tts": False,
+}
+
+
 def _roles_by_model() -> dict[str, tuple[str, ...]]:
     """Reverse index: model id -> roles that point at it."""
     roles: dict[str, list[str]] = {}
@@ -296,17 +356,22 @@ def _roles_by_model() -> dict[str, tuple[str, ...]]:
     return {model_id: tuple(assigned) for model_id, assigned in roles.items()}
 
 
-def _bind_roles(
+def _bind_metadata(
     models: dict[str, ModelSpec],
 ) -> dict[str, ModelSpec]:
+    """Attach role assignments and verified free-tier availability."""
     assigned = _roles_by_model()
     return {
-        model_id: replace(spec, roles=assigned.get(spec.model_id, ()))
+        model_id: replace(
+            spec,
+            roles=assigned.get(spec.model_id, ()),
+            free_tier=_FREE_TIER.get(spec.model_id),
+        )
         for model_id, spec in models.items()
     }
 
 
-_MODELS: Final[dict[str, ModelSpec]] = _bind_roles(_BASE_MODELS)
+_MODELS: Final[dict[str, ModelSpec]] = _bind_metadata(_BASE_MODELS)
 
 # Floating alias that silently follows whatever Google ships next.
 FLOATING_ALIASES: Final[frozenset[str]] = frozenset({"gemini-flash-latest"})
@@ -433,6 +498,78 @@ def all_model_ids() -> frozenset[str]:
     return frozenset(_MODELS)
 
 
+# ── Free-tier helpers ────────────────────────────────────────────────────────
+def is_free_tier(model_name: str) -> bool:
+    """``True`` only when the free tier serves this model.
+
+    Unknown names and models with unverified availability return ``False``: the
+    deployment must never assume that something is free just because it exists.
+    """
+    spec = model_spec(model_name)
+    return bool(spec is not None and spec.free_tier is True)
+
+
+def free_tier_models() -> frozenset[str]:
+    """Models that are free of charge on the free tier."""
+    return frozenset(
+        spec.model_id for spec in _MODELS.values() if spec.free_tier is True
+    )
+
+
+def paid_only_models() -> frozenset[str]:
+    """Models the free tier does not serve at all."""
+    return frozenset(
+        spec.model_id for spec in _MODELS.values() if spec.free_tier is False
+    )
+
+
+def unverified_free_tier_models() -> frozenset[str]:
+    """Models whose free-tier availability has not been verified."""
+    return frozenset(
+        spec.model_id for spec in _MODELS.values() if spec.free_tier is None
+    )
+
+
+def role_free_tier(role: str) -> bool | None:
+    """Free-tier status of a role's default model (``None`` = unconfigured)."""
+    model = ROLE_MODELS.get(role, "")
+    if not model:
+        return None
+    spec = model_spec(model)
+    return None if spec is None else spec.free_tier
+
+
+def route_problems() -> list[str]:
+    """Configuration problems that contradict the free-tier-only policy.
+
+    Checked against the *effective* route (environment override applied), so an
+    operator who pins a paid-only model in ``.env`` gets a concrete complaint
+    instead of a 403 at runtime.
+    """
+    if not FREE_TIER_ONLY:
+        return []
+    problems: list[str] = []
+    for role, default in ROLE_MODELS.items():
+        model = configured_model(role)
+        if not model:
+            continue
+        spec = model_spec(model)
+        if spec is None:
+            continue
+        if spec.free_tier is False:
+            env_names = ", ".join(ROLE_ENV.get(role, ())) or "catalog default"
+            problems.append(
+                f"role '{role}' resolves to '{model}', which is paid-only "
+                f"(not available on the free tier); source: {env_names}"
+            )
+        elif spec.free_tier is None and default:
+            problems.append(
+                f"role '{role}' resolves to '{model}' with unverified free-tier "
+                f"availability; verify it before use"
+            )
+    return problems
+
+
 # ── Thinking helpers ──────────────────────────────────────────────────────────
 def uses_thinking_config(model_name: str) -> bool:
     """Gemini 3.x/4.x use ``thinking_config``; older models use ``temperature``."""
@@ -462,6 +599,8 @@ def supported_thinking_levels(model_name: str) -> frozenset[str]:
 
 __all__ = [
     "CATALOG_VERSION",
+    "FREE_TIER_ONLY",
+    "FREE_TIER_SOURCE",
     "POLICY",
     "FLOATING_ALIASES",
     "MODEL_LIVE",
@@ -489,14 +628,20 @@ __all__ = [
     "current_models_outside_routing",
     "deprecated_aliases",
     "fallback_model",
+    "free_tier_models",
+    "is_free_tier",
     "model_spec",
     "normalize_model_id",
+    "paid_only_models",
     "preview_models",
+    "role_free_tier",
     "role_model",
     "role_of",
+    "route_problems",
     "scheduled_migrations",
     "shutdown_models",
     "supported_thinking_levels",
     "thinking_level_for",
+    "unverified_free_tier_models",
     "uses_thinking_config",
 ]

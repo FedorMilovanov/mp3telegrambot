@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 from core.model_catalog import (
     FLOATING_ALIASES,
+    FREE_TIER_ONLY,
     MODEL_PRIMARY,
     MODEL_UTILITY,
     POLICY,
@@ -77,6 +78,22 @@ def _access_limited(model: str) -> GeminiModelDiagnostic | None:
     )
 
 
+def _paid_only(model: str) -> GeminiModelDiagnostic | None:
+    """A model the free tier does not serve at all."""
+    if not FREE_TIER_ONLY:
+        return None
+    spec = model_spec(model)
+    if spec is None or spec.free_tier is not False:
+        return None
+    return GeminiModelDiagnostic(
+        "error",
+        f"GEMINI_MODEL='{model}' — модель доступна только на paid tier "
+        f"(на free tier «Not available»); бесплатный ключ получит отказ. Этот "
+        f"deployment работает только на бесплатных ключах, выберите "
+        f"{_PRIMARY_MODEL}.",
+    )
+
+
 def _outside_routing(model: str) -> GeminiModelDiagnostic | None:
     notes = current_models_outside_routing()
     if model not in notes:
@@ -104,6 +121,9 @@ def classify_gemini_model(model_name: str) -> GeminiModelDiagnostic:
             f"GEMINI_MODEL='{model}' — utility-only модель; для semantic/quality-sensitive "
             f"задач требуется {_PRIMARY_MODEL}.",
         )
+    paid_only = _paid_only(model)
+    if paid_only is not None:
+        return paid_only
     if model in FLOATING_ALIASES:
         return GeminiModelDiagnostic(
             "warning",

@@ -5,7 +5,8 @@ Policy: `project-gemini-routing-2026-10-22`. Сгенерировано scripts/
 ## Как менять модель
 
 1. Отредактируйте одну строку в `core/model_catalog.py` — `ROLE_MODELS[ROLE_PRIMARY]`
-   (для служебной модели — `ROLE_UTILITY`).
+   (для служебной модели — `ROLE_UTILITY`). Новая модель обязана быть
+   доступна на free tier: платная модель ломает все бесплатные ключи.
 2. Запустите `python scripts/render_model_catalog.py`.
 3. Запустите `python tools/verify_repo.py`.
 
@@ -18,7 +19,7 @@ Policy: `project-gemini-routing-2026-10-22`. Сгенерировано scripts/
 ### Проверка схемы (upgrade drill)
 
 ```bash
-python scripts/model_upgrade_drill.py --model gemini-4-argon
+python scripts/model_upgrade_drill.py --model gemini-3.6-flash
 ```
 
 Дрилл подменяет `ROLE_PRIMARY`, убеждается, что `--check` фиксирует
@@ -31,16 +32,40 @@ python scripts/model_upgrade_drill.py --model gemini-4-argon
 
 ### Роли
 
-| Роль | Модель | Кто использует |
-|---|---|---|
-| `primary` (semantic) | `gemini-3.8-flash` | Synopsis, LiveDub QA, Factory, publication, info cards |
-| `utility` (mechanical) | `gemini-3.5-flash-lite` | только служебные/косметические задачи |
-| `fallback` | `(не задан)` | по умолчанию выключен: cross-model downgrade запрещён политикой |
-| `tts` | `gemini-3.8-flash-tts` | доступно, пока не используется |
-| `tts_lite` | `gemini-3.8-flash-lite-tts` | доступно, пока не используется |
-| `transcribe` | `gemini-3.5-transcribe` | доступно, пока не используется |
-| `live` | `gemini-3.8-live` | доступно, пока не используется |
-| `reasoning` | `gemini-4-argon` | доступно, пока не используется |
+| Роль | Модель | Free tier | Кто использует |
+|---|---|---|---|
+| `primary` (semantic) | `gemini-3.8-flash` | ✅ free | Synopsis, LiveDub QA, Factory, publication, info cards |
+| `utility` (mechanical) | `gemini-3.5-flash-lite` | ✅ free | только служебные/косметические задачи |
+| `fallback` (downgrade) | `(не задан)` | — | по умолчанию выключен: cross-model downgrade запрещён |
+| `tts` (speech) | `gemini-3.8-flash-tts` | ✅ free | доступно, пока не используется |
+| `tts_lite` (speech) | `gemini-3.8-flash-lite-tts` | ✅ free | доступно, пока не используется |
+| `transcribe` (speech) | `gemini-3.5-transcribe` | ✅ free | доступно, пока не используется |
+| `live` (realtime) | `gemini-3.8-live` | ✅ free | доступно, пока не используется |
+| `reasoning` (reasoning) | `(не задан)` | — | нет бесплатной модели: 4 Argon только paid tier |
+
+### Бесплатные ключи (основное ограничение deployment'а)
+
+Режим: `FREE_TIER_ONLY = True` — проект работает на бесплатных ключах Gemini, поэтому платная модель не может быть маршрутом по умолчанию.
+Источник: https://ai.google.dev/gemini-api/docs/pricing (Standard, 'Free Tier' column), verified 2026-10-23.
+
+**Бесплатно (free tier):**
+
+`gemini-2.5-flash`, `gemini-2.5-flash-lite`, `gemini-2.5-flash-native-audio-preview-12-2025`, `gemini-2.5-flash-preview-tts`, `gemini-2.5-pro`, `gemini-3-flash-preview`, `gemini-3.1-flash-lite`, `gemini-3.1-flash-tts-preview`, `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-3.5-transcribe`, `gemini-3.6-flash`, `gemini-3.7-flash`, `gemini-3.8-flash`, `gemini-3.8-flash-lite-tts`, `gemini-3.8-flash-tts`, `gemini-3.8-live`, `gemini-3.8-live-extended-thinking`
+
+**Только paid tier — бесплатный ключ получит отказ:**
+
+`gemini-2.5-pro-preview-tts`, `gemini-3.1-pro-preview`, `gemini-4-argon`
+
+**Не проверено / модель выключена:**
+
+`gemini-1.0-pro`, `gemini-1.5-flash`, `gemini-1.5-flash-001`, `gemini-1.5-pro`, `gemini-2.0-flash`, `gemini-2.0-flash-001`, `gemini-2.0-flash-lite`, `gemini-2.0-flash-lite-001`, `gemini-2.5-computer-use-preview-10-2025`, `gemini-2.5-flash-preview-05-20`, `gemini-2.5-flash-preview-09-25`, `gemini-2.5-pro-preview`, `gemini-2.5-pro-preview-03-25`, `gemini-2.5-pro-preview-05-06`, `gemini-2.5-pro-preview-06-05`, `gemini-3-pro-preview`, `gemini-3.1-flash-lite-preview`, `gemini-3.1-flash-live-preview`, `gemini-pro`, `gemini-pro-vision`
+
+Что это значит на практике:
+
+- лимиты free tier считаются **на Google Cloud project и на модель**, а не на ключ; несколько ключей одного проекта квоту не умножают;
+- четыре слота `GEMINI_API_KEY`..`_4` имеют смысл только как четыре разных проекта (`GEMINI_QUOTA_DOMAIN*` фиксирует это локально);
+- апгрейд на платную модель — это не «одна строка», а осознанное решение: сначала `FREE_TIER_ONLY = False`, потом правка роли;
+- `reasoning`-роль пуста намеренно: бесплатной reasoning-модели у Google нет.
 
 ### Устаревшие alias'ы (провайдер сам перенаправляет запрос)
 
@@ -66,7 +91,7 @@ python scripts/model_upgrade_drill.py --model gemini-4-argon
 |---|---|
 | `gemini-2.5-flash` | `gemini-3.8-flash` |
 | `gemini-2.5-flash-lite` | `gemini-3.5-flash-lite` |
-| `gemini-2.5-pro` | `gemini-4-argon` |
+| `gemini-2.5-pro` | `gemini-3.8-flash` |
 
 ### Отключены
 
