@@ -56,6 +56,22 @@ def test_pin_has_exactly_one_owner() -> None:
     assert po.BGUTIL_EXPECTED_COMMIT == bgutil_pin.BGUTIL_COMMIT
 
 
+def test_version_parsing_ignores_non_numeric_parts() -> None:
+    assert bgutil_pin.version_tuple("2.0.2") == (2, 0, 2)
+    assert bgutil_pin.version_tuple("2.1.0-rc1") == (2, 1, 0)
+    assert bgutil_pin.version_tuple(" 2.0.2 ") == (2, 0, 2)
+    assert bgutil_pin.version_tuple("") == ()
+    assert bgutil_pin.version_tuple("latest") == ()
+
+
+def test_commit_validation_requires_a_full_lowercase_sha() -> None:
+    assert bgutil_pin._is_commit_sha(bgutil_pin.BGUTIL_COMMIT) is True
+    assert bgutil_pin._is_commit_sha("a" * 39) is False
+    assert bgutil_pin._is_commit_sha("a" * 41) is False
+    assert bgutil_pin._is_commit_sha("A" * 40) is False, "uppercase is not a git sha"
+    assert bgutil_pin._is_commit_sha("z" * 40) is False
+
+
 def test_no_workflow_hardcodes_the_pin() -> None:
     """CI is part of the pin's blast radius.
 

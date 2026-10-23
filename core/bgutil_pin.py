@@ -31,7 +31,6 @@ before the rest of the project is importable.
 """
 from __future__ import annotations
 
-import re
 from typing import Final
 
 # ── Upstream pin ─────────────────────────────────────────────────────────────
@@ -55,17 +54,29 @@ BGUTIL_HTTP_BASE_URL: Final[str] = f"http://{BGUTIL_HTTP_HOST}:{BGUTIL_HTTP_PORT
 BGUTIL_SECURITY_ADVISORY: Final[str] = "GHSA-qpv9-8xfj-xx9m"
 BGUTIL_FIRST_PATCHED_VERSION: Final[str] = "2.0.0"
 
-_COMMIT_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{40}$")
+_HEX_DIGITS: Final[frozenset[str]] = frozenset("0123456789abcdef")
+
+
+def _is_commit_sha(value: str) -> bool:
+    """A full 40-character lowercase hex sha."""
+    return len(value) == 40 and all(char in _HEX_DIGITS for char in value)
+
+
+def _leading_digits(chunk: str) -> str:
+    for index, char in enumerate(chunk):
+        if not char.isdigit():
+            return chunk[:index]
+    return chunk
 
 
 def version_tuple(value: str) -> tuple[int, ...]:
     """Parse ``"2.0.2"`` into ``(2, 0, 2)``; non-numeric parts are ignored."""
     parts: list[int] = []
     for chunk in str(value or "").strip().split("."):
-        digits = re.match(r"\d+", chunk)
-        if digits is None:
+        digits = _leading_digits(chunk)
+        if not digits:
             break
-        parts.append(int(digits.group(0)))
+        parts.append(int(digits))
     return tuple(parts)
 
 
@@ -95,7 +106,7 @@ def bgutil_pin_problems() -> list[str]:
             f"pinned bgutil {BGUTIL_VERSION} is below {BGUTIL_FIRST_PATCHED_VERSION}: "
             f"remote code execution {BGUTIL_SECURITY_ADVISORY} is not fixed"
         )
-    if not _COMMIT_RE.fullmatch(BGUTIL_COMMIT):
+    if not _is_commit_sha(BGUTIL_COMMIT):
         problems.append(
             f"BGUTIL_COMMIT must be a full 40-hex commit sha, got {BGUTIL_COMMIT!r}"
         )
