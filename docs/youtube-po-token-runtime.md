@@ -91,6 +91,14 @@ upgrade matters even for a native, non-Docker install.
   `1.3.1` tree is rebuilt automatically on the next `Start Bot.bat` — the
   marker mismatch is treated as a repair, not as a warning.
 
+CI builds the pin for real: `cut-policy-ci.yml` runs the provisioner on
+Ubuntu + Node 22 and then asserts `provider_version == BGUTIL_VERSION` by
+importing `core/bgutil_pin.py`. That assertion used to be a hardcoded `1.3.1`
+literal inside the workflow and broke exactly when the pin moved, so
+`tests/test_bgutil_security_pin.py` now scans every workflow file and fails on
+any duplicated pin. The Windows build path is still proven by the first
+`Start Bot.bat` run on the production machine.
+
 The bgutil PyPI wheel is deliberately **not** a Python dependency. Keeping the
 plugin and the JS runtime in the same exact source checkout prevents a released
 wheel from drifting away from the JS provider source, and keeps one commit as

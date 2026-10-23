@@ -56,6 +56,42 @@ def test_pin_has_exactly_one_owner() -> None:
     assert po.BGUTIL_EXPECTED_COMMIT == bgutil_pin.BGUTIL_COMMIT
 
 
+def test_no_workflow_hardcodes_the_pin() -> None:
+    """CI is part of the pin's blast radius.
+
+    ``cut-policy-ci.yml`` used to assert ``provider_version == '1.3.1'``: the
+    pin was in one module, but the workflow kept its own copy and broke the
+    moment the pin moved. Workflows that touch the runtime must import the pin.
+    """
+    offenders: list[str] = []
+    for path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+        text = path.read_text(encoding="utf-8")
+        if "youtube_po_token_runtime" not in text and "bgutil" not in text:
+            continue
+        for literal in (
+            bgutil_pin.BGUTIL_VERSION,
+            bgutil_pin.BGUTIL_FIRST_PATCHED_VERSION,
+            "1.3.1",
+            "a0be2352807e3bd6991f09d2cab685a0ab825b26",
+        ):
+            if f"'{literal}'" in text or f'"{literal}"' in text:
+                offenders.append(f"{path.name}: {literal}")
+    assert offenders == []
+
+    preflight = (ROOT / ".github" / "workflows" / "cut-policy-ci.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "from core.bgutil_pin import BGUTIL_VERSION" in preflight
+    assert "== BGUTIL_VERSION" in preflight
+
+
+def test_cut_policy_workflow_reacts_to_pin_changes() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "cut-policy-ci.yml").read_text(
+        encoding="utf-8"
+    )
+    assert workflow.count('"core/bgutil_pin.py"') == 2, "both push and PR filters"
+
+
 def test_provisioner_refuses_an_unpatched_pin(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(bgutil_pin, "BGUTIL_VERSION", "1.3.2")
     monkeypatch.setattr(bgutil_pin, "pin_is_patched", lambda: False)
