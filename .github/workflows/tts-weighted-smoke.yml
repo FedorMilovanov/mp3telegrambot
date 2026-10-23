@@ -34,7 +34,7 @@ jobs:
       TTS_SMOKE_DURATION_INPUT: ${{ inputs.duration_budget }}
     steps:
       - name: Checkout exact main commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
@@ -257,14 +257,14 @@ jobs:
       TTS_SMOKE_ACCEPTANCE_TITLE: Provision tts-weights runner and execute first attested weighted smoke
     steps:
       - name: Checkout exact main commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
           clean: true
 
       - name: Setup verifier Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           cache: pip

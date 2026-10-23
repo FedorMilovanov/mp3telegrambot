@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from tools.workflow_actions import minimum_major
+
 
 def _read(path: str) -> str:
     return Path(path).read_text(encoding="utf-8")
@@ -28,9 +30,14 @@ def test_env_example_keeps_user_copy_off_utility_lane():
 
 def test_ci_uses_node24_actions_and_runs_repository_verifier():
     ci = _read(".github/workflows/ci.yml")
-    assert "actions/checkout@v6" in ci
-    assert "actions/setup-python@v6" in ci
-    assert "actions/upload-artifact@v7" in ci
+    # Floor, not equality: Dependabot may move these to the next major, and the
+    # requirement is "runs on a supported Node runtime", not "is exactly v6".
+    for action, floor in (
+        ("actions/checkout", 6),
+        ("actions/setup-python", 6),
+        ("actions/upload-artifact", 4),
+    ):
+        assert minimum_major(ci, action) >= floor, action
     assert "python tools/verify_repo.py" in ci
 
 

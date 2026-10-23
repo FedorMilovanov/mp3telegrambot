@@ -4,6 +4,8 @@ import glob
 import re
 from pathlib import Path
 
+from tools.workflow_actions import below_floor, minimum_major
+
 
 WORKFLOWS = (
     Path(".github/workflows/dub-clean-expressive-check.yml"),
@@ -73,10 +75,9 @@ def test_dub_workflows_run_on_pull_requests_and_use_current_actions() -> None:
     for workflow in WORKFLOWS:
         text = workflow.read_text(encoding="utf-8")
         assert "pull_request:" in text, f"{workflow}: PR gate is missing"
-        assert "actions/checkout@v6" in text
-        assert "actions/setup-python@v6" in text
-        assert "actions/checkout@v4" not in text
-        assert "actions/setup-python@v5" not in text
+        assert minimum_major(text, "actions/checkout") >= 6, workflow
+        assert minimum_major(text, "actions/setup-python") >= 6, workflow
+        assert below_floor(text) == [], workflow
 
 
 def test_dub_workflows_run_pytest_as_python_module() -> None:

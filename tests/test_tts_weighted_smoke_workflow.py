@@ -22,6 +22,17 @@ def _workflow() -> dict:
     return _load(WORKFLOW)
 
 
+def _action_names(actions: list[str]) -> list[str]:
+    """Drop the tag: the contract is *which* actions run, not which major.
+
+    Pinning ``@v4`` here meant that every Dependabot bump of an action turned
+    this security test red, which trains people to edit the test instead of
+    reading it. The major is guarded centrally by
+    ``tools/workflow_actions.py`` (floor, not equality).
+    """
+    return [action.split("@", 1)[0] for action in actions]
+
+
 def test_weighted_smoke_is_manual_main_only_with_job_scoped_permissions() -> None:
     payload = _workflow()
     triggers = payload["on"]
@@ -113,7 +124,9 @@ def test_weighted_job_uploads_only_one_fixed_privacy_safe_attestation() -> None:
     steps = payload["jobs"]["weighted-smoke"]["steps"]
     actions = [str(step.get("uses") or "") for step in steps if step.get("uses")]
 
-    assert actions == ["actions/checkout@v4", "actions/upload-artifact@v4"]
+    # Exactly these two actions, no third-party step: the single fixed
+    # attestation upload is a privacy contract.
+    assert _action_names(actions) == ["actions/checkout", "actions/upload-artifact"]
     upload = next(
         step for step in steps if step.get("name") == "Upload weighted smoke attestation"
     )
@@ -139,7 +152,11 @@ def test_weighted_job_uploads_only_one_fixed_privacy_safe_attestation() -> None:
     assert cleanup["if"] == "always()"
     assert "TTS_SMOKE_ROOT_WORK" in cleanup["run"]
     assert "tts-weighted-smoke-attestation" in cleanup["run"]
-    checkout = next(step for step in steps if step.get("uses") == "actions/checkout@v4")
+    checkout = next(
+        step
+        for step in steps
+        if str(step.get("uses") or "").startswith("actions/checkout@")
+    )
     assert checkout["with"]["persist-credentials"] == "false"
     assert checkout["with"]["ref"] == "${{ github.sha }}"
 
@@ -154,11 +171,11 @@ def test_hosted_closeout_downloads_verifies_then_updates_exact_issue() -> None:
     assert download_index < verify_index < close_index
 
     actions = [str(step.get("uses") or "") for step in steps if step.get("uses")]
-    assert actions == [
-        "actions/checkout@v4",
-        "actions/setup-python@v5",
-        "actions/download-artifact@v4",
-        "actions/github-script@v7",
+    assert _action_names(actions) == [
+        "actions/checkout",
+        "actions/setup-python",
+        "actions/download-artifact",
+        "actions/github-script",
     ]
     download = steps[download_index]
     assert download["with"]["name"] == (
