@@ -30,9 +30,12 @@ def test_timestamps_to_chapter_list_parses_pipeline_string():
 
 def test_pipeline_embeds_chapters_from_string_timestamps():
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    assert src.count("timestamps_to_chapter_list(") >= 2, "оба пути (кэш и свежий)"
-    assert "isinstance(_ts_for_chap, list)" not in src
-    assert "isinstance(_ts_chap_c, list)" not in src
+    stage = Path("pipelines/delivery_stage.py").read_text(encoding="utf-8")
+    assert "timestamps_to_chapter_list" in src, "кэш-хит"
+    assert "parse_chapters=timestamps_to_chapter_list" in stage, "свежий путь"
+    assert "chapters = deps.parse_chapters(" in stage
+    assert "isinstance(_ts_for_chap, list)" not in src + stage
+    assert "isinstance(_ts_chap_c, list)" not in src + stage
 
 
 def test_montage_does_not_own_borrowed_livedub_video():

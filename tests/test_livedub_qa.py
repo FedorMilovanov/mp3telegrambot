@@ -32,6 +32,11 @@ _REPLACED_CASES = {
     "test_livedub_info_message_uses_safe_html_trim",
     "test_vot_token_is_documented_in_readme_help_and_status",
     "test_ytdlp_js_runtime_version_filter",
+    # P0-3: свежая отправка MP3/PDF вынесена в отдельную стадию.
+    "test_upload_retry_honors_retry_after",
+    "test_mp3_chapters_wired_both_branches",
+    "test_audio_file_id_saved_on_first_send",
+    "test_chat_actions_during_uploads",
 }
 _CASES = runpy.run_path(str(Path(__file__).with_name("livedub_qa_cases.py")))
 globals().update(
@@ -188,3 +193,29 @@ def test_vot_token_is_documented_in_readme_help_and_status() -> None:
     assert "LIVEDUB_TITLE_TRANSLATE=1" in env
     assert "VOT_API_TOKEN" in commands
     assert "VOT_API_TOKEN/YANDEX_OAUTH_TOKEN" in commands
+
+
+def test_upload_retry_honors_retry_after() -> None:
+    main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    stage = Path("pipelines/delivery_stage.py").read_text(encoding="utf-8")
+    assert (main + stage).count('getattr(upload_err, "retry_after", None)') == 2
+
+
+def test_mp3_chapters_wired_both_branches() -> None:
+    main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    stage = Path("pipelines/delivery_stage.py").read_text(encoding="utf-8")
+    assert (main + stage).count("embed_chapters") >= 4
+
+
+def test_audio_file_id_saved_on_first_send() -> None:
+    main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    stage = Path("pipelines/delivery_stage.py").read_text(encoding="utf-8")
+    assert "await deps.save_file_id(request.media_id, file_id)" in stage
+    assert "adb_set_audio_file_id(media_id, _new_fid)" in main
+
+
+def test_chat_actions_during_uploads() -> None:
+    main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    stage = Path("pipelines/delivery_stage.py").read_text(encoding="utf-8")
+    assert 'send_action("upload_voice")' in stage
+    assert 'action="upload_video"' in main

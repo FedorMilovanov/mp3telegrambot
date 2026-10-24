@@ -49,6 +49,7 @@ from pipelines.analysis_stage import AnalysisRequest, run_analysis
 from pipelines.archive_stage import ArchiveRequest, archive_pages
 from pipelines.caption_inputs import build_caption_inputs
 from pipelines.caption_stage import CaptionSource, fit_caption
+from pipelines.delivery_stage import DeliveryRequest, deliver_result
 from services.telegraph_pages import combined_study_reflection_enabled
 from pipelines.telegraph_nav import add_navigation
 from pipelines.telegraph_repair_stage import repair_enabled, repair_pages
@@ -2089,211 +2090,35 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 repair=_repair,
             )
 
-        # ID3-главы из Gemini-таймкодов: навигация по темам в подкаст-плеерах
-        try:
-            from services.mp3_chapters import embed_chapters, timestamps_to_chapter_list
-            # FIX AUDIT R4: timestamps — строка "M:SS тема\n…", а не список;
-            # старый isinstance-гейт делал вшивание глав мёртвым кодом.
-            _ts_for_chap = timestamps_to_chapter_list((ai_data or {}).get("timestamps"))
-            _thumb_path = None
-            _thumb_candidates = list(THUMBS_DIR.glob(f"{media_id}_thumb*"))
-            if _thumb_candidates:
-                _thumb_path = _thumb_candidates[0]
-            
-            _comment = f"Source: {url}"
-            if telegraph_url:
-                _comment += f"\nSynopsis: {telegraph_url}"
-            if study_analysis_tg:
-                _comment += f"\nStudy: {study_analysis_tg}"
-            if reflection_application_tg:
-                _comment += f"\nReflection: {reflection_application_tg}"
-
-            if _ts_for_chap:
-                await asyncio.get_running_loop().run_in_executor(
-                    None, lambda: embed_chapters(
-                        mp3_path, _ts_for_chap, duration,
-                        title=(ai_data or {}).get("real_title") or title,
-                        performer=(ai_data or {}).get("real_author") or performer,
-                        thumb_path=_thumb_path,
-                        comment=_comment
-                    ))
-        except Exception as _chap_err:
-            logger.warning(f"MP3 chapters skip: {_chap_err}")
-
-        try:
-            await update.message.chat.send_action("upload_voice")
-        except Exception:
-            pass
-        with open(mp3_path, "rb") as audio_file:
-            audio_title     = title_case_fragment((ai_data or {}).get("real_title") or title)
-            audio_performer = normalize_author_name((ai_data or {}).get("real_author") or performer)
-            # Увеличенный таймаут для больших файлов + retry при сетевых ошибках
-            for _attempt in range(3):
-                try:
-                    audio_file.seek(0)
-                    _sent_fresh_audio = await _source_audio_delivery.send_or_defer(
-                        update.message,
-                        audio=audio_file, fallback_path=mp3_path,
-                        title=audio_title, performer=audio_performer,
-                        thumbnail=thumb_buffer, duration=duration, caption=caption,
-                        parse_mode="HTML",
-                        write_timeout=180, read_timeout=180, connect_timeout=60,
-                    )
-                    # round 30: file_id сохраняем уже с ПЕРВОЙ отправки —
-                    # повторный запрос мгновенен сразу (закрыт зазор round 29)
-                    try:
-                        _ffid = getattr(getattr(_sent_fresh_audio, "audio", None), "file_id", "")
-                        if _ffid:
-                            from core.database import adb_set_audio_file_id
-                            await adb_set_audio_file_id(media_id, _ffid)
-                    except Exception:
-                        pass
-                    break  # успех
-                except Exception as upload_err:
-                    err_name = type(upload_err).__name__
-                    err_str  = str(upload_err).lower()
-                    # PTB RetryAfter (flood control): ждём ровно сколько просит API
-                    _ra = getattr(upload_err, "retry_after", None)
-                    if _ra is not None and _attempt < 2:
-                        logger.warning(f"Flood control: ждём {_ra}с перед повтором")
-                        await asyncio.sleep(float(_ra) + 1.0)
-                        continue
-                    _retryable_names = ("Timeout", "NetworkError", "TimedOut", "ReadError", "ConnectError")
-                    _retryable_strs  = ("internal server error", "server error", "bad gateway", "gateway timeout")
-                    _is_retryable = (
-                        any(x in err_name for x in _retryable_names) or
-                        any(x in err_str  for x in _retryable_strs)
-                    )
-                    if _attempt < 2 and _is_retryable:
-                        logger.warning(f"Upload попытка {_attempt+1}/3 не удалась ({err_name}: {str(upload_err)[:120]}), повтор...")
-                        await asyncio.sleep(5 * (_attempt + 1))
-                    else:
-                        raise  # последняя попытка или не сетевая ошибка
-
-        logger.info(f"Done: [{normalize_author_name(performer) or performer}] {normalize_title_text(title) or title} ({file_size_mb:.1f} MB, 128kbps)")
-
-        # Отправляем полное описание отдельным сообщением (лимит 4096)
-        _feat_full_caption = await asettings_get("caption_full_text")
-        if _feat_full_caption and full_caption and full_caption != caption:
-            try:
-                await update.message.reply_text(full_caption, parse_mode="HTML")
-            except Exception as _fe:
-                logger.warning(f"Full caption send error: {_fe}")
-
-        # ── PDF (опционально) ────────────────────────────────────
-        _feat_pdf = await asettings_get("generate_pdf")
-        if _feat_pdf and ai_data:
-            _status_msg = None
-            _pdf_path = None
-            try:
-                from services.pdf_generator import generate_sermon_pdf_async
-
-                DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
-                _pdf_path = str(DOWNLOAD_DIR / f"{media_id}_{uuid.uuid4().hex[:6]}.pdf")
-
-                _raw_t = (ai_data.get("real_title") or "").strip() or (title or "").strip()
-                _raw_a = (ai_data.get("real_author") or "").strip() or (performer or "").strip()
-                _pdf_title  = normalize_title_text(_raw_t)  if _raw_t else "Без названия"
-                _pdf_author = normalize_author_name(_raw_a) if _raw_a else "Неизвестный"
-                _dur_str    = format_timestamp(duration) if duration else ""
-
-                _pdf_urls = {}
-                if telegraph_url:              _pdf_urls["synopsis"]   = telegraph_url
-                if study_analysis_tg:          _pdf_urls["study"]      = study_analysis_tg
-                if reflection_application_tg:  _pdf_urls["reflection"] = reflection_application_tg
-                if terms_tg:                   _pdf_urls["terms"]      = terms_tg
-
-                if _pdf_urls:
-                    logger.info(f"PDF: генерирую ({list(_pdf_urls.keys())})")
-
-                    _status_msg = await update.message.reply_text("📄 Генерирую PDF…")
-
-                    async def _pdf_progress(stage: str, pct: int):
-                        try:
-                            await _status_msg.edit_text(f"📄 PDF: {stage} ({pct}%)")
-                        except Exception:
-                            pass
-
-                    _pdf_result = await generate_sermon_pdf_async(
-                        output_path      = _pdf_path,
-                        title            = _pdf_title,
-                        performer        = _pdf_author,
-                        duration_str     = _dur_str,
-                        urls             = _pdf_urls,
-                        progress_callback = _pdf_progress,
-                    )
-
-                    if _pdf_result and Path(_pdf_result).exists():
-                        _size = Path(_pdf_result).stat().st_size
-                        if _size < 200:
-                            logger.warning(f"PDF пустой: {_size} байт")
-                            await update.message.reply_text("❌ Не удалось создать PDF (файл пустой).")
-                        elif _size > 49 * 1024 * 1024:
-                            logger.warning(f"PDF слишком большой: {_size} байт")
-                            await update.message.reply_text("❌ PDF слишком большой для отправки.")
-                        else:
-                            def _safe_fn(s: str) -> str:
-                                return re.sub(r'[\\/:*?"<>|\n\r\t]', '', s).strip()[:80] or "doc"
-
-                            _fn = f"{_safe_fn(_pdf_author)} — {_safe_fn(_pdf_title)}.pdf"
-
-                            with open(_pdf_result, "rb") as _pdf_f:
-                                await update.message.reply_document(
-                                    document   = _pdf_f,
-                                    filename   = _fn,
-                                    caption    = "📄 <b>PDF-версия материала</b>",
-                                    parse_mode = "HTML",
-                                )
-                            logger.info("PDF: отправлен")
-                    else:
-                        logger.warning("PDF: generate_sermon_pdf_async вернул None или файл не создан")
-                        await update.message.reply_text("❌ Не удалось создать PDF.")
-
-            except Exception as _pdf_err:
-                logger.warning(f"PDF генерация не удалась: {_pdf_err}", exc_info=True)
-            finally:
-                if _pdf_path:
-                    try:
-                        Path(_pdf_path).unlink(missing_ok=True)
-                    except Exception:
-                        pass
-                if _status_msg:
-                    try:
-                        await _status_msg.delete()
-                    except Exception:
-                        pass
-
-        # ── Quiz (после PDF, перед Shorts) ───────────────
-        _feat_quiz = await asettings_get("generate_quiz")
-        if _feat_quiz and ai_data:
-            try:
-                from services.quiz_generator import generate_quiz, send_quiz_polls
-                logger.info("Quiz: generating questions")
-                quiz_questions = await generate_quiz(
-                    ai_data=ai_data,
-                    title=title,
-                    performer=performer,
-                    duration=duration,
-                    existing_audio_part=used_audio_part,
-                    existing_client=used_client,
-                )
-                if quiz_questions:
-                    # Send header message
-                    _quiz_title = (ai_data or {}).get("real_title") or title or ""
-                    await update.message.reply_text(
-                        f"🧠 <b>Quiz: {html_mod.escape(_quiz_title[:80])}</b>\n"
-                        f"Проверь понимание материала — {len(quiz_questions)} вопросов:",
-                        parse_mode="HTML",
-                    )
-                    sent = await send_quiz_polls(quiz_questions, update, context, title=_quiz_title)
-                    logger.info(f"Quiz: started sequential session ({sent} questions)")
-                else:
-                    logger.info("Quiz: no questions generated (Gemini returned None)")
-            except Exception as _quiz_err:
-                logger.warning(f"Quiz generation failed: {_quiz_err}")
-        else:
-            logger.info(f"Quiz: skipped (feat={_feat_quiz}, ai_data={'yes' if ai_data else 'no'})")
+        # Свежий результат отправляется одной стадией: ID3 → MP3 с retry →
+        # полный текст → PDF → quiz. Ошибка MP3 остаётся критичной, а сбои
+        # необязательных дополнений изолированы в pipelines/delivery_stage.py.
+        await deliver_result(
+            DeliveryRequest(
+                update=update,
+                context=context,
+                audio_delivery=_source_audio_delivery,
+                mp3_path=mp3_path,
+                media_id=media_id,
+                source_url=url,
+                title=title,
+                performer=performer,
+                duration=duration,
+                file_size_mb=file_size_mb,
+                caption=caption,
+                full_caption=full_caption,
+                download_dir=DOWNLOAD_DIR,
+                thumbs_dir=THUMBS_DIR,
+                ai_data=ai_data,
+                thumbnail=thumb_buffer,
+                synopsis_url=telegraph_url or "",
+                study_url=study_analysis_tg or "",
+                reflection_url=reflection_application_tg or "",
+                terms_url=terms_tg or "",
+                used_audio_part=used_audio_part,
+                used_client=used_client,
+            )
+        )
 
         # ── Shorts (после основного результата) ─────────
         _feat_shorts = await asettings_get("shorts")
