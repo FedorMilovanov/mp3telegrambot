@@ -79,6 +79,11 @@ from pipelines.degraded_mode import (
     attach_transcript_timestamps,
     degraded_caption_data,
 )
+from pipelines.publication_plan import (
+    build_plan,
+    has_ai_analysis,
+    terms_total as _plan_terms_total,
+)
 from pipelines.media_guards import (
     DEFAULT_MAX_DURATION_SEC,
     disk_skip,
@@ -1978,35 +1983,30 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         _terms_data  = (ai_data or {}).get("terms_data", {}) or {} if ai_data else {}
 
         # -- Читаем настройки одним batch вызовом -------------------------
-        _all_settings                = await asettings_get_all()
-        _feat_analytics              = _all_settings.get("analytics", True)
-        _feat_questions              = _all_settings.get("questions", True)
-        _feat_terms                  = _all_settings.get("terms", True)
-        _feat_study_analysis         = _all_settings.get("study_analysis", True)
-        _feat_reflection_application = _all_settings.get("reflection_application", True)
+        # Решение «что публикуем» вынесено в pipelines/publication_plan.py:
+        # пять флагов и три взаимных исключения больше не размазаны по телу
+        # функции, и все 32 комбинации проверяются тестами.
+        _all_settings = await asettings_get_all()
         _caption_source_data = ai_data or _degraded_caption_data
         _mat_format   = (_caption_source_data or {}).get("format", "other")
         _ts_total     = len([l for l in ((_caption_source_data or {}).get("timestamps") or "").split("\n") if l.strip()])
         _ts_cap_limit = get_caption_timestamp_limit(_mat_format)
 
-        _terms_total = sum(len(_terms_data.get(k, [])) for k in ("concepts", "scripture", "translations", "lexicon_notes"))
-        _has_ai_analysis = bool(ai_data and (
-            (ai_data or {}).get("real_title")
-            or (ai_data or {}).get("main_topic")
-            or (ai_data or {}).get("timestamps")
-            or _terms_total
-            or _questions
-        ))
+        _terms_total = _plan_terms_total(_terms_data)
+        _flags, _plan = build_plan(_all_settings, ai_data=ai_data)
+        # Отдельно от плана: «анализ есть» и «пользователь всё выключил» — разные
+        # ситуации, и предупреждение про галлюцинации относится только к первой.
+        _has_ai_analysis = has_ai_analysis(ai_data)
+        _feat_analytics              = _plan.analytics
+        _feat_questions              = _plan.questions
+        _feat_terms                  = _plan.terms
+        _feat_study_analysis         = _plan.study_analysis
+        _feat_reflection_application = _plan.reflection_application
         if not _has_ai_analysis:
             logger.warning(
                 "AI analysis is missing/invalid for %s — skipping AI-derived Telegraph pages to avoid hallucinated partial publications",
                 media_id,
             )
-            _feat_analytics = False
-            _feat_questions = False
-            _feat_terms = False
-            _feat_study_analysis = False
-            _feat_reflection_application = False
         _is_qa = (_mat_format == "qa")
         logger.info(
             f"format={_mat_format} is_qa={_is_qa} ts_total={_ts_total} ts_cap={_ts_cap_limit} "
