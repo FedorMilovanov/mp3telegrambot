@@ -66,7 +66,7 @@ def _factory_source_timeout_seconds() -> int:
     return _factory_livedub_timeout_seconds()
 
 
-async def _safe_status(status_msg, text: str) -> None:
+async def _safe_status(status_msg: Any, text: str) -> None:
     if not status_msg:
         return
     try:
@@ -207,13 +207,13 @@ def _plan_message(plan: dict[str, Any], *, translation_required: bool) -> str:
 
 
 async def process_shorts_factory(
-    url,
-    update,
-    status_msg=None,
-    progress_prefix="",
-    context=None,
+    url: str,
+    update: Any,
+    status_msg: Any = None,
+    progress_prefix: str = "",
+    context: Any = None,
     silent_errors: bool = False,
-):
+) -> bool:
     """Analyze speech first, then select and render the proved source route."""
     del context, progress_prefix
     url = get_youtube_video_url(url)
@@ -221,7 +221,7 @@ async def process_shorts_factory(
     persistent_source_path: Path | None = None
     keep_source = False
     workdir = Path(tempfile.mkdtemp(prefix="shorts_factory_"))
-    source_task: asyncio.Task | None = None
+    source_task: asyncio.Task[Any] | None = None
 
     try:
         enforce_factory_preflight()

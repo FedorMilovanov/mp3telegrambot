@@ -14,14 +14,23 @@
 
 from __future__ import annotations
 
+import re
 import tomllib
 from pathlib import Path
 
 import pytest
 
-from tools.check_types import TYPED_SLICES, build_command, check, error_count, missing_mypy
+from tools.check_types import (
+    TYPED_SLICES,
+    Slice,
+    build_command,
+    check,
+    error_count,
+    missing_mypy,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
+DOC = ROOT / "docs" / "typechecking.md"
 
 
 def _mypy_config() -> dict[str, object]:
@@ -50,22 +59,46 @@ def test_config_targets_the_project_floor() -> None:
     assert config.get("python_version") == "3.12", "цель mypy обязана совпадать с floor проекта"
 
 
-def test_typed_slices_are_real_packages() -> None:
+def test_typed_slices_exist_and_are_packages() -> None:
     assert TYPED_SLICES, "срез не может быть пустым — иначе гейт ничего не проверяет"
-    for slice_path in TYPED_SLICES:
-        path = ROOT / slice_path
-        assert path.is_dir(), f"срез {slice_path} не существует"
-        assert (path / "__init__.py").exists(), f"{slice_path} должен быть пакетом"
+    for slice_ in TYPED_SLICES:
+        path = ROOT / slice_.path
+        assert path.exists(), f"срез {slice_.path} не существует"
+        if path.is_dir():
+            assert (path / "__init__.py").exists(), f"{slice_.path} должен быть пакетом"
 
 
-def test_command_is_just_mypy_over_the_slice() -> None:
+def test_excluded_files_exist_and_have_supporting_lines() -> None:
+    """Исключения не «теряются»: файл существует, и причину видно в коде."""
+    source = Path("tools/check_types.py").read_text(encoding="utf-8")
+    for slice_ in TYPED_SLICES:
+        for excluded in slice_.exclude:
+            assert (ROOT / excluded).is_file(), f"исключённый файл {excluded} не найден"
+            assert excluded in source, f"{excluded} должен быть объявлен в TYPED_SLICES с причиной"
+            assert excluded not in {s.path for s in TYPED_SLICES}
+
+
+def test_command_carries_only_slice_paths_and_anchored_excludes() -> None:
     """Флаги не дублируются в командной строке: единственный источник — pyproject."""
-    command = build_command(("core",))
+    command = build_command((Slice("core"), Slice("pipelines", exclude=("pipelines/main_pipeline.py",))))
     assert command[1:3] == ["-m", "mypy"]
-    assert command[3] == "core"
-    assert not any(part.startswith("--") for part in command), (
-        f"жёсткость должна задаваться в [tool.mypy], а не аргументами: иначе настройки расходятся. Команда: {command}"
+    assert command[3:5] == ["core", "pipelines"]
+    assert command[5] == r"--exclude=^pipelines/main_pipeline\.py$", (
+        "исключение должно быть заякорено, иначе под него попадёт лишний файл"
     )
+    assert not any(part.startswith("--") and part != command[5] for part in command), (
+        f"жёсткость задаётся в [tool.mypy], а не аргументами: иначе настройки расходятся. Команда: {command}"
+    )
+
+
+def test_typed_slices_match_the_documentation_table() -> None:
+    """Таблица в docs — не украшение: расхождение означает, что документ врёт."""
+    cells = re.findall(r"^\| `([^`]+)`", DOC.read_text(encoding="utf-8"), flags=re.MULTILINE)
+    # В документе несколько таблиц; пути среза — только те ячейки, что
+    # действительно указывают на каталог/файл репозитория.
+    documented = {cell.rstrip("/") for cell in cells if (ROOT / cell.rstrip("/")).exists()}
+    declared = {slice_.path for slice_ in TYPED_SLICES}
+    assert documented == declared, f"docs/typechecking.md перечисляет {documented}, а проверяется {declared}"
 
 
 def test_missing_mypy_is_reported_as_environment_problem() -> None:
@@ -97,5 +130,5 @@ def test_declared_slice_is_type_clean() -> None:
             "Установите dev-зависимости: pip install -r requirements-dev.txt"
         )
     assert result.returncode == 0, (
-        f"срез {TYPED_SLICES} не проходит mypy --strict ({error_count(output)} ошибок):\n{output}"
+        f"срез {[s.path for s in TYPED_SLICES]} не проходит mypy --strict ({error_count(output)} ошибок):\n{output}"
     )

@@ -36,9 +36,10 @@
 - Алерт владельцу в Telegram при падении ежечасного обслуживания, с антиспамом
   `MAINTENANCE_ALERT_INTERVAL_HOURS` (по умолчанию раз в 6 часов).
 - Гейт статической типизации: `mypy --strict` для объявленного среза
-  (`tools/check_types.py`, сейчас `core/`), шаг в CI, проверка в
-  `verify_repo.py` и тест `tests/test_typecheck_gate.py`, который ловит
-  ослабление настроек. Документ — `docs/typechecking.md`.
+  (`tools/check_types.py`), шаг в CI, проверка в `verify_repo.py` и тест
+  `tests/test_typecheck_gate.py`, который ловит ослабление настроек и сверяет
+  срез с `docs/typechecking.md`. Срез: `core/` и `pipelines/` (кроме
+  `main_pipeline.py`, см. P0-3).
 
 ### Changed
 
@@ -72,6 +73,17 @@
   `CREATE_NO_WINDOW` читается через `getattr` (константа только для Windows).
 - `mypy 2.4` и его зависимости (`ast-serialize`, `librt`, `mypy-extensions`,
   `pathspec`) добавлены в `requirements-dev.txt` и lock.
+- `pipelines/` приведён к `mypy --strict`: сигнатуры пайплайнов Shorts, Clips,
+  Montage, Highlights, плейлиста и Shorts Factory размечены (`Any` — только для
+  telegram-объектов), `frames` и «Task» получили параметры. Длительность в
+  `create_shorts_candidates`/`create_clips_candidates` и
+  `send_factory_full_translation_if_enabled` объявлена как `int | float`:
+  ffprobe отдаёт доли секунды, и приведение к `int` на стороне вызова меняло
+  бы текст промпта; `short_trim_save` принимает `float` — колонки имеют
+  INTEGER affinity, дробные значения и раньше сохранялись как REAL.
+- `pipelines/shorts.py` импортирует `InlineKeyboardButton`/`InlineKeyboardMarkup`
+  из `telegram`, а не через `core.globals`: неявный реэкспорт ломался при
+  любом изменении в globals и запрещён strict-режимом.
 
 ### Fixed
 

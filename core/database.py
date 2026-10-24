@@ -519,13 +519,18 @@ _one_time_enable_subtitles()
 
 # ─── Short trim helpers ───────────────────────────────────────
 
-def short_trim_save(short_id: str, video_path: str, start_seconds: int, end_seconds: int,
+def short_trim_save(short_id: str, video_path: str, start_seconds: float, end_seconds: float,
                     visual_mode: str = "full_frame_vertical", yt_url: str = "",
                     vk_url: str = "", rutube_url: str = "", performer: str = "",
                     real_author: str = "", real_event: str = "", format_name: str = "",
                     candidate_json: str = "{}", video_path_nosub: str = "",
                     nosub_expiry: int = 0, source_duration: int = 0) -> None:
-    """AUDIT M5: source_duration — длительность исходного видео, для ограничения end_s."""
+    """AUDIT M5: source_duration — длительность исходного видео, для ограничения end_s.
+
+    ``start_seconds``/``end_seconds`` — float, потому что их считает ffprobe.
+    У колонок INTEGER affinity: целые значения лягут как INTEGER, дробные
+    SQLite сохранит как REAL — ровно то, что уже происходило на практике.
+    """
     with _db_conn() as conn:
         conn.execute("PRAGMA busy_timeout=5000")
         conn.execute("""

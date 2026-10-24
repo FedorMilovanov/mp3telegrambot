@@ -14,6 +14,8 @@ AUDIT FIX L12: PLAYLIST_DELAY_SEC конфигурируется через .env
 import asyncio
 import logging
 import os
+from typing import Any
+
 import yt_dlp
 
 from core.globals import GEMINI_CLIENTS, _get_video_lock, _release_video_lock
@@ -33,7 +35,7 @@ logger = logging.getLogger(__name__)
 PLAYLIST_DELAY_SEC = float(os.getenv("PLAYLIST_DELAY_SEC", "1.0"))
 
 
-def _build_media_url(entry: dict) -> str | None:
+def _build_media_url(entry: dict[str, Any]) -> str | None:
     """AUDIT L11: учитываем разные платформы вместо хардкода YouTube."""
     # AUDIT R40: yt-dlp с extract_flat даёт None для удалённых/приватных видео
     # в плейлисте — без этой проверки .get роняет AttributeError и убивает ВЕСЬ
@@ -42,7 +44,8 @@ def _build_media_url(entry: dict) -> str | None:
         return None
     # 1) Если есть готовый url — используем его
     explicit = entry.get("url") or entry.get("webpage_url")
-    if explicit and explicit.startswith("http"):
+    # yt-dlp отдаёт Any: приводим к str явно, иначе наружу утечёт не-str.
+    if isinstance(explicit, str) and explicit.startswith("http"):
         return explicit
     # 2) Иначе пытаемся восстановить по ie_key + id
     vid = entry.get("id")
@@ -50,14 +53,14 @@ def _build_media_url(entry: dict) -> str | None:
         return None
     ie = (entry.get("ie_key") or "").lower()
     if "rutube" in ie:
-        return f"https://rutube.ru/video/{vid}/"
+        return f"https://rutube.ru/video/{str(vid)}/"
     if "vk" in ie:
-        return f"https://vkvideo.ru/video{vid}"
+        return f"https://vkvideo.ru/video{str(vid)}"
     # 3) По умолчанию — YouTube (исторический fallback)
-    return f"https://www.youtube.com/watch?v={vid}"
+    return f"https://www.youtube.com/watch?v={str(vid)}"
 
 
-async def handle_playlist(url, update, context, user_id: int = 0):
+async def handle_playlist(url: str, update: Any, context: Any, user_id: int = 0) -> None:
     status_msg = await update.message.reply_text("📋 Загружаю плейлист...")
     failed_entries: list[str] = []  # AUDIT M3: собираем упавшие
     try:

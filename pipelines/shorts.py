@@ -8,9 +8,9 @@ import shutil
 import time
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
-from telegram import InputFile
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, InputFile
 
 from converters.md_telegraph import safe_trim_caption, visible_length
 from core.database import (
@@ -20,7 +20,9 @@ from core.database import (
     settings_get,
     short_trim_save,
 )
-from core.globals import DOWNLOAD_DIR, InlineKeyboardButton, InlineKeyboardMarkup
+# InlineKeyboard* — не наши имена: импорт через core.globals был неявным
+# реэкспортом (strict ловит его как attr-defined). Берём у владельца.
+from core.globals import DOWNLOAD_DIR
 from services.media_delivery_probe import (
     file_size_mb,
     media_probe_is_deliverable,
@@ -98,10 +100,10 @@ async def process_and_send_shorts(
     title: str,
     performer: str,
     duration: int | float,
-    ai_data: dict,
-    update,
-    existing_audio_part=None,
-    existing_client=None,
+    ai_data: dict[str, Any],
+    update: Any,
+    existing_audio_part: Any = None,
+    existing_client: Any = None,
     rutube_url: str = "",
     vk_url: str = "",
     workdir: Optional[Path] = None,

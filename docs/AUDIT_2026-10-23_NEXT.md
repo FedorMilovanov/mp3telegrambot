@@ -362,10 +362,11 @@ Telegraph-цепочки).
 Гейт — `tools/check_types.py`, шаг в `ci.yml`, проверка в `verify_repo.py`, локальный
 тест `tests/test_typecheck_gate.py`. Документ — `docs/typechecking.md`.
 
-**Результат:** `mypy --strict core` = **0** (было 94 в обычном режиме и 157 в строгом).
-Полный `mypy --strict .` — 5 063 ошибки в 569 файлах, из них по пакетам без тестов:
-`services/` 673, `tools/` 255, `handlers/` 158, `converters/` 143, `pipelines/` 110,
-`main.py` 49. Это и есть очередь волн 2+.
+**Результат:** `mypy --strict` = **0** для `core/` (было 94 в обычном режиме и 157 в
+строгом) и для `pipelines/` без `main_pipeline.py` (было 110, из них 78 — в самом
+`main_pipeline.py`). Полный `mypy --strict .` — 5 038 ошибок в 563 файлах, из них по
+пакетам без тестов: `services/` 673, `tools/` 255, `handlers/` 158, `converters/` 143,
+`main.py` 49. Это и есть очередь волны 3+.
 
 **Найденные по дороге настоящие дефекты:** кортеж кортежей в `negative` у
 `core/source_packs.py` (работал только за счёт защитного `neg[0]`), `max()`/деление
@@ -373,8 +374,9 @@ Telegraph-цепочки).
 `int(cur.lastrowid)` при отсутствии вставки в `core/observability.py`,
 `subprocess.CREATE_NO_WINDOW` и `int(None)` в `services/`.
 
-**Осталось (волна 2+):** по одному пакету за PR в порядке `pipelines/` → `services/` →
-`handlers/` → `converters/` → `tools/`.
+**Осталось (волна 3+):** по одному пакету за PR в порядке `services/` → `handlers/` →
+`converters/` → `tools/`; `main_pipeline.py` — тем же PR, который закончит его разрез
+(P0-3).
 **Приёмка:** `mypy --strict` по каждому новому пакету = 0; расширение среза только
 вперёд, «частично типизированных» пакетов в списке нет.
 

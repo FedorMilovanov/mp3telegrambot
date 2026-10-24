@@ -8,6 +8,7 @@ Python 3.13 — атрибут `.name` у BufferedReader стал read-only. В 
 Фикс: `InputFile(path.read_bytes(), filename=path.name)` — байты сразу в
 памяти, файловый handle не держим, `.name` не трогаем.
 """
+
 import re
 from pathlib import Path
 
@@ -21,20 +22,21 @@ _FILES = [
 
 _BAD_NAME_ASSIGN = re.compile(r"\bthumb_buf\.name\s*=")
 _BAD_HANDLE_NAME = re.compile(r"=\s*open\([^)]*\)\s*\n\s*\w+\.name\s*=")
+# InputFile обязан приходить из telegram: имя может стоять в общем импорте
+# вместе с другими символами (strict-режим требует явных источников).
+_TELEGRAM_INPUTFILE_IMPORT = re.compile(r"^from telegram import [^\n]*\bInputFile\b", re.MULTILINE)
 
 
 @pytest.mark.parametrize("path", _FILES)
 def test_no_readonly_name_assignment_on_thumbnail(path):
     src = Path(path).read_text(encoding="utf-8")
-    assert not _BAD_NAME_ASSIGN.search(src), (
-        f"{path}: осталось thumb_buf.name = ... (падает на py3.13)"
-    )
+    assert not _BAD_NAME_ASSIGN.search(src), f"{path}: осталось thumb_buf.name = ... (падает на py3.13)"
 
 
 @pytest.mark.parametrize("path", _FILES)
 def test_thumbnail_built_via_inputfile(path):
     src = Path(path).read_text(encoding="utf-8")
-    assert "from telegram import InputFile" in src
+    assert _TELEGRAM_INPUTFILE_IMPORT.search(src), f"{path}: InputFile не импортируется из telegram"
     assert "InputFile(" in src and "read_bytes()" in src
 
 
