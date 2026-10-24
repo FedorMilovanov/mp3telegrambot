@@ -46,6 +46,7 @@ from services.search import (
     find_alternative_links, _build_search_title,
 )
 from pipelines.analysis_stage import AnalysisRequest, run_analysis
+from pipelines.caption_inputs import build_caption_inputs
 from pipelines.caption_stage import CaptionSource, fit_caption
 from services.telegraph_pages import combined_study_reflection_enabled
 from pipelines.telegraph_nav import add_navigation
@@ -57,13 +58,12 @@ from pipelines.clips import process_and_send_clips
 from pipelines.montage import process_and_send_montage, process_and_send_highlights
 from core.url_utils import get_youtube_video_url, get_youtube_timestamp_url
 from core.progress import set_progress
-from core.publication_status import build_publication_status, missing_to_json
+from core.publication_status import missing_to_json
 from core.generated_pages import (
     asave_generated_page_record, asave_segment_plan_export, aupdate_generated_page_repair_status,
     build_generated_page_record, collect_quality_warnings, extract_scripture_refs,
     timestamp_coverage_archive_fields,
 )
-from core.timestamp_quality import timestamp_coverage_ratio
 from core.bounded_cache import BoundedLRUDict
 from pipelines.audio_stage import (
     AudioTooLarge,
@@ -1964,50 +1964,41 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             enabled=repair_enabled(),
         )
 
-        # Новые страницы имеют приоритет над legacy compact в caption
-        _q_link     = study_analysis_tg         or quotes_tg    or ""
-        _ref_link   = reflection_application_tg or questions_tg or ""
-        # Термины скрываем если обе новые страницы есть — они уже включены в Разбор материала
-        _terms_link = "" if (study_analysis_tg and reflection_application_tg) else (terms_tg or "")
-
-        rutube_url = alt_links.get("rutube") or ""
-        vk_url     = alt_links.get("vk")     or ""
-
-        if ai_data:
-            _coverage_ratio = timestamp_coverage_ratio((ai_data or {}).get("timestamps", ""), duration)
-            _segments_status = "partial" if (duration >= 600 and _coverage_ratio and _coverage_ratio < 0.75) else "complete"
-            if (ai_data or {}).get("timestamp_coverage_warning") and duration >= 600:
-                _segments_status = "partial"
-            ai_data = {
-                **ai_data,
-                "timestamp_coverage_ratio": _coverage_ratio,
-                "segments_status": _segments_status,
-            }
-
-        _pub_status = build_publication_status(
-            synopsis_url=telegraph_url or "",
-            study_url=study_analysis_tg or "",
-            reflection_url=reflection_application_tg or "",
-            expect_synopsis=bool(ai_data),
-            expect_study=bool(ai_data and _feat_study_analysis),
-            expect_reflection=bool(ai_data and _feat_reflection_application),
+        # Входные данные подписи вынесены в pipelines/caption_inputs.py:
+        # приоритет ссылок, скрытие дубля Терминов, статус публикации, покрытие
+        # таймкодами и предупреждение о неполной публикации — чистые функции.
+        _caption_inputs = build_caption_inputs(
+            ai_data=ai_data,
+            degraded=_degraded_caption_data,
+            duration=duration,
+            format_name=_mat_format,
+            timestamps_total=_ts_total,
+            timestamp_limit=get_caption_timestamp_limit,
+            study=study_analysis_tg,
+            reflection=reflection_application_tg,
+            analytics=quotes_tg,
+            questions=questions_tg,
+            terms=terms_tg,
+            synopsis=telegraph_url,
+            plan_study=_feat_study_analysis,
+            plan_reflection=_feat_reflection_application,
+            rutube_url=alt_links.get("rutube"),
+            vk_url=alt_links.get("vk"),
         )
-        _ai_caption_base = ai_data or _degraded_caption_data
-        if _ai_caption_base and _ts_total > 0:
-            _cap_limit_preview = get_caption_timestamp_limit(_mat_format)
-            if _ts_total > _cap_limit_preview:
-                _ai_caption_base = {
-                    **_ai_caption_base,
-                    "_caption_timestamps_trimmed": True,
-                    "_caption_timestamps_total": _ts_total,
-                    "_caption_timestamps_shown": min(_ts_total, _cap_limit_preview),
-                }
+        _q_link     = _caption_inputs.links.quotes
+        _ref_link   = _caption_inputs.links.questions
+        _terms_link = _caption_inputs.links.terms
+        rutube_url  = _caption_inputs.rutube_url
+        vk_url      = _caption_inputs.vk_url
+        ai_data     = _caption_inputs.ai_data
+        _pub_status = _caption_inputs.publication
+        _ai_caption_base = _caption_inputs.caption_base
         if ai_data and _pub_status.warning:
             logger.warning(
                 "Publication status for %s: status=%s missing=%s",
                 media_id, _pub_status.status, ",".join(_pub_status.missing),
             )
-            _ai_caption_base = {**(_ai_caption_base or ai_data), "_partial_publication_warning": _pub_status.warning}
+
 
         # Стадия подписи: сборка, обрезка до 1024 видимых символов, метрики.
         # Реализация одна на этот путь и на кэш-хит (pipelines/caption_stage.py).
