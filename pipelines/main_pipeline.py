@@ -71,6 +71,10 @@ from core.generated_pages import (
 )
 from core.timestamp_quality import timestamp_coverage_ratio
 from core.bounded_cache import BoundedLRUDict
+from pipelines.audio_stage import (
+    AudioTooLarge,
+    prepare_audio,
+)
 from pipelines.media_guards import (
     DEFAULT_MAX_DURATION_SEC,
     disk_skip,
@@ -1512,65 +1516,37 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         logger.warning(f"Обложка (кэш): файл не найден после yt-dlp (rc={_thumb_proc.returncode})")
             except Exception as e:
                 logger.warning(f"Обложка (кэш) не скачана: {e}")
-            # Скачиваем аудио
-            # Если длительность > 40 минут — сразу качаем в 64kbps
-            audio_quality = "64K" if duration > 3600 else "128K"
-            mp3_path = DOWNLOAD_DIR / f"{media_id}.mp3"
-            # FIX AUDIT R4: прошлый прогон длинного видео мог оставить только
-            # пережатый {media_id}_64.mp3 (оригинал удалён) — кэш-hit зря
-            # перекачивал и пережимал всё аудио на каждый повторный запрос.
-            # Зеркалим glob-реюз свежего пути.
-            if not mp3_path.exists():
-                _existing_mp3 = sorted(DOWNLOAD_DIR.glob(f"{media_id}*.mp3"))
-                if _existing_mp3:
-                    mp3_path = _existing_mp3[0]
-                    logger.info(f"Кэш аудио: реюз существующего {mp3_path.name}")
-            if not mp3_path.exists():
-                dl_cmd = YTDLP_BASE_ARGS + _sponsorblock_args() + [
-                    "--extract-audio", "--audio-format", "mp3", "--audio-quality", audio_quality,
-                    "--embed-metadata", "--embed-thumbnail",
-                    "--no-playlist", "--output", str(DOWNLOAD_DIR / f"{media_id}.%(ext)s"), url,
-                ]
-                _cached_audio_proc = await run_cancellable_process(
-                    dl_cmd, timeout=1800, text=True
+            # Скачиваем аудио. Стадия вынесена в pipelines/audio_stage.py:
+            # реюз файла, нормализация, сжатие под лимит — одна реализация на
+            # два места (здесь и в основном пути), а не две разошедшиеся копии.
+            try:
+                _audio = await prepare_audio(
+                    media_id=media_id,
+                    url=url,
+                    duration=duration,
+                    download_dir=DOWNLOAD_DIR,
+                    max_size_mb=get_max_file_size_mb(),
+                    timeout=1800,
+                    sponsorblock_args=_sponsorblock_args(),
+                    log_prefix="Кэш аудио",
+                    missing_message="Не удалось скачать аудио",
                 )
-                if _cached_audio_proc.returncode != 0:
-                    _cached_audio_error = (_cached_audio_proc.stderr or '')[-500:]
-                    raise RuntimeError(
-                        f"Кэш аудио yt-dlp rc={_cached_audio_proc.returncode}: "
-                        f"{_cached_audio_error or 'unknown error'}"
-                    )
-                if mp3_path.exists():
-                    from services.ffmpeg import normalize_mp3_lossless
-                    await await_owned_coroutine(
-                        asyncio.to_thread(normalize_mp3_lossless, mp3_path)
-                    )
-            if not mp3_path.exists():
-                raise Exception("Не удалось скачать аудио")
-            file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
-            bitrate = "64" if duration > 3600 else "128"
+            except AudioTooLarge as _too_big:
+                await update.message.reply_text(
+                    f"⚠️ Файл слишком большой ({_too_big.size_mb:.1f} МБ) "
+                    "даже после сжатия."
+                )
+                # FIX AUDIT R4: не теряем обещанный ENG-перевод (см. полную ветку).
+                try:
+                    await _send_livedub_result()
+                except Exception as _ld_send_err:
+                    logger.warning("[LiveDub] send on early return failed: %s", _ld_send_err)
+                cleanup_files(media_id)
+                return False
+            mp3_path = _audio.path
+            file_size_mb = _audio.size_mb
+            bitrate = _audio.bitrate
             logger.info(f"Кэш аудио: {mp3_path.name} = {file_size_mb:.1f} MB")
-            # Сжимаем если больше лимита
-            if file_size_mb > get_max_file_size_mb():
-                mp3_64_path = DOWNLOAD_DIR / f"{media_id}_64.mp3"
-                if mp3_path.name != mp3_64_path.name:
-                    converted = await reencode_mp3_64k_atomic(mp3_path, mp3_64_path)
-                    if converted:
-                        mp3_path.unlink(missing_ok=True)
-                        mp3_path = mp3_64_path
-                        file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
-                        bitrate = "64"
-                    else:
-                        logger.warning("Verified atomic MP3 64k conversion failed: %s", mp3_path.name)
-                if file_size_mb > get_max_file_size_mb():
-                    await update.message.reply_text(f"⚠️ Файл слишком большой ({file_size_mb:.1f} МБ) даже после сжатия.")
-                    # FIX AUDIT R4: не теряем обещанный ENG-перевод (см. полную ветку).
-                    try:
-                        await _send_livedub_result()
-                    except Exception as _ld_send_err:
-                        logger.warning("[LiveDub] send on early return failed: %s", _ld_send_err)
-                    cleanup_files(media_id)
-                    return False
             # Ищем альт-ссылки: берём из кэша если сохранены, иначе делаем запрос
             _cached_rutube = (cached or {}).get("rutube_url", "") or ""
             _cached_vk     = (cached or {}).get("vk_url", "") or ""
@@ -1885,69 +1861,36 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         await set_progress(status_msg, 3, {'title': f'📝 {title}', 'author': f'👤 {performer}  •  {duration//60}:{duration%60:02d}', 'fmt': '🎵 128 kbps  •  MP3'}, prefix=_pp)
 
         # Проверяем кэш MP3 — если файл уже есть, скачивание пропускаем
-        mp3_path = DOWNLOAD_DIR / f"{media_id}.mp3"
-        _existing_mp3 = sorted(DOWNLOAD_DIR.glob(f"{media_id}*.mp3"))  # AUDIT R39: детерминированный выбор
-        if _existing_mp3:
-            mp3_path = _existing_mp3[0]
-            logger.info(f"MP3 кэш: используем существующий файл {mp3_path.name}")
-        else:
-            _audio_quality_dl = "64K" if duration > 3600 else "128K"
-            audio_cmd = YTDLP_BASE_ARGS + _sponsorblock_args() + [
-                "--format", "bestaudio/best",
-                "--extract-audio", "--audio-format", "mp3", "--audio-quality", _audio_quality_dl,
-                "--embed-metadata", "--embed-thumbnail",
-                "--no-playlist",
-                "--output", str(DOWNLOAD_DIR / f"{media_id}.%(ext)s"),
-                url,
-            ]
-            proc = await run_cancellable_process(
-                audio_cmd, timeout=600, text=True
+        async def _squeeze_notice(current_mb: float) -> None:
+            await set_progress(status_msg, 3, {"title": f"📝 {title}", "info": f"⚙️ Файл {current_mb:.1f} МБ — пересжимаю в 64 kbps..."}, prefix=_pp)
+
+        try:
+            _audio = await prepare_audio(
+                media_id=media_id,
+                url=url,
+                duration=duration,
+                download_dir=DOWNLOAD_DIR,
+                max_size_mb=get_max_file_size_mb(),
+                timeout=600,
+                sponsorblock_args=_sponsorblock_args(),
+                extra_args=("--format", "bestaudio/best"),
+                log_prefix="MP3",
+                on_squeeze=_squeeze_notice,
             )
-            if proc.returncode != 0:
-                raise Exception(proc.stderr[-500:] if proc.stderr else "yt-dlp error")
-            _mp3_after_dl = DOWNLOAD_DIR / f"{media_id}.mp3"
-            if _mp3_after_dl.exists():
-                from services.ffmpeg import normalize_mp3_lossless
-                await await_owned_coroutine(
-                    asyncio.to_thread(normalize_mp3_lossless, _mp3_after_dl)
-                )
-
-            mp3_path = DOWNLOAD_DIR / f"{media_id}.mp3"
-            if not mp3_path.exists():
-                mp3_files = list(DOWNLOAD_DIR.glob(f"{media_id}*.mp3"))
-                if mp3_files:
-                    mp3_path = mp3_files[0]
-                else:
-                    raise FileNotFoundError("MP3 файл не найден")
-
-        file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
-        if file_size_mb > get_max_file_size_mb():
-            await set_progress(status_msg, 3, {"title": f"📝 {title}", "info": f"⚙️ Файл {file_size_mb:.1f} МБ — пересжимаю в 64 kbps..."}, prefix=_pp)
-            mp3_64_path = DOWNLOAD_DIR / f"{media_id}_64.mp3"
-            if mp3_path.name != mp3_64_path.name:
-                converted = await reencode_mp3_64k_atomic(mp3_path, mp3_64_path)
-                if converted:
-                    mp3_path.unlink(missing_ok=True)
-                    mp3_path = mp3_64_path
-                    file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
-                else:
-                    logger.warning("Verified atomic MP3 64k conversion failed: %s", mp3_path.name)
-            if file_size_mb > get_max_file_size_mb():
-                await update.message.reply_text(
-                    f"⚠️ Файл слишком большой ({file_size_mb:.1f} МБ) даже после сжатия до 64 kbps.\n"
-                    f"Текущий лимит отправки — {get_max_file_size_mb()} МБ. Попробуйте более короткое видео."
-                )
-                # FIX AUDIT R4: у LiveDub-видео свой независимый size-check и
-                # своё сообщение — не теряем обещанный ENG-перевод из-за
-                # слишком большого MP3.
-                try:
-                    await _send_livedub_result()
-                except Exception as _ld_send_err:
-                    logger.warning("[LiveDub] send on early return failed: %s", _ld_send_err)
-                cleanup_files(media_id)
-                return False
-
-        bitrate = "64" if ("_64" in mp3_path.name or duration > 3600) else "128"
+        except AudioTooLarge as _too_big:
+            await update.message.reply_text(str(_too_big))
+            # FIX AUDIT R4: у LiveDub-видео свой независимый size-check и
+            # своё сообщение — не теряем обещанный ENG-перевод из-за
+            # слишком большого MP3.
+            try:
+                await _send_livedub_result()
+            except Exception as _ld_send_err:
+                logger.warning("[LiveDub] send on early return failed: %s", _ld_send_err)
+            cleanup_files(media_id)
+            return False
+        mp3_path = _audio.path
+        file_size_mb = _audio.size_mb
+        bitrate = _audio.bitrate
 
         ai_data          = None
         synopsis_outline = None  # инициализируем здесь — closure-функции ниже ссылаются безусловно

@@ -1412,8 +1412,12 @@ def test_mp3_normalization_is_lossless_not_loudnorm(monkeypatch):
     args = " ".join(ff._build_ytdlp_base_args())
     assert "loudnorm" not in args  # из энкода убран
     assert hasattr(ff, "normalize_mp3_lossless")
+    # Обе ветки скачивания (обычная и кэш-хит) теперь идут через одну стадию —
+    # normalize_mp3_lossless живёт в pipelines/audio_stage.py ровно в одном месте.
+    stage = Path("pipelines/audio_stage.py").read_text(encoding="utf-8")
+    assert stage.count("normalize_mp3_lossless") >= 2
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    assert src.count("normalize_mp3_lossless") >= 2  # обе ветки скачивания
+    assert src.count("prepare_audio(") == 2  # обе ветки используют стадию
     # выключатель уважается
     monkeypatch.setenv("MP3_LOUDNORM", "0")
     assert ff.normalize_mp3_lossless(Path("/nonexistent.mp3")) is False
@@ -1432,8 +1436,12 @@ def test_sponsorblock_optin_validated(monkeypatch):
 
 
 def test_mp3_embeds_id3_metadata():
+    """ID3-метаданные и обложка вшиваются в mp3 — в единственном месте сборки команды."""
+    stage = Path("pipelines/audio_stage.py").read_text(encoding="utf-8")
+    assert stage.count('"--embed-metadata"') == 1
+    assert stage.count('"--embed-thumbnail"') == 1
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    assert src.count('"--embed-metadata", "--embed-thumbnail"') == 2  # обе ветки
+    assert "--embed-thumbnail" not in src  # команды собираются только в стадии
 
 
 # ── Заход 28: ID3-главы из Gemini-таймкодов ──────────────────────
