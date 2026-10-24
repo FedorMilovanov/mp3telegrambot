@@ -4,7 +4,7 @@
 Курируемая инструкция «что стоит трогать» — `.env.example`; здесь полный перечень,
 включая внутренние и диагностические переменные.
 
-Всего переменных: **178**; описано в `.env.example`: **104**; не описано: **74**; управляется стартовой политикой: **15**.
+Всего переменных: **177**; описано в `.env.example`: **103**; не описано: **74**; управляется стартовой политикой: **15**.
 
 | Переменная | Где читается | Дефолт в коде | В `.env.example` | Политика |
 |---|---|---|---|---|
@@ -162,7 +162,6 @@
 | `TELEGRAM_API_ID` | `main.py`, `services/local_botapi_bootstrap.py`, `services/local_botapi_required.py` и ещё 1 | `` | да | — |
 | `TELEGRAM_PROXY_HTTP_FALLBACK` | `main.py` | `1` | да | — |
 | `TELEGRAM_PROXY_URL` | `core/globals.py`, `handlers/commands.py`, `main.py` и ещё 5 | `` | да | — |
-| `TELEGRAPH_AUTO_REPAIR_AFTER_PUBLISH` | `pipelines/main_pipeline.py` | `1` | да | — |
 | `TELEGRAPH_TOKEN` | `core/globals.py` | `` | да | — |
 | `TOKENIZERS_PARALLELISM` | `tools/voxcpm2/quality_sweep.py`, `tools/voxcpm2/segmented_cpu_dub.py` | — | — | — |
 | `TRANSFORMERS_OFFLINE` | `tools/voxcpm2/quality_sweep.py`, `tools/voxcpm2/segmented_cpu_dub.py` | — | — | — |
