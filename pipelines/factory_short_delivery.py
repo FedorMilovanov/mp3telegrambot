@@ -88,7 +88,7 @@ async def process_and_send_factory_shorts(
     ai_data: dict[str, Any],
     candidates: list[dict[str, Any]],
     source_video_path: Path,
-    update,
+    update: Any,
     rutube_url: str = "",
     vk_url: str = "",
 ) -> int:

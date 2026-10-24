@@ -27,7 +27,8 @@ async def send_factory_full_translation_if_enabled(
     video_path: Path,
     *,
     title: str,
-    duration: int,
+    # Длительность приходит из ffprobe (float); внутри приводится к int.
+    duration: int | float,
     translation_required: bool,
     silent_errors: bool = False,
 ) -> bool:

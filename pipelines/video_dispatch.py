@@ -32,13 +32,13 @@ async def _reply_factory_requirement(update: Any, *, silent_errors: bool) -> Non
 
 
 async def process_single_video(
-    url,
-    update,
-    status_msg=None,
-    progress_prefix="",
-    context=None,
+    url: str,
+    update: Any,
+    status_msg: Any = None,
+    progress_prefix: str = "",
+    context: Any = None,
     silent_errors: bool = False,
-):
+) -> bool:
     """Dispatch exactly one video according to the persisted user mode."""
     from handlers.mode_command import EDITORIAL_MODE, get_user_mode
 

@@ -135,7 +135,9 @@ async def create_shorts_candidates(
     ai_data: dict,
     title: str,
     performer: str,
-    duration: int,
+    # Длительность приходит из ffprobe как float; округление до целого здесь
+    # меняло бы текст промпта и границы клипов, поэтому тип честно широкий.
+    duration: int | float,
     status_msg=None,
     prefix: str = "",
     existing_audio_part=None,
@@ -398,7 +400,7 @@ async def create_clips_candidates(
     ai_data: dict,
     title: str,
     performer: str,
-    duration: int,
+    duration: int | float,
     existing_audio_part=None,
     existing_client=None,
 ) -> list[dict]:

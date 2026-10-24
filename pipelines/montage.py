@@ -38,11 +38,12 @@ import json
 import logging
 import math
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-def _validated_extras_speed(value) -> tuple[float, bool] | None:
+def _validated_extras_speed(value: Any) -> tuple[float, bool] | None:
     """Return finite positive speed and whether the public transform is required."""
     try:
         speed = float(value)
@@ -54,9 +55,9 @@ def _validated_extras_speed(value) -> tuple[float, bool] | None:
 
 
 async def _run_montage_or_highlights_pipeline(
-    cand: dict, video_path: Path, media_id: str, prefix: str,
-    ai_data: dict, performer: str, url: str, rutube_url: str, vk_url: str,
-    update, caption_fn, *, verified_highlights: bool = False,
+    cand: dict[str, Any], video_path: Path, media_id: str, prefix: str,
+    ai_data: dict[str, Any], performer: str, url: str, rutube_url: str, vk_url: str,
+    update: Any, caption_fn: Any, *, verified_highlights: bool = False,
 ) -> bool:
     """Общий render pipeline; Highlights may use the verified renderer."""
     format_name = (ai_data or {}).get("format", "other") or "other"
@@ -360,11 +361,11 @@ async def _run_montage_or_highlights_pipeline(
 
 async def process_and_send_montage(
     url: str, media_id: str, mp3_path: Path, title: str, performer: str,
-    duration: int, ai_data: dict, update,
-    existing_audio_part=None, existing_client=None,
+    duration: int | float, ai_data: dict[str, Any], update: Any,
+    existing_audio_part: Any = None, existing_client: Any = None,
     rutube_url: str = "", vk_url: str = "",
-    prefetched_candidates: list[dict] | None = None,
-    livedub_video_path=None,  # ENG: path to translated video
+    prefetched_candidates: list[dict[str, Any]] | None = None,
+    livedub_video_path: Path | None = None,  # ENG: path to translated video
 ) -> None:
     video_path, owned_video = None, False
     try:
@@ -455,11 +456,11 @@ async def process_and_send_montage(
 
 async def process_and_send_highlights(
     url: str, media_id: str, mp3_path: Path, title: str, performer: str,
-    duration: int, ai_data: dict, update,
-    existing_audio_part=None, existing_client=None,
+    duration: int | float, ai_data: dict[str, Any], update: Any,
+    existing_audio_part: Any = None, existing_client: Any = None,
     rutube_url: str = "", vk_url: str = "",
-    prefetched_candidates: list[dict] | None = None,
-    livedub_video_path=None,  # ENG: path to translated video
+    prefetched_candidates: list[dict[str, Any]] | None = None,
+    livedub_video_path: Path | None = None,  # ENG: path to translated video
 ) -> None:
     video_path, owned_video = None, False
     try:
