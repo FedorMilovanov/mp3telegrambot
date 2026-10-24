@@ -1,7 +1,7 @@
 {
   "_comment": "Ратчет покрытия: значения могут только расти. Обновляется командой python tools/check_coverage_ratchet.py --update.",
   "files": {
-    "pipelines/main_pipeline.py": 22.09
+    "pipelines/main_pipeline.py": 22.24
   },
   "tolerance_pp": 0.5
 }
