@@ -33,7 +33,7 @@
 | `CONTENT_AUDIT_STRICT_CODES` | `core/content_audit.py` | `` | да | — |
 | `CUDA_DEVICE_ORDER` | `tools/voxcpm2/quality_sweep.py`, `tools/voxcpm2/segmented_cpu_dub.py` | — | — | — |
 | `CUDA_LAUNCH_BLOCKING` | `tools/voxcpm2/cuda_probation_probe.py` | — | — | — |
-| `DEGRADED_TRANSCRIPT_TIMESTAMPS` | `pipelines/main_pipeline.py` | `1` | — | — |
+| `DEGRADED_TRANSCRIPT_TIMESTAMPS` | `pipelines/degraded_mode.py` | `1` | — | — |
 | `DISABLE_HEALTH_CHECK` | `handlers/commands.py`, `main.py`, `services/bot_lifecycle.py` | `` | да | — |
 | `DUB_BACKEND_EXECUTION_PLAN_LOG` | `services/speech_backends/execution_plan.py` | `` | — | — |
 | `DUB_CPU_VENV` | `handlers/dub_health.py` | — | — | — |

@@ -75,6 +75,10 @@ from pipelines.audio_stage import (
     AudioTooLarge,
     prepare_audio,
 )
+from pipelines.degraded_mode import (
+    attach_transcript_timestamps,
+    degraded_caption_data,
+)
 from pipelines.media_guards import (
     DEFAULT_MAX_DURATION_SEC,
     disk_skip,
@@ -1951,44 +1955,19 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     "Gemini 3.5 analysis unavailable for %s — honest degraded mode: MP3 only, no AI pages/questions",
                     media_id,
                 )
-                _degraded_caption_data = {
-                    "real_title": title,
-                    "real_author": performer,
-                    "format": "other",
-                    "_ai_unavailable_warning": (
-                        "Gemini 3.5 сейчас недоступен или исчерпана квота. "
-                        "Отправляю MP3 без AI-конспектов, разбора и вопросов."
-                    ),
-                }
-                if (os.getenv("DEGRADED_TRANSCRIPT_TIMESTAMPS", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}:
-                    _transcript_dir = DOWNLOAD_DIR / f"{media_id}_degraded_transcript"
-                    try:
-                        from services.youtube_transcript import download_youtube_transcript_text, timed_text_to_caption_timestamps
-                        _timed_text = await download_youtube_transcript_text(
-                            url, _transcript_dir,
-                            lang=source_lang or "ru",
-                            max_chars=12000,
-                            expected_duration=duration,
-                        )
-                        _caption_ts = timed_text_to_caption_timestamps(_timed_text, max_lines=40)
-                        if _caption_ts:
-                            _degraded_caption_data = {
-                                **_degraded_caption_data,
-                                "timestamps": _caption_ts,
-                                "_timestamps_source": "youtube_transcript",
-                            }
-                            logger.info(
-                                "Degraded mode: added %d transcript timestamp lines for %s",
-                                len([l for l in _caption_ts.split("\n") if l.strip()]),
-                                media_id,
-                            )
-                    except Exception as _dt_err:
-                        logger.info("Degraded transcript timestamps unavailable for %s: %s", media_id, str(_dt_err)[:160])
-                    finally:
-                        try:
-                            shutil.rmtree(_transcript_dir, ignore_errors=True)
-                        except Exception:
-                            pass
+                # Деградация вынесена в pipelines/degraded_mode.py: пометка
+                # в caption и необязательные таймкоды из субтитров YouTube
+                # (без Gemini). Поведение закреплено тестами, а не проверяется
+                # только при исчерпанной квоте.
+                _degraded_caption_data = degraded_caption_data(title, performer)
+                _degraded_caption_data = await attach_transcript_timestamps(
+                    _degraded_caption_data,
+                    url=url,
+                    media_id=media_id,
+                    download_dir=DOWNLOAD_DIR,
+                    duration=duration,
+                    source_lang=source_lang,
+                )
             # НЕ удаляем audio_part здесь — он нужен для Shorts и Clips.
             # Удаление происходит в блоке finally ниже.
 

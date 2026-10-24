@@ -39,9 +39,20 @@ def test_degraded_caption_announces_no_ai_pages_and_transcript_timestamps():
 
 
 def test_pipeline_honest_degraded_mode_is_wired():
+    """Честная деградация подключена, а её текст и выключатель живут в своём модуле.
+
+    Раньше проверка искала строку `DEGRADED_TRANSCRIPT_TIMESTAMPS` прямо в
+    пайплайне; после выноса в `pipelines/degraded_mode.py` проверяется, что
+    пайплайн действительно использует эту стадию, а сам текст предупреждения
+    не потерялся.
+    """
     src = __import__("pathlib").Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     assert "honest degraded mode: MP3 only, no AI pages/questions" in src
-    assert "DEGRADED_TRANSCRIPT_TIMESTAMPS" in src
+    assert "degraded_caption_data(title, performer)" in src
+    assert "attach_transcript_timestamps(" in src
+    mode = __import__("pathlib").Path("pipelines/degraded_mode.py").read_text(encoding="utf-8")
+    assert "DEGRADED_TRANSCRIPT_TIMESTAMPS" in mode
+    assert "Gemini 3.5 сейчас недоступен" in mode
     assert "if not ai_data:\n                return {\"rutube\": None, \"vk\": None}" in src
     assert "expect_synopsis=bool(ai_data)" in src
 
