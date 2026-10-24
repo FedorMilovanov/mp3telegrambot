@@ -89,8 +89,11 @@ def test_database_schema_and_pipeline_wire_publication_status():
     assert "publication_warning" in db
     assert "publication_status: str = \"unknown\"" in db
 
-    assert "from core.publication_status import build_publication_status" in pipe
-    assert "_pub_status = build_publication_status(" in pipe
+    # Статус собирается стадией подписи (pipelines/caption_inputs.py), пайплайн
+    # только передаёт его в кэш — проверяются оба конца.
+    inputs = Path("pipelines/caption_inputs.py").read_text(encoding="utf-8")
+    assert "build_publication_status(" in inputs
+    assert "_pub_status = _caption_inputs.publication" in pipe
     assert "publication_status=_pub_status.status" in pipe
     assert "publication_missing=missing_to_json(_pub_status.missing)" in pipe
 
