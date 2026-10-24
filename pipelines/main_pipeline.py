@@ -28,7 +28,7 @@ from core.utils import (
     check_rate_limit, update_rate_limit, format_timestamp,  # FIX #11
 )
 from core.text_utils import (
-    _scrub_inline, normalize_author_name, normalize_title_text,
+    normalize_author_name, normalize_title_text,
     normalize_common_typos, _has_dirty_meta, title_case_fragment,              # FIX #11
 )
 from core.person_names import (
@@ -46,6 +46,7 @@ from services.search import (
     find_alternative_links, _build_search_title,
 )
 from pipelines.analysis_stage import AnalysisRequest, run_analysis
+from pipelines.archive_stage import ArchiveRequest, archive_pages
 from pipelines.caption_inputs import build_caption_inputs
 from pipelines.caption_stage import CaptionSource, fit_caption
 from services.telegraph_pages import combined_study_reflection_enabled
@@ -59,11 +60,6 @@ from pipelines.montage import process_and_send_montage, process_and_send_highlig
 from core.url_utils import get_youtube_video_url, get_youtube_timestamp_url
 from core.progress import set_progress
 from core.publication_status import missing_to_json
-from core.generated_pages import (
-    asave_generated_page_record, asave_segment_plan_export, aupdate_generated_page_repair_status,
-    build_generated_page_record, collect_quality_warnings, extract_scripture_refs,
-    timestamp_coverage_archive_fields,
-)
 from core.bounded_cache import BoundedLRUDict
 from pipelines.audio_stage import (
     AudioTooLarge,
@@ -2065,59 +2061,33 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     publication_warning=_pub_status.warning)
 
             # V3-P24: durable human-readable archive independent of expiring cache.
-            try:
-                _archive_record = build_generated_page_record(
-                    video_id=media_id,
+            # Сборка записи, статус починки и экспорт сегментов — одна
+            # некритичная стадия: её сбой не отменяет отправку готового MP3.
+            await archive_pages(
+                ArchiveRequest(
+                    media_id=media_id,
                     source_url=url,
-                    title=normalize_common_typos(normalize_title_text((ai_data or {}).get("real_title") or search_title or title) or (search_title or title)),
-                    author=normalize_common_typos(normalize_author_name((ai_data or {}).get("real_author") or tg_author or performer) or (tg_author or performer)),
-                    event=normalize_common_typos(_scrub_inline((ai_data or {}).get("real_event", ""))),
+                    ai_data=ai_data,
+                    publication=_pub_status,
+                    title=title,
+                    performer=performer,
+                    search_title=search_title,
+                    author=tg_author,
                     format_name=_mat_format,
                     duration=duration,
-                    youtube_url=url,
-                    rutube_url=rutube_url or "",
-                    vk_url=vk_url or "",
+                    rutube_url=rutube_url,
+                    vk_url=vk_url,
                     synopsis_url=telegraph_url or "",
                     study_url=study_analysis_tg or "",
                     reflection_url=reflection_application_tg or "",
                     terms_url=terms_tg or "",
                     questions_url=questions_tg or "",
-                    hashtags=(ai_data or {}).get("hashtags", []),
-                    key_categories=(ai_data or {}).get("key_categories", []),
-                    scripture_refs=extract_scripture_refs(ai_data),
-                    publication_status=_pub_status.status,
-                    publication_missing=_pub_status.missing,
-                    publication_warning=_pub_status.warning,
-                    quality_warnings=collect_quality_warnings(ai_data),
-                    timestamp_coverage_ratio=timestamp_coverage_archive_fields(ai_data)[0],
-                    segments_status=timestamp_coverage_archive_fields(ai_data)[1],
-                    caption_trim_stage=(ai_data or {}).get("caption_trim_stage", ""),
-                    caption_timestamps_total=(ai_data or {}).get("caption_timestamps_total", 0),
-                    caption_timestamps_shown=(ai_data or {}).get("caption_timestamps_shown", 0),
                     model=GEMINI_MODEL,
                     prompt_version=get_prompt_fingerprint(),
                     prompt_variant=os.getenv("PROMPT_EXPERIMENT_TAG", ""),
-                )
-                await asave_generated_page_record(_archive_record)
-                if _repair.results:
-                    await aupdate_generated_page_repair_status(
-                        media_id,
-                        changed_pages=_repair.changed_count,
-                        errors=_repair.errors,
-                    )
-                _segment_export = await asave_segment_plan_export(
-                    video_id=media_id,
-                    title=_archive_record.get("title", ""),
-                    author=_archive_record.get("author", ""),
-                    timestamps=(ai_data or {}).get("timestamps", ""),
-                    duration=duration,
-                    format_name=_mat_format,
-                    segments_status=(ai_data or {}).get("segments_status", "complete"),
-                    timestamp_coverage_ratio=(ai_data or {}).get("timestamp_coverage_ratio", 0.0),
-                )
-                logger.info("Generated pages archive saved for %s; segments=%s", media_id, _segment_export.get("count"))
-            except Exception as _archive_err:
-                logger.warning("Generated pages archive save failed for %s: %s", media_id, _archive_err)
+                ),
+                repair=_repair,
+            )
 
         # ID3-главы из Gemini-таймкодов: навигация по темам в подкаст-плеерах
         try:

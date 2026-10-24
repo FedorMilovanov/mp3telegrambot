@@ -91,10 +91,14 @@ def test_pipeline_auto_repairs_telegraph_after_publish_by_default():
 def test_pipeline_persists_auto_repair_status_in_generated_pages_archive():
     stage = _stage()
     assert "def changed_count" in stage
+    archive = __import__("pathlib").Path(
+        "pipelines/archive_stage.py"
+    ).read_text(encoding="utf-8")
+    assert "aupdate_generated_page_repair_status" in archive
+    assert "changed_pages=repair.changed_count" in archive
+    assert "errors=repair.errors" in archive
     pipeline = _pipeline()
-    assert "aupdate_generated_page_repair_status" in pipeline
-    assert "changed_pages=_repair.changed_count" in pipeline
-    assert "errors=_repair.errors" in pipeline
+    assert "repair=_repair" in pipeline
 
 
 def test_pipeline_persists_auto_repair_unresolved_audit_summaries():
