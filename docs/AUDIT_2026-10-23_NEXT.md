@@ -353,17 +353,30 @@ Telegraph-цепочки).
 **Объём:** 1 ч + 3 ч + 8–12 ч, `ASYNC240` — 6–10 ч.
 **Приёмка:** `ruff check` и `ruff format --check` зелёные на расширенном наборе; `ASYNC240` = 0.
 
-### P1-2. mypy: 455 ошибок — выполнимо
+### P1-2. mypy: срез `core/` в строгом режиме — ✅ сделано (волна 1)
 
-**Решение:** `mypy` в dev-зависимости + `[tool.mypy]` с `explicit_package_bases = true`
-(иначе корневой `__init__.py` даёт «file found twice»), `ignore_missing_imports = true`,
-`check_untyped_defs = true`; burn-down по классам `union-attr` (141) → `arg-type` (128) →
-`assignment` (47); затем блокирующий `mypy` в CI, `--strict` — только для `core/` после обнуления 247.
+**Сделано:** `mypy 2.4` в dev-зависимостях и lock'е, `[tool.mypy]` со `strict = true`,
+`explicit_package_bases = true` (без него корневой `__init__.py` даёт
+`Duplicate module named 'database'`), `ignore_missing_imports = true`,
+`follow_imports = "silent"` (граница среза) и `enable_error_code = ["ignore-without-code"]`.
+Гейт — `tools/check_types.py`, шаг в `ci.yml`, проверка в `verify_repo.py`, локальный
+тест `tests/test_typecheck_gate.py`. Документ — `docs/typechecking.md`.
 
-Не начинать с `--strict` на всё: 3 000+ ошибок превратят гейт в «всегда красный».
+**Результат:** `mypy --strict core` = **0** (было 94 в обычном режиме и 157 в строгом).
+Полный `mypy --strict .` — 5 063 ошибки в 569 файлах, из них по пакетам без тестов:
+`services/` 673, `tools/` 255, `handlers/` 158, `converters/` 143, `pipelines/` 110,
+`main.py` 49. Это и есть очередь волн 2+.
 
-**Объём:** 10–14 часов.
-**Приёмка:** `mypy` в `Required PR Gate`; `mypy --strict core` = 0.
+**Найденные по дороге настоящие дефекты:** кортеж кортежей в `negative` у
+`core/source_packs.py` (работал только за счёт защитного `neg[0]`), `max()`/деление
+на `None` в аудите плотности конспекта, `len()` от `None` в `services/quiz_generator.py`,
+`int(cur.lastrowid)` при отсутствии вставки в `core/observability.py`,
+`subprocess.CREATE_NO_WINDOW` и `int(None)` в `services/`.
+
+**Осталось (волна 2+):** по одному пакету за PR в порядке `pipelines/` → `services/` →
+`handlers/` → `converters/` → `tools/`.
+**Приёмка:** `mypy --strict` по каждому новому пакету = 0; расширение среза только
+вперёд, «частично типизированных» пакетов в списке нет.
 
 ### P1-3. Наблюдаемость (скорректировано после проверки кода) — ✅ сделано
 

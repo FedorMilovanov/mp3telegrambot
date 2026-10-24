@@ -34,9 +34,10 @@ def get_youtube_timestamp_url(url: str, seconds: int, offset: int = 0) -> str:
         video_id = parsed.path.strip("/").split("/")[0]
         return f"https://youtu.be/{video_id}?t={seconds}"
     params = urllib.parse.parse_qs(parsed.query)
-    video_id = params.get("v", [None])[0]
-    if video_id:
-        return f"https://www.youtube.com/watch?v={video_id}&t={seconds}"
+    query_values = params.get("v") or []
+    query_video_id = query_values[0] if query_values else None
+    if query_video_id:
+        return f"https://www.youtube.com/watch?v={query_video_id}&t={seconds}"
     return url
 
 

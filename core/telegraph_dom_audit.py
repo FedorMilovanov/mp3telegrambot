@@ -11,10 +11,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 import html as html_mod
 import re
-from typing import Iterable
+from typing import Any, Iterable
 
+# bs4 опционален: импорт может отсутствовать в минимальной установке, тогда
+# аудит DOM просто не выполняется. Annotated Any, потому что иначе mypy
+# трактует имя как тип и запрещает присваивание None.
+BeautifulSoup: Any
 try:
-    from bs4 import BeautifulSoup
+    from bs4 import BeautifulSoup as _BeautifulSoup
+
+    BeautifulSoup = _BeautifulSoup
 except Exception:  # pragma: no cover - optional at import time
     BeautifulSoup = None
 

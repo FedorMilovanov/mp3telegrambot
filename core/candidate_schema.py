@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import json
-from typing import Callable
+from typing import Any, Callable
 
 
 @dataclass
@@ -39,7 +39,7 @@ class CandidateValidationReport:
         top = ", ".join(f"{k}:{v}" for k, v in sorted(self.reasons.items())[:8])
         return f"accepted={self.accepted} rejected={self.rejected} reasons={top}"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "accepted": self.accepted,
             "rejected": self.rejected,
@@ -51,7 +51,7 @@ class CandidateValidationReport:
         return json.dumps(self.to_dict(), ensure_ascii=False, sort_keys=True)
 
 
-def parse_validation_summary(value: str | None) -> dict:
+def parse_validation_summary(value: str | None) -> dict[str, Any]:
     """Parse validation_summary JSON stored in gemini_runs."""
     if not value:
         return {"accepted": 0, "rejected": 0, "total": 0, "reasons": {}}
@@ -107,15 +107,15 @@ def validate_candidate_times(
     return True, "ok", start_s, end_s, clip_len
 
 
-def _string_schema() -> dict:
+def _string_schema() -> dict[str, Any]:
     return {"type": "string"}
 
 
-def _string_array_schema() -> dict:
+def _string_array_schema() -> dict[str, Any]:
     return {"type": "array", "items": _string_schema()}
 
 
-def shorts_response_schema() -> dict:
+def shorts_response_schema() -> dict[str, Any]:
     """Gemini structured-output schema for Shorts candidates."""
     return {
         "type": "object",
@@ -141,7 +141,7 @@ def shorts_response_schema() -> dict:
     }
 
 
-def clips_response_schema() -> dict:
+def clips_response_schema() -> dict[str, Any]:
     """Gemini structured-output schema for long clip candidates."""
     return {
         "type": "object",
@@ -166,7 +166,7 @@ def clips_response_schema() -> dict:
     }
 
 
-def extras_response_schema() -> dict:
+def extras_response_schema() -> dict[str, Any]:
     """Gemini structured-output schema for Montage + Highlights candidates."""
     fragment_summary = {
         "type": "object",
@@ -228,14 +228,14 @@ def extras_response_schema() -> dict:
     }
 
 
-def structured_json_config_kwargs(schema: dict | None) -> dict:
+def structured_json_config_kwargs(schema: dict[str, Any] | None) -> dict[str, Any]:
     """Config kwargs for Gemini structured JSON output, or empty dict."""
     if not schema:
         return {}
     return {"response_mime_type": "application/json", "response_schema": schema}
 
 
-def audio_analysis_response_schema() -> dict:
+def audio_analysis_response_schema() -> dict[str, Any]:
     """Gemini structured-output schema for the primary audio analysis JSON.
 
     This mirrors the contract consumed by core.json_parser._parse_gemini_response.
@@ -288,7 +288,7 @@ def audio_analysis_response_schema() -> dict:
     }
 
 
-def expanded_page_response_schema() -> dict:
+def expanded_page_response_schema() -> dict[str, Any]:
     """Gemini structured-output schema for expanded Telegraph pages.
 
     Used by StudyAnalysis and ReflectionApplication. It preserves the existing
@@ -362,7 +362,7 @@ def expanded_page_response_schema() -> dict:
 
 
 
-def combined_expanded_pages_response_schema() -> dict:
+def combined_expanded_pages_response_schema() -> dict[str, Any]:
     """Structured-output schema for optional combined Study+Reflection call."""
     page_schema = expanded_page_response_schema()
     return {
@@ -374,7 +374,7 @@ def combined_expanded_pages_response_schema() -> dict:
         "required": ["study", "reflection"],
     }
 
-def timestamp_repair_response_schema() -> dict:
+def timestamp_repair_response_schema() -> dict[str, Any]:
     """Structured-output schema for targeted timestamp coverage repair."""
     timestamp_item = {
         "type": "object",

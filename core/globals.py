@@ -9,6 +9,7 @@ import os
 import re
 import threading
 import time
+from typing import Any, Awaitable, Callable
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -36,7 +37,7 @@ flask_app = Flask(__name__)
 
 
 @flask_app.route("/")
-def home():
+def home() -> str:
     return "Bot is running!"
 
 
@@ -49,7 +50,7 @@ def mark_bot_alive() -> None:
 
 
 @flask_app.route("/health")
-def health():
+def health() -> tuple[str, int]:
     """Бинарный ответ для внешних мониторов — оставлен как есть.
 
     Его формат (`OK` / `503 STALE`) менять нельзя: на него могут смотреть
@@ -62,7 +63,7 @@ def health():
 
 
 @flask_app.route("/healthz")
-def healthz():
+def healthz() -> Any:
     """Детальный отчёт: что именно не так, а не только «что-то не так».
 
     Отдаёт 503, если бот не обрабатывает апдейты, недоступна БД, мало места или
@@ -93,7 +94,7 @@ def healthz():
 
 
 @flask_app.route("/metrics")
-def metrics():
+def metrics() -> Any:
     """Метрики в формате Prometheus text exposition."""
     from core.resource_scheduler import scheduler
     from services.health_report import (
@@ -131,8 +132,11 @@ try:
     HAS_GEMINI = True
 except ImportError:
     HAS_GEMINI = False
-    genai = None  # type: ignore
-    types = None  # type: ignore
+    # google-genai — опциональная зависимость: ниже весь код конфигурации
+    # проверяет HAS_GEMINI перед обращением, поэтому подмена модулей на None
+    # безопасна и намеренна.
+    genai = None  # type: ignore[assignment]
+    types = None  # type: ignore[assignment]
 
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
@@ -257,7 +261,7 @@ if HAS_GEMINI:
             pass
 
 
-def _make_gemini_client(api_key: str):
+def _make_gemini_client(api_key: str) -> Any:
     if _gemini_http_options is not None:
         try:
             return genai.Client(api_key=api_key, http_options=_gemini_http_options)
@@ -307,27 +311,47 @@ def _is_gemini_3x(model_name: str) -> bool:
     return uses_thinking_config(model_name)
 
 
-def _build_thinking_config(level: str = "high"):
+#: Бюджет размышления для случаев, когда уровень нельзя передать enum'ом
+#: (незнакомое значение или SDK без ``ThinkingLevel``). Число принимают все
+#: версии google-genai.
+_THINKING_BUDGETS = {
+    "MINIMAL": 4096,
+    "LOW": 8192,
+    "MEDIUM": 16384,
+    "HIGH": 24576,
+}
+_DEFAULT_THINKING_BUDGET = 24576
+
+
+def _thinking_level_enum(level: str) -> Any:
+    """Уровень как enum SDK; ``None``, если такого уровня нет.
+
+    SDK ожидает ``ThinkingLevel``, а строку принимает лишь по факту (не по
+    типам). Поэтому переводим имя явно и заранее знаем, когда уровня нет, —
+    вместо того чтобы полагаться на исключение внутри конструктора.
+    """
+    enum_type = getattr(types, "ThinkingLevel", None) if types is not None else None
+    if enum_type is None:
+        return None
+    return getattr(enum_type, str(level or "").strip().upper(), None)
+
+
+def _build_thinking_config(level: str = "high") -> Any:
     if not HAS_GEMINI or types is None:
         return None
-    try:
-        return types.ThinkingConfig(thinking_level=level.upper())
-    except (AttributeError, TypeError):
+    enum_level = _thinking_level_enum(level)
+    if enum_level is not None:
         try:
-            return types.ThinkingConfig(thinking_level=level)
-        except Exception:
-            try:
-                budget_map = {
-                    "minimal": 4096,
-                    "low": 8192,
-                    "medium": 16384,
-                    "high": 24576,
-                }
-                return types.ThinkingConfig(
-                    thinking_budget=budget_map.get(level, 24576)
-                )
-            except Exception:
-                return None
+            return types.ThinkingConfig(thinking_level=enum_level)
+        except (AttributeError, TypeError):
+            pass
+    name = str(level or "").strip().upper()
+    try:
+        return types.ThinkingConfig(
+            thinking_budget=_THINKING_BUDGETS.get(name, _DEFAULT_THINKING_BUDGET)
+        )
+    except Exception:
+        return None
 
 
 def _effective_thinking_level(model_name: str, requested: str) -> str:
@@ -335,7 +359,7 @@ def _effective_thinking_level(model_name: str, requested: str) -> str:
     return thinking_level_for(model_name, requested)
 
 
-def _apply_gemini_service_tier(kwargs: dict) -> None:
+def _apply_gemini_service_tier(kwargs: dict[str, Any]) -> None:
     if GEMINI_SERVICE_TIER == "priority":
         kwargs["service_tier"] = "priority"
 
@@ -343,11 +367,11 @@ def _apply_gemini_service_tier(kwargs: dict) -> None:
 def make_audio_config(
     temperature: float = 0.1,
     max_output_tokens: int = 65536,
-    model_name: str = None,
+    model_name: str | None = None,
     thinking_level: str = "high",
     response_mime_type: str | None = None,
-    response_schema=None,
-):
+    response_schema: Any = None,
+) -> Any:
     if not HAS_GEMINI or types is None:
         return None
     if model_name is None:
@@ -360,7 +384,9 @@ def make_audio_config(
     is_3x = _is_gemini_3x(model_name)
     thinking_level = _effective_thinking_level(model_name, thinking_level)
     _safe_max = min(max_output_tokens, 65000) if is_3x else max_output_tokens
-    kwargs = {"max_output_tokens": _safe_max}
+    # Значения разнотипные (int/str/float/config): без аннотации mypy
+    # выводит dict[str, int] и отвергает остальные ключи.
+    kwargs: dict[str, Any] = {"max_output_tokens": _safe_max}
     if response_mime_type:
         kwargs["response_mime_type"] = response_mime_type
     if response_schema is not None:
@@ -382,11 +408,11 @@ def make_audio_config(
 def make_text_config_smart(
     temperature: float = 0.4,
     max_output_tokens: int = 14000,
-    model_name: str = None,
+    model_name: str | None = None,
     thinking_level: str = "high",
     response_mime_type: str | None = None,
-    response_schema=None,
-):
+    response_schema: Any = None,
+) -> Any:
     if not HAS_GEMINI or types is None:
         return None
     if model_name is None:
@@ -399,7 +425,9 @@ def make_text_config_smart(
     is_3x = _is_gemini_3x(model_name)
     thinking_level = _effective_thinking_level(model_name, thinking_level)
     _safe_max = min(max_output_tokens, 65000) if is_3x else max_output_tokens
-    kwargs = {"max_output_tokens": _safe_max}
+    # Значения разнотипные (int/str/float/config): без аннотации mypy
+    # выводит dict[str, int] и отвергает остальные ключи.
+    kwargs: dict[str, Any] = {"max_output_tokens": _safe_max}
     if response_mime_type:
         kwargs["response_mime_type"] = response_mime_type
     if response_schema is not None:
@@ -418,7 +446,7 @@ def make_text_config_smart(
     return types.GenerateContentConfig(**kwargs)
 
 
-def make_text_config(temperature: float = 0.2, max_output_tokens: int = 14000):
+def make_text_config(temperature: float = 0.2, max_output_tokens: int = 14000) -> Any:
     model_name = configured_model(ROLE_PRIMARY)
     return make_text_config_smart(
         temperature=temperature,
@@ -479,12 +507,12 @@ def _release_video_lock(video_id: str, lock: asyncio.Lock | None = None) -> None
             _video_lock_meta[video_id] = time.time()
 
 
-def is_quota_error(e) -> bool:
+def is_quota_error(e: object) -> bool:
     s = str(e).lower()
     return "quota" in s or "429" in s or "resource_exhausted" in s
 
 
-def is_overload_error(e) -> bool:
+def is_overload_error(e: object) -> bool:
     s = str(e).lower()
     name = type(e).__name__.lower()
     return (
@@ -501,7 +529,7 @@ def is_overload_error(e) -> bool:
     )
 
 
-def _quota_domains_for_client_list(client_list) -> list[str]:
+def _quota_domains_for_client_list(client_list: list[Any]) -> list[str]:
     """Return privacy-safe domain metadata for known global client objects only."""
     domain_by_client_id = {
         id(client): domain
@@ -513,7 +541,12 @@ def _quota_domains_for_client_list(client_list) -> list[str]:
 _current_client_idx = 0
 
 
-async def gemini_generate(client_list, fn, model_name: str = "", response_validator=None):
+async def gemini_generate(
+    client_list: list[Any],
+    fn: Callable[[Any], Awaitable[Any]],
+    model_name: str = "",
+    response_validator: Callable[[Any], object] | None = None,
+) -> Any:
     """Run one Gemini operation with one global transient budget across keys.
 
     Quota/429 rotates immediately. If an explicitly labeled credential returns a
@@ -528,7 +561,7 @@ async def gemini_generate(client_list, fn, model_name: str = "", response_valida
     global _current_client_idx
     from services import gemini_capacity_control as capacity_control
 
-    last_err = None
+    last_err: Exception | None = None
     if not client_list:
         raise RuntimeError("No Gemini clients available")
 
@@ -560,9 +593,12 @@ async def gemini_generate(client_list, fn, model_name: str = "", response_valida
         while not budget.exhausted:
             budget.claim()
             try:
-                result = await capacity_control.run_heavy_gemini_call(
-                    lambda _client=client: fn(_client)
-                )
+                # Обычная функция вместо lambda с дефолтным аргументом: у
+                # lambda mypy не выводит тип параметра, а тут он очевиден.
+                def _bound_call(_client: Any = client) -> Awaitable[Any]:
+                    return fn(_client)
+
+                result = await capacity_control.run_heavy_gemini_call(_bound_call)
                 if response_validator is not None and not bool(response_validator(result)):
                     last_err = RuntimeError("Gemini response rejected by caller validator")
                     break
@@ -626,7 +662,7 @@ from core.logging_setup import configure_logging
 configure_logging()
 logger = logging.getLogger(__name__)
 
-_CRED_PATTERNS: tuple[tuple, ...] = (
+_CRED_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(://)[^/\s:@]+:[^/\s@]+@"), r"\1***:***@"),
     (re.compile(r"\d{6,}:[A-Za-z0-9_-]{30,}"), "***"),
     (re.compile(r"AIza[0-9A-Za-z_\-]{35}"), "***"),
@@ -641,7 +677,7 @@ def mask_credentials(text: str) -> str:
 
 
 class _TokenMaskFilter(logging.Filter):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self._secrets: list[str] | None = None
 

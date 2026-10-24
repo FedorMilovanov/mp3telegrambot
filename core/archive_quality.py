@@ -314,11 +314,13 @@ def format_archive_quality_report(*, limit: int = 50, base_dir: Path | None = No
     lines.append("")
     lines.append("<b>Cross-run author/profile hints</b>")
     if author_profiles:
-        for item in author_profiles[:6]:
-            fmt = ",".join(item.formats)
+        # Профиль автора — другой тип, чем статистика варианта промпта выше;
+        # отдельное имя обязательно, иначе mypy видит смену типа переменной.
+        for profile in author_profiles[:6]:
+            fmt = ",".join(profile.formats)
             lines.append(
-                f"- {_h(item.author)}: records=<code>{item.total}</code> "
-                f"warnings=<code>{item.warning_total}</code> formats=<code>{_h(fmt)}</code> — {_h(item.recommendation)}"
+                f"- {_h(profile.author)}: records=<code>{profile.total}</code> "
+                f"warnings=<code>{profile.warning_total}</code> formats=<code>{_h(fmt)}</code> — {_h(profile.recommendation)}"
             )
     else:
         lines.append("- no author profile data")
@@ -524,7 +526,7 @@ def write_archive_quality_exports(
     return {"json": str(json_path), "md": str(md_path)}
 
 
-async def awrite_archive_quality_exports(**kwargs) -> dict[str, str]:
+async def awrite_archive_quality_exports(**kwargs: Any) -> dict[str, str]:
     import asyncio
 
     loop = asyncio.get_running_loop()

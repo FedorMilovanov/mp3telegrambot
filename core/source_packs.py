@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Iterable, Any
 
 _PACKS: dict[str, list[str]] = {
     "justification": [
@@ -205,27 +205,27 @@ _TOPIC_RULES: dict[str, TopicRule] = {
 # too common in prayer/mission/sermon materials and caused false source packs.
 _TOPIC_RULES["ecclesiology"] = TopicRule(
     positive=(("экклесиолог", 3.0), ("поместная церковь", 3.0), ("членство", 2.0), ("церковная дисциплина", 2.5), ("невеста христа", 2.0)),
-    negative=(("молитва",), ("ангел",), ("исайя 53",)),
+    negative=("молитва", "ангел", "исайя 53"),
 )
 _TOPIC_RULES["prayer_spirituality"] = TopicRule(
     positive=(("молитва", 3.0), ("молиться", 3.0), ("отче наш", 3.0), ("духовная дисциплина", 2.0), ("prayer", 2.0)),
-    negative=(("социальная справедливость",), ("ангел",)),
+    negative=("социальная справедливость", "ангел"),
 )
 _TOPIC_RULES["isaiah_servant"] = TopicRule(
     positive=(("исайя 53", 4.0), ("исаия 53", 4.0), ("раб иеговы", 4.0), ("страдающий раб", 3.5), ("муж скорбей", 3.0), ("заместительное искупление", 2.5)),
-    negative=(("ангел",), ("харизмат",)),
+    negative=("ангел", "харизмат"),
 )
 _TOPIC_RULES["scripture_sufficiency"] = TopicRule(
     positive=(("достаточность писания", 4.0), ("достаточность слова", 3.0), ("псалом 18", 3.0), ("психолог", 2.0), ("авторитет библии", 2.0)),
-    negative=(("миссия",), ("ангел",)),
+    negative=("миссия", "ангел"),
 )
 _TOPIC_RULES["angelology"] = TopicRule(
     positive=(("ангел", 3.0), ("ангелолог", 4.0), ("небесное воинство", 3.0), ("невидимая армия", 3.0), ("angel", 2.0)),
-    negative=(("исайя 53",), ("раб иеговы",)),
+    negative=("исайя 53", "раб иеговы"),
 )
 _TOPIC_RULES["mission"] = TopicRule(
     positive=(("миссия церкви", 4.0), ("великое поручение", 4.0), ("делать учеников", 3.0), ("благовестие", 2.0), ("mission", 2.0)),
-    negative=(("молитва",), ("ангел",)),
+    negative=("молитва", "ангел"),
 )
 
 
@@ -249,9 +249,7 @@ def _score_topics(search_text: str) -> dict[str, float]:
             if re.search(r"\b" + re.escape(_normalize(kw)), text):
                 score += float(weight)
         for neg in rule.negative:
-            # Support accidental tuple entries from older declarations.
-            neg_text = neg[0] if isinstance(neg, tuple) else neg
-            if re.search(r"\b" + re.escape(_normalize(str(neg_text))), text):
+            if re.search(r"\b" + re.escape(_normalize(neg)), text):
                 score -= 2.0
         if score > 0:
             scores[topic] = score
@@ -321,7 +319,7 @@ def get_source_pack(key_categories: list[str], main_topic: str = "", duration_se
     return "\n".join(lines)
 
 
-def get_source_pack_for_ai_data(ai_data: dict) -> str:
+def get_source_pack_for_ai_data(ai_data: dict[str, Any]) -> str:
     """Convenience wrapper for telegraph_pages.py."""
     key_categories = (ai_data or {}).get("key_categories") or []
     main_topic = (ai_data or {}).get("main_topic") or ""

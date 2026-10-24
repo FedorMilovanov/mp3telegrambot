@@ -138,7 +138,7 @@ def normalize_word_study_or_drop(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def collect_teacherly_study_warnings(sections: list[dict]) -> list[dict[str, str]]:
+def collect_teacherly_study_warnings(sections: list[dict[str, Any]]) -> list[dict[str, str]]:
     """Return audit findings for Study prose without depending on audit classes."""
     findings: list[dict[str, str]] = []
     generic_titles = 0

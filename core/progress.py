@@ -9,6 +9,7 @@ AUDIT M11: set_progress теперь корректно обрабатывает
 import asyncio
 import logging
 from collections import OrderedDict
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -35,24 +36,30 @@ _PROGRESS_CACHE_MAX = 500
 # FIX AUDIT R4: ключ — (chat_id, message_id). message_id уникален только
 # внутри чата: у двух пользователей в разных личках id совпадают, и второй
 # пользователь «наследовал» кэш первого — его прогресс замирал.
-_last_text_cache: OrderedDict[tuple, str] = OrderedDict()
+_ProgressKey = tuple[int, int]
+_last_text_cache: OrderedDict[_ProgressKey, str] = OrderedDict()
 
 
-def _progress_cache_get(key: tuple) -> str | None:
+def _progress_cache_get(key: _ProgressKey) -> str | None:
     value = _last_text_cache.get(key)
     if value is not None:
         _last_text_cache.move_to_end(key)
     return value
 
 
-def _progress_cache_put(key: tuple, text: str) -> None:
+def _progress_cache_put(key: _ProgressKey, text: str) -> None:
     _last_text_cache[key] = text
     _last_text_cache.move_to_end(key)
     while len(_last_text_cache) > _PROGRESS_CACHE_MAX:
         _last_text_cache.popitem(last=False)
 
 
-async def set_progress(status_msg, step: int, info: dict | None = None, prefix: str = ""):
+async def set_progress(
+    status_msg: Any,
+    step: int,
+    info: dict[str, str] | None = None,
+    prefix: str = "",
+) -> None:
     step = max(1, min(step, len(PROGRESS_STEPS)))
     lines = []
     if prefix:
@@ -75,7 +82,11 @@ async def set_progress(status_msg, step: int, info: dict | None = None, prefix: 
     _chat = getattr(status_msg, "chat_id", None)
     if _chat is None:
         _chat = getattr(getattr(status_msg, "chat", None), "id", None)
-    msg_id = (_chat, _mid) if _mid is not None else None
+    # Ключ кэша — пара целых id. Если объект их не отдаёт (фейк в тесте,
+    # сторонняя обёртка), просто не кэшируем: поведение отправки не меняется.
+    msg_id: _ProgressKey | None = (
+        (_chat, _mid) if isinstance(_chat, int) and isinstance(_mid, int) else None
+    )
 
     # AUDIT M11: дедупликация — Telegram отвечает BadRequest("message is not modified")
     if msg_id is not None and _progress_cache_get(msg_id) == text:
@@ -107,7 +118,7 @@ async def set_progress(status_msg, step: int, info: dict | None = None, prefix: 
             logger.debug(f"set_progress: {cls_name}: {e}")
 
 
-async def safe_edit_text(msg, text: str, **kwargs) -> bool:
+async def safe_edit_text(msg: Any, text: str, **kwargs: Any) -> bool:
     """Edit message text, swallowing Telegram errors (deleted msg, not modified, etc.).
 
     Returns True if edit succeeded, False otherwise.

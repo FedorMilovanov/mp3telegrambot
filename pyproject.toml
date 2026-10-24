@@ -70,6 +70,25 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-q"
 
+[tool.mypy]
+# Строгость живёт здесь, а не в командной строке CI: один источник правды.
+# Гейт запускает tools/check_types.py и проверяет только объявленный срез.
+python_version = "3.12"
+strict = true
+# Корневой __init__.py делает пакеты «видимыми дважды»; без этого флага mypy
+# падает с «Duplicate module named 'database'» ещё до проверки.
+explicit_package_bases = true
+ignore_missing_imports = true
+# Импорты за пределами среза следуют молча: их собственные ошибки — предмет
+# следующей волны, но ошибки в вызывающем коде среза видны всегда.
+follow_imports = "silent"
+# Голый `# type: ignore` скрывает сразу все классы ошибок; разрешён только
+# адресный, с кодом. Причина к каждому подавлению — текстом, по конвенции.
+enable_error_code = ["ignore-without-code"]
+show_error_codes = true
+warn_unused_configs = true
+cache_dir = ".mypy_cache"
+
 [tool.ruff]
 # 3.12 — floor проекта (numpy 2.5 / av 19 / актуальные Pillow wheels).
 target-version = "py312"

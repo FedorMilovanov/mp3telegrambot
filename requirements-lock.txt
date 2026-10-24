@@ -2,9 +2,9 @@
 # Includes marker-dependent runtime dependencies needed by Windows as well as Linux.
 # YouTube PO-token source runtime is pinned outside pip by tools/ensure_bgutil_provider.py.
 # Regenerate intentionally through a dependency-update PR and rerun all smoke checks.
-Pillow==13.0.0
 annotated-types==0.8.0
 anyio==4.14.2
+ast-serialize==0.13.1
 av==18.0.0
 beautifulsoup4==4.15.0
 blinker==1.9.0
@@ -36,11 +36,16 @@ idna==3.18
 iniconfig==2.3.0
 itsdangerous==2.2.0
 Jinja2==3.1.6
+librt==0.16.0
 MarkupSafe==3.0.3
 mutagen==1.48.1
+mypy==2.4.0
+mypy-extensions==1.1.0
 numpy==2.4.6
 onnxruntime==1.28.0
 packaging==26.2
+pathspec==1.1.1
+Pillow==13.0.0
 pluggy==1.6.0
 protobuf==7.35.1
 pyasn1==0.6.4

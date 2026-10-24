@@ -50,7 +50,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass, replace
-from typing import Final
+from typing import Final, Any
 
 CATALOG_VERSION: Final[str] = "2026-10-22"
 POLICY: Final[str] = f"project-gemini-routing-{CATALOG_VERSION}"
@@ -137,7 +137,7 @@ class ModelSpec:
     note: str = ""
 
 
-def _spec(model_id: str, generation: int, status: str = "current", **kw) -> ModelSpec:
+def _spec(model_id: str, generation: int, status: str = "current", **kw: Any) -> ModelSpec:
     return ModelSpec(model_id=model_id, generation=generation, status=status, **kw)
 
 

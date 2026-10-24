@@ -498,7 +498,7 @@ async def generate_quiz(
             await alog_gemini_response(response=resp, task="quiz_generator", model=GEMINI_MODEL, thinking_level="high", duration_ms=int((asyncio.get_running_loop().time() - started) * 1000), json_valid=bool(questions), error=error)
             if questions and len(questions) > len(best_questions):
                 best_questions = questions
-            if enough:
+            if enough and questions:
                 logger.info("[Quiz] Generated %d questions", len(questions))
                 return questions[:count]
             if attempt == 1:

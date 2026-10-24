@@ -85,7 +85,11 @@ def _snippet(text: str, start: int, end: int, radius: int = 80) -> str:
     return text[max(0, start - radius): min(len(text), end + radius)].replace("\n", " / ")
 
 
-def audit_telegraph_page(title: str, nodes: list, page_type: str = "") -> list[PageAuditIssue]:
+def audit_telegraph_page(
+    title: str,
+    nodes: list[Any],
+    page_type: str = "",
+) -> list[PageAuditIssue]:
     """Return deterministic warnings for a page about to be published."""
     text = (title or "") + "\n" + flatten_telegraph_nodes(nodes)
     issues: list[PageAuditIssue] = []
@@ -129,8 +133,10 @@ def audit_telegraph_page(title: str, nodes: list, page_type: str = "") -> list[P
             # source cards and should not be flagged as invented source titles.
             if re.search(r"\)\s*[—-]\s+", line):
                 continue
-            m = _SOURCE_RU_ORIGINAL_RE.search(line)
-            if m:
+            # Отдельное имя: выше в функции ``m`` уже держит Match из finditer,
+            # и mypy справедливо ругался на присваивание Optional в тот же var.
+            source_match = _SOURCE_RU_ORIGINAL_RE.search(line)
+            if source_match:
                 # FIX BUG-7 + regression fix: standard Russian bibliographic
                 # format «Русское, Автор (Original, Author)» is fine ONLY when
                 # the Russian title is not a known-wrong variant. Ask the

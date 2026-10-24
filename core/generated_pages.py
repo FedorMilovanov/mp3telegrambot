@@ -15,7 +15,7 @@ import re
 import sqlite3
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable, Sequence
 
 from core.database import _db_conn
 
@@ -62,7 +62,7 @@ def _slug(value: str, limit: int = 80) -> str:
     return (value or "archive")[:limit]
 
 
-def extract_scripture_refs(ai_data: dict | None) -> list[str]:
+def extract_scripture_refs(ai_data: dict[str, Any] | None) -> list[str]:
     """Best-effort scripture refs extraction from parsed Gemini terms_data."""
     refs: list[str] = []
     td = (ai_data or {}).get("terms_data") or {}
@@ -75,7 +75,7 @@ def extract_scripture_refs(ai_data: dict | None) -> list[str]:
 
 
 
-def collect_quality_warnings(ai_data: dict | None) -> list[str]:
+def collect_quality_warnings(ai_data: dict[str, Any] | None) -> list[str]:
     """Collect non-fatal quality warnings that should survive outside logs."""
     ai = ai_data or {}
     out: list[str] = []
@@ -93,7 +93,7 @@ def collect_quality_warnings(ai_data: dict | None) -> list[str]:
     return out
 
 
-def timestamp_coverage_archive_fields(ai_data: dict | None) -> tuple[float, str]:
+def timestamp_coverage_archive_fields(ai_data: dict[str, Any] | None) -> tuple[float, str]:
     """Return (ratio, segments_status) from enriched ai_data for archive/export."""
     ai = ai_data or {}
     try:
@@ -243,7 +243,7 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_generated_pages_repaired ON generated_pages(last_repaired_at)")
 
 
-def _record_values(record: dict[str, Any]) -> tuple:
+def _record_values(record: dict[str, Any]) -> tuple[object, ...]:
     return (
         record.get("video_id", ""), record.get("source_url", ""),
         record.get("title", ""), record.get("author", ""), record.get("event", ""),
@@ -276,7 +276,7 @@ _RECORD_KEYS = [
 _RECORD_SELECT = "SELECT " + ", ".join(_RECORD_KEYS) + " FROM generated_pages"
 
 
-def _rows_to_dicts(rows: list) -> list[dict[str, Any]]:
+def _rows_to_dicts(rows: Iterable[Sequence[Any]]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for row in rows:
         item = dict(zip(_RECORD_KEYS, row))
@@ -530,7 +530,7 @@ def query_generated_pages(
             break
     return out
 
-async def aquery_generated_pages(**kwargs) -> list[dict[str, Any]]:
+async def aquery_generated_pages(**kwargs: Any) -> list[dict[str, Any]]:
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, lambda: query_generated_pages(**kwargs))
 
@@ -555,7 +555,7 @@ def get_related_materials(
     return out
 
 
-async def aget_related_materials(**kwargs) -> list[dict[str, Any]]:
+async def aget_related_materials(**kwargs: Any) -> list[dict[str, Any]]:
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, lambda: get_related_materials(**kwargs))
 
@@ -596,7 +596,7 @@ def update_generated_page_repair_status(
     _write_markdown_exports(base, recent)
 
 
-async def aupdate_generated_page_repair_status(video_id: str, **kwargs) -> None:
+async def aupdate_generated_page_repair_status(video_id: str, **kwargs: Any) -> None:
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, lambda: update_generated_page_repair_status(video_id, **kwargs))
 
@@ -674,7 +674,7 @@ def save_segment_plan_export(
     return {"json": str(json_path), "md": str(md_path), "count": str(len(segments))}
 
 
-async def asave_segment_plan_export(**kwargs) -> dict[str, str]:
+async def asave_segment_plan_export(**kwargs: Any) -> dict[str, str]:
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, lambda: save_segment_plan_export(**kwargs))
 

@@ -33,6 +33,7 @@ SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
         (
             "dependency-policy",
             "env-reference",
+            "typechecking",
             "model-catalog",
             "gemini-operations",
             "runtime-reliability",

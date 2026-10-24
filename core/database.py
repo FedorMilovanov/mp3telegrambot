@@ -19,11 +19,12 @@ import os          # FIX #6: был не импортирован — нужен
 import re
 import sqlite3
 import time
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-def _db_conn(db_path=None) -> sqlite3.Connection:
+def _db_conn(db_path: str | Path | None = None) -> sqlite3.Connection:
     """Create a DB connection with WAL mode and busy_timeout.
 
     Every sqlite3.connect() in the project MUST use this helper to avoid
@@ -75,7 +76,7 @@ def current_livedub_file_id_cache_fingerprint() -> str:
 
 # DB_PATH импортирован из globals — дублирующее определение убрано (FIX #19)
 
-def db_init():
+def db_init() -> None:
     with _db_conn() as conn:
         # AUDIT M17: WAL + busy_timeout — для безопасной параллельной записи
         # rate_limit / video_cache / bot_settings из разных async-обработчиков.
@@ -227,7 +228,7 @@ def db_init():
         if migrated:
             pass
 
-def db_cleanup_old_records():
+def db_cleanup_old_records() -> None:
     """Удаляет записи кэша старше CACHE_TTL_DAYS. Вызывать после определения констант.
 
     AUDIT M18: чистим и legacy-записи (updated_at=0) по created_at — иначе они копятся вечно.
@@ -264,15 +265,15 @@ def db_cleanup_old_records():
     except Exception as _ce:
         logger.warning("db_cleanup_old_records failed: %s", _ce, exc_info=True)
 
-def db_save(video_id: str, url: str, questions: list,
+def db_save(video_id: str, url: str, questions: list[Any],
             quotes_tg_url: str = "", questions_tg_url: str = "",
-            ai_data: dict = None, telegraph_url: str = "",
+            ai_data: dict[str, Any] | None = None, telegraph_url: str = "",
             cache_version: str = "", prompt_version: str = "", model_name: str = "",
             terms_tg_url: str = "",
             rutube_url: str = "", vk_url: str = "",
             study_tg_url: str = "", reflection_tg_url: str = "",
             publication_status: str = "unknown", publication_missing: str = "[]",
-            publication_warning: str = ""):
+            publication_warning: str = "") -> None:
     # busy_timeout is set inside the sqlite connection below.
     _cache_version  = cache_version  or CACHE_VERSION
     _prompt_version = prompt_version or get_prompt_fingerprint()
@@ -415,7 +416,7 @@ def db_backup(max_keep: int = 7) -> str:
         return ""
 
 
-def db_get(video_id: str) -> dict | None:
+def db_get(video_id: str) -> dict[str, Any] | None:
     with _db_conn() as conn:
         conn.execute("PRAGMA busy_timeout=5000")
         row = conn.execute(
@@ -434,7 +435,7 @@ def db_get(video_id: str) -> dict | None:
             ai_data = json.loads(row[4])
         except Exception as _e:
             logger.debug("db_get: ai_data JSON parse failed for %s: %s", video_id, _e)
-    questions = []
+    questions: list[Any] = []
     try:
         questions = json.loads(row[1]) if row[1] else []
     except Exception as _e:
@@ -465,11 +466,11 @@ def db_get(video_id: str) -> dict | None:
 
 # ─── Async-обёртки для DB (не блокируют event loop) ──────────
 
-async def adb_get(video_id: str) -> dict | None:
+async def adb_get(video_id: str) -> dict[str, Any] | None:
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, db_get, video_id)
 
-async def adb_save(video_id: str, url: str, questions: list, **kwargs) -> None:
+async def adb_save(video_id: str, url: str, questions: list[Any], **kwargs: Any) -> None:
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, lambda: db_save(video_id, url, questions, **kwargs))
 
@@ -483,7 +484,7 @@ async def asettings_set(key: str, value: bool) -> None:
 
 db_init()
 
-def _one_time_enable_subtitles():
+def _one_time_enable_subtitles() -> None:
     """AUDIT: одноразовая миграция — включаем красивые субтитры по умолчанию.
 
     Срабатывает ОДИН раз в жизни базы (по флагу _migration_enable_subs_v1).
@@ -540,7 +541,7 @@ def short_trim_save(short_id: str, video_path: str, start_seconds: int, end_seco
               source_duration))
         conn.commit()
 
-def short_trim_get(short_id: str) -> dict | None:
+def short_trim_get(short_id: str) -> dict[str, Any] | None:
     with _db_conn() as conn:
         conn.execute("PRAGMA busy_timeout=5000")
         # AUDIT M5: добавлено поле source_duration
@@ -576,7 +577,7 @@ def short_trim_get(short_id: str) -> dict | None:
 
 
 
-def is_cache_valid(cached: dict | None) -> tuple[bool, str]:
+def is_cache_valid(cached: dict[str, Any] | None) -> tuple[bool, str]:
     """Проверяет актуальность записи кэша. Возвращает (True, 'ok') или (False, причина)."""
     if not cached:
         return False, "no_record"
@@ -685,7 +686,7 @@ def shorts_speed_get() -> str:
                 "SELECT value FROM bot_settings WHERE key = 'shorts_speed'"
             ).fetchone()
         if row and row[0] in SHORTS_SPEED_STEPS:
-            return row[0]
+            return str(row[0])
     except Exception:
         pass
     return SHORTS_SPEED_DEFAULT
@@ -765,7 +766,7 @@ async def ashorts_speed_cycle() -> str:
     return await loop.run_in_executor(None, shorts_speed_cycle)
 
 
-async def acheck_rate_limit(user_id: int):
+async def acheck_rate_limit(user_id: int) -> tuple[bool, str]:
     """AUDIT M4: async-обёртка для check_rate_limit (вызывается в handle_message)."""
     from core.utils import check_rate_limit
     loop = asyncio.get_running_loop()
@@ -846,7 +847,7 @@ async def areserve_rate_limit(user_id: int) -> tuple[bool, str]:
 # Чтобы узнать vk_owner_id: открыть в браузере:
 # https://api.vk.com/method/groups.getById?group_id=the_lord_god_is_my_strength&v=5.199
 # и вставить число из поля "id" (со знаком минус: -XXXXXXX)
-CHANNEL_MAP: dict[str, dict] = {
+CHANNEL_MAP: dict[str, dict[str, str]] = {
     "fedor milovanov": {
         "rutube_channel_id": "1876662",
         "vk_owner_id": "-60805374",
@@ -854,7 +855,7 @@ CHANNEL_MAP: dict[str, dict] = {
     },
 }
 
-def load_channel_mappings():
+def load_channel_mappings() -> None:
     raw = os.getenv("CHANNEL_MAPPINGS", "{}")
     try:
         for key, val in json.loads(raw).items():
@@ -864,7 +865,7 @@ def load_channel_mappings():
 
 load_channel_mappings()
 
-def get_channel_mapping(channel_name: str) -> dict | None:
+def get_channel_mapping(channel_name: str) -> dict[str, str] | None:
     """AUDIT M8: subset-match по словам вместо fuzzy in.
 
     Раньше "fedor" → "fedor milovanov" давало True (ложное совпадение).

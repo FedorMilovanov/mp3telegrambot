@@ -151,7 +151,7 @@ def log_gemini_run(
     is_fallback: bool = False,
     json_valid: bool | None = None,
     postprocess_fixes: int = 0,
-    validation_summary: str | dict | None = "",
+    validation_summary: str | dict[str, Any] | None = "",
     finish_reason: str = "",
     error: str | None = None,
     prompt_version: str = "",
@@ -203,7 +203,8 @@ def log_gemini_run(
                 row,
             )
             conn.commit()
-            return int(cur.lastrowid)
+            # sqlite3 отдаёт None, если вставки не было; сигнатура допускает None.
+            return int(cur.lastrowid) if cur.lastrowid is not None else None
     except Exception as exc:
         logger.warning("log_gemini_run failed: %s", exc, exc_info=True)
         return None
@@ -227,7 +228,7 @@ def log_gemini_response(
     is_fallback: bool = False,
     json_valid: bool | None = None,
     postprocess_fixes: int = 0,
-    validation_summary: str | dict | None = "",
+    validation_summary: str | dict[str, Any] | None = "",
     error: str | None = None,
     prompt_version: str = "",
     cache_key: str = "",

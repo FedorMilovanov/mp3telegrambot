@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from typing import Literal
 
 from core import runtime_status
 
@@ -41,7 +42,10 @@ class _TrackedSemaphore(asyncio.Semaphore):
     отмена и ``wait_for`` работают ровно так же, как у обычного семафора.
     """
 
-    async def acquire(self) -> bool:
+    async def acquire(self) -> Literal[True]:
+        """Подпись совпадает с typeshed: ``Semaphore.acquire`` не возвращает
+        False — при отмене он бросает ``CancelledError``. Возврат ``bool``
+        сузил бы контракт базового класса и сломал бы подстановку."""
         acquired = await super().acquire()
         if acquired:
             runtime_status.record_job_started()
