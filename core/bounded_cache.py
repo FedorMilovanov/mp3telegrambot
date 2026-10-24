@@ -6,7 +6,7 @@ from collections import OrderedDict
 from typing import Any
 
 
-class BoundedLRUDict(OrderedDict):
+class BoundedLRUDict(OrderedDict[Any, Any]):
     """Dict-compatible LRU that evicts the oldest entry above ``max_entries``."""
 
     def __init__(self, *args: Any, max_entries: int = 256, **kwargs: Any) -> None:

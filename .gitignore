@@ -103,3 +103,6 @@ node_modules/
 # =============== .env backups (contain secrets) ===============
 .env.backup*
 .env.*.backup*
+
+# =============== mypy (кэш проверки типов) ===============
+.mypy_cache/

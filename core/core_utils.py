@@ -16,6 +16,7 @@ core_utils.py — Общие утилиты без зависимостей от
 Правило: этот модуль не должен импортировать ничего из других модулей проекта.
 """
 import re
+from typing import Any
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Время / таймкоды
@@ -86,7 +87,7 @@ def _fix_unclosed_bold(text: str) -> str:
     - Корректный текст не трогаем.
     """
     lines = text.split('\n')
-    result = []
+    result: list[str] = []
     for line in lines:
         # Считаем **, не трогая ***
         tmp = line.replace('***', '\x00\x00\x00')
@@ -104,7 +105,14 @@ def _fix_unclosed_bold(text: str) -> str:
     return '\n'.join(result)
 
 
-def _fix_inline_spacing(nodes: list) -> list:
+def _is_emphasis_node(node: object) -> bool:
+    """Узел — жирный/курсив Telegraph (dict с ``tag`` ``b``/``i``)?"""
+    return isinstance(node, dict) and node.get("tag") in ("b", "i")
+
+
+def _fix_inline_spacing(
+    nodes: list[str | dict[str, Any]],
+) -> list[str | dict[str, Any]]:
     """Исправляет слипание жирного/курсивного текста с окружающим.
 
     PATCH V2: добавлен случай когда str идёт после dict(b/i) —
@@ -116,28 +124,26 @@ def _fix_inline_spacing(nodes: list) -> list:
     _PUNCT_START = (" ", "\n", ".", ",", ";", ":", "!", "?", ")", "\u00bb", "\u2014", "\u2013")
     _PUNCT_END   = (" ", "\n", "(", "\u00ab", "\u2014", "\u2013", "-", "/")
 
-    result = []
+    result: list[str | dict[str, Any]] = []
     for i, node in enumerate(nodes):
-        if isinstance(node, dict) and node.get("tag") in ("b", "i"):
+        if _is_emphasis_node(node):
             # Случай 1: предыдущий str — добавляем пробел в конец если нет
-            if result and isinstance(result[-1], str):
-                prev = result[-1]
-                if prev and not prev.endswith(_PUNCT_END):
-                    result[-1] = prev + " "
+            previous = result[-1] if result else None
+            if isinstance(previous, str):
+                if previous and not previous.endswith(_PUNCT_END):
+                    result[-1] = previous + " "
             # Случай 2: предыдущий dict(b/i) — вставляем пробел между ними
-            elif result and isinstance(result[-1], dict) and result[-1].get("tag") in ("b", "i"):
+            elif _is_emphasis_node(previous):
                 result.append(" ")
             result.append(node)
             # Случай 3: следующий str — добавляем пробел в начало если нет
-            if i + 1 < len(nodes) and isinstance(nodes[i + 1], str):
-                next_text = nodes[i + 1]
-                if next_text and not next_text.startswith(_PUNCT_START):
-                    nodes[i + 1] = " " + next_text
+            following = nodes[i + 1] if i + 1 < len(nodes) else None
+            if isinstance(following, str) and following and not following.startswith(_PUNCT_START):
+                nodes[i + 1] = " " + following
         elif isinstance(node, str):
             # Случай 4: предыдущий dict(b/i), текущий str без пробела — добавляем пробел
-            if (result
-                    and isinstance(result[-1], dict)
-                    and result[-1].get("tag") in ("b", "i")
+            previous = result[-1] if result else None
+            if (_is_emphasis_node(previous)
                     and node
                     and not node.startswith(_PUNCT_START)):
                 result.append(" ")
@@ -145,6 +151,7 @@ def _fix_inline_spacing(nodes: list) -> list:
         else:
             result.append(node)
     return result
+
 
 def unescape_markdown_markers(text: str) -> str:
     r"""Unescape Gemini-literal markdown markers.
@@ -157,11 +164,11 @@ def unescape_markdown_markers(text: str) -> str:
     return re.sub(r"\\+(\*{1,3}|_)", r"\1", text)
 
 
-def _md_parse_inline_inner(text: str) -> list:
+def _md_parse_inline_inner(text: str) -> list[str | dict[str, Any]]:
     """Парсит только *курсив* и _курсив_ внутри уже жирного блока."""
     if re.search(r'[\u0590-\u05FF\u0600-\u06FF]', text):
         text = _fix_rtl_in_text(text)
-    nodes = []
+    nodes: list[str | dict[str, Any]] = []
     # #49: убран re.DOTALL — не захватываем переносы строк
     pattern = re.compile(r'(\*([^\n]+?)\*|_([^\n]+?)_)')
     last = 0
@@ -189,10 +196,10 @@ def normalize_misbolded_bullet_lead(text: str) -> str:
     if not text or "**" not in text:
         return text
 
-    def repl(m: re.Match) -> str:
-        bullet = m.group("bullet")
-        title = m.group("title").strip().rstrip(".")
-        desc = m.group("desc").strip()
+    def repl(m: re.Match[str]) -> str:
+        bullet = str(m.group("bullet") or "")
+        title = str(m.group("title") or "").strip().rstrip(".")
+        desc = str(m.group("desc") or "").strip()
         return f"{bullet}**{title}** — {desc}"
 
     return re.sub(
@@ -247,14 +254,14 @@ def _polish_timestamps_in_text(text: str) -> str:
     return text
 
 
-def _md_parse_inline(text: str) -> list:
+def _md_parse_inline(text: str) -> list[str | dict[str, Any]]:
     """**bold**, *italic*, ***bold+italic***, _italic_ → Telegraph nodes.
 
     Поддерживает вложенный курсив внутри жирного: **текст *курсив* текст**
     """
     text = unescape_markdown_markers(text)
     text = _fix_unclosed_bold(text)
-    nodes = []
+    nodes: list[str | dict[str, Any]] = []
     # Быстрая защита от malformed markdown с избыточными * — предотвращает ReDoS
     if text.count('*') > 200 or text.count('_') > 100:
         return [text.replace('**', '').replace('*', '').replace('_', '')]
@@ -267,7 +274,7 @@ def _md_parse_inline(text: str) -> list:
         if m.start() > last:
             nodes.append(text[last:m.start()])
 
-        def _make_b_node(children):
+        def _make_b_node(children: list[Any]) -> dict[str, Any]:
             return {"tag": "b", "children": children}
 
         if m.group(2):

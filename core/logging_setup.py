@@ -149,7 +149,11 @@ def configure_logging(
     * ``LOG_FILE`` — путь к файлу; пустое значение отключает файловый обработчик.
     """
     level = level if level is not None else os.getenv("LOG_LEVEL", "INFO")
-    fmt_name = (fmt or os.getenv("LOG_FORMAT", "text")).strip().lower()
+    # os.getenv отдаёт None, если переменная не задана вовсе; пустая строка —
+    # законный способ попросить «по умолчанию». Отдельная переменная нужна,
+    # чтобы дефолт из env-справочника остался видимым генератору документов.
+    fmt_env = os.getenv("LOG_FORMAT", "text")
+    fmt_name = (fmt or fmt_env or "text").strip().lower()
     if isinstance(level, str):
         level = getattr(logging, level.strip().upper(), logging.INFO)
     if log_file is None:

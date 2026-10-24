@@ -105,8 +105,11 @@ def quota_domains_for_keys(
 
 def _exception_status_code(exc: BaseException) -> int | None:
     for name in ("code", "status_code", "status"):
+        raw = getattr(exc, name, None)
+        if raw is None:
+            continue
         try:
-            value = int(getattr(exc, name, None))
+            value = int(raw)
         except (TypeError, ValueError):
             continue
         if 100 <= value <= 599:

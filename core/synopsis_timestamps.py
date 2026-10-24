@@ -97,11 +97,13 @@ def section_anchor_seconds(section: dict[str, Any] | None) -> tuple[int, ...]:
 
 
 def reconcile_synopsis_timestamps(
-    sections: list[dict] | None,
-    outline: list[dict] | None = None,
+    sections: list[dict[str, Any]] | None,
+    outline: list[dict[str, Any]] | None = None,
     *,
     tolerance_seconds: int = 5,
-) -> tuple[list[dict], list[dict], list[SynopsisTimestampIssue]]:
+) -> tuple[
+    list[dict[str, Any]], list[dict[str, Any]], list[SynopsisTimestampIssue]
+]:
     """Return reconciled section copies, authoritative outline and diagnostics.
 
     A start is moved only to the earliest explicit anchor in that same section,
@@ -167,7 +169,7 @@ def reconcile_synopsis_timestamps(
     # The rendered sections are the source of truth.  An outline supplied by
     # Gemini may contribute a time only when the matching section has none.
     source_outline = [dict(item) for item in (outline or []) if isinstance(item, dict)]
-    final_outline: list[dict] = []
+    final_outline: list[dict[str, Any]] = []
     same_length = len(source_outline) == len(clean_sections)
     for index, section in enumerate(clean_sections):
         source_item = source_outline[index] if same_length else {}
@@ -182,7 +184,7 @@ def reconcile_synopsis_timestamps(
 
 
 def unresolved_timestamp_issues(
-    sections: list[dict] | None,
+    sections: list[dict[str, Any]] | None,
     *,
     tolerance_seconds: int = 5,
 ) -> list[SynopsisTimestampIssue]:

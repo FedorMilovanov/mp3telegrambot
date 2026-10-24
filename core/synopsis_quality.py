@@ -52,6 +52,21 @@ def _section_time_seconds(section: dict[str, Any]) -> int | None:
 
 
 
+def _section_times(sections: list[dict[str, Any]]) -> list[int]:
+    """Времена секций без ``None``.
+
+    Отдельная функция, потому что фильтр в генераторе списка mypy не сужает:
+    ``[t for t in times if t is not None]`` остаётся ``list[int | None]`` и
+    ломает ``max()``/деление. Здесь сужение делает обычный ``if``.
+    """
+    out: list[int] = []
+    for section in sections:
+        seconds = _section_time_seconds(section)
+        if seconds is not None:
+            out.append(seconds)
+    return out
+
+
 def _section_text_chars(section: dict[str, Any]) -> int:
     blocks = section.get("blocks") if isinstance(section, dict) else None
     if isinstance(blocks, list) and blocks:
@@ -90,7 +105,9 @@ def looks_like_organizational_announcement(section: dict[str, Any]) -> bool:
     return org_hits >= 2 and content_hits <= 2
 
 
-def filter_organizational_announcement_sections(sections: list[dict]) -> tuple[list[dict], list[SynopsisQualityIssue]]:
+def filter_organizational_announcement_sections(
+    sections: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[SynopsisQualityIssue]]:
     """Drop only leading logistics announcements from Synopsis sections."""
     valid = [s for s in sections or [] if isinstance(s, dict)]
     if len(valid) < 2:
@@ -150,7 +167,10 @@ def _section_inline_timestamp_count(section: dict[str, Any]) -> int:
                         field_count += 1
     return field_count + len(_TS_INLINE_RE.findall(text))
 
-def audit_synopsis_density(sections: list[dict], duration_seconds: int | float = 0) -> list[SynopsisQualityIssue]:
+def audit_synopsis_density(
+    sections: list[dict[str, Any]],
+    duration_seconds: int | float = 0,
+) -> list[SynopsisQualityIssue]:
     """Return warnings when Synopsis looks too thin for material duration."""
     profile = get_synopsis_density_profile(duration_seconds)
     issues: list[SynopsisQualityIssue] = []
@@ -171,12 +191,13 @@ def audit_synopsis_density(sections: list[dict], duration_seconds: int | float =
     except (TypeError, ValueError):
         dur = 0
     if dur >= 30 * 60:
-        times = [_section_time_seconds(s) for s in valid]
-        times = [t for t in times if t is not None]
-        if times and max(times) / dur < 0.70:
+        times = _section_times(valid)
+        # Без времён секций покрытие не измерить: молчим, а не сообщаем 0 %.
+        last_time = max(times) if times else 0
+        if times and last_time / dur < 0.70:
             issues.append(SynopsisQualityIssue(
                 "synopsis_time_coverage_low",
-                f"last_section_time={max(times)} covers only {max(times)/dur:.0%} of duration",
+                f"last_section_time={last_time} covers only {last_time/dur:.0%} of duration",
             ))
         inline_count = sum(_section_inline_timestamp_count(s) for s in valid)
         min_inline = max(4, min(len(valid), dur // 900))
@@ -206,12 +227,14 @@ def format_synopsis_quality_issues(issues: list[SynopsisQualityIssue]) -> str:
     return " | ".join(f"{i.code}: {i.message}" for i in issues or [])
 
 
-def synopsis_density_score(sections: list[dict], duration_seconds: int | float = 0) -> int:
+def synopsis_density_score(
+    sections: list[dict[str, Any]],
+    duration_seconds: int | float = 0,
+) -> int:
     """Simple monotonic score for comparing original vs retry Synopsis."""
     valid = [s for s in sections or [] if isinstance(s, dict)]
     total_chars = sum(_section_text_chars(s) for s in valid)
-    times = [_section_time_seconds(s) for s in valid]
-    times = [t for t in times if t is not None]
+    times = _section_times(valid)
     try:
         dur = int(duration_seconds or 0)
     except (TypeError, ValueError):
@@ -253,7 +276,9 @@ def should_retry_synopsis_density(issues: list[SynopsisQualityIssue], duration_s
 _INLINE_TS_EXTRACT_RE = re.compile(r'[⏱📌]\s*\*{0,2}(\d{1,2}:\d{2}(?::\d{2})?)\*{0,2}')
 
 
-def audit_inline_timestamp_order(sections: list[dict]) -> list[SynopsisQualityIssue]:
+def audit_inline_timestamp_order(
+    sections: list[dict[str, Any]],
+) -> list[SynopsisQualityIssue]:
     """Check that inline timestamps in content/blocks don't precede section.time.
 
     QA_TIMESTAMP_RULE says: 'Таймкод внутри content НИКОГДА не должен указывать

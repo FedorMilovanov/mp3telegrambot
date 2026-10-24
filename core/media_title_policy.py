@@ -40,7 +40,10 @@ _DELIVERY_MARKERS = tuple(sorted({
 
 def _split_edges(token: str) -> tuple[str, str, str]:
     match = _EDGE_RE.match(token)
-    return match.groups() if match else ("", token, "")
+    if not match:
+        return "", token, ""
+    lead, core, tail = match.groups()
+    return str(lead), str(core), str(tail)
 
 
 def _capitalize(word: str) -> str:

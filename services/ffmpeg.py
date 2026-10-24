@@ -335,7 +335,8 @@ def normalize_mp3_lossless(mp3_path: Path, target_db: float = 92.0) -> bool:
         kwargs: dict = {"capture_output": True, "text": True,
                         "encoding": "utf-8", "errors": "replace"}
         if os.name == "nt":
-            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+            # Константа существует только под Windows; на других ОС — 0.
+            kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         # /r: track gain, /d: смещение цели от 89 dB, /c: без вопросов про клиппинг,
         # /t: писать тег APE с undo-информацией
         offset = target_db - 89.0

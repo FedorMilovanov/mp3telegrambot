@@ -15,6 +15,7 @@
 """
 
 import os
+from typing import Any
 import re
 from core.reasoning_guidance import build_reasoning_first_block
 from core.prompt_rules import (
@@ -102,7 +103,7 @@ def _sanitize_metadata_text(value: str, fallback: str, max_len: int = 220) -> st
     return (value or fallback)[:max_len]
 
 
-def _get_audio_analysis_profile(duration_seconds: int, mode: str) -> dict:
+def _get_audio_analysis_profile(duration_seconds: int, mode: str) -> dict[str, Any]:
     mode = (mode or "deep").strip().lower()
     if mode not in {"deep", "balanced", "fast"}:
         mode = "deep"

@@ -207,7 +207,7 @@ BLOCK_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
 }
 
 
-def _validate_block_required_fields(block: dict, *, location: str) -> list[ContentAuditIssue]:
+def _validate_block_required_fields(block: dict[str, Any], *, location: str) -> list[ContentAuditIssue]:
     btype = str(block.get("type") or "paragraph").strip().lower()
     if btype in {"quote", "blockquote", "block_quote"}:
         missing = [] if (str(block.get("quote") or "").strip() or str(block.get("text") or "").strip()) else ["quote/text"]
@@ -245,7 +245,7 @@ def _block_has_substantial_text(value: str, *, min_len: int = 90) -> bool:
 
 
 def _audit_structured_block_semantics(
-    block: dict,
+    block: dict[str, Any],
     *,
     label: str,
     section_title: str,
@@ -306,8 +306,8 @@ def _scrub_mismatched_first_person_author(text: str, expected_author: str = "") 
     expected_norm = re.sub(r"\s+", " ", expected_author).strip().lower()
     issues: list[ContentAuditIssue] = []
 
-    def repl(m: re.Match) -> str:
-        name = re.sub(r"\s+", " ", m.group("name")).strip()
+    def repl(m: re.Match[str]) -> str:
+        name = re.sub(r"\s+", " ", str(m.group("name") or "")).strip()
         # AUDIT R37: не калечим цитаты/пересказ Писания вида «Я, Иоанн,...» /
         # «Я, Господь Бог,...» — библейские говорящие от первого лица легитимны.
         # Требуем, чтобы ВСЕ слова имени были библейскими: одиночное имя (Иоанн)
@@ -321,10 +321,10 @@ def _scrub_mismatched_first_person_author(text: str, expected_author: str = "") 
             code="first_person_author_fixed",
             location="",
             message=f"removed mismatched first-person author name: {name}",
-            before=m.group(0),
-            after=m.group("prefix") + " ",
+            before=str(m.group(0)),
+            after=str(m.group("prefix") or "") + " ",
         ))
-        return m.group("prefix") + " "
+        return str(m.group("prefix") or "") + " "
 
     return _FIRST_PERSON_AUTHOR_RE.sub(repl, text), issues
 
@@ -482,12 +482,12 @@ def _audit_translation_forks(content: str, *, location: str) -> list[ContentAudi
 
 
 def audit_expanded_sections(
-    sections: list[dict],
-    outline: list[dict] | None = None,
+    sections: list[dict[str, Any]],
+    outline: list[dict[str, Any]] | None = None,
     *,
     label: str = "",
     expected_author: str = "",
-) -> tuple[list[dict], list[dict], list[ContentAuditIssue]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[ContentAuditIssue]]:
     """Audit and normalize parsed Gemini ``sections``/``outline``.
 
     The function is intentionally schema-light: it preserves unknown keys and
@@ -495,7 +495,7 @@ def audit_expanded_sections(
     lists so callers do not mutate parser-owned structures by accident.
     """
     issues: list[ContentAuditIssue] = []
-    new_sections: list[dict] = []
+    new_sections: list[dict[str, Any]] = []
 
     for idx, raw in enumerate(sections or []):
         if not isinstance(raw, dict):
@@ -518,7 +518,7 @@ def audit_expanded_sections(
 
         blocks = sec.get("blocks")
         if isinstance(blocks, list):
-            new_blocks: list[dict] = []
+            new_blocks: list[dict[str, Any]] = []
             for bidx, raw_block in enumerate(blocks):
                 if not isinstance(raw_block, dict):
                     continue
@@ -562,16 +562,16 @@ def audit_expanded_sections(
     # библиотеке — 20:00» дважды. Ни здесь, ни в services/telegraph.py
     # дедупликации не было вообще. Убираем ПОДРЯД идущие дубли (одинаковый
     # нормализованный title + одинаковый time), оставляя более содержательную.
-    def _dedup_key(sec: dict) -> tuple[str, str]:
+    def _dedup_key(sec: dict[str, Any]) -> tuple[str, str]:
         t = re.sub(r"[^\w\s]", "", str(sec.get("title") or "").lower())
         t = re.sub(r"\s+", " ", t).strip()
         return t, str(sec.get("time") or "").strip()
 
-    def _section_richness(sec: dict) -> int:
+    def _section_richness(sec: dict[str, Any]) -> int:
         blocks_len = sum(len(str(b.get("text") or "")) for b in (sec.get("blocks") or []) if isinstance(b, dict))
         return len(str(sec.get("content") or "")) + blocks_len
 
-    deduped_sections: list[dict] = []
+    deduped_sections: list[dict[str, Any]] = []
     for idx, sec in enumerate(new_sections):
         key = _dedup_key(sec)
         if deduped_sections and key[0] and _dedup_key(deduped_sections[-1]) == key:
@@ -586,7 +586,7 @@ def audit_expanded_sections(
         deduped_sections.append(sec)
     new_sections = deduped_sections
 
-    new_outline: list[dict] = []
+    new_outline: list[dict[str, Any]] = []
     for idx, raw in enumerate(outline or []):
         if not isinstance(raw, dict):
             continue
@@ -602,11 +602,11 @@ def audit_expanded_sections(
     for sidx, section in enumerate(new_sections):
         section_time = str(section.get("time") or "").strip()
         section_sec = time_to_seconds(section_time)
-        inline = [
-            (stamp, time_to_seconds(stamp))
-            for stamp in _all_inline_expanded_timestamps(section)
-        ]
-        inline = [(stamp, sec) for stamp, sec in inline if sec is not None]
+        inline: list[tuple[str, int]] = []
+        for stamp in _all_inline_expanded_timestamps(section):
+            seconds = time_to_seconds(stamp)
+            if seconds is not None:
+                inline.append((stamp, seconds))
         if section_sec is None or not inline:
             continue
         earliest_stamp, earliest_sec = min(inline, key=lambda item: item[1])

@@ -100,6 +100,13 @@ jobs:
       - name: Ruff configured checks
         run: python -m ruff check .
 
+      - name: Static type check (declared slice)
+        # Срез объявлен в tools/check_types.py; строгость — в [tool.mypy].
+        # Сейчас это core/: ~700 ошибок в services/ и pipelines/ легаси
+        # закрываются волнами, и гейт расширяется по одному пакету за PR.
+        if: ${{ matrix.python-version == '3.12' }}
+        run: python tools/check_types.py
+
       - name: Validate baseline update evidence
         if: ${{ matrix.python-version == '3.12' }}
         run: python tools/check_code_health_baseline_update.py

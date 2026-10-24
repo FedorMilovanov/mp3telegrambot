@@ -4,6 +4,7 @@
 Извлечено из bot.py строки 1587–1845.
 """
 import re
+from typing import Any
 from core.person_names import normalize_person_names
 from core.source_titles import normalize_source_card_line
 from core.core_utils import time_to_seconds  # разрыв цикла: ранее был lazy import из json_parser
@@ -196,8 +197,8 @@ def scrub_third_person_phrases(text: str) -> str:
     if not text:
         return text
 
-    def repl_that(m: re.Match) -> str:
-        return m.group(1) + m.group(2).upper()
+    def repl_that(m: re.Match[str]) -> str:
+        return str(m.group(1) or "") + str(m.group(2) or "").upper()
 
     text = _THIRD_PERSON_PREFIX_RE.sub(repl_that, text)
     text = _THIRD_PERSON_HOW_RE.sub(repl_that, text)
@@ -316,7 +317,7 @@ def _clean_field(s: str) -> str:
             s = s + '.'
     return s
 
-def _clean_list(lst: list) -> list:
+def _clean_list(lst: list[Any]) -> list[str]:
     """Фильтрует список строк, убирая мусорные элементы."""
     return [_clean_field(str(item)) for item in (lst or []) if _clean_field(str(item))]
 
@@ -457,7 +458,7 @@ def normalize_title_text(s: str) -> str:
 
 
 # Слова/акронимы которые нельзя трогать при title case
-_PRESERVE_CASE: frozenset = frozenset({
+_PRESERVE_CASE: frozenset[str] = frozenset({
     # Версии Библии и богословские аббревиатуры
     "ESV", "KJV", "NASB", "NIV", "LSB", "NLT", "CSB", "NKJV", "RSV", "NET",
     "NRSV", "LEB", "ASV", "LBCF", "LBCF1689", "WCF", "TULIP",

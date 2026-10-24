@@ -4,6 +4,7 @@ JSON Parser — парсинг и восстановление обрезанн�
 Извлечено из bot.py строки 1846–2260.
 """
 import json
+from typing import Any
 import logging
 import re
 
@@ -19,7 +20,7 @@ from core.text_utils import (   # FIX json_parser
 
 logger = logging.getLogger(__name__)
 
-def _recover_truncated_json(chunk: str) -> dict | None:
+def _recover_truncated_json(chunk: str) -> dict[str, Any] | None:
     """Восстанавливает обрезанный JSON-объект верхнего уровня (MAX_TOKENS hit от Gemini).
 
     Алгоритм: посимвольный трекер глубины скобок (игнорирует содержимое строк).
@@ -117,7 +118,7 @@ def _extract_json_object_chunk(text: str) -> tuple[str, bool] | None:
                 return t[start:idx + 1], True
     return t[start:], False
 
-def _parse_gemini_response(text: str, duration: int = 0) -> dict | None:
+def _parse_gemini_response(text: str, duration: int = 0) -> dict[str, Any] | None:
     """v3.2 — парсит плоский JSON от Gemini + terms_data. При ошибке возвращает None.
 
     FIX 2026-05-21 #11 P2: убираем code-fence ```json / ``` перед поиском JSON,
@@ -133,8 +134,8 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict | None:
         # hallucinated tail timestamps before they poison coverage/segments.
         return secs is not None and secs <= duration + 10
 
-    def _clean_times(times_raw) -> list:
-        out = []
+    def _clean_times(times_raw: Any) -> list[str]:
+        out: list[str] = []
         if not isinstance(times_raw, list):
             return out
         for t in times_raw:
@@ -180,7 +181,7 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict | None:
             logger.warning("_parse_gemini_response: восстановление не удалось — возвращаю None")
             return None
 
-    result: dict = {
+    result: dict[str, Any] = {
         "real_author":      "",
         "real_title":       "",
         "real_event":       "",

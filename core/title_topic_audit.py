@@ -99,7 +99,10 @@ def extract_source_title_context(source_title: str) -> SourceTitleContext:
     return SourceTitleContext(series=series, session=session, quoted_title=quoted_title)
 
 
-def enrich_source_title_context(ai_data: dict | None, source_title: str) -> dict:
+def enrich_source_title_context(
+    ai_data: dict[str, Any] | None,
+    source_title: str,
+) -> dict[str, Any]:
     """Populate missing structured context fields without overwriting AI data."""
     ai = ai_data if isinstance(ai_data, dict) else {}
     context = extract_source_title_context(source_title)
@@ -128,7 +131,7 @@ def _overlap_score(title: str, body: str) -> float:
     return len(title_terms & body_terms) / max(len(title_terms), 1)
 
 
-def _body_for_ai(ai_data: dict | None) -> str:
+def _body_for_ai(ai_data: dict[str, Any] | None) -> str:
     ai = ai_data or {}
     body = str(ai.get("main_topic") or "")
     ts = ai.get("timestamps")
@@ -196,7 +199,7 @@ def audit_title_topic_consistency(
     )
 
 
-def choose_safe_public_title(ai_data: dict | None, fallback_title: str = "") -> str:
+def choose_safe_public_title(ai_data: dict[str, Any] | None, fallback_title: str = "") -> str:
     """Return a safer display title and preserve source editorial hierarchy.
 
     The parser records ``title_topic_warning`` for both strong and inconclusive

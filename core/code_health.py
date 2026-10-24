@@ -11,7 +11,7 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Any
 
 
 DEFAULT_SCAN_DIRS = ("core", "converters", "services", "pipelines", "handlers")
@@ -126,7 +126,7 @@ def collect_code_health(root: Path | str = ".") -> CodeHealthReport:
 
 
 
-def code_health_snapshot(report: CodeHealthReport) -> dict:
+def code_health_snapshot(report: CodeHealthReport) -> dict[str, Any]:
     """Small stable JSON-serializable snapshot for trend tracking."""
     return {
         "files_scanned": report.files_scanned,
@@ -148,7 +148,10 @@ def code_health_snapshot(report: CodeHealthReport) -> dict:
     }
 
 
-def load_code_health_baseline(root: Path | str = ".", baseline_path: str | Path | None = None) -> dict | None:
+def load_code_health_baseline(
+    root: Path | str = ".",
+    baseline_path: str | Path | None = None,
+) -> dict[str, Any] | None:
     """Load optional baseline snapshot for advisory trend deltas."""
     base = Path(root)
     path = Path(baseline_path) if baseline_path else base / "docs" / "code_health_baseline.json"
@@ -163,7 +166,10 @@ def load_code_health_baseline(root: Path | str = ".", baseline_path: str | Path 
     return data if isinstance(data, dict) else None
 
 
-def compare_code_health(report: CodeHealthReport, baseline: dict | None) -> CodeHealthDelta:
+def compare_code_health(
+    report: CodeHealthReport,
+    baseline: dict[str, Any] | None,
+) -> CodeHealthDelta:
     if not baseline:
         return CodeHealthDelta()
     return CodeHealthDelta(

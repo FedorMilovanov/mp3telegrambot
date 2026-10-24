@@ -17,6 +17,7 @@ from core.database import (
     # FIX #33: WHITELIST_IDS и CACHE_TTL_DAYS определены в database.py
     WHITELIST_IDS, CACHE_TTL_DAYS,
 )
+from typing import Any
 from core.person_names import known_author_from_text
 
 import logging
@@ -66,7 +67,8 @@ try:
     from zoneinfo import ZoneInfo
     _LIMIT_TZ = ZoneInfo("Europe/Moscow")
 except Exception:
-    _LIMIT_TZ = None  # type: ignore
+    # Без tzdata (Windows без библиотеки) остаёмся на UTC сервера.
+    _LIMIT_TZ = None  # type: ignore[assignment]
 
 
 def _today_str() -> str:
@@ -153,7 +155,7 @@ def parse_title(full_title: str, channel_name: str = "") -> tuple[str, str]:
     return "", full_title
 
 
-def _crop_black_bars_image(img):
+def _crop_black_bars_image(img: Any) -> Any:
     # Обрезает черные полосы (letterbox/pillarbox) с изображения
     THRESHOLD = 18
     MIN_STRIP = 4
@@ -189,8 +191,10 @@ def _crop_black_bars_image(img):
 def prepare_thumbnail(thumb_path: Path) -> BytesIO | None:
     try:
         if HAS_PILLOW:
-            with Image.open(thumb_path) as img:
-                img = img.convert("RGB")
+            with Image.open(thumb_path) as source:
+                # convert() отдаёт Image, а не ImageFile — разные типы в stubs,
+                # поэтому исходник и рабочая копия живут в разных именах.
+                img = source.convert("RGB")
                 # Убираем черные полосы перед кропом в квадрат
                 img = _crop_black_bars_image(img)
                 width, height = img.size
@@ -200,7 +204,8 @@ def prepare_thumbnail(thumb_path: Path) -> BytesIO | None:
                 right  = left + min_side
                 bottom = top  + min_side
                 img = img.crop((left, top, right, bottom))
-                img = img.resize((480, 480), Image.LANCZOS)
+                # Resampling — актуальное имя с Pillow 9.1; floor проекта 13.x.
+                img = img.resize((480, 480), Image.Resampling.LANCZOS)
                 buffer = BytesIO()
                 img.save(buffer, format="JPEG", quality=85)
                 buffer.seek(0)
@@ -391,7 +396,7 @@ def cleanup_nosub_files(max_age_hours: int = 24) -> int:
 # cleanup_nosub_files()
 
 
-def format_timestamp(seconds) -> str:  # AUDIT-V2-FMT: принимает Any
+def format_timestamp(seconds: Any) -> str:  # AUDIT-V2-FMT: принимает Any
     try:
         seconds = float(seconds)
     except (TypeError, ValueError):

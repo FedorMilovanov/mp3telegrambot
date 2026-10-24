@@ -35,6 +35,10 @@
   переменных в готовом сообщении.
 - Алерт владельцу в Telegram при падении ежечасного обслуживания, с антиспамом
   `MAINTENANCE_ALERT_INTERVAL_HOURS` (по умолчанию раз в 6 часов).
+- Гейт статической типизации: `mypy --strict` для объявленного среза
+  (`tools/check_types.py`, сейчас `core/`), шаг в CI, проверка в
+  `verify_repo.py` и тест `tests/test_typecheck_gate.py`, который ловит
+  ослабление настроек. Документ — `docs/typechecking.md`.
 
 ### Changed
 
@@ -61,6 +65,13 @@
 - Проект устанавливается как пакет: `[build-system]`, `[project]`, `[project.scripts]`,
   `py-modules = ["bot", "bot_new", "main"]`.
 - Логика установки зависимостей в CI и в `Start Bot.bat` — только из lock'а.
+- `core/` приведён к `mypy --strict` без единого подавления нового класса
+  ошибок: разнотипные `kwargs` конфигов Gemini аннотированы как
+  `dict[str, Any]`, `None`-дефолты и `int | None` больше не протекают в
+  арифметику, `Image.Resampling` вместо устаревшего `Image.LANCZOS`,
+  `CREATE_NO_WINDOW` читается через `getattr` (константа только для Windows).
+- `mypy 2.4` и его зависимости (`ast-serialize`, `librt`, `mypy-extensions`,
+  `pathspec`) добавлены в `requirements-dev.txt` и lock.
 
 ### Fixed
 
@@ -69,6 +80,20 @@
 - `mp3bot = "bot_new:main"` ссылался на несуществующую функцию: `bot_new` исполнял
   bootstrap на импорте и не имел реальной точки входа.
 - Тест, фиксировавший число пинов литералом (69), заменён сверкой с самим lock-файлом.
+- `core/source_packs.py`: `negative=(("молитва",), ("ангел",))` — кортеж
+  кортежей там, где тип требует `tuple[str, ...]`. Работало только за счёт
+  защитного `neg[0] if isinstance(neg, tuple)`; объявления выпрямлены,
+  защита удалена.
+- `core/synopsis_quality.py`: `max()` и деление на `None` в аудите плотности
+  конспекта — времена секций собираются отдельной функцией, которая их
+  отбрасывает, вместо фильтра в генераторе списка (его `mypy` не сужает).
+- `services/quiz_generator.py`: `len(questions)` при `questions is None`
+  после `enough` — проверка сузилась до `if enough and questions`.
+- `core/observability.py`: `int(cur.lastrowid)` падал бы на `None`; теперь
+  отсутствие вставки возвращает `None`, как и объявлено в сигнатуре.
+- `services/ffmpeg.py`, `services/gemini_quota_domains.py`: `subprocess.CREATE_NO_WINDOW`
+  и `int(getattr(exc, "code", None))` больше не падают на не-Windows и на
+  исключениях без кода.
 
 ### Security
 
