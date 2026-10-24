@@ -50,4 +50,7 @@ def test_late_inprocess_metadata_result_is_used_before_fallback() -> None:
 
     assert "deadline_exceeded" in function
     assert "использую поздний результат" in function
-    assert "return info if isinstance(info, dict) else None" in function
+    # Нормализация ответа (плейлист-контейнер → первая запись, не-dict → None)
+    # вынесена в first_entry; её семантика закреплена в
+    # tests/test_main_pipeline_guards.py.
+    assert "return first_entry(info)" in function

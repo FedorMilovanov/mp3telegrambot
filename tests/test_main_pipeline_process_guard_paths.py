@@ -1,0 +1,324 @@
+#!/usr/bin/env python3
+"""Точки отказа `process_single_video`: что именно видит пользователь.
+
+Эти ветки — самые дешёвые и самые частые: live-трансляция, слишком длинное
+видео, мало места, битые метаданные. Проверяются здесь без сети, без yt-dlp и
+без Telegram: подменяется только получение метаданных, остальное — настоящий код
+пайплайна. Именно поэтому тест ловит разрыв между гвардом и ответом в чат.
+"""
+from __future__ import annotations
+
+import asyncio
+import subprocess
+
+import pytest
+
+# Прямой импорт, а не importorskip: если тяжёлый модуль перестанет
+# импортироваться, тесты должны упасть, а не тихо пропуститься.
+from pipelines import main_pipeline  # noqa: E402
+
+VIDEO_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+
+
+class _FakeStatus:
+    """Минимальный «статус-месседж»: пайплайн только редактирует его текст."""
+
+
+class _FakeMessage:
+    def __init__(self) -> None:
+        self.replies: list[str] = []
+
+    async def reply_text(self, text, **_kwargs):
+        self.replies.append(text)
+        return _FakeStatus()
+
+
+class _FakeUser:
+    id = 4242
+
+
+class _FakeUpdate:
+    def __init__(self) -> None:
+        self.message = _FakeMessage()
+        self.effective_user = _FakeUser()
+
+
+@pytest.fixture(autouse=True)
+def _no_progress(monkeypatch: pytest.MonkeyPatch):
+    """`set_progress` трогает Telegram — в этих тестах он не нужен."""
+
+    async def noop(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(main_pipeline, "set_progress", noop)
+
+
+def _run(update: _FakeUpdate, *, silent_errors: bool = False) -> bool:
+    return asyncio.run(
+        main_pipeline.process_single_video(
+            VIDEO_URL,
+            update,
+            status_msg=_FakeStatus(),
+            silent_errors=silent_errors,
+        )
+    )
+
+
+def test_live_stream_is_refused_with_explanation(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def live_info(_url, _timeout):
+        return {"id": "x", "title": "Прямой эфир", "is_live": True}
+
+    monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", live_info)
+    update = _FakeUpdate()
+
+    assert _run(update) is False
+    assert len(update.message.replies) == 1
+    assert "Live-трансляции не поддерживаются" in update.message.replies[0]
+
+
+def test_silent_mode_does_not_reply(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Тихий режим нужен плейлистам: сообщение на каждое видео — спам."""
+
+    async def live_info(_url, _timeout):
+        return {"id": "x", "is_live": True}
+
+    monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", live_info)
+    update = _FakeUpdate()
+
+    assert _run(update, silent_errors=True) is False
+    assert update.message.replies == []
+
+
+def test_too_long_video_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def long_info(_url, _timeout):
+        return {"id": "x", "title": "Длинная проповедь", "duration": 7200}
+
+    monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", long_info)
+    monkeypatch.setenv("MAX_VIDEO_DURATION_SEC", "3600")
+    update = _FakeUpdate()
+
+    assert _run(update) is False
+    assert "превышает лимит 60 мин" in update.message.replies[0]
+
+
+def test_video_within_limit_is_not_refused_by_duration(
+    monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Граница: ровно лимит — ещё можно."""
+
+    async def info(_url, _timeout):
+        return {"id": "x", "title": "Ровно час", "duration": 3600}
+
+    monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", info)
+    monkeypatch.setenv("MAX_VIDEO_DURATION_SEC", "3600")
+
+    update = _FakeUpdate()
+    # Дальше нужен реальный Telegram и БД, поэтому пайплайн упадёт — важно, что
+    # отказ пришёл НЕ по длительности.
+    assert _run(update) is False
+    assert all("превышает лимит" not in reply for reply in update.message.replies)
+
+
+def test_low_disk_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def info(_url, _timeout):
+        return {"id": "x", "title": "Видео", "duration": 600}
+
+    monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", info)
+    monkeypatch.setattr(main_pipeline, "lowest_free_gb", lambda *_paths: 0.4)
+    update = _FakeUpdate()
+
+    assert _run(update) is False
+    assert "Мало места на диске (0.4 ГБ свободно)" in update.message.replies[0]
+
+
+def test_temp_dir_is_checked_too(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ENG-режимы пишут видео в %TEMP%: свободное место там тоже важно.
+
+    Проверка идёт по худшему из двух дисков, а не только по `DOWNLOAD_DIR`.
+    """
+    import shutil
+    from collections import namedtuple
+
+    usage = namedtuple("usage", "total used free")
+
+    async def info(_url, _timeout):
+        return {"id": "x", "title": "Видео", "duration": 600}
+
+    def fake_disk_usage(path):
+        # В каталоге загрузок места много, во временном — почти нет.
+        free = 50 * 1024**3 if path == main_pipeline.DOWNLOAD_DIR else 0.2 * 1024**3
+        return usage(total=free, used=0, free=free)
+
+    monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", info)
+    monkeypatch.setattr(shutil, "disk_usage", fake_disk_usage)
+    update = _FakeUpdate()
+
+    assert _run(update) is False
+    assert "Мало места на диске (0.2 ГБ свободно)" in update.message.replies[0]
+
+
+def test_unknown_disk_space_does_not_block(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def info(_url, _timeout):
+        return {"id": "x", "title": "Видео", "duration": 600}
+
+    monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", info)
+    monkeypatch.setattr(main_pipeline, "lowest_free_gb", lambda *_paths: None)
+
+    update = _FakeUpdate()
+    assert _run(update) is False
+    assert all("Мало места" not in reply for reply in update.message.replies)
+
+
+def test_missing_metadata_fails_loudly(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def no_info(_url, _timeout):
+        return None
+
+    class _Proc:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    async def fake_process(*_args, **_kwargs):
+        return _Proc()
+
+    monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", no_info)
+    monkeypatch.setattr(main_pipeline, "run_cancellable_process", fake_process)
+
+    update = _FakeUpdate()
+    # Контракт `process_single_video`: не бросает наружу, а сообщает и отдаёт False.
+    assert _run(update) is False
+    assert "Не удалось получить метаданные видео" in update.message.replies[0]
+
+
+def test_subprocess_error_shows_stderr_tail(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Пользователь/лог должны увидеть причину от yt-dlp, а не «info error»."""
+
+    async def no_info(_url, _timeout):
+        return None
+
+    class _Proc:
+        returncode = 1
+        stdout = ""
+        stderr = "ERROR: Video unavailable"
+
+    async def fake_process(*_args, **_kwargs):
+        return _Proc()
+
+    monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", no_info)
+    monkeypatch.setattr(main_pipeline, "run_cancellable_process", fake_process)
+
+    update = _FakeUpdate()
+    assert _run(update) is False
+    assert "Video unavailable" in update.message.replies[0]
+
+
+def test_metadata_timeout_hints_at_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Таймаут метаданных почти всегда про proxy — подсказка должна быть в тексте."""
+
+    async def no_info(_url, _timeout):
+        return None
+
+    async def slow_process(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired(cmd="yt-dlp", timeout=180)
+
+    monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", no_info)
+    monkeypatch.setattr(main_pipeline, "run_cancellable_process", slow_process)
+    monkeypatch.setenv("YTDLP_INFO_TIMEOUT", "180")
+
+    update = _FakeUpdate()
+    assert _run(update) is False
+    message = update.message.replies[0]
+    assert "180" in message
+    assert "YTDLP_PROXY_URL" in message
+
+
+def test_error_reply_masks_gemini_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ключ из текста ошибки Google не должен уйти пользователю в чат."""
+    secret = "AIza" + "B" * 35
+
+    async def broken_info(_url, _timeout):
+        raise RuntimeError(f"403 API key not valid: {secret}")
+
+    monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", broken_info)
+    update = _FakeUpdate()
+
+    assert _run(update) is False
+    reply = update.message.replies[0]
+    assert secret not in reply
+    assert "***APIKEY***" in reply
+
+# ── ENG-режимы: отказ до скачивания ────────────────────────────────────────
+
+
+class _FakeRow(tuple):
+    """Строка sqlite: `row[0]` — значение настройки."""
+
+
+class _FakeConn:
+    def __init__(self, mode: str) -> None:
+        self._mode = mode
+
+    def execute(self, _sql, params):
+        assert params == (f"user_mode_{_FakeUser.id}",)
+        return self
+
+    def fetchone(self):
+        return _FakeRow((self._mode,))
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc):
+        return False
+
+
+def _eng_environment(monkeypatch: pytest.MonkeyPatch, mode: str) -> list[str]:
+    """Подготовить ENG-режим без сети: БД отдаёт режим, VOT-клиента нет."""
+    cleaned: list[str] = []
+
+    async def info(_url, _timeout):
+        return {"id": "media1", "title": "Sermon", "duration": 600}
+
+    async def no_cache(_media_id):
+        return None
+
+    monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", info)
+    monkeypatch.setattr(main_pipeline, "_db_conn", lambda: _FakeConn(mode))
+    monkeypatch.setattr(main_pipeline, "adb_get", no_cache)
+    monkeypatch.setattr(main_pipeline, "current_livedub_file_id_cache_version", lambda: "v1")
+    monkeypatch.setattr(main_pipeline, "cleanup_files", cleaned.append)
+    monkeypatch.setattr(main_pipeline, "lowest_free_gb", lambda *_paths: 50.0)
+
+    import services.yandex_live_dub as live_dub
+
+    monkeypatch.setattr(live_dub, "_ensure_vot_helper", lambda: False)
+
+    def no_client():
+        raise RuntimeError("нет vot-cli")
+
+    monkeypatch.setattr(live_dub, "_check_vot_cli", no_client)
+    return cleaned
+
+
+@pytest.mark.parametrize("mode", ["eng_fast", "eng_fast_qa"])
+def test_eng_quick_without_vot_client_is_refused_before_download(
+    monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    """Quick-режимы без клиента VOT падают сразу, а не после загрузки сотен МБ."""
+    cleaned = _eng_environment(monkeypatch, mode)
+    update = _FakeUpdate()
+
+    assert _run(update) is False
+    assert "нет клиента для Яндекс LiveDub" in update.message.replies[0]
+    assert cleaned == ["media1"]
+
+
+def test_eng_quick_refusal_is_silent_in_playlist_mode(
+    monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _eng_environment(monkeypatch, "eng_fast")
+    update = _FakeUpdate()
+
+    assert _run(update, silent_errors=True) is False
+    assert update.message.replies == []
+

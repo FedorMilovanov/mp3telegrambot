@@ -118,7 +118,7 @@
 | `LOG_LEVEL` | `core/logging_setup.py` | `INFO` | да | — |
 | `MAINTENANCE_ALERT_INTERVAL_HOURS` | `main.py` | `6` | да | — |
 | `MAX_FILE_SIZE_MB` | `core/database.py` | `` | да | — |
-| `MAX_VIDEO_DURATION_SEC` | `pipelines/main_pipeline.py` | `10800` | да | — |
+| `MAX_VIDEO_DURATION_SEC` | `pipelines/media_guards.py` | `10800` | да | — |
 | `MKL_NUM_THREADS` | `tools/voxcpm2/quality_sweep.py`, `tools/voxcpm2/segmented_cpu_dub.py` | — | — | — |
 | `MP3BOT_BUILD_SHA` | `services/runtime_build_identity.py` | — | — | — |
 | `MP3BOT_EFFECTIVE_BOT_API` | `services/local_botapi_bootstrap.py`, `services/local_botapi_diagnostics.py`, `services/local_botapi_required.py` | `` | — | — |
@@ -183,6 +183,6 @@
 | `YANDEX_OAUTH_TOKEN` | `handlers/commands.py`, `main.py`, `services/shorts_factory_execution_guard.py` и ещё 1 | `` | да | — |
 | `YTDLP_COOKIES_FROM_BROWSER` | `services/ffmpeg.py` | `` | да | — |
 | `YTDLP_FRAGMENTS` | `services/ffmpeg.py` | `4` | да | — |
-| `YTDLP_INFO_TIMEOUT` | `pipelines/main_pipeline.py` | `180` | да | — |
+| `YTDLP_INFO_TIMEOUT` | `pipelines/media_guards.py` | `180` | да | — |
 | `YTDLP_PROXY_FORCE_SOCKS` | `services/ffmpeg.py` | `0` | — | — |
 | `YTDLP_PROXY_URL` | `services/ffmpeg.py` | `` | да | — |

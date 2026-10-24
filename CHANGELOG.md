@@ -38,6 +38,12 @@
 
 ### Changed
 
+- Проверки допуска в `pipelines/main_pipeline.py` вынесены в
+  `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
+  `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):
+  тексты отказов и пороги закреплены тестами, `MAX_VIDEO_DURATION_SEC` больше
+  не роняет пайплайн на нечисловом значении, а проверка свободного места
+  снова учитывает `%TEMP%` — теперь под тестом, а не поиском строки в исходнике.
 - **Python floor 3.11 → 3.12**; матрица CI `[3.12, 3.13]`, ruff `target-version = py312`.
 - `numpy` объявлен как `>=2.4,<3.0` (снята граница `<2.5`, которая блокировала мажор).
 - `dependabot.yml`: сняты оба `ignore` для мажоров numpy/av — они больше не «заведомо красные».

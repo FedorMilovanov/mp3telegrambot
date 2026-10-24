@@ -17,5 +17,11 @@ def test_ytdlp_reuses_proxy_and_bumps_metadata_timeout():
     assert "YTDLP_PROXY_URL" in ff
     assert 'args += ["--proxy", _proxy]' in ff
     assert "SOCKS proxy заменён на HTTP mixed proxy" in ff
-    assert "YTDLP_INFO_TIMEOUT" in mp
+    # Переменная и её границы переехали в `pipelines/media_guards.py`; пайплайн
+    # обязан звать именно эту функцию, а не читать env напрямую (иначе границы
+    # и обработка опечаток разъедутся).
+    guards = Path("pipelines/media_guards.py").read_text(encoding="utf-8")
+    assert "YTDLP_INFO_TIMEOUT" in guards
+    assert "def info_timeout_seconds" in guards
+    assert "info_timeout_seconds()" in mp
     assert "yt-dlp --dump-json timeout" in mp

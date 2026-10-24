@@ -1179,8 +1179,17 @@ def test_global_error_handler_registered():
 
 
 def test_disk_check_covers_tempdir():
+    """ENG пишет видео в %TEMP%, и он может быть на другом диске.
+
+    Раньше проверка искала точную строку `disk_usage(_tf.gettempdir())`; после
+    выноса гвардов в `pipelines/media_guards.py` важно не имя вызова, а то, что
+    минимум считается по обоим каталогам — это и проверяется.
+    """
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    assert "disk_usage(_tf.gettempdir())" in src
+    assert "lowest_free_gb(DOWNLOAD_DIR, temp_dir())" in src
+    guards = Path("pipelines/media_guards.py").read_text(encoding="utf-8")
+    assert "def lowest_free_gb" in guards
+    assert "min(values)" in guards
 
 
 # ── Заход 16: ENG fail-fast и гарантированный ответ юзеру ────────
