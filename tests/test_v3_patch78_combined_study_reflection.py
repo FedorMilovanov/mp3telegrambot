@@ -56,13 +56,21 @@ def test_combined_study_reflection_is_opt_in(monkeypatch):
     assert combined_study_reflection_enabled() is True
 
 
-def test_main_pipeline_combined_path_is_feature_flagged_and_fallbacks_to_separate():
-    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    assert "combined_study_reflection_enabled" in src
-    assert "COMBINE_STUDY_REFLECTION=1" in src
-    assert "create_telegraph_study_reflection_combined" in src
-    assert "if not study_analysis_tg" in src
-    assert "if not reflection_application_tg" in src
+def test_render_stage_combined_path_is_feature_flagged_and_fallbacks_to_separate():
+    """Объединённый режим — opt-in, и он откатывается на раздельные вызовы.
+
+    После выноса стадии рендера (P0-3) решение живёт в
+    `pipelines/telegraph_render.py`; фича-флаг по-прежнему читает пайплайн,
+    поэтому проверяются оба файла.
+    """
+    pipeline = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "combined_study_reflection_enabled" in pipeline
+    assert "render_pages(" in pipeline
+
+    stage = Path("pipelines/telegraph_render.py").read_text(encoding="utf-8")
+    assert "COMBINE_STUDY_REFLECTION=1" in stage
+    assert "if not study" in stage
+    assert "if not reflection" in stage
 
 
 def test_combined_and_separate_semantic_paths_forbid_model_downgrade():
@@ -98,9 +106,9 @@ def test_combined_result_is_typed_dataclass_not_bare_tuple():
     assert "study_page_type: str = \"study\"" in src
     assert "reflection_page_type: str = \"reflection\"" in src
     assert "return CombinedStudyReflectionResult" in src
-    pipeline = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    assert "_combined_result.study_url" in pipeline
-    assert "_combined_result.reflection_url" in pipeline
+    stage = Path("pipelines/telegraph_render.py").read_text(encoding="utf-8")
+    assert "result.study_url" in stage
+    assert "result.reflection_url" in stage
 
 
 def test_structured_block_schema_uses_canonical_type_enum():

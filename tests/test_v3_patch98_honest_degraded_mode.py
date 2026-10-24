@@ -57,7 +57,8 @@ def test_pipeline_honest_degraded_mode_is_wired():
     mode = __import__("pathlib").Path("pipelines/degraded_mode.py").read_text(encoding="utf-8")
     assert "DEGRADED_TRANSCRIPT_TIMESTAMPS" in mode
     assert "Gemini 3.5 сейчас недоступен" in mode
-    assert "if not ai_data:\n                return {\"rutube\": None, \"vk\": None}" in src
+    render = __import__("pathlib").Path("pipelines/telegraph_render.py").read_text(encoding="utf-8")
+    assert 'return {"rutube": None, "vk": None}' in render
     assert "expect_synopsis=bool(ai_data)" in src
 
 
