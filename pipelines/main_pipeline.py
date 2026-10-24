@@ -29,7 +29,7 @@ from core.utils import (
 )
 from core.text_utils import (
     normalize_author_name, normalize_title_text,
-    normalize_common_typos, _has_dirty_meta, title_case_fragment,              # FIX #11
+    normalize_common_typos, title_case_fragment,                    # FIX #11
 )
 from core.person_names import (
     KNOWN_AUTHOR_RU as _KNOWN_AUTHOR_RU,
@@ -49,6 +49,7 @@ from pipelines.analysis_stage import AnalysisRequest, run_analysis
 from pipelines.archive_stage import ArchiveRequest, archive_pages
 from pipelines.caption_inputs import build_caption_inputs
 from pipelines.caption_stage import CaptionSource, fit_caption
+from pipelines.cache_stage import load_cache
 from pipelines.delivery_stage import DeliveryRequest, deliver_cached_result, deliver_result
 from services.telegraph_pages import combined_study_reflection_enabled
 from pipelines.telegraph_nav import add_navigation
@@ -1452,29 +1453,13 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             # недоставленный entry успешным (✅) при уже списанном слоте лимита.
             return _delivered
 
-        # Проверяем кэш — если видео уже обработано и кэш актуален, отдаём результат сразу
-        cached = await adb_get(media_id)
-        cache_ok, cache_reason = is_cache_valid(cached)
+        # Стадия кэша объединяет TTL/версии из БД и защиту от dirty/corrupt
+        # метаданных. Любой miss идёт по обычному fresh-пути ниже.
+        cache_decision = await load_cache(media_id)
+        cached = cache_decision.cached or {}
 
-        # Страховка от "грязного кэша" — если в ai_data есть мусор, пересчитываем
-        if cache_ok and cached:
-            dirty = False
-            c_ai = cached.get("ai_data") or {}
-            for field in ("main_topic", "real_author", "real_title", "real_event"):
-                if _has_dirty_meta(c_ai.get(field, "")):
-                    dirty = True
-                    break
-            if not dirty:
-                for q in (cached.get("questions") or []):
-                    if _has_dirty_meta(str(q)):
-                        dirty = True
-                        break
-            if dirty:
-                cache_ok = False
-                cache_reason = "dirty_meta"
-                logger.info(f"Кэш skip: {media_id} reason=dirty_meta")
-
-        if cache_ok and cached.get("ai_data"):
+        if cache_decision.hit:
+            c_ai = cache_decision.ai_data or {}
             logger.info(f"Кэш hit: {media_id} — отдаём без Gemini")
             await set_progress(status_msg, 6, prefix=_pp)
             c_tg   = cached["telegraph_url"]
