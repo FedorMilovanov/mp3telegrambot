@@ -78,7 +78,14 @@ def test_content_audit_logging_uses_explicit_ternary_not_short_circuit():
 
 
 def test_cache_caption_branch_no_longer_deletes_timestamps_as_first_fallback():
-    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    assert "# Шаг 3: сохранить мини-набор таймкодов вместо полного удаления" in src
-    assert "for _mini_limit in (7, 5, 3):" in src
-    assert "Кэш caption" in src
+    # P0-3, шаг 5: обрезка подписи вынесена в общую стадию. Кэш-хит больше не
+    # содержит своей копии алгоритма — значит и «сначала удалить таймкоды»
+    # вернуться не может: порядок шагов один на оба пути.
+    stage = Path("pipelines/caption_stage.py").read_text(encoding="utf-8")
+    assert "for mini_limit in MINI_TIMESTAMP_LIMITS:" in stage
+    assert stage.index("MINI_TIMESTAMP_LIMITS:") < stage.index('"timestamps": "",')
+
+    main_src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    cache_branch = main_src[main_src.index("Кэш caption visible_len"):]
+    assert "fit_caption(" in cache_branch, "кэш-хит обязан использовать общую стадию подписи"
+    assert "_trim_timestamps(" not in cache_branch, "своя копия обрезки в кэш-хите вернулась"

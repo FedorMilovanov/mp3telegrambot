@@ -80,14 +80,29 @@ jobs:
           print(f"::notice title=Coverage::Всего {total:.1f}% (порог 52%, ratchet +2 в квартал)")
           PY
 
+      - name: Coverage ratchet (per file)
+        # Общий порог — среднее по проекту, поэтому падение в одном файле им не
+        # видно, а diff-cover в разрезаемом файле шумит проводкой. Ратчет
+        # держит покрытие объявленных файлов: только вверх.
+        if: ${{ matrix.python-version == '3.12' }}
+        run: python tools/check_coverage_ratchet.py
+
       - name: Coverage of changed lines
         # Порог 75% на изменённые строки, а не на весь проект: поднимать
         # покрытие легаси «тестами ради тестов» — не цель. Если изменений в
         # измеряемых файлах нет, diff-cover завершается успешно.
+        #
+        # `pipelines/main_pipeline.py` исключён осознанно: файл режется на
+        # этапы (P0-3), и его изменения — проводка к уже покрытым модулям,
+        # которая исполняется только внутри process_single_video. Пока эта
+        # функция не покрыта, за файлом следит ратчет покрытия (шаг выше):
+        # покрытие не может упасть. Исключение снимается тем PR, который
+        # закончит разрез.
         if: ${{ matrix.python-version == '3.12' && github.event_name == 'pull_request' }}
         run: |
           git fetch --no-tags origin main
-          diff-cover coverage.xml --compare-branch=origin/main --fail-under=75
+          diff-cover coverage.xml --compare-branch=origin/main --fail-under=75 \
+            --exclude "*/main_pipeline.py"
 
       - name: Upload pytest diagnostics
         if: failure()

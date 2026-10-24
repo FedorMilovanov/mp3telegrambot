@@ -22,7 +22,8 @@ pre-commit install && pre-commit install --hook-type pre-push
 |---|---|---|
 | `python -m pytest -q` | весь набор | ~90 с |
 | `python -m ruff check .` | гейт линтера | ~2 с |
-| `python tools/check_types.py` | `mypy --strict` по объявленному срезу (`core/`) | ~2 с (кэш) |
+| `python tools/check_types.py` | `mypy --strict` по объявленному срезу (`core/`, `pipelines/`) | ~2 с (кэш) |
+| `python tools/check_coverage_ratchet.py` | покрытие объявленных файлов не упало (нужен `coverage.xml`) | ~1 с |
 | `python tools/verify_repo.py` | compileall, генерируемые артефакты, pytest, ruff, типы, `git diff --check` | ~100 с |
 | `pre-commit run --all-files` | форматирование, YAML, большие файлы, конфликты | ~10 с |
 

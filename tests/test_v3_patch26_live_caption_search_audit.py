@@ -43,11 +43,16 @@ def test_search_scoring_does_not_match_by_author_and_duration_only():
 
 
 def test_caption_trimming_has_compact_timestamp_fallback():
-    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    assert "for _mini_limit in (7, 5, 3):" in src
+    # Алгоритм обрезки живёт в pipelines/caption_stage.py: раньше он был двумя
+    # копиями (обычный путь и кэш-хит). Инвариант тот же — мини-набор таймкодов
+    # пробуется до полного удаления, — но проверяется в одном месте.
+    src = Path("pipelines/caption_stage.py").read_text(encoding="utf-8")
+    assert "MINI_TIMESTAMP_LIMITS = (7, 5, 3)" in src
     assert '"main_topic": ""' in src
-    assert "ts_mini = _trim_timestamps" in src
-    assert "ts_in_cap=0" in src  # logging remains for cases where even 3 timestamps cannot fit
+    assert "for mini_limit in MINI_TIMESTAMP_LIMITS:" in src
+    # Даже три таймкода могут не влезть — тогда подпись остаётся без навигации,
+    # но с шапкой и ссылками; это логируется (stage=timestamps_removed).
+    assert '"timestamps_removed"' in src
 
 
 def test_page_audit_does_not_flag_doctrinal_concept_with_latin_parenthetical_as_source():
