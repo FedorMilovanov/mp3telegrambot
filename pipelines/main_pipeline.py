@@ -46,9 +46,8 @@ from converters.md_telegraph import (
 from services.search import (
     find_alternative_links, _build_search_title,
 )
-from services.gemini_analyze import gemini_analyze_audio
+from pipelines.analysis_stage import AnalysisRequest, run_analysis
 from pipelines.caption_stage import CaptionSource, fit_caption
-from services.telegraph import create_telegraph_synopsis
 from services.telegraph_pages import (
     create_telegraph_analytics, create_telegraph_questions,
     create_telegraph_terms, create_telegraph_study_analysis,
@@ -61,7 +60,6 @@ from pipelines.clips import process_and_send_clips
 from pipelines.montage import process_and_send_montage, process_and_send_highlights
 from core.url_utils import get_youtube_video_url, get_youtube_timestamp_url
 from core.progress import set_progress
-from core.title_topic_audit import choose_safe_public_title
 from core.publication_status import build_publication_status, missing_to_json
 from core.generated_pages import (
     asave_generated_page_record, asave_segment_plan_export, aupdate_generated_page_repair_status,
@@ -73,10 +71,6 @@ from core.bounded_cache import BoundedLRUDict
 from pipelines.audio_stage import (
     AudioTooLarge,
     prepare_audio,
-)
-from pipelines.degraded_mode import (
-    attach_transcript_timestamps,
-    degraded_caption_data,
 )
 from pipelines.publication_plan import (
     build_plan,
@@ -1847,80 +1841,39 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         file_size_mb = _audio.size_mb
         bitrate = _audio.bitrate
 
-        ai_data          = None
-        synopsis_outline = None  # инициализируем здесь — closure-функции ниже ссылаются безусловно
-        telegraph_url    = None
-        used_audio_part  = None
-        used_client      = None
-        _degraded_caption_data = None
-        _early_alt  = None  # alt-links ищем до конспекта если ai_data есть
-        _pre_rutube = ""    # инициализируем здесь — closure-функции ниже всегда могут обращаться к ним
-        _pre_vk     = ""    # даже если ai_data = None (Gemini недоступен или упал)
-        if GEMINI_CLIENTS:
-            _fmb = mp3_path.stat().st_size / (1024*1024)
-            await set_progress(status_msg, 4, {"title": f"📝 {title}", "author": f"👤 {performer}  •  {duration//60}:{duration%60:02d}", "size": f"🎵 {_fmb:.1f} МБ  •  {bitrate} kbps"}, prefix=_pp)
-            ai_data, used_client, used_audio_part = await gemini_analyze_audio(
-                mp3_path, title, performer, duration, status_msg, progress_prefix
-            )
-            if ai_data:
-                await set_progress(status_msg, 5, prefix=_pp)
-
-                if ai_data.get("title_topic_warning"):
-                    _safe_title = normalize_title_text(choose_safe_public_title(ai_data, full_title))
-                    if _safe_title and _safe_title != ai_data.get("real_title"):
-                        logger.warning(
-                            "Title-topic warning: using fallback title for publication: %r -> %r",
-                            ai_data.get("real_title"), _safe_title,
-                        )
-                        ai_data = {**ai_data, "real_title": _safe_title}
-
-                # Ищем alt-links ДО публикации конспекта — чтобы таймкоды
-                # RuTube/VK были доступны уже при первой публикации страницы
-                _early_search_title = _build_search_title(ai_data, full_title)
-                try:
-                    _early_alt = await find_alternative_links(
-                        _early_search_title, channel_name, duration,
-                        ai_data=ai_data, fallback_title=full_title
-                    )
-                except Exception as _ea_err:
-                    logger.warning(f"early alt-links error: {_ea_err}")
-                    _early_alt = None
-                _pre_rutube = (_early_alt or {}).get("rutube") or ""
-                _pre_vk     = (_early_alt or {}).get("vk")     or ""
-
-                if await asettings_get("synopsis"):
-                    telegraph_url, synopsis_outline = await create_telegraph_synopsis(
-                        mp3_path, title, performer, duration, url,
-                        existing_audio_part=used_audio_part,
-                        existing_client=used_client,
-                        ai_data=ai_data,
-                        rutube_url=_pre_rutube,
-                        vk_url=_pre_vk,
-                        source_lang=source_lang,
-                    )
-                else:
-                    telegraph_url    = None
-                    synopsis_outline = None
-            else:
-                logger.warning(
-                    "Gemini 3.5 analysis unavailable for %s — honest degraded mode: MP3 only, no AI pages/questions",
-                    media_id,
-                )
-                # Деградация вынесена в pipelines/degraded_mode.py: пометка
-                # в caption и необязательные таймкоды из субтитров YouTube
-                # (без Gemini). Поведение закреплено тестами, а не проверяется
-                # только при исчерпанной квоте.
-                _degraded_caption_data = degraded_caption_data(title, performer)
-                _degraded_caption_data = await attach_transcript_timestamps(
-                    _degraded_caption_data,
-                    url=url,
-                    media_id=media_id,
-                    download_dir=DOWNLOAD_DIR,
-                    duration=duration,
-                    source_lang=source_lang,
-                )
-            # НЕ удаляем audio_part здесь — он нужен для Shorts и Clips.
-            # Удаление происходит в блоке finally ниже.
+        # Стадия анализа вынесена в pipelines/analysis_stage.py: прогресс,
+        # Gemini, аудит темы заголовка, ранние alt-links, конспект и честная
+        # деградация. Порядок шагов («ссылки до конспекта», «заголовок до
+        # публикации») теперь закреплён тестами, а не комментариями.
+        _analysis = await run_analysis(
+            AnalysisRequest(
+                mp3_path=mp3_path,
+                title=title,
+                performer=performer,
+                duration=duration,
+                url=url,
+                full_title=full_title,
+                channel_name=channel_name,
+                media_id=media_id,
+                download_dir=DOWNLOAD_DIR,
+                bitrate=bitrate,
+                source_lang=source_lang,
+                progress_prefix=progress_prefix,
+                status_msg=status_msg,
+            ),
+            enabled=bool(GEMINI_CLIENTS),
+        )
+        ai_data          = _analysis.ai_data
+        synopsis_outline = _analysis.synopsis_outline
+        telegraph_url    = _analysis.telegraph_url
+        used_audio_part  = _analysis.used_audio_part
+        used_client      = _analysis.used_client
+        _degraded_caption_data = _analysis.degraded_caption_data
+        _early_alt       = _analysis.early_links
+        _pre_rutube      = _analysis.rutube_url
+        _pre_vk          = _analysis.vk_url
+        # НЕ удаляем audio_part здесь — он нужен для Shorts и Clips.
+        # Удаление происходит в блоке finally ниже.
 
         await set_progress(status_msg, 6, prefix=_pp)
         search_title = _build_search_title(ai_data, full_title)
