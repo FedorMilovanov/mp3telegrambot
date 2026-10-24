@@ -63,6 +63,11 @@
 - Стадия подписи вынесена в `pipelines/caption_stage.py` (`CaptionSource`,
   `fit_caption`, `CaptionFit`): сборка и обрезка до 1024 видимых символов —
   одна реализация на обычный путь и на кэш-хит.
+- Стадия анализа вынесена в `pipelines/analysis_stage.py`
+  (`AnalysisRequest`, `AnalysisDeps`, `AnalysisOutcome`, `run_analysis`):
+  прогресс → Gemini → аудит темы заголовка → ранние alt-links → конспект,
+  либо честная деградация. Порядок шагов закреплён тестами на фейковых
+  зависимостях; боевые зависимости собирает `production_deps()`.
 - Ратчет покрытия по файлам (`tools/check_coverage_ratchet.py`,
   `docs/coverage_baseline.json`): покрытие объявленных файлов может только
   расти. Компенсирует `diff-cover` там, где изменения — проводка в

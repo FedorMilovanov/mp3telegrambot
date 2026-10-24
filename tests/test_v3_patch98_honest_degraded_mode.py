@@ -47,9 +47,13 @@ def test_pipeline_honest_degraded_mode_is_wired():
     не потерялся.
     """
     src = __import__("pathlib").Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    assert "honest degraded mode: MP3 only, no AI pages/questions" in src
-    assert "degraded_caption_data(title, performer)" in src
-    assert "attach_transcript_timestamps(" in src
+    stage = __import__("pathlib").Path("pipelines/analysis_stage.py").read_text(encoding="utf-8")
+    assert "run_analysis(" in src
+    assert "honest degraded mode" not in src
+    assert "honest degraded mode" in stage
+    assert "MP3 only, no AI pages/questions" in stage
+    assert "degraded_caption_data(request.title, request.performer)" in stage
+    assert "attach_transcript_timestamps(" in stage
     mode = __import__("pathlib").Path("pipelines/degraded_mode.py").read_text(encoding="utf-8")
     assert "DEGRADED_TRANSCRIPT_TIMESTAMPS" in mode
     assert "Gemini 3.5 сейчас недоступен" in mode
