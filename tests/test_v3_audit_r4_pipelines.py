@@ -65,12 +65,25 @@ def test_livedub_bg_cancels_inner_tasks_on_teardown():
 
 
 def test_too_big_early_return_still_sends_livedub():
+    """Обе ветки (кэш и основной путь) не теряют готовый дубляж при слишком большом mp3.
+
+    Тексты сообщений теперь живут в `pipelines/audio_stage.py`, поэтому проверка
+    идёт по обработчику `AudioTooLarge`: после него обязан идти `_send_livedub_result()`.
+    """
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    for marker in ("даже после сжатия.", "даже после сжатия до 64 kbps"):
-        idx = src.find(marker)
-        assert idx != -1
-        window = src[idx:idx + 700]
-        assert "_send_livedub_result()" in window, f"нет отправки LiveDub после '{marker}'"
+    handled = 0
+    start = 0
+    while True:
+        idx = src.find("except AudioTooLarge", start)
+        if idx == -1:
+            break
+        handled += 1
+        window = src[idx:idx + 900]
+        assert "_send_livedub_result()" in window, "нет отправки LiveDub после AudioTooLarge"
+        start = idx + 1
+    assert handled == 2
+    stage = Path("pipelines/audio_stage.py").read_text(encoding="utf-8")
+    assert "даже после сжатия до 64 kbps" in stage
 
 
 def test_playlist_status_edits_are_guarded():
@@ -129,8 +142,13 @@ def test_livedub_qa_cached_analysis_must_pass_normal_cache_validity():
 
 
 def test_cache_hit_reuses_existing_compressed_mp3():
+    """Кэш-хит не перекачивает аудио, если остался только `_64.mp3`.
+
+    Поведение проверяется в `tests/test_audio_stage.py::test_compressed_variant_is_reused`,
+    здесь — что пайплайн действительно использует общую стадию.
+    """
+    stage = Path("pipelines/audio_stage.py").read_text(encoding="utf-8")
+    assert 'glob(f"{media_id}*.mp3")' in stage
+    assert "def find_existing" in stage
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    idx = src.find("Кэш аудио: реюз существующего")
-    assert idx != -1
-    window = src[idx - 900:idx]
-    assert 'glob(f"{media_id}*.mp3")' in window
+    assert src.count("prepare_audio(") == 2

@@ -75,8 +75,14 @@ def test_r39_telegraph_destructive_move_removed():
 
 
 def test_r39_mp3_reencode_guarded_against_self():
-    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    assert src.count("mp3_path.name != mp3_64_path.name") >= 2
+    """`_64.mp3` не пережимается «в себя»: ffmpeg читал бы файл, который пишет.
+
+    Защита переехала вместе с кодом в `pipelines/audio_stage.py`; поведение
+    закреплено тестом `test_already_64k_is_not_recompressed_into_itself`.
+    """
+    stage = Path("pipelines/audio_stage.py").read_text(encoding="utf-8")
+    assert "if path.name == target.name:" in stage
+    assert "уже 64 kbps" in stage.lower()
 
 
 def test_r39_process_global_fallback_marker_is_removed():
