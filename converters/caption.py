@@ -3,6 +3,8 @@
 Caption builder — формирование подписей к аудио.
 Извлечено из bot.py строки 4214–4437.
 """
+from typing import Any
+
 from core.text_utils import (
     _scrub_inline, _strip_meta_lines, normalize_author_name,
     normalize_title_text, title_case_fragment, BAD_META_PATTERNS, normalize_common_typos,  # FIX #7
@@ -57,7 +59,24 @@ def _polish_public_caption_text(text: str) -> str:
     )
 
 
-def build_caption(performer, title, duration, file_size_mb, ai_data=None, bitrate="128", url="", telegraph_url="", rutube_url="", vk_url="", quotes_tg_url="", questions_tg_url="", terms_tg_url="", study_tg_url="", reflection_tg_url="", full_mode=False):
+def build_caption(
+    performer: str,
+    title: str,
+    duration: int | float,
+    file_size_mb: float,
+    ai_data: dict[str, Any] | None = None,
+    bitrate: str = "128",
+    url: str = "",
+    telegraph_url: str = "",
+    rutube_url: str = "",
+    vk_url: str = "",
+    quotes_tg_url: str = "",
+    questions_tg_url: str = "",
+    terms_tg_url: str = "",
+    study_tg_url: str = "",
+    reflection_tg_url: str = "",
+    full_mode: bool = False,
+) -> str:
     parts = []
 
     # Шапка — используем данные от Gemini если есть, иначе из yt-dlp

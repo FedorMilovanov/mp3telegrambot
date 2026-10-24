@@ -39,16 +39,15 @@ from core.person_names import (
     looks_like_author_list as _looks_like_author_list,
 )
 from converters.md_telegraph import (
-    visible_length, safe_trim_caption,                 # FIX #11
-    _trim_timestamps, get_caption_timestamp_limit,     # FIX #11
+    visible_length,                                    # FIX #11
+    get_caption_timestamp_limit,                       # FIX #11
     _edit_telegraph_page,                              # FIX #11
 )
 from services.search import (
     find_alternative_links, _build_search_title,
-    build_platform_links, build_telegraph_links,       # FIX #11
 )
 from services.gemini_analyze import gemini_analyze_audio
-from converters.caption import build_caption
+from pipelines.caption_stage import CaptionSource, fit_caption
 from services.telegraph import create_telegraph_synopsis
 from services.telegraph_pages import (
     create_telegraph_analytics, create_telegraph_questions,
@@ -1569,87 +1568,37 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 rutube_url = (alt_links or {}).get("rutube") or ""
                 vk_url     = (alt_links or {}).get("vk") or ""
 
-            def _build_c(data, **kw):
-                return build_caption(performer, title, duration, file_size_mb,
-                                     data, bitrate, url, c_tg, rutube_url, vk_url,
-                                     c_qtg, c_qqtg, c_ttg,
-                                     study_tg_url=_c_study,
-                                     reflection_tg_url=_c_reflection,
-                                     **kw)
-
-            def _build_full_c(data):
-                return build_caption(performer, title, duration, file_size_mb,
-                                     data, bitrate, url, c_tg, rutube_url, vk_url,
-                                     c_qtg, c_qqtg, c_ttg,
-                                     study_tg_url=_c_study,
-                                     reflection_tg_url=_c_reflection,
-                                     full_mode=True)
-
-            _c_fmt    = (c_ai or {}).get("format", "other")
-            _ts_limit = get_caption_timestamp_limit(_c_fmt)
-            _c_ts_total = len([l for l in ((c_ai or {}).get("timestamps") or "").split("\n") if l.strip()])
-            # Применяем format-лимит к таймкодам сразу (до проверки переполнения)
-            _ai_for_caption = c_ai
-            if c_ai and c_ai.get("timestamps"):
-                ts_limited = _trim_timestamps(c_ai["timestamps"], _ts_limit)
-                if ts_limited != c_ai["timestamps"]:
-                    _ai_for_caption = {
-                        **c_ai,
-                        "timestamps": ts_limited,
-                        "_caption_timestamps_trimmed": True,
-                        "_caption_timestamps_total": _c_ts_total,
-                        "_caption_timestamps_shown": min(_c_ts_total, _ts_limit),
-                    }
-            caption = _build_c(_ai_for_caption)
-            # Умное обрезание до 1024 видимых символов (без HTML-тегов)
-            _cap_ts_str = (_ai_for_caption or {}).get("timestamps", "") or ""  # отслеживаем фактические ts в caption
-            # Шаг 1: убрать хэштеги
-            if visible_length(caption) > 1024 and _ai_for_caption and _ai_for_caption.get("hashtags"):
-                caption = _build_c({**_ai_for_caption, "hashtags": ""})
-            # Шаг 1.5: убрать main_topic
-            if visible_length(caption) > 1024 and _ai_for_caption and _ai_for_caption.get("main_topic"):
-                caption = _build_c({**_ai_for_caption, "hashtags": "", "main_topic": ""})
-            # Шаг 2: сократить таймкоды ещё (половина лимита)
-            if visible_length(caption) > 1024 and _ai_for_caption and _ai_for_caption.get("timestamps"):
-                ts_half = _trim_timestamps(_ai_for_caption["timestamps"], max(_ts_limit // 2, 3))
-                caption = _build_c({**_ai_for_caption, "hashtags": "", "timestamps": ts_half})
-                _cap_ts_str = ts_half
-            # Шаг 3: сохранить мини-набор таймкодов вместо полного удаления
-            if visible_length(caption) > 1024 and _ai_for_caption and _ai_for_caption.get("timestamps"):
-                _fit_found = False
-                for _mini_limit in (7, 5, 3):
-                    ts_mini = _trim_timestamps(_ai_for_caption["timestamps"], min(_mini_limit, _ts_limit))
-                    candidate = _build_c({
-                        **_ai_for_caption,
-                        "hashtags": "",
-                        "main_topic": "",
-                        "timestamps": ts_mini,
-                        "_caption_timestamps_trimmed": True,
-                    })
-                    if visible_length(candidate) <= 1024:
-                        caption = candidate
-                        _cap_ts_str = ts_mini
-                        _fit_found = True
-                        break
-                if not _fit_found:
-                    caption = _build_c({**_ai_for_caption, "hashtags": "", "main_topic": "", "timestamps": "", "_caption_timestamps_trimmed": True})
-                    _cap_ts_str = ""
-            # Шаг 4: последний резерв — шапка + ссылки, обрезаем без лома тегов
-            if visible_length(caption) > 1024:
-                platform_block = build_platform_links(url, rutube_url, vk_url)
-                tg_block = build_telegraph_links(
-                    c_tg or "", c_qtg or "", c_qqtg or "",
-                    c_ttg,
-                    study_tg_url=_c_study,
-                    reflection_tg_url=_c_reflection,
-                )
-                footer = "\n".join(filter(None, [platform_block, tg_block]))
-                header = "\n".join(caption.split("\n")[:4])
-                caption = header + ("\n\n" + footer if footer else "")
-                caption = safe_trim_caption(caption, 1024)
-                _cap_ts_str = ""
-            _ts_in_cap = len([l for l in _cap_ts_str.split("\n") if l.strip()])
-            logger.info(f"Кэш caption visible_len={visible_length(caption)} format={_c_fmt} ts_limit={_ts_limit} ts_in_cap={_ts_in_cap}")
+            # Стадия подписи вынесена в pipelines/caption_stage.py: алгоритм
+            # обрезки был здесь второй копией и разошёлся с основным путём
+            # (футер в обратном порядке, без заголовков секций).
+            _cap_source = CaptionSource(
+                performer=performer,
+                title=title,
+                duration=duration,
+                file_size_mb=file_size_mb,
+                bitrate=bitrate,
+                url=url,
+                telegraph_url=c_tg,
+                rutube_url=rutube_url,
+                vk_url=vk_url,
+                quotes_link=c_qtg,
+                questions_link=c_qqtg,
+                terms_link=c_ttg,
+                study_link=_c_study,
+                reflection_link=_c_reflection,
+                format_name=(c_ai or {}).get("format", "other"),
+            )
+            _fit = fit_caption(_cap_source, c_ai or None)
+            caption = _fit.caption
+            full_caption_c = _fit.full_caption
+            logger.info(
+                "Кэш caption visible_len=%d format=%s ts_total=%d ts_in_cap=%d stage=%s",
+                visible_length(caption),
+                _cap_source.format_name,
+                _fit.timestamps_total,
+                _fit.timestamps_shown,
+                _fit.trim_stage or "none",
+            )
             # FEATURE 2026-06-10: мгновенный resend mp3 по file_id (кэш-хит).
             # Telegram: resend по file_id бесплатен и без лимитов размера.
             _audio_fid = (cached or {}).get("audio_file_id") or ""
@@ -1740,9 +1689,6 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             # Отправляем полное описание отдельным сообщением (кэш-hit)
             _feat_full_c = await asettings_get("caption_full_text")
             if _feat_full_c and c_ai:
-                full_caption_c = _build_full_c(c_ai)
-                if visible_length(full_caption_c) > 4096:
-                    full_caption_c = safe_trim_caption(full_caption_c, 4096)
                 if full_caption_c and full_caption_c != caption:
                     try:
                         await update.message.reply_text(full_caption_c, parse_mode="HTML")
@@ -2447,106 +2393,41 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             )
             _ai_caption_base = {**(_ai_caption_base or ai_data), "_partial_publication_warning": _pub_status.warning}
 
-        def _build(data, **kw):
-            return build_caption(performer, title, duration, file_size_mb,
-                                 data, bitrate, url, telegraph_url, rutube_url, vk_url,
-                                 _q_link, _ref_link, _terms_link,
-                                 study_tg_url=study_analysis_tg or "",
-                                 reflection_tg_url=reflection_application_tg or "",
-                                 **kw)
-
-        _ts_limit = get_caption_timestamp_limit(_mat_format)
-        # Применяем format-лимит к таймкодам сразу (до проверки переполнения)
-        _ai_for_caption = _ai_caption_base
-        if _ai_caption_base and _ai_caption_base.get("timestamps"):
-            ts_limited = _trim_timestamps(_ai_caption_base["timestamps"], _ts_limit)
-            if ts_limited != _ai_caption_base["timestamps"]:
-                _ai_for_caption = {
-                    **_ai_caption_base,
-                    "timestamps": ts_limited,
-                    "_caption_timestamps_trimmed": True,
-                    "_caption_timestamps_total": _ts_total,
-                    "_caption_timestamps_shown": min(_ts_total, _ts_limit),
-                }
-        caption = _build(_ai_for_caption)
-        # Полный текст для отдельного сообщения (лимит 4096) — без обрезки
-        # Все таймкоды + полный main_topic + хэштеги
-        def _build_full(data):
-            return build_caption(performer, title, duration, file_size_mb,
-                                 data, bitrate, url, telegraph_url, rutube_url, vk_url,
-                                 _q_link, _ref_link, _terms_link,
-                                 study_tg_url=study_analysis_tg or "",
-                                 reflection_tg_url=reflection_application_tg or "",
-                                 full_mode=True)
-        full_caption = _build_full(_ai_caption_base) if _ai_caption_base else caption
-        if visible_length(full_caption) > 4096:
-            full_caption = safe_trim_caption(full_caption, 4096)
-        # Умное обрезание до 1024 видимых символов (без HTML-тегов)
-        _cap_ts_str = (_ai_for_caption or {}).get("timestamps", "") or ""  # отслеживаем фактические ts в caption
-        # Шаг 1: убрать хэштеги
-        if visible_length(caption) > 1024 and _ai_for_caption and _ai_for_caption.get("hashtags"):
-            caption = _build({**_ai_for_caption, "hashtags": ""})
-        # Шаг 1.5: убрать main_topic
-        if visible_length(caption) > 1024 and _ai_for_caption and _ai_for_caption.get("main_topic"):
-            caption = _build({**_ai_for_caption, "hashtags": "", "main_topic": ""})
-        # Шаг 2: сократить таймкоды ещё сильнее (половина лимита)
-        if visible_length(caption) > 1024 and _ai_for_caption and _ai_for_caption.get("timestamps"):
-            ts_half = _trim_timestamps(_ai_for_caption["timestamps"], max(_ts_limit // 2, 3))
-            caption = _build({**_ai_for_caption, "hashtags": "", "timestamps": ts_half, "_caption_timestamps_trimmed": True})
-            _cap_ts_str = ts_half
-        # Шаг 3: раньше таймкоды удалялись полностью. Это давало ts_in_cap=0
-        # даже при 11–13 таймкодах и визуально выглядело как «половина ролика
-        # потерялась». Сначала пробуем сверхкомпактный равномерный набор,
-        # сохраняющий начало/середину/финал материала.
-        if visible_length(caption) > 1024 and _ai_for_caption and _ai_for_caption.get("timestamps"):
-            _fit_found = False
-            for _mini_limit in (7, 5, 3):
-                ts_mini = _trim_timestamps(_ai_for_caption["timestamps"], min(_mini_limit, _ts_limit))
-                candidate = _build({
-                    **_ai_for_caption,
-                    "hashtags": "",
-                    "main_topic": "",
-                    "timestamps": ts_mini,
-                    "_caption_timestamps_trimmed": True,
-                })
-                if visible_length(candidate) <= 1024:
-                    caption = candidate
-                    _cap_ts_str = ts_mini
-                    _fit_found = True
-                    break
-            if not _fit_found:
-                caption = _build({**_ai_for_caption, "hashtags": "", "main_topic": "", "timestamps": "", "_caption_timestamps_trimmed": True})
-                _cap_ts_str = ""
-        # Шаг 4: последний резерв — шапка + ссылки, обрезаем без лома тегов
-        if visible_length(caption) > 1024:
-            platform_block = build_platform_links(url, rutube_url, vk_url)
-            tg_block = build_telegraph_links(
-                telegraph_url or "", _q_link, _ref_link, _terms_link,
-                study_tg_url=study_analysis_tg or "",
-                reflection_tg_url=reflection_application_tg or "",
-            )
-            # Правильный порядок: сначала Читать Подробный Разбор, потом Смотреть Видео
-            # + восстанавливаем заголовки секций (build_telegraph_links / build_platform_links их не включают)
-            footer_parts = []
-            if tg_block:
-                footer_parts.append("<b>📂 Читать Подробный Разбор:</b>")
-                footer_parts.append(tg_block)
-            if platform_block:
-                footer_parts.append("<b>Смотреть Видео:</b>")
-                footer_parts.append(platform_block)
-            footer = "\n".join(footer_parts)
-            header_lines = caption.split("\n")[:4]
-            header = "\n".join(header_lines)
-            caption = header + ("\n\n" + footer if footer else "")
-            caption = safe_trim_caption(caption, 1024)
-            _cap_ts_str = ""
-
-        # ts_in_cap — считаем из финального состояния после всех шагов trimming
-        _ts_in_cap = len([l for l in _cap_ts_str.split("\n") if l.strip()])
-        _caption_trim_stage = ""
-        if _ts_total > _ts_in_cap:
-            _caption_trim_stage = "timestamps_trimmed" if _ts_in_cap else "timestamps_removed"
-        logger.info(f"Caption visible_len={visible_length(caption)} format={_mat_format} ts_total={_ts_total} ts_cap_limit={_ts_limit} ts_in_cap={_ts_in_cap}")
+        # Стадия подписи: сборка, обрезка до 1024 видимых символов, метрики.
+        # Реализация одна на этот путь и на кэш-хит (pipelines/caption_stage.py).
+        _cap_source = CaptionSource(
+            performer=performer,
+            title=title,
+            duration=duration,
+            file_size_mb=file_size_mb,
+            bitrate=bitrate,
+            url=url,
+            telegraph_url=telegraph_url or "",
+            rutube_url=rutube_url,
+            vk_url=vk_url,
+            quotes_link=_q_link,
+            questions_link=_ref_link,
+            terms_link=_terms_link,
+            study_link=study_analysis_tg or "",
+            reflection_link=reflection_application_tg or "",
+            format_name=_mat_format,
+        )
+        _fit = fit_caption(_cap_source, _ai_caption_base)
+        caption = _fit.caption
+        full_caption = _fit.full_caption
+        _ts_in_cap = _fit.timestamps_shown
+        _caption_trim_stage = _fit.trim_stage
+        if _fit.data is not None:
+            _ai_caption_base = _fit.data
+        logger.info(
+            "Caption visible_len=%d format=%s ts_total=%d ts_cap_limit=%d ts_in_cap=%d stage=%s",
+            visible_length(caption),
+            _mat_format,
+            _ts_total,
+            _cap_source.timestamps_limit(),
+            _ts_in_cap,
+            _caption_trim_stage or "none",
+        )
         if ai_data:
             ai_data = {
                 **ai_data,
