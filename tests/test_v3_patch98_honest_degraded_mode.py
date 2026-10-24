@@ -62,28 +62,48 @@ def test_pipeline_honest_degraded_mode_is_wired():
     assert "expect_synopsis=bool(ai_data)" in src
 
 
+def _stage() -> str:
+    return __import__("pathlib").Path(
+        "pipelines/telegraph_repair_stage.py"
+    ).read_text(encoding="utf-8")
+
+
+def _pipeline() -> str:
+    return __import__("pathlib").Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+
+
 def test_pipeline_auto_repairs_telegraph_after_publish_by_default():
-    src = __import__("pathlib").Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    assert "TELEGRAPH_AUTO_REPAIR_AFTER_PUBLISH" in src
-    assert "repair_telegraph_page_url" in src
-    assert "Auto Telegraph repair after publish" in src
+    """Починка включена по умолчанию и подключена к пайплайну.
+
+    После выноса в `pipelines/telegraph_repair_stage.py` проверяются оба конца:
+    сам шаг (флаг, вызов сервиса) и то, что пайплайн его вызывает.
+    """
+    stage = _stage()
+    assert "TELEGRAPH_AUTO_REPAIR_AFTER_PUBLISH" in stage
+    assert "repair_telegraph_page_url" in stage
+    assert 'os.getenv(REPAIR_ENV, "1")' in stage
+    pipeline = _pipeline()
+    assert "repair_pages(" in pipeline
+    assert "enabled=repair_enabled()" in pipeline
 
 
 def test_pipeline_persists_auto_repair_status_in_generated_pages_archive():
-    src = __import__("pathlib").Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    assert "aupdate_generated_page_repair_status" in src
-    assert "_auto_repair_results" in src
-    assert "changed_pages=sum(1 for _r in _auto_repair_results" in src
+    stage = _stage()
+    assert "def changed_count" in stage
+    pipeline = _pipeline()
+    assert "aupdate_generated_page_repair_status" in pipeline
+    assert "changed_pages=_repair.changed_count" in pipeline
+    assert "errors=_repair.errors" in pipeline
 
 
 def test_pipeline_persists_auto_repair_unresolved_audit_summaries():
-    src = __import__("pathlib").Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    assert "unresolved audit" in src
-    assert "audit_summary" in src
-    assert "for x in (getattr(_r, \"error\", \"\"), getattr(_r, \"audit_summary\", \"\"))" in src
+    stage = _stage()
+    assert "unresolved audit" in stage
+    assert "audit_summary" in stage
+    assert "for value in (result.error, result.audit_summary)" in stage
 
 
 def test_pipeline_auto_repair_expands_multipart_telegraph_chains():
-    src = __import__("pathlib").Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    assert "expand_telegraph_page_chain" in src
-    assert "_expanded_repair_urls" in src
+    stage = _stage()
+    assert "expand_telegraph_page_chain" in stage
+    assert "chain = await expand(base) or [base]" in stage

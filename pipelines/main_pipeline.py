@@ -49,6 +49,7 @@ from pipelines.analysis_stage import AnalysisRequest, run_analysis
 from pipelines.caption_stage import CaptionSource, fit_caption
 from services.telegraph_pages import combined_study_reflection_enabled
 from pipelines.telegraph_nav import add_navigation
+from pipelines.telegraph_repair_stage import repair_enabled, repair_pages
 from pipelines.telegraph_render import RenderRequest, render_pages
 from services.render_clips_montage import create_extras_candidates  # FIX #11
 from pipelines.shorts import process_and_send_shorts
@@ -1955,42 +1956,13 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         # current postprocess/audit repair, and edit them if deterministic
         # cleanup changes nodes. Keeps technical pages readable while audit
         # history still records bug classes for generator fixes.
-        _auto_repair_results = []
-        if (os.getenv("TELEGRAPH_AUTO_REPAIR_AFTER_PUBLISH", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}:
-            _repair_urls = []
-            for _u in (telegraph_url, study_analysis_tg, reflection_application_tg, quotes_tg, questions_tg, terms_tg):
-                if _u and _u not in _repair_urls:
-                    _repair_urls.append(_u)
-            if _repair_urls:
-                try:
-                    from services.telegraph_repair import expand_telegraph_page_chain, repair_telegraph_page_url
-                    _expanded_repair_urls = []
-                    for _base_url in _repair_urls:
-                        for _expanded_url in (await expand_telegraph_page_chain(_base_url) or [_base_url]):
-                            if _expanded_url not in _expanded_repair_urls:
-                                _expanded_repair_urls.append(_expanded_url)
-                    _repair_urls = _expanded_repair_urls
-                    for _r_url in _repair_urls:
-                        _r_res = await repair_telegraph_page_url(_r_url)
-                        _auto_repair_results.append(_r_res)
-                        if _r_res.ok and _r_res.changed:
-                            logger.info("Auto Telegraph repair after publish: changed %s", _r_url)
-                        elif not _r_res.ok:
-                            logger.warning("Auto Telegraph repair after publish failed: %s error=%s", _r_url, _r_res.error)
-                        if getattr(_r_res, "audit_summary", ""):
-                            logger.warning(
-                                "Auto Telegraph repair after publish unresolved audit for %s: %s",
-                                _r_url, str(_r_res.audit_summary)[:300],
-                            )
-                        await asyncio.sleep(0.5)
-                    _changed_count = sum(1 for _r in _auto_repair_results if getattr(_r, "changed", False))
-                    if _auto_repair_results:
-                        logger.info(
-                            "Auto Telegraph repair after publish: pages=%d changed=%d",
-                            len(_auto_repair_results), _changed_count,
-                        )
-                except Exception as _auto_rep_err:
-                    logger.warning("Auto Telegraph repair after publish crashed non-fatally: %s", str(_auto_rep_err)[:180])
+        # Починка после публикации вынесена в pipelines/telegraph_repair_stage.py:
+        # разворот цепочки частей, изоляция страниц, структурный отчёт.
+        _repair = await repair_pages(
+            [telegraph_url, study_analysis_tg, reflection_application_tg,
+             quotes_tg, questions_tg, terms_tg],
+            enabled=repair_enabled(),
+        )
 
         # Новые страницы имеют приоритет над legacy compact в caption
         _q_link     = study_analysis_tg         or quotes_tg    or ""
@@ -2136,15 +2108,11 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     prompt_variant=os.getenv("PROMPT_EXPERIMENT_TAG", ""),
                 )
                 await asave_generated_page_record(_archive_record)
-                if _auto_repair_results:
+                if _repair.results:
                     await aupdate_generated_page_repair_status(
                         media_id,
-                        changed_pages=sum(1 for _r in _auto_repair_results if getattr(_r, "changed", False)),
-                        errors=[
-                            x for _r in _auto_repair_results
-                            for x in (getattr(_r, "error", ""), getattr(_r, "audit_summary", ""))
-                            if str(x or "").strip()
-                        ],
+                        changed_pages=_repair.changed_count,
+                        errors=_repair.errors,
                     )
                 _segment_export = await asave_segment_plan_export(
                     video_id=media_id,
