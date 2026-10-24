@@ -48,12 +48,8 @@ from services.search import (
 )
 from pipelines.analysis_stage import AnalysisRequest, run_analysis
 from pipelines.caption_stage import CaptionSource, fit_caption
-from services.telegraph_pages import (
-    create_telegraph_analytics, create_telegraph_questions,
-    create_telegraph_terms, create_telegraph_study_analysis,
-    create_telegraph_reflection_application, create_telegraph_study_reflection_combined,
-    combined_study_reflection_enabled,
-)
+from services.telegraph_pages import combined_study_reflection_enabled
+from pipelines.telegraph_render import RenderRequest, render_pages
 from services.render_clips_montage import create_extras_candidates  # FIX #11
 from pipelines.shorts import process_and_send_shorts
 from pipelines.clips import process_and_send_clips
@@ -1916,178 +1912,38 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             f"| feat: analytics={_feat_analytics} questions={_feat_questions} terms={_feat_terms} "
             f"study_analysis={_feat_study_analysis} reflection={_feat_reflection_application}"
         )
-        async def _noop():
-            return None
-
-        # -- Pipeline factories с fallback ----------------------------------
-
-        async def _analytics_pipeline():
-            # Пропускаем legacy Аналитику если новая Study Analysis включена
-            if _feat_study_analysis:
-                return None   # Study Analysis заменяет Аналитику
-            if not _feat_analytics:
-                return None
-            return await create_telegraph_analytics(ai_data, search_title, tg_author, url)
-
-        async def _questions_pipeline():
-            # Пропускаем legacy Вопросы если новое Размышление включено
-            if _feat_reflection_application:
-                return None   # Reflection заменяет Questions
-            if not _feat_questions:
-                return None
-            return await create_telegraph_questions(_questions, search_title, tg_author)
-
-        async def _terms_pipeline():
-            # Термины пропускаем если обе новые страницы включены
-            # (они уже включают термины в своих разделах)
-            if _feat_study_analysis and _feat_reflection_application:
-                return None
-            if not _feat_terms:
-                return None
-            return await create_telegraph_terms(_terms_data, search_title, tg_author, url)
-
-        async def _study_analysis_pipeline():
-            if not _feat_study_analysis:
-                return None
-            compact = lambda: create_telegraph_analytics(ai_data, search_title, tg_author, url)
-            logger.info("StudyAnalysis: enabled")
-            return await create_telegraph_study_analysis(
-                ai_data, search_title, tg_author, yt_url=url, compact_fn=compact,
-                rutube_url=_pre_rutube, vk_url=_pre_vk,
-                synopsis_outline=synopsis_outline,
+        # Стадия рендера вынесена в pipelines/telegraph_render.py: пять фабрик,
+        # «компактные» замены, opt-in объединённый режим Study+Reflection и
+        # перенос fallback-«Вопросов» из навигации. Сбой одной страницы не
+        # отменяет остальные, Study/Reflection идут последовательно (free tier).
+        _rendered = await render_pages(
+            RenderRequest(
+                ai_data=ai_data,
+                questions=_questions,
+                terms_data=_terms_data,
+                plan=_plan,
+                search_title=search_title,
+                author=tg_author,
+                url=url,
+                channel_name=channel_name,
+                full_title=full_title,
                 duration=duration,
-                video_id=media_id,
-            )
-
-        async def _reflection_application_pipeline():
-            if not _feat_reflection_application:
-                return None
-            compact = lambda: create_telegraph_questions(_questions, search_title, tg_author)
-            logger.info("ReflectionApplication: enabled")
-            return await create_telegraph_reflection_application(
-                _questions, search_title, tg_author,
-                ai_data=ai_data, duration=duration, yt_url=url,
-                compact_fn=compact,
-                rutube_url=_pre_rutube, vk_url=_pre_vk,
+                media_id=media_id,
+                rutube_url=_pre_rutube,
+                vk_url=_pre_vk,
                 synopsis_outline=synopsis_outline,
-                video_id=media_id,
+                early_links=_early_alt,
+                combined_enabled=combined_study_reflection_enabled(),
             )
-
-        async def _alt_links_result():
-            # Если alt-links уже нашли до публикации конспекта — не ищем повторно
-            if _early_alt is not None and isinstance(_early_alt, dict):
-                return _early_alt
-            if not ai_data:
-                return {"rutube": None, "vk": None}
-            return await find_alternative_links(
-                search_title, channel_name, duration,
-                ai_data=ai_data, fallback_title=full_title
-            )
-
-        # _has_early_alt больше не нужен
-        _ = None
-
-        # DEEP-QUALITY FIX [A]: Study + Reflection НЕ запускаются параллельно — на free tier
-        # это вызывает каскадные 503. Делаем их последовательно, остальное параллельно.
-        (
-            alt_links, quotes_tg, questions_tg, terms_tg,
-        ) = await asyncio.gather(
-            _alt_links_result(),
-            _analytics_pipeline(),
-            _questions_pipeline(),
-            _terms_pipeline(),
-            return_exceptions=True,
         )
-        # Study и Reflection: quality-first default keeps separate calls.
-        # Optional combined mode is opt-in only (COMBINE_STUDY_REFLECTION=1)
-        # and falls back to separate calls if either page is missing.
-        study_analysis_tg = None
-        reflection_application_tg = None
-        if _feat_study_analysis and _feat_reflection_application and combined_study_reflection_enabled():
-            try:
-                logger.info("Study+Reflection combined: enabled by COMBINE_STUDY_REFLECTION=1")
-                _study_compact = lambda: create_telegraph_analytics(ai_data, search_title, tg_author, url)
-                _reflection_compact = lambda: create_telegraph_questions(_questions, search_title, tg_author)
-                _combined_result = await create_telegraph_study_reflection_combined(
-                    ai_data, _questions, search_title, tg_author, yt_url=url,
-                    study_compact_fn=_study_compact, reflection_compact_fn=_reflection_compact,
-                    rutube_url=_pre_rutube, vk_url=_pre_vk,
-                    synopsis_outline=synopsis_outline, duration=duration,
-                )
-                if _combined_result:
-                    study_analysis_tg = _combined_result.study_url
-                    reflection_application_tg = _combined_result.reflection_url
-                    logger.info(
-                        "Study+Reflection combined result: mode=%s study_type=%s reflection_type=%s",
-                        _combined_result.mode,
-                        _combined_result.study_page_type,
-                        _combined_result.reflection_page_type,
-                    )
-            except Exception as _e_combined:
-                logger.warning(f"Study+Reflection combined pipeline error: {_e_combined}")
-                study_analysis_tg = None
-                reflection_application_tg = None
-
-        if not study_analysis_tg:
-            try:
-                study_analysis_tg = await _study_analysis_pipeline()
-            except Exception as _e_study:
-                logger.warning(f"StudyAnalysis pipeline error: {_e_study}")
-                study_analysis_tg = None
-        if not reflection_application_tg:
-            try:
-                reflection_application_tg = await _reflection_application_pipeline()
-            except Exception as _e_refl:
-                logger.warning(f"ReflectionApplication pipeline error: {_e_refl}")
-                reflection_application_tg = None
-        if isinstance(alt_links, Exception):
-            logger.warning(f"find_alternative_links error: {alt_links}", exc_info=alt_links)
-            alt_links = {"rutube": None, "vk": None}
-        if isinstance(quotes_tg, Exception):
-            logger.warning(f"analytics error: {quotes_tg}", exc_info=quotes_tg)
-            quotes_tg = None
-        if isinstance(questions_tg, Exception):
-            logger.warning(f"questions error: {questions_tg}", exc_info=questions_tg)
-            questions_tg = None
-        if isinstance(terms_tg, Exception):
-            logger.warning(f"terms error: {terms_tg}", exc_info=terms_tg)
-            terms_tg = None
-        if isinstance(study_analysis_tg, Exception):
-            logger.warning(f"study_analysis error: {study_analysis_tg}", exc_info=study_analysis_tg)
-            study_analysis_tg = None
-        if isinstance(reflection_application_tg, Exception):
-            logger.warning(f"reflection_application error: {reflection_application_tg}", exc_info=reflection_application_tg)
-            reflection_application_tg = None
-
-        # ── Навигация между тремя страницами ──────────────────────────────
-        # После публикации всех трёх страниц вшиваем ссылки друг на друга
-        # через editPage. Каждая страница получает блок навигации внизу.
-
-        # v10 FIX #16 (P1): если reflection_application_tg — это fallback compact_fn
-        # (create_telegraph_questions вернул URL «Вопросы:»), не вставляем его в nav
-        # как «Размышление». Live-аудит 39 страниц выявил 2 таких случая из 13 (15%).
-        def _is_reflection_fallback(url: str) -> bool:
-            if not url:
-                return False
-            path = url.replace("https://telegra.ph/", "").lower()
-            # Настоящее Размышление всегда начинается с razmyshlenie-
-            if path.startswith("razmyshlenie-"):
-                return False
-            # Явный Вопросы-URL (v9+)
-            if path.startswith("voprosy-"):
-                return True
-            # Любой другой path (конспект-подобный и т.д.) — считаем fallback
-            return True
-
-        if reflection_application_tg and _is_reflection_fallback(reflection_application_tg):
-            logger.warning(
-                "Navigation v10: reflection_application_tg выглядит как fallback Вопросы "
-                "(%s) — перемещаю в questions_tg, из nav убираю",
-                reflection_application_tg,
-            )
-            if not questions_tg:
-                questions_tg = reflection_application_tg
-            reflection_application_tg = None
+        alt_links                 = _rendered.alt_links
+        quotes_tg                 = _rendered.analytics_url
+        questions_tg              = _rendered.questions_url
+        terms_tg                  = _rendered.terms_url
+        study_analysis_tg         = _rendered.study_analysis_url
+        reflection_application_tg = _rendered.reflection_url
+        _nav_pages                = _rendered.as_nav_pages(telegraph_url or "")
+        _nav_filled               = _nav_pages
 
         _nav_pages = [
             ("Конспект",                telegraph_url or ""),
