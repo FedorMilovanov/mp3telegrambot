@@ -71,6 +71,18 @@ from core.generated_pages import (
 )
 from core.timestamp_quality import timestamp_coverage_ratio
 from core.bounded_cache import BoundedLRUDict
+from pipelines.media_guards import (
+    DEFAULT_MAX_DURATION_SEC,
+    disk_skip,
+    duration_skip,
+    env_int,
+    first_entry,
+    info_timeout_seconds,
+    live_skip,
+    lowest_free_gb,
+    parse_info_stdout,
+    temp_dir,
+)
 from services.mp3_conversion import reencode_mp3_64k_atomic
 
 import asyncio
@@ -437,10 +449,7 @@ async def _ytdlp_info_inprocess(url: str, timeout: int):
         return None
 
     # Если пришёл плейлист-подобный ответ — берём первую реальную запись.
-    if isinstance(info, dict) and info.get("entries") and not info.get("id"):
-        entries = [e for e in (info.get("entries") or []) if e]
-        info = entries[0] if entries else info
-    return info if isinstance(info, dict) else None
+    return first_entry(info)
 
 
 async def process_single_video(url, update, status_msg=None, progress_prefix="", context=None, silent_errors: bool = False):
@@ -459,10 +468,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         info_cmd = YTDLP_BASE_ARGS + [
             "--dump-json", "--no-playlist", url,
         ]
-        try:
-            _info_timeout = max(60, min(int(os.getenv("YTDLP_INFO_TIMEOUT", "180") or "180"), 900))
-        except ValueError:
-            _info_timeout = 180
+        _info_timeout = info_timeout_seconds()
 
         # AUDIT R31: сначала пробуем yt-dlp В ПРОЦЕССЕ (без спавна дочернего
         # python.exe) — это обходит краш 0xc0000142 на машинах, где PATH
@@ -484,62 +490,41 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 ) from None
             if info_proc.returncode != 0:
                 raise Exception(info_proc.stderr[-500:] if info_proc.stderr else "yt-dlp info error")
-            for line in info_proc.stdout.strip().splitlines():
-                line = line.strip()
-                if line.startswith("{"):
-                    try:
-                        info_dict = json.loads(line)
-                        break
-                    except json.JSONDecodeError:
-                        continue
+            info_dict = parse_info_stdout(info_proc.stdout)
         if not info_dict:
             raise Exception("Не удалось получить метаданные видео")
 
         # AUDIT M10: отбивка live-stream — yt-dlp начнёт качать бесконечный поток
-        if info_dict.get("is_live") or info_dict.get("live_status") in (
-            "is_live", "is_upcoming", "post_live"
-        ):
-            msg = "⚠️ Live-трансляции не поддерживаются. Дождитесь окончания и загрузите запись."
+        _skip = live_skip(info_dict)
+        if _skip:
             if not silent_errors:
-                await update.message.reply_text(msg)
-            logger.info(f"Пропуск live-stream: {url}")
+                await update.message.reply_text(_skip.message)
+            logger.info("Пропуск %s: %s (%s)", _skip.reason, url, _skip.details)
             return False
 
         # AUDIT M10: ограничение по длительности — Gemini обрежет конспект для слишком длинных,
         # пользователь получит обрезанный результат при потраченной квоте.
-        _max_dur = int(os.getenv("MAX_VIDEO_DURATION_SEC", "10800"))  # дефолт 3 часа
+        _max_dur = env_int(
+            "MAX_VIDEO_DURATION_SEC", DEFAULT_MAX_DURATION_SEC, minimum=60
+        )  # дефолт 3 часа
         _video_duration_meta = int(info_dict.get("duration") or 0)
-        if _video_duration_meta and _video_duration_meta > _max_dur:
-            msg = (
-                f"⚠️ Видео {_video_duration_meta // 60} мин — превышает лимит "
-                f"{_max_dur // 60} мин. Скиньте видео покороче."
-            )
+        _skip = duration_skip(_video_duration_meta, _max_dur)
+        if _skip:
             if not silent_errors:
-                await update.message.reply_text(msg)
-            logger.info(
-                f"Пропуск длинного видео: {url} ({_video_duration_meta}s > {_max_dur}s)"
-            )
+                await update.message.reply_text(_skip.message)
+            logger.info("Пропуск %s: %s (%s)", _skip.reason, url, _skip.details)
             return False
 
         # AUDIT: проверка свободного места на диске перед скачиванием
-        try:
-            _free_gb = shutil.disk_usage(DOWNLOAD_DIR).free / (1024 ** 3)
-            # ENG-режимы пишут видео в %TEMP% (ld_work) — он может быть на
-            # другом диске; берём минимум из двух
-            try:
-                import tempfile as _tf
-                _free_tmp = shutil.disk_usage(_tf.gettempdir()).free / (1024 ** 3)
-                _free_gb = min(_free_gb, _free_tmp)
-            except OSError:
-                pass
-            if _free_gb < 2.0:
-                msg = f"⚠️ Мало места на диске ({_free_gb:.1f} ГБ свободно). Освободите место и повторите."
-                if not silent_errors:
-                    await update.message.reply_text(msg)
-                logger.warning("Пропуск: мало места на диске (%.1f ГБ)", _free_gb)
-                return False
-        except OSError:
-            pass  # disk_usage может не работать на некоторых путях
+        # ENG-режимы пишут видео в %TEMP% (ld_work) — он может быть на другом
+        # диске; берём минимум из двух. Недоступный путь не блокирует обработку.
+        _free_gb = lowest_free_gb(DOWNLOAD_DIR, temp_dir())
+        _skip = disk_skip(_free_gb)
+        if _skip:
+            if not silent_errors:
+                await update.message.reply_text(_skip.message)
+            logger.warning("Пропуск: мало места на диске (%s)", _skip.details)
+            return False
 
         full_title   = info_dict.get("title", "audio")
         channel_name = info_dict.get("uploader", info_dict.get("channel", ""))
