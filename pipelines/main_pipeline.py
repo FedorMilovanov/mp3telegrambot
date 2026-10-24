@@ -49,7 +49,7 @@ from pipelines.analysis_stage import AnalysisRequest, run_analysis
 from pipelines.archive_stage import ArchiveRequest, archive_pages
 from pipelines.caption_inputs import build_caption_inputs
 from pipelines.caption_stage import CaptionSource, fit_caption
-from pipelines.delivery_stage import DeliveryRequest, deliver_result
+from pipelines.delivery_stage import DeliveryRequest, deliver_cached_result, deliver_result
 from services.telegraph_pages import combined_study_reflection_enabled
 from pipelines.telegraph_nav import add_navigation
 from pipelines.telegraph_repair_stage import repair_enabled, repair_pages
@@ -1586,181 +1586,34 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 _fit.timestamps_shown,
                 _fit.trim_stage or "none",
             )
-            # FEATURE 2026-06-10: мгновенный resend mp3 по file_id (кэш-хит).
-            # Telegram: resend по file_id бесплатен и без лимитов размера.
-            _audio_fid = (cached or {}).get("audio_file_id") or ""
-            _fid_sent = False
-            if _audio_fid and not _source_audio_delivery.enabled:
-                try:
-                    await update.message.reply_audio(
-                        audio=_audio_fid, caption=caption, parse_mode="HTML",
-                    )
-                    _fid_sent = True
-                    logger.info(f"Кэш mp3: отправлен по file_id ({media_id})")
-                except Exception as _fid_err:
-                    logger.warning(f"Кэш mp3 file_id протух: {_fid_err}")
-                    try:
-                        from core.database import adb_set_audio_file_id
-                        await adb_set_audio_file_id(media_id, "")
-                    except Exception:
-                        pass
-            if _fid_sent:
-                pass  # mp3 доставлен мгновенно — переходим к остальной отправке
-            else:
-              try:
-                from services.mp3_chapters import embed_chapters, timestamps_to_chapter_list
-                # FIX AUDIT R4: timestamps — строка, см. основной путь выше.
-                _ts_chap_c = timestamps_to_chapter_list((c_ai or {}).get("timestamps"))
-                _thumb_path_c = None
-                _thumb_candidates = list(THUMBS_DIR.glob(f"{media_id}_thumb*"))
-                if _thumb_candidates:
-                    _thumb_path_c = _thumb_candidates[0]
-                
-                _comment_c = f"Source: {url}"
-                if c_tg:
-                    _comment_c += f"\nSynopsis: {c_tg}"
-                
-                if _ts_chap_c:
-                    await asyncio.get_running_loop().run_in_executor(
-                        None, lambda: embed_chapters(
-                            mp3_path, _ts_chap_c, duration,
-                            title=(c_ai or {}).get("real_title") or title,
-                            performer=(c_ai or {}).get("real_author") or performer,
-                            thumb_path=_thumb_path_c,
-                            comment=_comment_c
-                        ))
-              except Exception as _chap_err_c:
-                logger.warning(f"MP3 chapters (кэш) skip: {_chap_err_c}")
-              with open(mp3_path, "rb") as af:
-                _title_c     = title_case_fragment((c_ai or {}).get("real_title") or title)
-                _performer_c = normalize_author_name((c_ai or {}).get("real_author") or performer)
-                for _attempt in range(3):
-                    try:
-                        af.seek(0)
-                        _sent_audio_msg = await _source_audio_delivery.send_or_defer(
-                            update.message,
-                            audio=af, fallback_path=mp3_path,
-                            title=_title_c, performer=_performer_c,
-                            thumbnail=thumb_buffer, duration=duration,
-                            caption=caption, parse_mode="HTML",
-                            write_timeout=180, read_timeout=180, connect_timeout=60,
-                        )
-                        try:
-                            _new_fid = getattr(getattr(_sent_audio_msg, "audio", None), "file_id", "")
-                            if _new_fid:
-                                from core.database import adb_set_audio_file_id
-                                await adb_set_audio_file_id(media_id, _new_fid)
-                        except Exception:
-                            pass
-                        break
-                    except Exception as upload_err:
-                        err_name = type(upload_err).__name__
-                        err_str  = str(upload_err).lower()
-                        # PTB RetryAfter (flood control): ждём ровно сколько просит API
-                        _ra = getattr(upload_err, "retry_after", None)
-                        if _ra is not None and _attempt < 2:
-                            logger.warning(f"Flood control: ждём {_ra}с перед повтором")
-                            await asyncio.sleep(float(_ra) + 1.0)
-                            continue
-                        _retryable_names = ("Timeout", "NetworkError", "TimedOut", "ReadError", "ConnectError")
-                        _retryable_strs  = ("internal server error", "server error", "bad gateway", "gateway timeout")
-                        _is_retryable = (
-                            any(x in err_name for x in _retryable_names) or
-                            any(x in err_str  for x in _retryable_strs)
-                        )
-                        if _attempt < 2 and _is_retryable:
-                            logger.warning(f"Кэш upload попытка {_attempt+1}/3 ({err_name}: {str(upload_err)[:120]}), повтор...")
-                            await asyncio.sleep(5 * (_attempt + 1))
-                        else:
-                            raise
-            # Отправляем полное описание отдельным сообщением (кэш-hit)
-            _feat_full_c = await asettings_get("caption_full_text")
-            if _feat_full_c and c_ai:
-                if full_caption_c and full_caption_c != caption:
-                    try:
-                        await update.message.reply_text(full_caption_c, parse_mode="HTML")
-                    except Exception as _fe:
-                        logger.warning(f"Кэш full caption send error: {_fe}")
-
-            # ── PDF (кэш-hit, опционально) ────────────────────────────
-            _feat_pdf_c = await asettings_get("generate_pdf")
-            if _feat_pdf_c and c_ai:
-                _pdf_status = None
-                _pdf_path_c = None
-                try:
-                    from services.pdf_generator import generate_sermon_pdf_async
-
-                    DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
-                    _pdf_path_c = str(DOWNLOAD_DIR / f"{media_id}_{uuid.uuid4().hex[:6]}.pdf")
-
-                    _raw_t_c = (c_ai.get("real_title") or "").strip() or (title or "").strip()
-                    _raw_a_c = (c_ai.get("real_author") or "").strip() or (performer or "").strip()
-                    _pdf_title_c = normalize_title_text(_raw_t_c) if _raw_t_c else "Без названия"
-                    _pdf_author_c = normalize_author_name(_raw_a_c) if _raw_a_c else "Неизвестный"
-                    _dur_str_c = format_timestamp(duration) if duration else ""
-
-                    _pdf_urls_c = {}
-                    if c_tg: _pdf_urls_c["synopsis"] = c_tg
-                    if _c_study: _pdf_urls_c["study"] = _c_study
-                    if _c_reflection: _pdf_urls_c["reflection"] = _c_reflection
-                    if c_ttg: _pdf_urls_c["terms"] = c_ttg
-
-                    if _pdf_urls_c:
-                        logger.info(f"PDF (кэш): генерирую ({list(_pdf_urls_c.keys())})")
-                        _pdf_status = await update.message.reply_text("📄 Генерирую PDF…")
-
-                        async def _pdf_progress_c(stage: str, pct: int):
-                            try:
-                                await _pdf_status.edit_text(f"📄 PDF: {stage} ({pct}%)")
-                            except Exception:
-                                pass
-
-                        _pdf_result_c = await generate_sermon_pdf_async(
-                            output_path=_pdf_path_c,
-                            title=_pdf_title_c,
-                            performer=_pdf_author_c,
-                            duration_str=_dur_str_c,
-                            urls=_pdf_urls_c,
-                            progress_callback=_pdf_progress_c,
-                        )
-
-                        if _pdf_result_c and Path(_pdf_result_c).exists():
-                            _size_c = Path(_pdf_result_c).stat().st_size
-                            if 200 < _size_c < 49 * 1024 * 1024:
-                                def _safe_fn_c(s: str) -> str:
-                                    return re.sub(r'[\\/:*?"<>|\n\r\t]', '', s).strip()[:80] or "doc"
-                                _fn_c = f"{_safe_fn_c(_pdf_author_c)} — {_safe_fn_c(_pdf_title_c)}.pdf"
-                                with open(_pdf_result_c, "rb") as _pdf_f:
-                                    await update.message.reply_document(
-                                        document=_pdf_f,
-                                        filename=_fn_c,
-                                        caption="📄 <b>PDF-версия материала</b>",
-                                        parse_mode="HTML",
-                                    )
-                                logger.info("PDF (кэш): отправлен")
-                            else:
-                                logger.warning(f"PDF (кэш): размер вне допустимого диапазона: {_size_c} байт")
-                                await update.message.reply_text("❌ Не удалось создать PDF.")
-                        else:
-                            logger.warning("PDF (кэш): generate_sermon_pdf_async вернул None или файл не создан")
-                            await update.message.reply_text("❌ Не удалось создать PDF.")
-
-                except ImportError:
-                    pass  # pdf_generator не установлен — тихо пропускаем
-                except Exception as _pdf_err_c:
-                    logger.warning(f"PDF (кэш) не удался: {_pdf_err_c}")
-                finally:
-                    if _pdf_path_c:
-                        try:
-                            Path(_pdf_path_c).unlink(missing_ok=True)
-                        except Exception:
-                            pass
-                    if _pdf_status:
-                        try:
-                            await _pdf_status.delete()
-                        except Exception:
-                            pass
-
+            # Cache-hit отправка использует тот же проверенный файловый upload,
+            # но сначала пробует мгновенный resend по Telegram file_id. Отличия
+            # cache-PDF/ID3 и отсутствие quiz остаются явной политикой стадии.
+            await deliver_cached_result(
+                DeliveryRequest(
+                    update=update,
+                    context=context,
+                    audio_delivery=_source_audio_delivery,
+                    mp3_path=mp3_path,
+                    media_id=media_id,
+                    source_url=url,
+                    title=title,
+                    performer=performer,
+                    duration=duration,
+                    file_size_mb=file_size_mb,
+                    caption=caption,
+                    full_caption=full_caption_c,
+                    download_dir=DOWNLOAD_DIR,
+                    thumbs_dir=THUMBS_DIR,
+                    ai_data=c_ai,
+                    thumbnail=thumb_buffer,
+                    synopsis_url=c_tg or "",
+                    study_url=_c_study,
+                    reflection_url=_c_reflection,
+                    terms_url=c_ttg,
+                    cached_file_id=(cached or {}).get("audio_file_id") or "",
+                )
+            )
 
             # --- LIVEDUB: отправка результата (общий хелпер) ---
             # FIX: раньше cleanup/return были случайно вложены в

@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
-"""Отправка свежего результата: MP3, полный текст, PDF и quiz.
+"""Отправка результата: свежий путь и cache-hit с instant resend.
 
 Порядок — часть пользовательского контракта: сначала обязательный MP3, затем
 необязательные дополнения. Ошибка загрузки MP3 проходит в общий обработчик
 пайплайна; главы ID3, полное описание, PDF и quiz не должны из-за собственной
 ошибки отменять уже готовый результат.
+
+Cache-hit сначала пытается отдать сохранённый Telegram file_id, а при его
+отказе очищает ID и использует файловый upload. Его исторические отличия от
+свежего пути (ID3-комментарий, PDF boundaries/messages, отсутствие quiz)
+явно управляются ``cache_hit`` и закреплены тестами, а не стёрты реюзом.
 
 Внешние зависимости собираются в `DeliveryDeps`. PDF и quiz импортируются
 лениво в момент вызова: необязательный генератор не может помешать отправке
@@ -17,7 +22,7 @@ import html
 import logging
 import re
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
@@ -98,6 +103,8 @@ class DeliveryRequest:
     used_client: Any = None
     announce_upload: bool = True
     upload_log_label: str = "Upload"
+    cache_hit: bool = False
+    cached_file_id: str = ""
 
     def pdf_urls(self) -> dict[str, str]:
         """URL секций для PDF в стабильном порядке, без пустых значений."""
@@ -137,6 +144,7 @@ class DeliveryOutcome:
     full_caption_sent: bool
     pdf_status: str
     quiz_sent: int
+    audio_via_file_id: bool = False
 
 
 def production_deps() -> DeliveryDeps:
@@ -183,10 +191,11 @@ async def embed_audio_chapters(request: DeliveryRequest, deps: DeliveryDeps) -> 
         comment = f"Source: {request.source_url}"
         if request.synopsis_url:
             comment += f"\nSynopsis: {request.synopsis_url}"
-        if request.study_url:
-            comment += f"\nStudy: {request.study_url}"
-        if request.reflection_url:
-            comment += f"\nReflection: {request.reflection_url}"
+        if not request.cache_hit:
+            if request.study_url:
+                comment += f"\nStudy: {request.study_url}"
+            if request.reflection_url:
+                comment += f"\nReflection: {request.reflection_url}"
 
         if not chapters:
             return False
@@ -203,13 +212,16 @@ async def embed_audio_chapters(request: DeliveryRequest, deps: DeliveryDeps) -> 
             ),
         )
     except Exception as err:
-        logger.warning("MP3 chapters skip: %s", err)
+        if request.cache_hit:
+            logger.warning("MP3 chapters (кэш) skip: %s", err)
+        else:
+            logger.warning("MP3 chapters skip: %s", err)
         return False
 
 
 async def send_audio(request: DeliveryRequest, deps: DeliveryDeps) -> Any:
     """Отправить MP3 с тремя попытками и сохранить file_id после первого успеха."""
-    if request.announce_upload:
+    if request.announce_upload and not request.cache_hit:
         try:
             await request.update.message.chat.send_action("upload_voice")
         except Exception:
@@ -251,13 +263,21 @@ async def send_audio(request: DeliveryRequest, deps: DeliveryDeps) -> Any:
                     attempt += 1
                     continue
                 if attempt < MAX_UPLOAD_ATTEMPTS - 1 and is_retryable_upload(upload_err):
-                    logger.warning(
-                        "%s попытка %d/3 не удалась (%s: %s), повтор...",
-                        request.upload_log_label,
-                        attempt + 1,
-                        type(upload_err).__name__,
-                        str(upload_err)[:120],
-                    )
+                    if request.cache_hit:
+                        logger.warning(
+                            "Кэш upload попытка %d/3 (%s: %s), повтор...",
+                            attempt + 1,
+                            type(upload_err).__name__,
+                            str(upload_err)[:120],
+                        )
+                    else:
+                        logger.warning(
+                            "%s попытка %d/3 не удалась (%s: %s), повтор...",
+                            request.upload_log_label,
+                            attempt + 1,
+                            type(upload_err).__name__,
+                            str(upload_err)[:120],
+                        )
                     await deps.sleep(5 * (attempt + 1))
                     attempt += 1
                     continue
@@ -272,7 +292,10 @@ async def send_full_caption(request: DeliveryRequest, deps: DeliveryDeps) -> boo
             await request.update.message.reply_text(request.full_caption, parse_mode="HTML")
             return True
         except Exception as err:
-            logger.warning("Full caption send error: %s", err)
+            if request.cache_hit:
+                logger.warning("Кэш full caption send error: %s", err)
+            else:
+                logger.warning("Full caption send error: %s", err)
     return False
 
 
@@ -299,7 +322,8 @@ async def send_pdf(request: DeliveryRequest, deps: DeliveryDeps) -> str:
         urls = request.pdf_urls()
 
         if urls:
-            logger.info("PDF: генерирую (%s)", list(urls.keys()))
+            log_prefix = "PDF (кэш)" if request.cache_hit else "PDF"
+            logger.info("%s: генерирую (%s)", log_prefix, list(urls.keys()))
             status_message = await request.update.message.reply_text("📄 Генерирую PDF…")
 
             async def pdf_progress(stage: str, pct: int) -> None:
@@ -318,11 +342,15 @@ async def send_pdf(request: DeliveryRequest, deps: DeliveryDeps) -> str:
             )
             if generated and Path(generated).exists():
                 size = Path(generated).stat().st_size
-                if size < MIN_PDF_BYTES:
+                if request.cache_hit and not (MIN_PDF_BYTES < size < MAX_PDF_BYTES):
+                    logger.warning("PDF (кэш): размер вне допустимого диапазона: %d байт", size)
+                    await request.update.message.reply_text("❌ Не удалось создать PDF.")
+                    outcome = "invalid_size"
+                elif not request.cache_hit and size < MIN_PDF_BYTES:
                     logger.warning("PDF пустой: %d байт", size)
                     await request.update.message.reply_text("❌ Не удалось создать PDF (файл пустой).")
                     outcome = "empty"
-                elif size > MAX_PDF_BYTES:
+                elif not request.cache_hit and size > MAX_PDF_BYTES:
                     logger.warning("PDF слишком большой: %d байт", size)
                     await request.update.message.reply_text("❌ PDF слишком большой для отправки.")
                     outcome = "too_large"
@@ -335,15 +363,21 @@ async def send_pdf(request: DeliveryRequest, deps: DeliveryDeps) -> str:
                             caption="📄 <b>PDF-версия материала</b>",
                             parse_mode="HTML",
                         )
-                    logger.info("PDF: отправлен")
+                    logger.info("%s: отправлен", log_prefix)
                     outcome = "sent"
             else:
-                logger.warning("PDF: generate_sermon_pdf_async вернул None или файл не создан")
+                logger.warning("%s: generate_sermon_pdf_async вернул None или файл не создан", log_prefix)
                 await request.update.message.reply_text("❌ Не удалось создать PDF.")
                 outcome = "missing"
     except Exception as err:
-        logger.warning("PDF генерация не удалась: %s", err, exc_info=True)
-        outcome = "error"
+        if request.cache_hit and isinstance(err, ImportError):
+            outcome = "unavailable"
+        elif request.cache_hit:
+            logger.warning("PDF (кэш) не удался: %s", err)
+            outcome = "error"
+        else:
+            logger.warning("PDF генерация не удалась: %s", err, exc_info=True)
+            outcome = "error"
     finally:
         if pdf_path:
             try:
@@ -391,9 +425,52 @@ async def send_quiz(request: DeliveryRequest, deps: DeliveryDeps) -> int:
     return 0
 
 
+async def _send_cached_file_id(request: DeliveryRequest, deps: DeliveryDeps) -> tuple[bool, Any]:
+    """Попробовать instant resend; протухший ID очистить и разрешить fallback."""
+    if not request.cached_file_id or request.audio_delivery.enabled:
+        return False, None
+    try:
+        sent = await request.update.message.reply_audio(
+            audio=request.cached_file_id,
+            caption=request.caption,
+            parse_mode="HTML",
+        )
+        logger.info("Кэш mp3: отправлен по file_id (%s)", request.media_id)
+        return True, sent
+    except Exception as err:
+        logger.warning("Кэш mp3 file_id протух: %s", err)
+        try:
+            await deps.save_file_id(request.media_id, "")
+        except Exception:
+            pass
+        return False, None
+
+
+async def deliver_cached_result(request: DeliveryRequest, deps: DeliveryDeps | None = None) -> DeliveryOutcome:
+    """Cache-hit: instant file_id → файловый fallback → полный текст → PDF."""
+    deps = deps or production_deps()
+    request = replace(request, cache_hit=True)
+    via_file_id, audio_message = await _send_cached_file_id(request, deps)
+    chapters_embedded = False
+    if not via_file_id:
+        chapters_embedded = await embed_audio_chapters(request, deps)
+        audio_message = await send_audio(request, deps)
+    full_caption_sent = await send_full_caption(request, deps)
+    pdf_status = await send_pdf(request, deps)
+    return DeliveryOutcome(
+        chapters_embedded=chapters_embedded,
+        audio_message=audio_message,
+        full_caption_sent=full_caption_sent,
+        pdf_status=pdf_status,
+        quiz_sent=0,
+        audio_via_file_id=via_file_id,
+    )
+
+
 async def deliver_result(request: DeliveryRequest, deps: DeliveryDeps | None = None) -> DeliveryOutcome:
     """Пройти свежую отправку целиком в прежнем порядке."""
     deps = deps or production_deps()
+    request = replace(request, cache_hit=False)
     chapters_embedded = await embed_audio_chapters(request, deps)
     audio_message = await send_audio(request, deps)
     logger.info(
@@ -421,6 +498,7 @@ __all__ = [
     "DeliveryDeps",
     "DeliveryOutcome",
     "DeliveryRequest",
+    "deliver_cached_result",
     "deliver_result",
     "embed_audio_chapters",
     "is_retryable_upload",

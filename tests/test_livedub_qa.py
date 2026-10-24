@@ -36,6 +36,7 @@ _REPLACED_CASES = {
     "test_upload_retry_honors_retry_after",
     "test_mp3_chapters_wired_both_branches",
     "test_audio_file_id_saved_on_first_send",
+    "test_cache_mp3_resend_wiring",
     "test_chat_actions_during_uploads",
 }
 _CASES = runpy.run_path(str(Path(__file__).with_name("livedub_qa_cases.py")))
@@ -196,22 +197,32 @@ def test_vot_token_is_documented_in_readme_help_and_status() -> None:
 
 
 def test_upload_retry_honors_retry_after() -> None:
-    main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     stage = Path("pipelines/delivery_stage.py").read_text(encoding="utf-8")
-    assert (main + stage).count('getattr(upload_err, "retry_after", None)') == 2
+    assert stage.count('getattr(upload_err, "retry_after", None)') == 1
 
 
 def test_mp3_chapters_wired_both_branches() -> None:
     main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     stage = Path("pipelines/delivery_stage.py").read_text(encoding="utf-8")
-    assert (main + stage).count("embed_chapters") >= 4
+    assert "deps.embed_chapters(" in stage
+    assert "await deliver_result(" in main
+    assert "await deliver_cached_result(" in main
 
 
 def test_audio_file_id_saved_on_first_send() -> None:
     main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     stage = Path("pipelines/delivery_stage.py").read_text(encoding="utf-8")
     assert "await deps.save_file_id(request.media_id, file_id)" in stage
-    assert "adb_set_audio_file_id(media_id, _new_fid)" in main
+    assert "await deliver_result(" in main
+    assert "await deliver_cached_result(" in main
+
+
+def test_cache_mp3_resend_wiring() -> None:
+    main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    stage = Path("pipelines/delivery_stage.py").read_text(encoding="utf-8")
+    assert 'cached_file_id=(cached or {}).get("audio_file_id")' in main
+    assert "file_id протух" in stage
+    assert 'await deps.save_file_id(request.media_id, "")' in stage
 
 
 def test_chat_actions_during_uploads() -> None:

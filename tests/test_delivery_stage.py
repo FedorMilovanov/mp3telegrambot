@@ -14,6 +14,7 @@ from pipelines.delivery_stage import (
     MIN_PDF_BYTES,
     DeliveryDeps,
     DeliveryRequest,
+    deliver_cached_result,
     deliver_result,
     embed_audio_chapters,
     is_retryable_upload,
@@ -61,7 +62,9 @@ class Message:
         self.status = StatusMessage()
         self.replies: list[tuple[str, dict[str, Any]]] = []
         self.documents: list[dict[str, Any]] = []
+        self.audio_replies: list[dict[str, Any]] = []
         self.fail_full_caption = False
+        self.fail_audio_reply = False
 
     async def reply_text(self, text: str, **kwargs: Any) -> Any:
         if text == "FULL" and self.fail_full_caption:
@@ -76,10 +79,17 @@ class Message:
         document["content"] = kwargs["document"].read()
         self.documents.append(document)
 
+    async def reply_audio(self, **kwargs: Any) -> Any:
+        if self.fail_audio_reply:
+            raise RuntimeError("stale file id")
+        self.audio_replies.append(dict(kwargs))
+        return SimpleNamespace(kind="cached-audio")
+
 
 class AudioDelivery:
-    def __init__(self, outcomes: list[Any] | None = None) -> None:
+    def __init__(self, outcomes: list[Any] | None = None, enabled: bool = False) -> None:
         self.outcomes = outcomes or []
+        self.enabled = enabled
         self.calls: list[dict[str, Any]] = []
         self.positions: list[int] = []
         self.messages: list[Any] = []
@@ -108,6 +118,7 @@ class FakeDeps:
         self.embed_result = True
         self.embed_kwargs: dict[str, Any] = {}
         self.saved_file_ids: list[tuple[str, str]] = []
+        self.file_id_attempts: list[tuple[str, str]] = []
         self.pdf_kind = "sent"
         self.pdf_size = 500
         self.pdf_kwargs: dict[str, Any] = {}
@@ -143,7 +154,8 @@ class FakeDeps:
 
     async def save_file_id(self, media_id: str, file_id: str) -> None:
         self.calls.append(("save_file_id", media_id))
-        self._fail("save_file_id")
+        self.file_id_attempts.append((media_id, file_id))
+        self._fail("save_file_id" if file_id else "clear_file_id")
         self.saved_file_ids.append((media_id, file_id))
 
     def parse_chapters(self, raw: Any) -> list[dict[str, Any]]:
@@ -689,15 +701,186 @@ async def test_quiz_empty_and_failure_are_nonfatal(tmp_path: Path, mode: str) ->
     assert not any(name == "send_quiz" for name, _ in fakes.calls)
 
 
+# ── Cache-hit: instant resend и исторические отличия ─────────────────────
+
+
+@pytest.mark.asyncio
+async def test_cached_chapters_keep_legacy_comment_and_log(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    fakes = FakeDeps()
+    request = make_request(tmp_path, Message(), AudioDelivery(), cache_hit=True)
+
+    assert await embed_audio_chapters(request, fakes.deps()) is True
+    assert fakes.embed_kwargs["comment"] == (
+        "Source: https://youtu.be/vid1\nSynopsis: https://telegra.ph/synopsis"
+    )
+
+    broken = FakeDeps()
+    broken.errors["parse_chapters"] = RuntimeError("bad cached timestamps")
+    with caplog.at_level(logging.WARNING):
+        assert await embed_audio_chapters(request, broken.deps()) is False
+    assert "MP3 chapters (кэш) skip: bad cached timestamps" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_cached_instant_resend_skips_upload_chapters_and_quiz(tmp_path: Path) -> None:
+    message = Message()
+    audio = AudioDelivery()
+    fakes = FakeDeps()
+    request = make_request(tmp_path, message, audio, cached_file_id="stored-fid")
+
+    outcome = await deliver_cached_result(request, fakes.deps())
+
+    assert outcome.audio_via_file_id is True
+    assert outcome.audio_message.kind == "cached-audio"
+    assert outcome.chapters_embedded is False
+    assert outcome.full_caption_sent is True
+    assert outcome.pdf_status == "sent"
+    assert outcome.quiz_sent == 0
+    assert message.audio_replies == [
+        {"audio": "stored-fid", "caption": "CAPTION", "parse_mode": "HTML"}
+    ]
+    assert audio.calls == []
+    assert fakes.saved_file_ids == []
+    assert not any(name == "parse_chapters" for name, _ in fakes.calls)
+    assert not any(name == "generate_quiz" for name, _ in fakes.calls)
+    assert len(message.documents) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("clear_fails", [False, True])
+async def test_cached_stale_id_clears_and_falls_back(
+    tmp_path: Path, clear_fails: bool
+) -> None:
+    message = Message()
+    message.fail_audio_reply = True
+    audio = AudioDelivery([sent_message("replacement-fid")])
+    fakes = FakeDeps()
+    fakes.settings["caption_full_text"] = False
+    fakes.settings["generate_pdf"] = False
+    if clear_fails:
+        fakes.errors["clear_file_id"] = RuntimeError("database read only")
+    request = make_request(tmp_path, message, audio, cached_file_id="stale-fid")
+
+    outcome = await deliver_cached_result(request, fakes.deps())
+
+    assert outcome.audio_via_file_id is False
+    assert outcome.chapters_embedded is True
+    assert outcome.audio_message.audio.file_id == "replacement-fid"
+    assert len(audio.calls) == 1
+    assert fakes.file_id_attempts == [("vid1", ""), ("vid1", "replacement-fid")]
+    expected_saved = [] if clear_fails else [("vid1", "")]
+    assert fakes.saved_file_ids == expected_saved + [("vid1", "replacement-fid")]
+    assert not any(name == "generate_quiz" for name, _ in fakes.calls)
+
+
+@pytest.mark.asyncio
+async def test_cached_deferral_bypasses_instant_id(tmp_path: Path) -> None:
+    message = Message()
+    audio = AudioDelivery([None], enabled=True)
+    fakes = FakeDeps()
+    fakes.settings["caption_full_text"] = False
+    fakes.settings["generate_pdf"] = False
+    request = make_request(tmp_path, message, audio, cached_file_id="stored-fid")
+
+    outcome = await deliver_cached_result(request, fakes.deps())
+
+    assert outcome.audio_via_file_id is False
+    assert outcome.audio_message is None
+    assert message.audio_replies == []
+    assert len(audio.calls) == 1
+    assert fakes.file_id_attempts == []
+
+
+@pytest.mark.asyncio
+async def test_cached_without_id_retries_with_legacy_log_and_no_action(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    message = Message()
+    audio = AudioDelivery([NetworkError("offline"), sent_message("new-fid")])
+    fakes = FakeDeps()
+    fakes.settings["caption_full_text"] = False
+    fakes.settings["generate_pdf"] = False
+    request = make_request(tmp_path, message, audio)
+
+    with caplog.at_level(logging.WARNING):
+        outcome = await deliver_cached_result(request, fakes.deps())
+
+    assert outcome.audio_message.audio.file_id == "new-fid"
+    assert message.chat.actions == []
+    assert [value for name, value in fakes.calls if name == "sleep"] == [5]
+    assert "Кэш upload попытка 1/3 (NetworkError: offline), повтор..." in caplog.text
+    assert "Кэш upload попытка 1/3 не удалась" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_cached_full_caption_failure_keeps_legacy_log(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    message = Message()
+    message.fail_full_caption = True
+    request = make_request(tmp_path, message, AudioDelivery(), cache_hit=True)
+
+    with caplog.at_level(logging.WARNING):
+        assert await send_full_caption(request, FakeDeps().deps()) is False
+    assert "Кэш full caption send error: full caption failed" in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("size", [MIN_PDF_BYTES, MAX_PDF_BYTES])
+async def test_cached_pdf_boundaries_remain_strict(tmp_path: Path, size: int) -> None:
+    message = Message()
+    fakes = FakeDeps()
+    fakes.pdf_size = size
+    request = make_request(tmp_path, message, AudioDelivery(), cache_hit=True)
+
+    assert await send_pdf(request, fakes.deps()) == "invalid_size"
+    assert message.documents == []
+    assert message.replies[-1][0] == "❌ Не удалось создать PDF."
+    assert message.status.deleted is True
+
+
+@pytest.mark.asyncio
+async def test_cached_pdf_import_error_is_silent(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    message = Message()
+    fakes = FakeDeps()
+    fakes.errors["generate_pdf"] = ImportError("reportlab unavailable")
+    request = make_request(tmp_path, message, AudioDelivery(), cache_hit=True)
+
+    with caplog.at_level(logging.WARNING):
+        assert await send_pdf(request, fakes.deps()) == "unavailable"
+    assert "PDF (кэш) не удался" not in caplog.text
+    assert message.status.deleted is True
+
+
+@pytest.mark.asyncio
+async def test_cached_pdf_other_error_keeps_legacy_log(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    message = Message()
+    fakes = FakeDeps()
+    fakes.errors["generate_pdf"] = RuntimeError("cached renderer failed")
+    request = make_request(tmp_path, message, AudioDelivery(), cache_hit=True)
+
+    with caplog.at_level(logging.WARNING):
+        assert await send_pdf(request, fakes.deps()) == "error"
+    assert "PDF (кэш) не удался: cached renderer failed" in caplog.text
+
+
 # ── Оркестратор и боевые границы ──────────────────────────────────────────
 
 
-def test_main_pipeline_wires_fresh_delivery_stage() -> None:
+def test_main_pipeline_wires_delivery_stages() -> None:
     source = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    assert "from pipelines.delivery_stage import DeliveryRequest, deliver_result" in source
+    assert "from pipelines.delivery_stage import DeliveryRequest, deliver_cached_result, deliver_result" in source
     assert "await deliver_result(" in source
+    assert "await deliver_cached_result(" in source
     assert "audio_delivery=_source_audio_delivery" in source
     assert "used_audio_part=used_audio_part" in source
+    assert 'cached_file_id=(cached or {}).get("audio_file_id")' in source
 
 
 @pytest.mark.asyncio
