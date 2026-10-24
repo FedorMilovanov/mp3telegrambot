@@ -93,7 +93,10 @@ def test_extract_scripture_refs_from_ai_data():
 
 def test_main_pipeline_wires_generated_pages_archive():
     source = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    assert "from core.generated_pages import" in source
-    assert "build_generated_page_record(" in source
-    assert "await asave_generated_page_record(_archive_record)" in source
-    assert "Generated pages archive saved" in source
+    stage = Path("pipelines/archive_stage.py").read_text(encoding="utf-8")
+    assert "from pipelines.archive_stage import ArchiveRequest, archive_pages" in source
+    assert "await archive_pages(" in source
+    assert "repair=_repair" in source
+    assert "build_generated_page_record(" in stage
+    assert "await deps.save_record(record)" in stage
+    assert "Generated pages archive saved" in stage
