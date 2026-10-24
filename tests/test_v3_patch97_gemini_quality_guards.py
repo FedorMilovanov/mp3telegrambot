@@ -28,10 +28,20 @@ def test_audio_and_telegraph_quota_are_not_model_global():
 
 
 def test_pipeline_skips_ai_pages_when_audio_analysis_missing():
+    """Без анализа AI-страницы не публикуются — иначе конспект был бы выдуман.
+
+    Раньше пять флагов гасились прямо в теле пайплайна (`_feat_* = False`).
+    Теперь это решение живёт в `pipelines/publication_plan.py`, поэтому проверка
+    идёт по контракту: пайплайн использует план, а план без анализа пуст
+    (матрица — в `tests/test_publication_plan.py`).
+    """
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     assert "AI analysis is missing/invalid" in src
-    assert "_feat_study_analysis = False" in src
-    assert "_feat_reflection_application = False" in src
+    assert "build_plan(_all_settings, ai_data=ai_data)" in src
+    assert "_feat_study_analysis         = _plan.study_analysis" in src
+    assert "_feat_reflection_application = _plan.reflection_application" in src
+    plan_src = Path("pipelines/publication_plan.py").read_text(encoding="utf-8")
+    assert "if not analysis_available:" in plan_src
 
 
 def test_short_rutube_matches_require_stricter_score():
