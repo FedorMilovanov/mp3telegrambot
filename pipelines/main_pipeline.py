@@ -41,7 +41,6 @@ from core.person_names import (
 from converters.md_telegraph import (
     visible_length,                                    # FIX #11
     get_caption_timestamp_limit,                       # FIX #11
-    _edit_telegraph_page,                              # FIX #11
 )
 from services.search import (
     find_alternative_links, _build_search_title,
@@ -49,6 +48,7 @@ from services.search import (
 from pipelines.analysis_stage import AnalysisRequest, run_analysis
 from pipelines.caption_stage import CaptionSource, fit_caption
 from services.telegraph_pages import combined_study_reflection_enabled
+from pipelines.telegraph_nav import add_navigation
 from pipelines.telegraph_render import RenderRequest, render_pages
 from services.render_clips_montage import create_extras_candidates  # FIX #11
 from pipelines.shorts import process_and_send_shorts
@@ -92,7 +92,6 @@ import json
 import os       # FIX #11
 import logging
 import re         # FIX #11
-import requests   # FIX #11
 import shutil     # FIX #11
 import subprocess # FIX #11
 import uuid
@@ -1942,176 +1941,12 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         terms_tg                  = _rendered.terms_url
         study_analysis_tg         = _rendered.study_analysis_url
         reflection_application_tg = _rendered.reflection_url
-        _nav_pages                = _rendered.as_nav_pages(telegraph_url or "")
-        _nav_filled               = _nav_pages
+        _nav_filled               = _rendered.as_nav_pages(telegraph_url or "")
 
-        _nav_pages = [
-            ("Конспект",                telegraph_url or ""),
-            ("Разбор материала",         study_analysis_tg or ""),
-            ("Размышление и применение", reflection_application_tg or ""),
-        ]
-        _nav_filled = [(label, u) for label, u in _nav_pages if u]
-        if len(_nav_filled) >= 2:
-            async def _add_nav_to_page(page_url: str, page_label: str):
-                """Добавляет навигационный блок на Telegraph-страницу через editPage.
-                v10 FIX #17 (P2): retry при сетевом сбое — 2 попытки с паузой 5с.
-                """
-                for _nav_attempt in range(2):
-                    try:
-                        loop = asyncio.get_running_loop()
-                        path = page_url.replace("https://telegra.ph/", "")
-                        resp = await loop.run_in_executor(None, lambda _p=path: requests.get(
-                            f"https://api.telegra.ph/getPage/{_p}?return_content=true",
-                            timeout=30,
-                        ))
-                        data = resp.json()
-                        if not data.get("ok"):
-                            return
-                        current_nodes = data["result"].get("content", [])
-                        current_title = data["result"].get("title", page_label)
-                        current_author = data["result"].get("author_name", "")
-
-                        # Строим навигационный блок
-                        nav_children = []
-                        for label, u in _nav_filled:
-                            if u == page_url:
-                                continue  # текущую страницу не ссылаем на себя
-                            if nav_children:
-                                nav_children.append(" · ")
-                            nav_children.append({"tag": "a", "attrs": {"href": u}, "children": [label]})
-
-                        if not nav_children:
-                            return
-
-                        nav_nodes = [
-                            {"tag": "hr"},
-                            # Keep the space outside <b>; Telegraph/Markdown renderers may trim
-                            # trailing spaces inside bold nodes, producing **...:**[link].
-                            {"tag": "p", "children": [{"tag": "b", "children": ["📂 Читать также:"]}, " "] + nav_children},
-                        ]
-
-                        # Убираем старый навигационный блок если уже был (повторный вызов)
-                        clean_nodes = current_nodes
-                        if (current_nodes and isinstance(current_nodes[-1], dict)
-                                and current_nodes[-1].get("tag") == "p"):
-                            last_children = current_nodes[-1].get("children", [])
-                            if last_children and isinstance(last_children[0], dict):
-                                last_text = last_children[0].get("children", [""])
-                                if last_text and "Читать также" in str(last_text[0]):
-                                    clean_nodes = current_nodes[:-2]  # убираем hr + p
-
-                        final_nodes = clean_nodes + nav_nodes
-                        # AUDIT R11: editPage возвращает False при CONTENT_TOO_BIG
-                        # (страница у лимита 64КБ) — раньше «успех» логировался
-                        # безусловно. Fallback: компактный вариант без hr/шапки.
-                        _nav_ok = await _edit_telegraph_page(page_url, current_title, current_author, final_nodes, loop)
-                        if not _nav_ok:
-                            _compact_nav = [{"tag": "p", "children": ["📂 "] + nav_children}]
-                            _nav_ok = await _edit_telegraph_page(
-                                page_url, current_title, current_author,
-                                clean_nodes + _compact_nav, loop,
-                            )
-                        if _nav_ok:
-                            logger.info(f"Navigation: добавлена навигация на {page_url}")
-                        else:
-                            logger.warning(
-                                f"Navigation: {page_url} у лимита размера Telegraph — "
-                                f"навигация не добавлена (страница цела, но без футера)"
-                            )
-
-                        # BUG-C FIX v2: propagate cross-nav to ALL subsequent parts
-                        # Walk chain: page 1 → page 2 → page 3 etc. via ➡ Дальше links
-                        _visited_parts = {page_url}
-                        _parts_to_visit = []
-
-                        def _find_next_urls(nodes_list):
-                            """Extract all ➡ Дальше URLs from nodes."""
-                            urls = []
-                            for _pn in nodes_list:
-                                if not isinstance(_pn, dict):
-                                    continue
-                                for _ch in _pn.get("children", []):
-                                    if (isinstance(_ch, dict) and _ch.get("tag") == "a"
-                                            and "➡" in str(_ch.get("children", []))):
-                                        _href = _ch.get("attrs", {}).get("href", "")
-                                        if _href:
-                                            # Normalize relative URLs to full
-                                            if _href.startswith("/"):
-                                                _href = "https://telegra.ph" + _href
-                                            urls.append(_href)
-                                    # Also check nested children (nav block may have deeper structure)
-                                    if isinstance(_ch, dict):
-                                        for _gch in _ch.get("children", []):
-                                            if (isinstance(_gch, dict) and _gch.get("tag") == "a"
-                                                    and "➡" in str(_gch.get("children", []))):
-                                                _href = _gch.get("attrs", {}).get("href", "")
-                                                if _href:
-                                                    if _href.startswith("/"):
-                                                        _href = "https://telegra.ph" + _href
-                                                    urls.append(_href)
-                            return urls
-
-                        _parts_to_visit = _find_next_urls(current_nodes)
-
-                        for _part_url in _parts_to_visit:
-                            if _part_url in _visited_parts:
-                                continue
-                            _visited_parts.add(_part_url)
-                            try:
-                                _p_path = _part_url.replace("https://telegra.ph/", "").lstrip("/")
-                                _p_resp = await loop.run_in_executor(None, lambda _pp=_p_path: requests.get(
-                                    f"https://api.telegra.ph/getPage/{_pp}?return_content=true",
-                                    timeout=30,
-                                ))
-                                _p_data = _p_resp.json()
-                                if _p_data.get("ok"):
-                                    _p_nodes = _p_data["result"].get("content", [])
-                                    _p_title = _p_data["result"].get("title", "")
-                                    _p_author = _p_data["result"].get("author_name", "")
-                                    # Add any further ➡ links to the visit queue
-                                    for _next in _find_next_urls(_p_nodes):
-                                        if _next not in _visited_parts:
-                                            _parts_to_visit.append(_next)
-                                    # Check if cross-nav already added
-                                    _already = any(
-                                        isinstance(n, dict) and
-                                        "Читать также" in str(n.get("children", ""))
-                                        for n in _p_nodes[-3:]
-                                    )
-                                    if not _already:
-                                        _p_ok = await _edit_telegraph_page(
-                                            _part_url, _p_title, _p_author,
-                                            _p_nodes + nav_nodes, loop
-                                        )
-                                        if not _p_ok:
-                                            _compact_nav = [{"tag": "p", "children": ["📂 "] + nav_children}]
-                                            _p_ok = await _edit_telegraph_page(
-                                                _part_url, _p_title, _p_author,
-                                                _p_nodes + _compact_nav, loop
-                                            )
-                                        if _p_ok:
-                                            logger.info(f"Navigation: добавлена навигация на {_part_url} (часть 2+)")
-                                        else:
-                                            logger.warning(
-                                                f"Navigation: часть {_part_url} у лимита размера — без футера"
-                                            )
-                            except Exception as _e:
-                                logger.warning(f"Navigation: не удалось добавить на часть {_part_url}: {_e}")
-
-                        return  # успех — выходим из retry-цикла
-                    except Exception as _nav_err:
-                        if _nav_attempt == 0:
-                            logger.warning(
-                                f"Navigation: ошибка на {page_url} (попытка 1/2): {_nav_err} — retry через 5с"
-                            )
-                            await asyncio.sleep(5)
-                        else:
-                            logger.warning(
-                                f"Navigation: не удалось добавить навигацию на {page_url}: {_nav_err}"
-                            )
-
-            nav_tasks = [_add_nav_to_page(u, label) for label, u in _nav_filled]
-            await asyncio.gather(*nav_tasks, return_exceptions=True)
+        # Навигация вынесена в pipelines/telegraph_nav.py: сборка блока,
+        # повторный прогон без дублей, компактный вариант у лимита размера,
+        # обход частей по «➡ Дальше» и две попытки при сетевом сбое.
+        await add_navigation(_nav_filled)
 
 
         # Deterministic post-publish safety repair. This is not a manual

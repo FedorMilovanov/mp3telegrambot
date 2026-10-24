@@ -18,9 +18,20 @@ def _flat(node):
 
 
 def test_navigation_block_uses_space_outside_bold_label():
-    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    assert '"children": [{"tag": "b", "children": ["📂 Читать также:"]}, " "] + nav_children' in src
-    assert '"📂 Читать также: "]}] + nav_children' not in src
+    """Пробел — вне <b>: иначе рендер срезает его и получается **...:**[ссылка]."""
+    from pipelines.telegraph_nav import NAV_HEADER, nav_nodes
+
+    nodes = nav_nodes(
+        "https://telegra.ph/self",
+        [("Другая", "https://telegra.ph/other")],
+    )
+    children = nodes[1]["children"]
+    assert children[0] == {"tag": "b", "children": [NAV_HEADER]}
+    assert children[1] == " "
+
+    src = Path("pipelines/telegraph_nav.py").read_text(encoding="utf-8")
+    assert 'Читать также: "]' not in src
+    assert "Читать также: " not in NAV_HEADER
 
 
 def test_combined_pages_publish_with_page_prefix_and_quality_size_guard():

@@ -130,13 +130,35 @@ def test_section_titles_lose_leading_bullets():
 # ── 5. Навигация честная: fallback + warning вместо ложного успеха ─
 
 def test_navigation_checks_edit_result():
-    src = (ROOT / "pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    assert "_nav_ok = await _edit_telegraph_page" in src
+    """Результат editPage проверяется, а не логируется «успех» безусловно.
+
+    После выноса навигации (P0-3) правило живёт в `pipelines/telegraph_nav.py`:
+    проверяются и код, и поведение — отказ Telegraph даёт компактный вариант,
+    а не тихую потерю футера.
+    """
+    import asyncio
+
+    from pipelines.telegraph_nav import PageContent, PageIO, add_navigation
+
+    src = (ROOT / "pipelines/telegraph_nav.py").read_text(encoding="utf-8")
     assert "у лимита размера" in src
-    # компактный fallback без hr
-    assert src.count('["📂 "] + nav_children') >= 2, (
-        "и главная страница, и части 2+ должны иметь компактный nav-fallback"
-    )
+    assert "if await io.edit(" in src  # результат editPage используется
+
+    pages = ["https://telegra.ph/a", "https://telegra.ph/b"]
+    edited = []
+
+    async def fetch(url):
+        return PageContent(url=url, title="t", author="a", nodes=[{"tag": "p", "children": ["x"]}])
+
+    async def edit(url, title, author, nodes):
+        ok = "Читать также" not in str(nodes)
+        if ok:
+            edited.append((url, nodes))
+        return ok
+
+    asyncio.run(add_navigation([("A", pages[0]), ("B", pages[1])], PageIO(fetch=fetch, edit=edit)))
+    assert len(edited) == 2
+    assert all("📂" in str(nodes[-1]) for _, nodes in edited)
 
 
 # ── 6. Промты: плотность мысли ──────────────────────────────────
