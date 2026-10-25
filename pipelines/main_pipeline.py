@@ -24,7 +24,7 @@ from core.database import (
     get_prompt_fingerprint,                            # FIX #11
 )
 from core.utils import (
-    cleanup_files, is_media_url, parse_title, prepare_thumbnail,
+    cleanup_files, is_media_url, parse_title,
     check_rate_limit, update_rate_limit, format_timestamp,  # FIX #11
 )
 from core.text_utils import (
@@ -55,6 +55,7 @@ from services.telegraph_pages import combined_study_reflection_enabled
 from pipelines.telegraph_nav import add_navigation
 from pipelines.telegraph_repair_stage import repair_enabled, repair_pages
 from pipelines.telegraph_render import RenderRequest, render_pages
+from pipelines.thumbnail_stage import load_thumbnail
 from services.render_clips_montage import create_extras_candidates  # FIX #11
 from pipelines.shorts import process_and_send_shorts
 from pipelines.clips import process_and_send_clips
@@ -1469,33 +1470,13 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             _c_reflection = cached.get("reflection_tg_url") or ""
             # Термины скрываем если обе новые страницы есть
             c_ttg  = "" if (_c_study and _c_reflection) else (cached.get("terms_tg_url") or "")
-            # Обложка
-            thumb_buffer = None
-            try:
-                _existing_thumb = list(THUMBS_DIR.glob(f"{media_id}_thumb*"))
-                if _existing_thumb:
-                    thumb_buffer = prepare_thumbnail(_existing_thumb[0])
-                    logger.info(f"Обложка кэш (hit): используем {_existing_thumb[0].name}")
-                else:
-                    thumb_cmd = YTDLP_BASE_ARGS + [
-                        "--skip-download", "--write-thumbnail", "--no-playlist",
-                        "--convert-thumbnails", "jpg",
-                        "--output", str(THUMBS_DIR / f"{media_id}_thumb.%(ext)s"), url,
-                    ]
-                    _thumb_proc = await run_cancellable_process(
-                        thumb_cmd, timeout=30, text=True
-                    )
-                    if _thumb_proc.returncode != 0:
-                        _thumb_err = (_thumb_proc.stderr or "").strip()[-300:]
-                        logger.warning(f"Обложка (кэш) yt-dlp rc={_thumb_proc.returncode}: {_thumb_err}")
-                    thumb_candidates = list(THUMBS_DIR.glob(f"{media_id}_thumb*"))
-                    if thumb_candidates:
-                        thumb_buffer = prepare_thumbnail(thumb_candidates[0])
-                        logger.info(f"Обложка (кэш) скачана: {thumb_candidates[0].name}")
-                    else:
-                        logger.warning(f"Обложка (кэш): файл не найден после yt-dlp (rc={_thumb_proc.returncode})")
-            except Exception as e:
-                logger.warning(f"Обложка (кэш) не скачана: {e}")
+            # Обложка — общая необязательная стадия для fresh и cache-hit.
+            thumb_buffer = await load_thumbnail(
+                media_id=media_id,
+                url=url,
+                thumbs_dir=THUMBS_DIR,
+                cache_hit=True,
+            )
             # Скачиваем аудио. Стадия вынесена в pipelines/audio_stage.py:
             # реюз файла, нормализация, сжатие под лимит — одна реализация на
             # два места (здесь и в основном пути), а не две разошедшиеся копии.
@@ -1610,33 +1591,12 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             return True
 
         await set_progress(status_msg, 2, {'title': f'📝 {title}', 'author': f'👤 {performer}  •  {duration//60}:{duration%60:02d}'}, prefix=_pp)
-        try:
-            # Проверяем кэш обложки — если файл уже есть, не скачиваем
-            _existing_thumb = list(THUMBS_DIR.glob(f"{media_id}_thumb*"))
-            if _existing_thumb:
-                thumb_buffer = prepare_thumbnail(_existing_thumb[0])
-                logger.info(f"Обложка кэш: используем {_existing_thumb[0].name}")
-            else:
-                thumb_cmd = YTDLP_BASE_ARGS + [
-                    "--skip-download", "--write-thumbnail", "--no-playlist",
-                    "--convert-thumbnails", "jpg",
-                    "--output", str(THUMBS_DIR / f"{media_id}_thumb.%(ext)s"),
-                    url,
-                ]
-                _thumb_proc = await run_cancellable_process(
-                    thumb_cmd, timeout=30, text=True
-                )
-                if _thumb_proc.returncode != 0:
-                    _thumb_err = (_thumb_proc.stderr or "").strip()[-300:]
-                    logger.warning(f"Обложка yt-dlp returncode={_thumb_proc.returncode}: {_thumb_err}")
-                thumb_candidates = list(THUMBS_DIR.glob(f"{media_id}_thumb*"))
-                if thumb_candidates:
-                    thumb_buffer = prepare_thumbnail(thumb_candidates[0])
-                    logger.info(f"Обложка скачана: {thumb_candidates[0].name}")
-                else:
-                    logger.warning(f"Обложка: файл не найден после yt-dlp (rc={_thumb_proc.returncode})")
-        except Exception as e:
-            logger.warning(f"Обложка не скачана: {e}")
+        thumb_buffer = await load_thumbnail(
+            media_id=media_id,
+            url=url,
+            thumbs_dir=THUMBS_DIR,
+            cache_hit=False,
+        )
 
         await set_progress(status_msg, 3, {'title': f'📝 {title}', 'author': f'👤 {performer}  •  {duration//60}:{duration%60:02d}', 'fmt': '🎵 128 kbps  •  MP3'}, prefix=_pp)
 

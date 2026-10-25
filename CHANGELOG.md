@@ -103,6 +103,10 @@
   записи и dirty-метаданные проверяются отдельной стадией с 35 тестами и
   100 % statement/branch coverage; thumbnail, audio, caption и delivery не
   связаны с этим решением внутри оркестратора.
+- Получение обложки fresh/cache-hit объединено в
+  `pipelines/thumbnail_stage.py`: reuse файла, yt-dlp с timeout 30 секунд,
+  использование появившегося файла после rc≠0 и некритичный `None` при ошибке
+  закреплены 17 тестами; различия текстов логов сохранены.
 - Ратчет покрытия по файлам (`tools/check_coverage_ratchet.py`,
   `docs/coverage_baseline.json`): покрытие объявленных файлов может только
   расти. Компенсирует `diff-cover` там, где изменения — проводка в
