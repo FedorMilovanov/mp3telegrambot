@@ -211,17 +211,21 @@ def test_upload_retry_honors_retry_after() -> None:
 def test_mp3_chapters_wired_both_branches() -> None:
     main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     stage = Path("pipelines/delivery_stage.py").read_text(encoding="utf-8")
+    cache_stage = Path("pipelines/cache_hit_delivery_stage.py").read_text(encoding="utf-8")
     assert "deps.embed_chapters(" in stage
     assert "await deliver_result(" in main
-    assert "await deliver_cached_result(" in main
+    assert "deliver=deliver_cached_result" in main
+    assert "await deliver(" in cache_stage
 
 
 def test_audio_file_id_saved_on_first_send() -> None:
     main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     stage = Path("pipelines/delivery_stage.py").read_text(encoding="utf-8")
+    cache_stage = Path("pipelines/cache_hit_delivery_stage.py").read_text(encoding="utf-8")
     assert "await deps.save_file_id(request.media_id, file_id)" in stage
     assert "await deliver_result(" in main
-    assert "await deliver_cached_result(" in main
+    assert "deliver=deliver_cached_result" in main
+    assert "await deliver(" in cache_stage
 
 
 def test_cache_mp3_resend_wiring() -> None:

@@ -326,15 +326,18 @@ def test_production_dependencies_keep_search_bindings() -> None:
 
 def test_main_pipeline_wires_cached_links_and_shared_presentation() -> None:
     source = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    stage = Path("pipelines/cache_hit_delivery_stage.py").read_text(encoding="utf-8")
 
     assert source.count("c_links = cached_page_links(cached)") == 1
-    assert source.count("_cached_caption = await prepare_cached_presentation(") == 1
-    assert "caption=_cached_caption.caption" in source
-    assert "full_caption=_cached_caption.full_caption" in source
-    assert "synopsis_url=c_links.synopsis_url or \"\"" in source
-    assert "study_url=c_links.study_url" in source
-    assert "reflection_url=c_links.reflection_url" in source
-    assert "terms_url=c_links.terms_url" in source
+    assert source.count("return await deliver_cache_hit(") == 1
+    assert "prepare=prepare_cached_presentation" in source
+    assert stage.count("cached_caption = await prepare(") == 1
+    assert "caption=cached_caption.caption" in stage
+    assert "full_caption=cached_caption.full_caption" in stage
+    assert "synopsis_url=request.links.synopsis_url or \"\"" in stage
+    assert "study_url=request.links.study_url" in stage
+    assert "reflection_url=request.links.reflection_url" in stage
+    assert "terms_url=request.links.terms_url" in stage
 
     cache_branch = source[source.index("if cache_decision.hit:"):]
     assert cache_branch.index("c_links = cached_page_links(cached)") < cache_branch.index(
@@ -342,5 +345,5 @@ def test_main_pipeline_wires_cached_links_and_shared_presentation() -> None:
     )
     assert cache_branch.index("await load_thumbnail(") < cache_branch.index("await prepare_audio(")
     assert cache_branch.index("await prepare_audio(") < cache_branch.index(
-        "await prepare_cached_presentation("
+        "return await deliver_cache_hit("
     )

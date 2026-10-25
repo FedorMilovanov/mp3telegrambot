@@ -90,4 +90,6 @@ def test_cache_caption_branch_no_longer_deletes_timestamps_as_first_fallback():
     assert "_trim_timestamps(" not in presentation, "своя копия обрезки в кэш-хите вернулась"
 
     main_src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    assert "await prepare_cached_presentation(" in main_src
+    cache_stage = Path("pipelines/cache_hit_delivery_stage.py").read_text(encoding="utf-8")
+    assert "prepare=prepare_cached_presentation" in main_src
+    assert "cached_caption = await prepare(" in cache_stage

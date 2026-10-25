@@ -36,8 +36,8 @@ from pipelines.archive_stage import archive_pages
 from pipelines.caption_inputs import build_caption_inputs
 from pipelines.caption_stage import CaptionSource, fit_caption
 from pipelines.cache_stage import load_cache
+from pipelines.cache_hit_delivery_stage import CacheHitDeliveryRequest, deliver_cache_hit
 from pipelines.cached_presentation_stage import (
-    CachedPresentationRequest,
     cached_page_links,
     prepare_cached_presentation,
 )
@@ -1214,8 +1214,10 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             # Alt-links и подпись — одна покрытая cache-hit стадия.
             # Сохранённые ссылки не вызывают внешний поиск; обрезка остаётся
             # в общей pipelines/caption_stage.py, как и на fresh-пути.
-            _cached_caption = await prepare_cached_presentation(
-                CachedPresentationRequest(
+            # Cache-hit presentation/delivery используют общие значения;
+            # thumbnail остаётся во владении внешнего finally.
+            return await deliver_cache_hit(
+                CacheHitDeliveryRequest(
                     links=c_links,
                     ai_data=c_ai,
                     full_title=full_title,
@@ -1228,45 +1230,21 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     source_url=url,
                     cached_rutube_url=cached.get("rutube_url", "") or "",
                     cached_vk_url=cached.get("vk_url", "") or "",
-                )
-            )
-            # Cache-hit отправка использует тот же проверенный файловый upload,
-            # но сначала пробует мгновенный resend по Telegram file_id. Отличия
-            # cache-PDF/ID3 и отсутствие quiz остаются явной политикой стадии.
-            await deliver_cached_result(
-                DeliveryRequest(
                     update=update,
                     context=context,
                     audio_delivery=_source_audio_delivery,
                     mp3_path=mp3_path,
                     media_id=media_id,
-                    source_url=url,
-                    title=title,
-                    performer=performer,
-                    duration=duration,
-                    file_size_mb=file_size_mb,
-                    caption=_cached_caption.caption,
-                    full_caption=_cached_caption.full_caption,
                     download_dir=DOWNLOAD_DIR,
                     thumbs_dir=THUMBS_DIR,
-                    ai_data=c_ai,
                     thumbnail=thumb_buffer,
-                    synopsis_url=c_links.synopsis_url or "",
-                    study_url=c_links.study_url,
-                    reflection_url=c_links.reflection_url,
-                    terms_url=c_links.terms_url,
                     cached_file_id=(cached or {}).get("audio_file_id") or "",
-                )
+                    send_livedub=_send_livedub_result,
+                    cleanup=cleanup_files,
+                ),
+                prepare=prepare_cached_presentation,
+                deliver=deliver_cached_result,
             )
-
-            # --- LIVEDUB: отправка результата (общий хелпер) ---
-            # FIX: раньше cleanup/return были случайно вложены в
-            # `if live_dub_task and context:` — кэш-хит в RUS-режиме
-            # не делал return и видео обрабатывалось заново.
-            await _send_livedub_result()
-            cleanup_files(media_id)
-            logger.info(f"Кэш hit: {media_id}")
-            return True
 
         await set_progress(status_msg, 2, {'title': f'📝 {title}', 'author': f'👤 {performer}  •  {duration//60}:{duration%60:02d}'}, prefix=_pp)
         thumb_buffer = await load_thumbnail(

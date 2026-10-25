@@ -556,6 +556,113 @@ def test_cache_audio_too_large_executes_shared_early_return(
     ]
 
 
+def test_cache_hit_delivery_reaches_real_stage_and_returns_success(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Main wiring executes the extracted stage with the original cached values."""
+    from io import BytesIO
+
+    from pipelines.cached_presentation_stage import CachedCaption
+    from pipelines.delivery_stage import DeliveryOutcome
+
+    events = []
+    audio_path = tmp_path / "cached.mp3"
+    thumbnail = BytesIO(b"thumbnail")
+    cached_ai = {"format": "lecture", "real_title": "Cached lecture"}
+    cached = {
+        "telegraph_url": "cached-synopsis",
+        "quotes_tg_url": "cached-quotes",
+        "questions_tg_url": "cached-questions",
+        "terms_tg_url": "cached-terms",
+        "study_tg_url": "cached-study",
+        "reflection_tg_url": "cached-reflection",
+        "rutube_url": "cached-rutube",
+        "vk_url": "cached-vk",
+        "audio_file_id": "cached-file-id",
+    }
+
+    async def info(_url, _timeout):
+        return {
+            "id": "media1",
+            "title": "Cached sermon",
+            "channel": "Cached channel",
+            "duration": 600,
+        }
+
+    async def cache_hit(_media_id):
+        return SimpleNamespace(hit=True, cached=cached, ai_data=cached_ai)
+
+    async def load_thumbnail(**_kwargs):
+        return thumbnail
+
+    async def audio_ready(**_kwargs):
+        return SimpleNamespace(path=audio_path, size_mb=1.0, bitrate="128k")
+
+    async def present(request):
+        events.append(("presentation", request))
+        return CachedCaption(caption="cached caption", full_caption="full cached caption")
+
+    async def deliver(request):
+        events.append(("delivery", request))
+        return DeliveryOutcome(
+            chapters_embedded=False,
+            audio_message=None,
+            full_caption_sent=True,
+            pdf_status="skipped",
+            quiz_sent=0,
+        )
+
+    def cleanup(media_id):
+        events.append(("cleanup", media_id))
+
+    monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", info)
+    monkeypatch.setattr(main_pipeline, "_db_conn", lambda: _FakeConn(""))
+    monkeypatch.setattr(main_pipeline, "lowest_free_gb", lambda *_paths: 50.0)
+    monkeypatch.setattr(main_pipeline, "cleanup_files", cleanup)
+    monkeypatch.setattr(main_pipeline, "load_cache", cache_hit)
+    monkeypatch.setattr(main_pipeline, "load_thumbnail", load_thumbnail)
+    monkeypatch.setattr(main_pipeline, "prepare_audio", audio_ready)
+    monkeypatch.setattr(main_pipeline, "prepare_cached_presentation", present)
+    monkeypatch.setattr(main_pipeline, "deliver_cached_result", deliver)
+    update = _FakeUpdate()
+
+    assert _run(update) is True
+    assert update.message.replies == []
+    assert [event[0] for event in events] == ["presentation", "delivery", "cleanup"]
+    assert events[-1] == ("cleanup", "media1")
+
+    presentation = events[0][1]
+    assert presentation.ai_data is cached_ai
+    assert presentation.full_title == "Cached sermon"
+    assert presentation.channel_name == "Cached channel"
+    assert presentation.duration == 600
+    assert presentation.file_size_mb == 1.0
+    assert presentation.bitrate == "128k"
+    assert presentation.cached_rutube_url == "cached-rutube"
+    assert presentation.cached_vk_url == "cached-vk"
+    assert presentation.links.synopsis_url == "cached-synopsis"
+    assert presentation.links.quotes_url == "cached-quotes"
+    assert presentation.links.questions_url == "cached-questions"
+    assert presentation.links.terms_url == ""
+    assert presentation.links.study_url == "cached-study"
+    assert presentation.links.reflection_url == "cached-reflection"
+
+    delivery = events[1][1]
+    assert delivery.update is update
+    assert delivery.context is None
+    assert delivery.mp3_path == audio_path
+    assert delivery.media_id == "media1"
+    assert delivery.caption == "cached caption"
+    assert delivery.full_caption == "full cached caption"
+    assert delivery.ai_data is cached_ai
+    assert delivery.thumbnail is thumbnail
+    assert delivery.cached_file_id == "cached-file-id"
+    assert delivery.synopsis_url == "cached-synopsis"
+    assert delivery.study_url == "cached-study"
+    assert delivery.reflection_url == "cached-reflection"
+    assert delivery.terms_url == ""
+    assert delivery.cache_hit is False
+
 
 def test_fresh_caption_finalization_reaches_delivery_boundary(
     monkeypatch: pytest.MonkeyPatch, tmp_path
