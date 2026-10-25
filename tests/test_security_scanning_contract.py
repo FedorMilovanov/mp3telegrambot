@@ -87,6 +87,22 @@ def test_pre_commit_is_installed_by_the_documented_lock() -> None:
     assert declared["pre-commit"].specifier.contains(locked["pre-commit"], prereleases=True)
 
 
+def test_pre_push_does_not_run_file_mutating_hooks_on_tag_refs() -> None:
+    """На tag push только read-only repo gate, не форматирование всего дерева."""
+    config = _load(PRE_COMMIT)
+    default_stages = config.get("default_stages")
+    assert default_stages == ["pre-commit"]
+
+    hooks = [hook for repo in config["repos"] for hook in repo["hooks"]]
+    for hook in hooks:
+        stages = hook.get("stages", default_stages)
+        if hook["id"] == "repo-gates":
+            assert stages == ["pre-push"]
+        else:
+            assert hook.get("stages") == ["pre-commit"], hook["id"]
+            assert "pre-push" not in stages, hook["id"]
+
+
 def test_pre_commit_does_not_own_a_second_ruff_version() -> None:
     """ruff ставится из lock'а; ruff-pre-commit дал бы вторую версию."""
     config = _load(PRE_COMMIT)
