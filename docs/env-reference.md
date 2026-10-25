@@ -86,9 +86,9 @@
 | `LIVEDUB_QA_CONFIRM_ISSUES` | `services/gemini_qa_policy.py`, `services/livedub_qa_trust.py` | `1` | — | — |
 | `LIVEDUB_QA_VERIFY_MODEL` | `services/livedub_qa_trust.py` | `` | да | да |
 | `LIVEDUB_QA_VERIFY_THINKING` | `services/livedub_qa_trust.py` | `low` | — | да |
-| `LIVEDUB_QUICK_QA_MAX_DURATION` | `pipelines/main_pipeline.py`, `services/pre_main_policy.py` | `10800`, `120` | да | — |
-| `LIVEDUB_QUICK_QA_MODEL` | `pipelines/main_pipeline.py` | `` | да | да |
-| `LIVEDUB_QUICK_QA_THINKING` | `pipelines/main_pipeline.py` | `minimal` | да | да |
+| `LIVEDUB_QUICK_QA_MAX_DURATION` | `pipelines/livedub_quick_qa_stage.py`, `services/pre_main_policy.py` | `10800`, `120` | да | — |
+| `LIVEDUB_QUICK_QA_MODEL` | `pipelines/livedub_quick_qa_stage.py` | `` | да | да |
+| `LIVEDUB_QUICK_QA_THINKING` | `pipelines/livedub_quick_qa_stage.py` | `minimal` | да | да |
 | `LIVEDUB_RNNOISE_MODEL` | `core/database.py`, `services/livedub_mix.py` | `` | да | — |
 | `LIVEDUB_SEND_AUDIO` | `services/livedub_audio_companion.py` | `1` | — | — |
 | `LIVEDUB_SEND_DUAL_AUDIO` | `services/livedub_audio_companion.py` | `1` | — | — |

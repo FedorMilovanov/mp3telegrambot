@@ -137,9 +137,12 @@ def test_r42_qa_uses_clean_ru_track():
     assert "dub_audio_path: Optional[Path] = None" in qa_src
     assert "ЧИСТОЙ RU-дорожке" in qa_src
     pipe = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    # both QA call sites pass the clean track from find_pro_tracks
-    assert pipe.count("dub_audio_path=_clean_ru") == 2
-    assert pipe.count("find_pro_tracks(ld_work)[1]") == 2
+    quick = Path("pipelines/livedub_quick_qa_stage.py").read_text(encoding="utf-8")
+    # Both QA owners pass the clean track from find_pro_tracks.
+    assert "dub_audio_path=_clean_ru" in pipe
+    assert "find_pro_tracks(ld_work)[1]" in pipe
+    assert "dub_audio_path=clean_ru" in quick
+    assert "find_pro_tracks(workdir)[1]" in quick
 
 
 # ── technical_check: silent dub detection ────────────────────────────────────
