@@ -1037,9 +1037,21 @@ edit classification, multipart chain probing и archive repair pacing.
 Измерено: проект 60,57 % → **61,23 %**. Полный прогон:
 **4 002 passed, 3 skipped**.
 
-**Цели main и handlers для P0-3 достигнуты:** main — 1 195 ≤ 1 200 строк и
-85,12 % ≥ 50 % statement coverage; handlers — 55,71 % ≥ 55 %. Открытым
-остаётся Telegraph ≥ 60 % (сейчас 36,88 %).
+**Шаг 44 (сделано) — Telegraph pages acceptance.** Тридцать восемь behavior-
+тестов без production-изменений выполняют Analytics/Questions/Terms assembly,
+JSON recovery, Gemini budgets, recursive expanded publishing, TOC fallback,
+content-audit retry и compact fallback решения.
+
+* `services/telegraph_pages.py`: 149/937 → **688/937 statements (73,43 %)**;
+* `services/telegraph*.py` в целом: 772/2 093 (36,88 %) →
+  **1 311/2 093 (62,64 %)**;
+* main остаётся 1 195 строк и 85,12 %; handlers — 55,71 %.
+
+Измерено: проект 61,23 % → **62,82 %**. Полный прогон:
+**4 040 passed, 3 skipped**.
+
+**Все цели P0-3 достигнуты:** main — 1 195 ≤ 1 200 строк и 85,12 % ≥ 50 %
+statement coverage; handlers — 55,71 % ≥ 55 %; Telegraph — 62,64 % ≥ 60 %.
 
 ### P0-4. Сканирование секретов и SAST
 
