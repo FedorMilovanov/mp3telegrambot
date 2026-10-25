@@ -36,8 +36,12 @@ def test_pipeline_skips_ai_pages_when_audio_analysis_missing():
     (матрица — в `tests/test_publication_plan.py`).
     """
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    assert "AI analysis is missing/invalid" in src
-    assert "build_plan(_all_settings, ai_data=ai_data)" in src
+    context_src = Path("pipelines/publication_context_stage.py").read_text(
+        encoding="utf-8"
+    )
+    assert "prepare_publication_context(" in src
+    assert "AI analysis is missing/invalid" in context_src
+    assert "build_plan(_all_settings, ai_data=ai_data)" in context_src
     assert "_feat_study_analysis         = _plan.study_analysis" in src
     assert "_feat_reflection_application = _plan.reflection_application" in src
     plan_src = Path("pipelines/publication_plan.py").read_text(encoding="utf-8")
