@@ -50,6 +50,11 @@ from pipelines.archive_stage import ArchiveRequest, archive_pages
 from pipelines.caption_inputs import build_caption_inputs
 from pipelines.caption_stage import CaptionSource, fit_caption
 from pipelines.cache_stage import load_cache
+from pipelines.cached_presentation_stage import (
+    CachedPresentationRequest,
+    cached_page_links,
+    prepare_cached_presentation,
+)
 from pipelines.delivery_stage import DeliveryRequest, deliver_cached_result, deliver_result
 from pipelines.extras_stage import ExtrasRequest, run_extras
 from services.telegraph_pages import combined_study_reflection_enabled
@@ -1444,13 +1449,9 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             c_ai = cache_decision.ai_data or {}
             logger.info(f"Кэш hit: {media_id} — отдаём без Gemini")
             await set_progress(status_msg, 6, prefix=_pp)
-            c_tg   = cached["telegraph_url"]
-            c_qtg  = cached.get("quotes_tg_url", "")
-            c_qqtg = cached.get("questions_tg_url", "")
-            _c_study      = cached.get("study_tg_url") or ""
-            _c_reflection = cached.get("reflection_tg_url") or ""
-            # Термины скрываем если обе новые страницы есть
-            c_ttg  = "" if (_c_study and _c_reflection) else (cached.get("terms_tg_url") or "")
+            # Telegraph-ссылки читаются в прежней точке, до thumbnail/audio;
+            # required-key policy и скрытие дубля Терминов не меняются.
+            c_links = cached_page_links(cached)
             # Обложка — общая необязательная стадия для fresh и cache-hit.
             thumb_buffer = await load_thumbnail(
                 media_id=media_id,
@@ -1489,49 +1490,24 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             file_size_mb = _audio.size_mb
             bitrate = _audio.bitrate
             logger.info(f"Кэш аудио: {mp3_path.name} = {file_size_mb:.1f} MB")
-            # Ищем альт-ссылки: берём из кэша если сохранены, иначе делаем запрос
-            _cached_rutube = (cached or {}).get("rutube_url", "") or ""
-            _cached_vk     = (cached or {}).get("vk_url", "") or ""
-            if _cached_rutube or _cached_vk:
-                rutube_url = _cached_rutube
-                vk_url     = _cached_vk
-                logger.info(f"Кэш alt-links: rutube={bool(rutube_url)} vk={bool(vk_url)}")
-            else:
-                _cache_search_title = _build_search_title(c_ai, full_title)
-                alt_links = await find_alternative_links(_cache_search_title, channel_name, duration, ai_data=c_ai, fallback_title=full_title)
-                rutube_url = (alt_links or {}).get("rutube") or ""
-                vk_url     = (alt_links or {}).get("vk") or ""
-
-            # Стадия подписи вынесена в pipelines/caption_stage.py: алгоритм
-            # обрезки был здесь второй копией и разошёлся с основным путём
-            # (футер в обратном порядке, без заголовков секций).
-            _cap_source = CaptionSource(
-                performer=performer,
-                title=title,
-                duration=duration,
-                file_size_mb=file_size_mb,
-                bitrate=bitrate,
-                url=url,
-                telegraph_url=c_tg,
-                rutube_url=rutube_url,
-                vk_url=vk_url,
-                quotes_link=c_qtg,
-                questions_link=c_qqtg,
-                terms_link=c_ttg,
-                study_link=_c_study,
-                reflection_link=_c_reflection,
-                format_name=(c_ai or {}).get("format", "other"),
-            )
-            _fit = fit_caption(_cap_source, c_ai or None)
-            caption = _fit.caption
-            full_caption_c = _fit.full_caption
-            logger.info(
-                "Кэш caption visible_len=%d format=%s ts_total=%d ts_in_cap=%d stage=%s",
-                visible_length(caption),
-                _cap_source.format_name,
-                _fit.timestamps_total,
-                _fit.timestamps_shown,
-                _fit.trim_stage or "none",
+            # Alt-links и подпись — одна покрытая cache-hit стадия.
+            # Сохранённые ссылки не вызывают внешний поиск; обрезка остаётся
+            # в общей pipelines/caption_stage.py, как и на fresh-пути.
+            _cached_caption = await prepare_cached_presentation(
+                CachedPresentationRequest(
+                    links=c_links,
+                    ai_data=c_ai,
+                    full_title=full_title,
+                    channel_name=channel_name,
+                    title=title,
+                    performer=performer,
+                    duration=duration,
+                    file_size_mb=file_size_mb,
+                    bitrate=bitrate,
+                    source_url=url,
+                    cached_rutube_url=cached.get("rutube_url", "") or "",
+                    cached_vk_url=cached.get("vk_url", "") or "",
+                )
             )
             # Cache-hit отправка использует тот же проверенный файловый upload,
             # но сначала пробует мгновенный resend по Telegram file_id. Отличия
@@ -1548,16 +1524,16 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     performer=performer,
                     duration=duration,
                     file_size_mb=file_size_mb,
-                    caption=caption,
-                    full_caption=full_caption_c,
+                    caption=_cached_caption.caption,
+                    full_caption=_cached_caption.full_caption,
                     download_dir=DOWNLOAD_DIR,
                     thumbs_dir=THUMBS_DIR,
                     ai_data=c_ai,
                     thumbnail=thumb_buffer,
-                    synopsis_url=c_tg or "",
-                    study_url=_c_study,
-                    reflection_url=_c_reflection,
-                    terms_url=c_ttg,
+                    synopsis_url=c_links.synopsis_url or "",
+                    study_url=c_links.study_url,
+                    reflection_url=c_links.reflection_url,
+                    terms_url=c_links.terms_url,
                     cached_file_id=(cached or {}).get("audio_file_id") or "",
                 )
             )
