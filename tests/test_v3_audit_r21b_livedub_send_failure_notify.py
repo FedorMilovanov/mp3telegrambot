@@ -18,6 +18,7 @@ Request Entity Too Large".
 from pathlib import Path
 
 SRC = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+FAILURE_STAGE_SRC = Path("pipelines/livedub_failure_stage.py").read_text(encoding="utf-8")
 
 
 def _send_livedub_result_body() -> str:
@@ -45,9 +46,10 @@ def test_send_failure_notifies_user_instead_of_silent_false():
     idx = body.rfind("except Exception as e:")
     assert idx != -1, "финальный catch-all не найден"
     window = body[idx:idx + 2000]
-    assert "context.bot.send_message" in window, (
-        "финальный catch-all должен уведомлять юзера о неудачной отправке, "
-        "а не просто return False молча"
+    assert "notify_livedub_send_failure(" in window
+    assert "await bot.send_message" in FAILURE_STAGE_SRC, (
+        "failure stage должна уведомлять юзера о неудачной отправке, "
+        "а не просто возвращать управление молча"
     )
     assert "return False" in window
 
@@ -56,5 +58,7 @@ def test_send_failure_notice_hints_at_local_bot_api_when_size_related():
     body = _send_livedub_result_body()
     idx = body.rfind("except Exception as e:")
     window = body[idx:idx + 2000]
-    assert "LOCAL_BOT_API_URL" in window
-    assert "get_max_file_size_mb" in window
+    assert "max_file_size_mb=get_max_file_size_mb" in window
+    assert "LOCAL_BOT_API_URL" in FAILURE_STAGE_SRC
+    assert "max_file_size_mb() <= 50" in FAILURE_STAGE_SRC
+    assert "entity too large" in FAILURE_STAGE_SRC

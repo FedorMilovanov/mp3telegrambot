@@ -55,6 +55,9 @@ _REPLACED_CASES = {
     # Background await/error markers now have separate orchestration and
     # policy owners; the two-module replacement lives below.
     "test_eng_full_livedub_failure_is_not_silent",
+    # Timeout duration stays in main; its user-facing notice has a dedicated
+    # failure-stage owner. The two-module replacement lives below.
+    "test_pipeline_waitfor_covers_retry_budget",
 }
 _CASES = runpy.run_path(str(Path(__file__).with_name("livedub_qa_cases.py")))
 globals().update(
@@ -307,3 +310,11 @@ def test_eng_full_livedub_failure_is_not_silent() -> None:
     assert "проверка точности перевода не запускались" in failure_stage
     assert "wait_for_livedub_video(" in bg
     assert ".not_available" in stage and ".livedub_failed" in stage
+
+
+def test_pipeline_waitfor_covers_retry_budget() -> None:
+    main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    stage = Path("pipelines/livedub_failure_stage.py").read_text(encoding="utf-8")
+    assert "timeout=1800" in main
+    assert "send_livedub_timeout_notice(" in main
+    assert "не успел за 30 минут" in stage
