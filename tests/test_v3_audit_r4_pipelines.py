@@ -64,10 +64,11 @@ def test_shorts_keeps_video_for_clips_and_never_deletes_borrowed():
 def test_livedub_bg_cancels_inner_tasks_on_teardown():
     """cancel() родителя оставлял vot-cli/ffmpeg/Whisper качать сотни МБ в
     уже удалённый rmtree каталог."""
-    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    bg = src.split("async def _run_livedub_bg", 1)[1].split("live_dub_task = asyncio.create_task", 1)[0]
-    assert "finally:" in bg
-    assert "asyncio.gather(*_inner, return_exceptions=True)" in bg
+    main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    stage = Path("pipelines/livedub_background_stage.py").read_text(encoding="utf-8")
+    assert "run_livedub_background(" in main
+    assert "finally:" in stage
+    assert "asyncio.gather(*inner, return_exceptions=True)" in stage
 
 
 def test_too_big_early_return_still_sends_livedub():

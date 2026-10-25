@@ -1093,8 +1093,11 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
 
     notice_bot = None
     context = None
+    livedub_background_calls = []
     if mode.startswith("eng"):
         import services.yandex_live_dub as live_dub
+
+        real_create_task = main_pipeline.asyncio.create_task
 
         async def no_cache(_media_id):
             return None
@@ -1103,6 +1106,10 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
             return False
 
         def completed_livedub_task(coroutine):
+            if mode == "eng_video_send_failure":
+                # Execute the real main wrapper and background stage. The same
+                # original factory is used for its inner make-video task.
+                return real_create_task(coroutine)
             assert coroutine.cr_code.co_name == "_run_livedub_bg"
             coroutine.close()
             task = asyncio.get_running_loop().create_future()
@@ -1111,7 +1118,6 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
             elif mode == "eng_send_failure":
                 task.set_exception(RuntimeError("Request Entity Too Large <bad>"))
             elif mode in (
-                "eng_video_send_failure",
                 "eng_video_cover_retry_failure",
                 "eng_video_too_large",
             ):
@@ -1154,6 +1160,14 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
             monkeypatch.setattr(main_pipeline, "get_max_file_size_mb", lambda: 50)
         elif mode == "eng_video_too_large":
             monkeypatch.setattr(main_pipeline, "get_max_file_size_mb", lambda: 0)
+        if mode == "eng_video_send_failure":
+            async def background_video(*args, **kwargs):
+                livedub_background_calls.append((args, kwargs))
+                translated = tmp_path / "background-translated.mp4"
+                translated.write_bytes(b"video")
+                return translated
+
+            monkeypatch.setattr(main_pipeline, "make_livedub_video", background_video)
         if mode in (
             "eng_video_send_failure",
             "eng_video_cover_retry_failure",
@@ -1234,6 +1248,15 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
             assert "Не удалось отправить видео с переводом" in notice["text"]
             assert "Request Entity Too Large &lt;bad&gt;" in notice["text"]
             assert "LOCAL_BOT_API_URL" in notice["text"]
+        if mode == "eng_video_send_failure":
+            assert len(livedub_background_calls) == 1
+            background_args, background_kwargs = livedub_background_calls[0]
+            assert background_args[1].name.startswith("livedub_media1")
+            assert background_kwargs == {
+                "pro_mix": False,
+                "duration": 600,
+                "source_lang": "",
+            }
         if mode in ("eng_video_send_failure", "eng_video_cover_retry_failure"):
             assert notice_bot.actions == [
                 {"chat_id": 987, "action": "upload_video"}

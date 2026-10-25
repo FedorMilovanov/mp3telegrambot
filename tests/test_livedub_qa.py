@@ -52,8 +52,10 @@ _REPLACED_CASES = {
     # Publication card/title preparation имеет отдельного source owner;
     # объединённая отправка и запрет второй AI-карточки проверяются ниже.
     "test_quick_modes_share_unified_publication_metadata_without_second_ai_card",
-    # Background await/error markers now have separate orchestration and
-    # policy owners; the two-module replacement lives below.
+    # Background subtitle/dub orchestration now has a dedicated source owner;
+    # two-module replacements live below without changing historical cases.
+    "test_pipeline_wires_dub_srt",
+    "test_eng_subtitles_skip_by_known_duration",
     "test_eng_full_livedub_failure_is_not_silent",
     # Timeout duration stays in main; its user-facing notice has a dedicated
     # failure-stage owner. The two-module replacement lives below.
@@ -268,13 +270,33 @@ def test_chat_actions_during_uploads() -> None:
     assert 'action="upload_video"' in video_stage
 
 
+def test_pipeline_wires_dub_srt() -> None:
+    main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    stage = Path("pipelines/livedub_background_stage.py").read_text(encoding="utf-8")
+    assert "get_translation_subtitles" in stage
+    assert "dub_srt_path=_dub_srt" in main
+
+
+def test_eng_subtitles_skip_by_known_duration() -> None:
+    """Known duration reaches the service before any audio download."""
+    service = Path("services/eng_subtitles.py").read_text(encoding="utf-8")
+    stage = Path("pipelines/livedub_background_stage.py").read_text(encoding="utf-8")
+    assert "known_duration: int = 0" in service
+    assert "субтитры пропущены без скачивания" in service
+    assert "known_duration=duration" in stage
+
+
 def test_pipeline_wires_pro_mix_and_autofix() -> None:
     main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     stage = Path("pipelines/livedub_dub_stage.py").read_text(encoding="utf-8")
     assert 'asettings_get("livedub_pro_mix")' in main
     assert 'asettings_get("livedub_autofix")' in main
-    assert "make_livedub_video(" in main
+    background = Path("pipelines/livedub_background_stage.py").read_text(
+        encoding="utf-8"
+    )
+    assert "make_video=make_livedub_video" in main
     assert "pro_mix=_livedub_pro_mix" in main
+    assert "make_video(" in background
     assert "build_pro_dub" in stage
     assert "apply_qa_audio_fixes" in main
 
@@ -301,13 +323,14 @@ def test_vot_duration_and_token_alias_threaded_through() -> None:
 def test_quick_modes_share_unified_publication_metadata_without_second_ai_card() -> None:
     main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     stage = Path("pipelines/livedub_publication_stage.py").read_text(encoding="utf-8")
+    background = Path("pipelines/livedub_background_stage.py").read_text(encoding="utf-8")
     assert 'user_mode in ("eng_fast", "eng_fast_qa")' in main
     assert "prepare_livedub_publication(" in main
     assert "build_publication_card" in stage
     assert "format_video_caption(_publication_card" in main
     assert "_send_livedub_info_card_once" not in main
     assert "format_livedub_info_message" not in main
-    assert "get_translation_subtitles(video_url, workdir)" in main
+    assert "get_translation_subtitles(video_url, workdir)" in background
 
 
 def test_eng_full_livedub_failure_is_not_silent() -> None:
@@ -315,12 +338,13 @@ def test_eng_full_livedub_failure_is_not_silent() -> None:
     stage = Path("pipelines/livedub_dub_stage.py").read_text(encoding="utf-8")
     failure_stage = Path("pipelines/livedub_failure_stage.py").read_text(encoding="utf-8")
     helper = main[main.index("async def _send_livedub_result"):main.index("performer, title = parse_title")]
-    bg = main[main.index("async def _run_livedub_bg"):main.index("live_dub_task = asyncio.create_task")]
+    bg = Path("pipelines/livedub_background_stage.py").read_text(encoding="utf-8")
     assert "_notify_full_livedub_failure" in helper
     assert "send_full_livedub_failure_notice(" in helper
     assert "Живой перевод Яндекса не получился" in failure_stage
     assert "проверка точности перевода не запускались" in failure_stage
-    assert "wait_for_livedub_video(" in bg
+    assert "wait_video=wait_for_livedub_video" in main
+    assert "wait_video(dub_task, workdir)" in bg
     assert ".not_available" in stage and ".livedub_failed" in stage
 
 

@@ -858,8 +858,27 @@ cover → retry без cover → generic failure через настоящий m
 64,60 % → **65,08 %**, проект 58,14 % → **58,17 %**. Полный прогон:
 **3 805 passed, 3 skipped**.
 
-До приёмки P0-3 остался сам оркестратор — цель ≤ 1 200 строк (сейчас 1 447
-строк из 3 120 исходных); цель ≥ 50 % statement coverage уже выполнена.
+**Шаг 33 (сделано) — параллельный LiveDub background.** Координация Gemini
+subtitles, LiveDub video, переводных SRT, fallback merge и teardown дочерних
+tasks вынесена в `pipelines/livedub_background_stage.py`. Main сохраняет
+historical service monkeypatch seams через callback-и.
+
+* девять прямых тестов дают стадии 100 % statement/branch coverage: успешный
+  дубляж с субтитрами и без них, необязательные ошибки обоих SRT, fallback на
+  оригинал, пустой результат, primary error, parent cancellation и защита
+  результата от `BaseException` во время teardown;
+* fresh `eng_video_send_failure` integration теперь действительно выполняет
+  main wrapper, background stage и `wait_for_livedub_video`, а не получает
+  заранее готовый future; прежний size-error notice остаётся неизменным;
+* source-owner assertions для SRT/duration/cancellation перенесены на
+  двухмодульный контракт; `tests/livedub_qa_cases.py` byte-stable.
+
+Измерено: `main_pipeline.py` 1 447 → **1 391 строка**, line-ratchet main
+65,08 % → **67,18 %**, проект 58,17 % → **58,25 %**. Полный прогон:
+**3 814 passed, 3 skipped**.
+
+До приёмки P0-3 остался сам оркестратор — цель ≤ 1 200 строк (сейчас 1 391
+строка из 3 120 исходных); цель ≥ 50 % statement coverage уже выполнена.
 
 ### P0-4. Сканирование секретов и SAST
 

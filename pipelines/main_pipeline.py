@@ -44,6 +44,7 @@ from pipelines.cached_presentation_stage import (
 from pipelines.delivery_stage import DeliveryRequest, deliver_cached_result, deliver_result
 from pipelines.extras_stage import ExtrasRequest, run_extras
 from pipelines.fresh_caption_stage import finalize_fresh_caption
+from pipelines.livedub_background_stage import run_livedub_background
 from pipelines.livedub_dub_stage import make_livedub_video, wait_for_livedub_video
 from pipelines.livedub_failure_stage import (
     notify_livedub_send_failure,
@@ -391,82 +392,25 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 _livedub_info_enabled = False
 
             async def _run_livedub_bg(video_url, workdir, source_lang=""):
-                # FIX AUDIT R4: внутренние таски объявлены до try — finally
-                # ниже отменяет их при cancel() родителя, иначе vot-cli/ffmpeg/
-                # Whisper продолжали качать сотни МБ и писать в каталог,
-                # который пайплайн уже rmtree-нул.
-                subs_task = None
-                dub_task = None
-                dub_subs_task = None
-                try:
-                    # Запускаем создание субтитров параллельно с скачиванием LiveDub
-                    if eng_subs_enabled:
-                        subs_task = asyncio.create_task(
-                            create_gemini_subtitles(video_url, workdir, known_duration=duration, lang=source_lang)
-                        )
-                    
-                    dub_task = asyncio.create_task(
-                        make_livedub_video(
-                            video_url,
-                            workdir,
-                            pro_mix=_livedub_pro_mix,
-                            duration=duration,
-                            source_lang=source_lang,
-                        )
-                    )
-
-                    # Субтитры перевода Яндекса — точный текст дубляжа для QA.
-                    # Качаются параллельно, сбой не критичен.
-                    if _livedub_qa_enabled or _livedub_info_enabled or _livedub_quick_qa_enabled:
-                        from services.yandex_live_dub import get_translation_subtitles
-                        dub_subs_task = asyncio.create_task(
-                            get_translation_subtitles(video_url, workdir)
-                        )
-
-                    srt_path = None
-                    if subs_task:
-                        try:
-                            srt_path = await subs_task
-                        except Exception as e:
-                            logger.warning(f"[EngSubtitles] Ошибка создания сабов: {e}")
-
-                    dub_path = await wait_for_livedub_video(dub_task, workdir)
-
-                    # Дожидаемся субтитров перевода (обычно готовы раньше дубляжа)
-                    if dub_subs_task:
-                        try:
-                            await asyncio.wait_for(dub_subs_task, timeout=60)
-                        except Exception as _dse:
-                            logger.info(f"[LiveDub] субтитры перевода не получены: {_dse}")
-
-                    if dub_path and dub_path.exists():
-                        # Яндекс отработал, вшиваем сабы
-                        if srt_path and srt_path.exists():
-                            final_video = await merge_subtitles(dub_path, srt_path, is_fallback=False)
-                            return final_video, False, True
-                        return dub_path, False, False
-                    else:
-                        # Яндекс упал, скачиваем оригинал и вшиваем сабы
-                        if srt_path and srt_path.exists():
-                            logger.info("[LiveDub] Перевод не удался, отправляем резерв с субтитрами")
-                            orig_video = await download_original_video(video_url, workdir)
-                            final_video = await merge_subtitles(orig_video, srt_path, is_fallback=True)
-                            return final_video, True, True
-                        return None, False, False
-
-                except Exception as e:
-                    logger.warning(f"[LiveDub Background] Ошибка: {e}")
-                    return None, False, False
-                finally:
-                    _inner = [t for t in (subs_task, dub_task, dub_subs_task)
-                              if t is not None and not t.done()]
-                    for _t in _inner:
-                        _t.cancel()
-                    if _inner:
-                        try:
-                            await asyncio.gather(*_inner, return_exceptions=True)
-                        except BaseException:
-                            pass
+                # Keep local service imports as historical monkeypatch seams.
+                return await run_livedub_background(
+                    video_url,
+                    workdir,
+                    source_lang=source_lang,
+                    duration=duration,
+                    subtitles_enabled=eng_subs_enabled,
+                    translation_subtitles_enabled=(
+                        _livedub_qa_enabled
+                        or _livedub_info_enabled
+                        or _livedub_quick_qa_enabled
+                    ),
+                    pro_mix=_livedub_pro_mix,
+                    create_subtitles=create_gemini_subtitles,
+                    make_video=make_livedub_video,
+                    wait_video=wait_for_livedub_video,
+                    merge_subtitles=merge_subtitles,
+                    download_original=download_original_video,
+                )
 
             live_dub_task = asyncio.create_task(_run_livedub_bg(url, ld_work, source_lang=source_lang))
         # --- END LIVEDUB ---
