@@ -52,6 +52,9 @@ _REPLACED_CASES = {
     # Publication card/title preparation имеет отдельного source owner;
     # объединённая отправка и запрет второй AI-карточки проверяются ниже.
     "test_quick_modes_share_unified_publication_metadata_without_second_ai_card",
+    # Background await/error markers now have separate orchestration and
+    # policy owners; the two-module replacement lives below.
+    "test_eng_full_livedub_failure_is_not_silent",
 }
 _CASES = runpy.run_path(str(Path(__file__).with_name("livedub_qa_cases.py")))
 globals().update(
@@ -290,3 +293,15 @@ def test_quick_modes_share_unified_publication_metadata_without_second_ai_card()
     assert "_send_livedub_info_card_once" not in main
     assert "format_livedub_info_message" not in main
     assert "get_translation_subtitles(video_url, workdir)" in main
+
+
+def test_eng_full_livedub_failure_is_not_silent() -> None:
+    main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    stage = Path("pipelines/livedub_dub_stage.py").read_text(encoding="utf-8")
+    helper = main[main.index("async def _send_livedub_result"):main.index("performer, title = parse_title")]
+    bg = main[main.index("async def _run_livedub_bg"):main.index("live_dub_task = asyncio.create_task")]
+    assert "_notify_full_livedub_failure" in helper
+    assert "Живой перевод Яндекса не получился" in helper
+    assert "проверка точности перевода не запускались" in helper
+    assert "wait_for_livedub_video(" in bg
+    assert ".not_available" in stage and ".livedub_failed" in stage

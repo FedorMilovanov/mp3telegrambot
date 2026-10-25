@@ -44,7 +44,7 @@ from pipelines.cached_presentation_stage import (
 from pipelines.delivery_stage import DeliveryRequest, deliver_cached_result, deliver_result
 from pipelines.extras_stage import ExtrasRequest, run_extras
 from pipelines.fresh_caption_stage import finalize_fresh_caption
-from pipelines.livedub_dub_stage import make_livedub_video
+from pipelines.livedub_dub_stage import make_livedub_video, wait_for_livedub_video
 from pipelines.livedub_publication_stage import prepare_livedub_publication
 from pipelines.livedub_quick_stage import finish_livedub_quick
 from pipelines.publication_context_stage import prepare_publication_context
@@ -419,37 +419,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         except Exception as e:
                             logger.warning(f"[EngSubtitles] Ошибка создания сабов: {e}")
 
-                    dub_path = None
-                    try:
-                        dub_path = await dub_task
-                    except RuntimeError as e:
-                        if "LIVEDUB_AUTH_REQUIRED" in str(e):
-                            logger.warning(
-                                "[LiveDub] Яндекс требует OAuth-токен для живых голосов "
-                                "(нет/протух VOT_API_TOKEN в .env — см. .env.example)"
-                            )
-                            try:
-                                (workdir / ".auth_required").write_text("1", encoding="utf-8")
-                            except OSError:
-                                pass
-                        elif "LIVEDUB_NOT_AVAILABLE" in str(e):
-                            logger.info("[LiveDub] Перевод недоступен для этого видео")
-                            try:
-                                (workdir / ".not_available").write_text("1", encoding="utf-8")
-                            except OSError:
-                                pass
-                        else:
-                            logger.warning(f"[LiveDub] Ошибка: {e}")
-                            try:
-                                (workdir / ".livedub_failed").write_text(str(e)[:500], encoding="utf-8")
-                            except OSError:
-                                pass
-                    except Exception as e:
-                        logger.warning(f"[LiveDub] Неизвестная ошибка: {e}")
-                        try:
-                            (workdir / ".livedub_failed").write_text(str(e)[:500], encoding="utf-8")
-                        except OSError:
-                            pass
+                    dub_path = await wait_for_livedub_video(dub_task, workdir)
 
                     # Дожидаемся субтитров перевода (обычно готовы раньше дубляжа)
                     if dub_subs_task:
