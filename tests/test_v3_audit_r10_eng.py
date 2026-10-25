@@ -144,8 +144,10 @@ def test_lang_passthrough_video_and_tts_paths():
     )
 
     mp = _read("pipelines/main_pipeline.py")
-    dub_block = mp.split("async def _make_dub", 1)[1][:1600]
+    dub_stage = _read("pipelines/livedub_dub_stage.py")
+    dub_block = dub_stage.split("async def make_livedub_video", 1)[1]
     assert "lang=source_lang" in dub_block
+    assert "source_lang=source_lang" in mp
 
 
 def test_dead_env_int_removed_from_yandex_live_dub():

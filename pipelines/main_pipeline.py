@@ -44,6 +44,7 @@ from pipelines.cached_presentation_stage import (
 from pipelines.delivery_stage import DeliveryRequest, deliver_cached_result, deliver_result
 from pipelines.extras_stage import ExtrasRequest, run_extras
 from pipelines.fresh_caption_stage import finalize_fresh_caption
+from pipelines.livedub_dub_stage import make_livedub_video
 from pipelines.livedub_quick_stage import finish_livedub_quick
 from pipelines.publication_context_stage import prepare_publication_context
 from services.telegraph_pages import combined_study_reflection_enabled
@@ -392,31 +393,15 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                             create_gemini_subtitles(video_url, workdir, known_duration=duration, lang=source_lang)
                         )
                     
-                    async def _make_dub():
-                        """Pro-микс (свой ffmpeg: слышный оригинал, ducking,
-                        задержка перевода) с fallback на vot-cli --merge-video."""
-                        if _livedub_pro_mix:
-                            try:
-                                from services.livedub_mix import build_pro_dub
-                                pro = await build_pro_dub(video_url, workdir, duration=duration, lang=source_lang)
-                                if pro and pro.exists():
-                                    return pro
-                                logger.warning("[LiveDub] pro-микс не собрался — fallback на vot-merge")
-                            except RuntimeError:
-                                raise  # LIVEDUB_NOT_AVAILABLE — наверх
-                            except Exception as _pme:
-                                logger.warning(f"[LiveDub] pro-микс сбой ({_pme}) — fallback на vot-merge")
-                        from services.yandex_live_dub import get_live_dub_video
-                        return await get_live_dub_video(
-                            video_url, workdir,
-                            original_volume=0.3,
-                            translation_volume=1.5,
-                            keep_original_audio=True,
+                    dub_task = asyncio.create_task(
+                        make_livedub_video(
+                            video_url,
+                            workdir,
+                            pro_mix=_livedub_pro_mix,
                             duration=duration,
-                            lang=source_lang,
+                            source_lang=source_lang,
                         )
-
-                    dub_task = asyncio.create_task(_make_dub())
+                    )
 
                     # Субтитры перевода Яндекса — точный текст дубляжа для QA.
                     # Качаются параллельно, сбой не критичен.
