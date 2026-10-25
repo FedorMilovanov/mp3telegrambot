@@ -984,6 +984,19 @@ report, admin gate и idempotent registration. Polling выполняется б
 Измерено: проект 59,06 % → **59,30 %**. Полный прогон:
 **3 894 passed, 3 skipped**.
 
+**Шаг 40 (сделано) — unified mode navigation coverage.** Пятнадцать прямых
+behavior-тестов без изменения production-кода выполняют home/analysis
+callbacks, Shorts full-video toggle, Dub health delegation, mode selection,
+executor-backed readers/writers, SQLite validation/fallbacks, wizard-state
+cleanup, safe edit и admin rendering.
+
+* `handlers/mode_command.py`: **162/162 statements, 36/36 branches**;
+* handlers в целом: 1 099/2 802 (39,22 %) → **1 195/2 802 (42,65 %)**;
+  `main_pipeline.py` остаётся 1 195 строк и 85,12 % statement coverage.
+
+Измерено: проект 59,30 % → **59,53 %**. Полный прогон:
+**3 909 passed, 3 skipped**.
+
 **Цели main для P0-3 достигнуты:** 1 195 ≤ 1 200 строк и 85,12 % ≥ 50 %
 statement coverage. Открытыми остаются handlers ≥ 55 % и Telegraph ≥ 60 %.
 
