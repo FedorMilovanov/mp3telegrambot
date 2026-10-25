@@ -737,6 +737,52 @@ def test_eng_quick_background_executes_extracted_dub_stage(
     assert update.message.replies == ["❌ Ошибка: stop after extracted dub stage"]
 
 
+def test_eng_quick_background_records_auth_failure_via_extracted_stage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The real background task executes the extracted marker error policy."""
+    _eng_environment(monkeypatch, "eng_fast")
+
+    from pathlib import Path
+
+    import services.livedub_info as livedub_info
+    import services.livedub_mix as mix
+    import services.yandex_live_dub as live_dub
+
+    marker_written = asyncio.Event()
+    writes = []
+    real_write_text = Path.write_text
+
+    def observed_write(path, content, *args, **kwargs):
+        result = real_write_text(path, content, *args, **kwargs)
+        if path.name == ".auth_required":
+            writes.append((path.name, content))
+            marker_written.set()
+        return result
+
+    async def pro(*_args, **_kwargs):
+        raise RuntimeError("LIVEDUB_AUTH_REQUIRED")
+
+    async def stop_after_marker(**_kwargs):
+        await asyncio.wait_for(marker_written.wait(), timeout=2)
+        raise RuntimeError("stop after auth marker")
+
+    async def setting(name):
+        return name == "livedub_pro_mix"
+
+    monkeypatch.setattr(main_pipeline, "asettings_get", setting)
+    monkeypatch.setattr(main_pipeline, "finish_livedub_quick", stop_after_marker)
+    monkeypatch.setattr(live_dub, "_ensure_vot_helper", lambda: True)
+    monkeypatch.setattr(livedub_info, "livedub_info_enabled", lambda: False)
+    monkeypatch.setattr(mix, "build_pro_dub", pro)
+    monkeypatch.setattr(Path, "write_text", observed_write)
+    update = _FakeUpdate()
+
+    assert _run(update) is False
+    assert writes == [(".auth_required", "1")]
+    assert update.message.replies == ["❌ Ошибка: stop after auth marker"]
+
+
 def _audio_too_large_environment(
     monkeypatch: pytest.MonkeyPatch, *, cache_hit: bool
 ) -> list[str]:

@@ -734,7 +734,28 @@ sender для cached `file_id` на success и rejected-pair путях.
 45,18 % → **50,42 %**, проект 57,60 % → **57,72 %**. Полный прогон:
 **3 749 passed, 3 skipped**.
 
-До приёмки P0-3 остался сам оркестратор — цель ≤ 1 200 строк (сейчас 1 539
+**Шаг 27 (сделано) — LiveDub background await и error markers.** Ожидание
+`dub_task` и прежняя политика ошибок вынесены в существующую стадию
+`pipelines/livedub_dub_stage.py` как `wait_for_livedub_video`. Шестнадцать
+прямых тестов дают стадии 100 % statement/branch coverage; отдельный ENG Quick
+integration выполняет настоящий background task до записи `.auth_required`.
+
+* успешный результат task, имена и содержимое `.auth_required`,
+  `.not_available` и `.livedub_failed`, truncation до 500 символов и тексты
+  logging сохранены; нефатальные `OSError` записи marker проверены для всех
+  четырёх error-политик;
+* последующее ожидание translation subtitles, выбор subtitle/fallback результата,
+  внешний background exception handler и cancellation/cleanup не изменены;
+  отдельный тест подтверждает проброс cancellation без failure marker;
+* historical source-owner case переведён на двухмодульный контракт через
+  replacement mechanism, `tests/livedub_qa_cases.py` остаётся byte-stable;
+  coverage ratchet поднят только после выполненного full-suite измерения.
+
+Измерено: `main_pipeline.py` 1 539 → **1 509 строк**, line-ratchet main
+50,42 % → **52,05 %**, проект 57,72 % → **57,78 %**. Полный прогон:
+**3 761 passed, 3 skipped**.
+
+До приёмки P0-3 остался сам оркестратор — цель ≤ 1 200 строк (сейчас 1 509
 строк из 3 120 исходных); цель ≥ 50 % statement coverage уже выполнена.
 
 ### P0-4. Сканирование секретов и SAST
