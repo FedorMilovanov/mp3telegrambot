@@ -139,6 +139,12 @@
   `pipelines/audio_failure_stage.py`: разные исторические сообщения, попытка
   LiveDub отправки, cleanup и возврат `False` сохранены. Шесть прямых и два
   сквозных теста покрывают обе ветки и их failure-семантику.
+- Post-analysis контекст публикации вынесен в
+  `pipelines/publication_context_stage.py`: search title/author, AI
+  questions/terms, один batch-запрос настроек, caption format/timestamps,
+  план страниц и прежняя диагностика сохраняют порядок и значения fresh-пути.
+  Две прямые проверки и сквозной тест до границы `render_pages` дают стадии
+  100 % statement/branch coverage.
 - Ратчет покрытия по файлам (`tools/check_coverage_ratchet.py`,
   `docs/coverage_baseline.json`): покрытие объявленных файлов может только
   расти. Компенсирует `diff-cover` там, где изменения — проводка в

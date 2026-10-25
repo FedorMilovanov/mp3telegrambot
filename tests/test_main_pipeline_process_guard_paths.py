@@ -555,3 +555,137 @@ def test_cache_audio_too_large_executes_shared_early_return(
         "⚠️ Файл слишком большой (60.0 МБ) даже после сжатия."
     ]
 
+
+
+def test_fresh_publication_context_reaches_render_boundary(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Fresh analysis reaches rendering with the exact extracted context."""
+    cleaned: list[str] = []
+    analysis_requests = []
+    publication_calls = []
+    render_requests = []
+    audio_path = tmp_path / "fresh.mp3"
+    questions = {"blocks": [{"text": "Question"}]}
+    terms_data = {
+        "concepts": ["concept"],
+        "scripture": [],
+        "translations": [],
+        "lexicon_notes": [],
+    }
+    ai_data = {
+        "real_title": "Fresh lecture title with enough detail",
+        "real_author": "John Smith",
+        "questions": questions,
+        "terms_data": terms_data,
+        "format": "lecture",
+        "timestamps": "00:00 Intro\n00:10 Topic",
+    }
+    settings = {
+        "analytics": True,
+        "questions": True,
+        "terms": True,
+        "study_analysis": True,
+        "reflection_application": False,
+    }
+    settings_calls = []
+
+    async def info(_url, _timeout):
+        return {
+            "id": "media1",
+            "title": "Original fallback title",
+            "channel": "Channel",
+            "duration": 600,
+        }
+
+    async def no_thumbnail(**_kwargs):
+        return None
+
+    async def cache_miss(_media_id):
+        return SimpleNamespace(hit=False, cached=None, ai_data=None)
+
+    async def audio_ready(**_kwargs):
+        return SimpleNamespace(path=audio_path, size_mb=1.0, bitrate="128k")
+
+    async def analysis_ready(request, *, enabled):
+        analysis_requests.append((request, enabled))
+        return SimpleNamespace(
+            ai_data=ai_data,
+            telegraph_url="https://telegra.ph/synopsis",
+            synopsis_outline="outline",
+            used_client=None,
+            used_audio_part=None,
+            degraded_caption_data=None,
+            early_links=None,
+            rutube_url="",
+            vk_url="",
+        )
+
+    async def batch_settings():
+        settings_calls.append(True)
+        return settings
+
+    real_prepare = main_pipeline.prepare_publication_context
+
+    async def capture_publication(**kwargs):
+        context = await real_prepare(**kwargs)
+        publication_calls.append((kwargs, context))
+        return context
+
+    async def stop_at_render(request):
+        render_requests.append(request)
+        raise RuntimeError("stop at render boundary")
+
+    monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", info)
+    monkeypatch.setattr(main_pipeline, "_db_conn", lambda: _FakeConn(""))
+    monkeypatch.setattr(main_pipeline, "lowest_free_gb", lambda *_paths: 50.0)
+    monkeypatch.setattr(main_pipeline, "cleanup_files", cleaned.append)
+    monkeypatch.setattr(main_pipeline, "load_thumbnail", no_thumbnail)
+    monkeypatch.setattr(main_pipeline, "load_cache", cache_miss)
+    monkeypatch.setattr(main_pipeline, "prepare_audio", audio_ready)
+    monkeypatch.setattr(main_pipeline, "run_analysis", analysis_ready)
+    monkeypatch.setattr(main_pipeline, "asettings_get_all", batch_settings)
+    monkeypatch.setattr(
+        main_pipeline, "prepare_publication_context", capture_publication
+    )
+    monkeypatch.setattr(main_pipeline, "render_pages", stop_at_render)
+    update = _FakeUpdate()
+
+    assert _run(update) is False
+    assert update.message.replies == ["❌ Ошибка: stop at render boundary"]
+    assert cleaned == ["media1"]
+    assert settings_calls == [True]
+    assert len(analysis_requests) == 1
+    assert analysis_requests[0][0].mp3_path == audio_path
+    assert len(publication_calls) == 1
+
+    publication_kwargs, publication = publication_calls[0]
+    assert publication_kwargs["ai_data"] is ai_data
+    assert publication_kwargs["degraded"] is None
+    assert publication_kwargs["full_title"] == "Original fallback title"
+    assert publication_kwargs["media_id"] == "media1"
+    assert publication_kwargs["telegraph_url"] == "https://telegra.ph/synopsis"
+    assert publication.search_title == (
+        "Fresh lecture title with enough detail - John Smith"
+    )
+    assert publication.tg_author == "John Smith"
+    assert publication.questions is questions
+    assert publication.terms_data is terms_data
+    assert publication.format_name == "lecture"
+    assert publication.timestamps_total == 2
+    assert publication.plan.analytics is False
+    assert publication.plan.questions is True
+    assert publication.plan.terms is True
+    assert publication.plan.study_analysis is True
+    assert publication.plan.reflection_application is False
+
+    assert len(render_requests) == 1
+    render = render_requests[0]
+    assert render.ai_data is ai_data
+    assert render.questions is questions
+    assert render.terms_data is terms_data
+    assert render.plan is publication.plan
+    assert render.search_title == publication.search_title
+    assert render.author == publication.tg_author
+    assert render.full_title == "Original fallback title"
+    assert render.synopsis_outline == "outline"

@@ -27,13 +27,9 @@ from core.utils import (
     cleanup_files, is_media_url, parse_title,
     check_rate_limit, update_rate_limit, format_timestamp,  # FIX #11
 )
-from core.text_utils import normalize_author_name
 from converters.md_telegraph import (
     visible_length,                                    # FIX #11
     get_caption_timestamp_limit,                       # FIX #11
-)
-from services.search import (
-    find_alternative_links, _build_search_title,
 )
 from pipelines.analysis_stage import AnalysisRequest, run_analysis
 from pipelines.archive_stage import ArchiveRequest, archive_pages
@@ -48,6 +44,7 @@ from pipelines.cached_presentation_stage import (
 from pipelines.delivery_stage import DeliveryRequest, deliver_cached_result, deliver_result
 from pipelines.extras_stage import ExtrasRequest, run_extras
 from pipelines.livedub_quick_stage import finish_livedub_quick
+from pipelines.publication_context_stage import prepare_publication_context
 from services.telegraph_pages import combined_study_reflection_enabled
 from pipelines.telegraph_nav import add_navigation
 from pipelines.telegraph_repair_stage import repair_enabled, repair_pages
@@ -60,11 +57,6 @@ from pipelines.audio_failure_stage import fail_audio_too_large
 from pipelines.audio_stage import (
     AudioTooLarge,
     prepare_audio,
-)
-from pipelines.publication_plan import (
-    build_plan,
-    has_ai_analysis,
-    terms_total as _plan_terms_total,
 )
 from pipelines.resource_cleanup_stage import cleanup_pipeline_resources
 from pipelines.media_guards import (
@@ -1346,46 +1338,25 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         # Удаление происходит в блоке finally ниже.
 
         await set_progress(status_msg, 6, prefix=_pp)
-        search_title = _build_search_title(ai_data, full_title)
-        tg_author    = normalize_author_name((ai_data or {}).get("real_author") or performer) or performer
-        _questions   = (ai_data or {}).get("questions", []) if ai_data else []
-        _terms_data  = (ai_data or {}).get("terms_data", {}) or {} if ai_data else {}
-
-        # -- Читаем настройки одним batch вызовом -------------------------
-        # Решение «что публикуем» вынесено в pipelines/publication_plan.py:
-        # пять флагов и три взаимных исключения больше не размазаны по телу
-        # функции, и все 32 комбинации проверяются тестами.
-        _all_settings = await asettings_get_all()
-        _caption_source_data = ai_data or _degraded_caption_data
-        _mat_format   = (_caption_source_data or {}).get("format", "other")
-        _ts_total     = len([l for l in ((_caption_source_data or {}).get("timestamps") or "").split("\n") if l.strip()])
-        _ts_cap_limit = get_caption_timestamp_limit(_mat_format)
-
-        _terms_total = _plan_terms_total(_terms_data)
-        _flags, _plan = build_plan(_all_settings, ai_data=ai_data)
-        # Отдельно от плана: «анализ есть» и «пользователь всё выключил» — разные
-        # ситуации, и предупреждение про галлюцинации относится только к первой.
-        _has_ai_analysis = has_ai_analysis(ai_data)
-        _feat_analytics              = _plan.analytics
-        _feat_questions              = _plan.questions
-        _feat_terms                  = _plan.terms
+        _publication = await prepare_publication_context(
+            ai_data=ai_data,
+            degraded=_degraded_caption_data,
+            full_title=full_title,
+            performer=performer,
+            media_id=media_id,
+            telegraph_url=telegraph_url,
+            settings_get_all=asettings_get_all,
+        )
+        search_title = _publication.search_title
+        tg_author = _publication.tg_author
+        _questions = _publication.questions
+        _terms_data = _publication.terms_data
+        _mat_format = _publication.format_name
+        _ts_total = _publication.timestamps_total
+        _plan = _publication.plan
         _feat_study_analysis         = _plan.study_analysis
         _feat_reflection_application = _plan.reflection_application
-        if not _has_ai_analysis:
-            logger.warning(
-                "AI analysis is missing/invalid for %s — skipping AI-derived Telegraph pages to avoid hallucinated partial publications",
-                media_id,
-            )
-        _is_qa = (_mat_format == "qa")
-        logger.info(
-            f"format={_mat_format} is_qa={_is_qa} ts_total={_ts_total} ts_cap={_ts_cap_limit} "
-            f"synopsis={'ok' if telegraph_url else 'none'} "
-            f"terms_items={_terms_total} "
-            f"(concepts={len(_terms_data.get('concepts',[]))} scripture={len(_terms_data.get('scripture',[]))} "
-            f"transl={len(_terms_data.get('translations',[]))} lex={len(_terms_data.get('lexicon_notes',[]))}) "
-            f"| feat: analytics={_feat_analytics} questions={_feat_questions} terms={_feat_terms} "
-            f"study_analysis={_feat_study_analysis} reflection={_feat_reflection_application}"
-        )
+
         # Стадия рендера вынесена в pipelines/telegraph_render.py: пять фабрик,
         # «компактные» замены, opt-in объединённый режим Study+Reflection и
         # перенос fallback-«Вопросов» из навигации. Сбой одной страницы не
