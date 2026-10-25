@@ -45,6 +45,7 @@ from pipelines.delivery_stage import DeliveryRequest, deliver_cached_result, del
 from pipelines.extras_stage import ExtrasRequest, run_extras
 from pipelines.fresh_caption_stage import finalize_fresh_caption
 from pipelines.livedub_background_stage import run_livedub_background
+from pipelines.livedub_cached_delivery_stage import deliver_cached_livedub
 from pipelines.livedub_dub_stage import make_livedub_video, wait_for_livedub_video
 from pipelines.livedub_failure_stage import (
     notify_livedub_send_failure,
@@ -483,62 +484,23 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
 
             # Мгновенная повторная отправка по кэшированному file_id
             if _livedub_cached_file_id and context:
-                from services.livedub_delivery_coordinator import (
-                    delete_message_best_effort,
-                    deliver_cached_companions,
-                )
-
                 _cached_internal_caption = (
                     f"<b>{_livedub_title_html}</b>\n🎬 Живые голоса Яндекса"
                     if _livedub_title_html else "🎬 Живые голоса Яндекса"
                 )
-                _cached_cap = format_video_caption(_publication_card, _cached_internal_caption)
-                _cached_video_message = None
-                try:
-                    _cached_video_message = await context.bot.send_video(
-                        chat_id=update.effective_chat.id,
-                        video=_livedub_cached_file_id,
-                        caption=_cached_cap,
-                        parse_mode="HTML",
-                        reply_to_message_id=update.message.message_id,
-                        supports_streaming=True,
-                    )
-                    companions_ok = await deliver_cached_companions(
-                        context.bot,
-                        chat_id=update.effective_chat.id,
-                        video_file_id=_livedub_cached_file_id,
-                        publication_card=_publication_card,
-                        reply_to=update.message.message_id,
-                    )
-                    if not companions_ok:
-                        raise RuntimeError("cached LiveDub companion set is missing")
-                except Exception as _fid_err:
-                    if _cached_video_message is not None:
-                        await delete_message_best_effort(
-                            context.bot, update.effective_chat.id, _cached_video_message
-                        )
-                    logger.warning("[LiveDub] cached pair rejected: %s", _fid_err)
-                    try:
-                        from core.database import adb_set_livedub_file_id
-                        await adb_set_livedub_file_id(media_id, "")
-                    except Exception:
-                        pass
-                    await _source_audio_delivery.flush("cached LiveDub pair unavailable")
-                    try:
-                        await context.bot.send_message(
-                            chat_id=update.effective_chat.id,
-                            text=(
-                                "⚠️ Кэшированный перевод или его MP3-комплект устарел. "
-                                "Отправьте ссылку ещё раз — полный комплект будет создан заново."
-                            ),
-                            reply_to_message_id=update.message.message_id,
-                        )
-                    except Exception:
-                        pass
-                    _livedub_result_sent = True
-                    return True
-
-                _source_audio_delivery.discard("cached LiveDub pair delivered")
+                await deliver_cached_livedub(
+                    context.bot,
+                    chat_id=update.effective_chat.id,
+                    reply_to=update.message.message_id,
+                    video_file_id=_livedub_cached_file_id,
+                    caption=format_video_caption(
+                        _publication_card, _cached_internal_caption
+                    ),
+                    publication_card=_publication_card,
+                    media_id=media_id,
+                    flush_source_audio=_source_audio_delivery.flush,
+                    discard_source_audio=_source_audio_delivery.discard,
+                )
                 _livedub_result_sent = True
                 return True
             if not live_dub_task:

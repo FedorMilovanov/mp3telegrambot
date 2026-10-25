@@ -348,6 +348,41 @@ def test_eng_quick_cached_path_executes_extracted_finalization(
     assert "Перевод «Живые голоса» не получился" in update.message.replies[0]
 
 
+def test_eng_quick_empty_background_result_is_an_honest_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Quick mode inspects an empty background result without a Full notice."""
+    cleaned = _eng_environment(monkeypatch, "eng_fast")
+
+    import services.yandex_live_dub as live_dub
+
+    async def no_optional_setting(_name):
+        return False
+
+    async def prepared(**_kwargs):
+        return {}, "", ""
+
+    def empty_livedub_task(coroutine):
+        assert coroutine.cr_code.co_name == "_run_livedub_bg"
+        coroutine.close()
+        task = asyncio.get_running_loop().create_future()
+        task.set_result((None, False, False))
+        return task
+
+    monkeypatch.setattr(live_dub, "_ensure_vot_helper", lambda: True)
+    monkeypatch.setattr(main_pipeline, "asettings_get", no_optional_setting)
+    monkeypatch.setattr(main_pipeline, "prepare_livedub_publication", prepared)
+    monkeypatch.setattr(main_pipeline.asyncio, "create_task", empty_livedub_task)
+    update = _FakeUpdate()
+    update.effective_chat = SimpleNamespace(id=31337)
+    update.message.message_id = 777
+
+    assert _run(update, context=SimpleNamespace(bot=SimpleNamespace())) is False
+    assert cleaned == ["media1"]
+    assert len(update.message.replies) == 1
+    assert "Перевод «Живые голоса» не получился" in update.message.replies[0]
+
+
 def test_eng_quick_cached_file_id_delivers_publication_and_companions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -400,6 +435,20 @@ def test_eng_quick_cached_file_id_delivers_publication_and_companions(
     monkeypatch.setattr(publication, "build_publication_card", build_card)
     monkeypatch.setattr(publication, "format_video_caption", format_caption)
     monkeypatch.setattr(coordinator, "deliver_cached_companions", companions)
+    real_finish = main_pipeline.finish_livedub_quick
+
+    async def finish_with_idempotent_send(**kwargs):
+        send_result = kwargs["send_result"]
+
+        async def send_twice():
+            assert await send_result() is True
+            assert await send_result() is True
+            return True
+
+        kwargs["send_result"] = send_twice
+        return await real_finish(**kwargs)
+
+    monkeypatch.setattr(main_pipeline, "finish_livedub_quick", finish_with_idempotent_send)
     update = _FakeUpdate()
     update.effective_chat = SimpleNamespace(id=31337)
     update.message.message_id = 777
@@ -1194,6 +1243,11 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
             monkeypatch.setattr(mix, "make_video_thumbnail", lambda _path: None)
         notice_bot = NoticeBot()
         context = SimpleNamespace(bot=notice_bot)
+
+    if not mode:
+        # A non-ENG caller with a bot exercises the no-LiveDub guard while
+        # unwinding the deliberate delivery-boundary exception.
+        context = SimpleNamespace(bot=SimpleNamespace())
 
     monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", info)
     monkeypatch.setattr(main_pipeline, "_db_conn", lambda: _FakeConn("eng" if mode.startswith("eng") else mode))

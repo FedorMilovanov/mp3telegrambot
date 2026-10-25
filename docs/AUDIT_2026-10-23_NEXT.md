@@ -877,8 +877,31 @@ historical service monkeypatch seams через callback-и.
 65,08 % → **67,18 %**, проект 58,17 % → **58,25 %**. Полный прогон:
 **3 814 passed, 3 skipped**.
 
-До приёмки P0-3 остался сам оркестратор — цель ≤ 1 200 строк (сейчас 1 391
-строка из 3 120 исходных); цель ≥ 50 % statement coverage уже выполнена.
+**Шаг 34 (сделано) — cached LiveDub pair delivery.** Повторная отправка
+video/file_id, companion validation, rollback частичного результата,
+invalidation и user notice вынесены в
+`pipelines/livedub_cached_delivery_stage.py`; caption и source-audio deferral
+остаются во владении main через callback-и.
+
+* шесть прямых тестов дают стадии 100 % statement/branch coverage: success,
+  missing companions, rejected file_id, best-effort DB/notice errors,
+  проброс source-audio flush error и cancellation без invalidation;
+* существующие cached success/failure integrations выполняют стадию через
+  main; success теперь дополнительно доказывает идемпотентность повторного
+  sender — второй вызов не дублирует video;
+* fresh Quick `(None, False, False)` integration выполняет marker-inspection
+  и honest failure, а non-ENG delivery-boundary variant закрывает отсутствие
+  LiveDub task/cache. Эти executed guards сохранили и повысили main ratchet
+  после удаления хорошо покрытого cached block;
+* historical cache/source assertions переведены на двухмодульный контракт;
+  `tests/livedub_qa_cases.py` остаётся byte-stable.
+
+Измерено: `main_pipeline.py` 1 391 → **1 353 строки**, line-ratchet main
+67,18 % → **68,14 %**, проект 58,25 % → **58,29 %**. Полный прогон:
+**3 821 passed, 3 skipped**.
+
+До приёмки P0-3 остался сам оркестратор — цель ≤ 1 200 строк (сейчас 1 353
+строки из 3 120 исходных); цель ≥ 50 % statement coverage уже выполнена.
 
 ### P0-4. Сканирование секретов и SAST
 

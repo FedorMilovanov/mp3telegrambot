@@ -52,6 +52,10 @@ _REPLACED_CASES = {
     # Publication card/title preparation имеет отдельного source owner;
     # объединённая отправка и запрет второй AI-карточки проверяются ниже.
     "test_quick_modes_share_unified_publication_metadata_without_second_ai_card",
+    # Cached pair delivery now has a dedicated rollback/notification owner;
+    # two-module replacements live below without changing historical cases.
+    "test_livedub_file_id_cache_wired",
+    "test_cached_livedub_uses_unified_publication_card_and_companion_transaction",
     # Background subtitle/dub orchestration now has a dedicated source owner;
     # two-module replacements live below without changing historical cases.
     "test_pipeline_wires_dub_srt",
@@ -268,6 +272,34 @@ def test_chat_actions_during_uploads() -> None:
     assert 'send_action("upload_voice")' in stage
     assert "send_livedub_video_with_cover(" in main
     assert 'action="upload_video"' in video_stage
+
+
+def test_livedub_file_id_cache_wired() -> None:
+    main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    stage = Path("pipelines/livedub_cached_delivery_stage.py").read_text(
+        encoding="utf-8"
+    )
+    assert "_livedub_cached_file_id" in main
+    assert "adb_set_livedub_file_id" in main + stage
+    assert "current_livedub_file_id_cache_version" in main
+    assert "кэш file_id устарел" in main
+    assert "deliver_cached_livedub(" in main
+    assert "deliver_cached_companions" in stage
+    assert "delete_message_best_effort" in stage
+    assert "Кэшированный перевод или его MP3-комплект устарел" in stage
+
+
+def test_cached_livedub_uses_unified_publication_card_and_companion_transaction() -> None:
+    main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    stage = Path("pipelines/livedub_cached_delivery_stage.py").read_text(
+        encoding="utf-8"
+    )
+    helper = main[main.index("async def _send_livedub_result"):main.index("performer, title = parse_title")]
+    cached_block = helper[helper.index("if _livedub_cached_file_id and context:"):helper.index("if not live_dub_task:")]
+    assert "format_video_caption(" in cached_block
+    assert "deliver_cached_livedub(" in cached_block
+    assert "deliver_cached_companions" in stage
+    assert "_send_livedub_info_card_once" not in helper
 
 
 def test_pipeline_wires_dub_srt() -> None:
