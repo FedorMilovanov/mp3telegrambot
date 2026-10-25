@@ -970,6 +970,20 @@ registration.
 Измерено: проект 58,79 % → **59,06 %**. Полный прогон:
 **3 879 passed, 3 skipped**.
 
+**Шаг 39 (сделано) — Dub health coverage.** Пятнадцать прямых
+behavior-тестов без изменения production-кода покрывают worker freshness и
+bounded repair polling, fail-closed quality/recipe contracts, доступные и
+отсутствующие runtime dependencies, storage/worker errors, HTML health
+report, admin gate и idempotent registration. Polling выполняется без
+реального sleep, а все environment paths изолированы через `tmp_path`.
+
+* `handlers/dub_health.py`: **154/154 statements, 40/40 branches**;
+* handlers в целом: 1 005/2 802 (35,87 %) → **1 099/2 802 (39,22 %)**;
+  `main_pipeline.py` остаётся 1 195 строк и 85,12 % statement coverage.
+
+Измерено: проект 59,06 % → **59,30 %**. Полный прогон:
+**3 894 passed, 3 skipped**.
+
 **Цели main для P0-3 достигнуты:** 1 195 ≤ 1 200 строк и 85,12 % ≥ 50 %
 statement coverage. Открытыми остаются handlers ≥ 55 % и Telegraph ≥ 60 %.
 
