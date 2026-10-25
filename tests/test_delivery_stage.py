@@ -875,9 +875,11 @@ async def test_cached_pdf_other_error_keeps_legacy_log(
 
 def test_main_pipeline_wires_delivery_stages() -> None:
     source = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    cache_stage = Path("pipelines/cache_hit_delivery_stage.py").read_text(encoding="utf-8")
     assert "from pipelines.delivery_stage import DeliveryRequest, deliver_cached_result, deliver_result" in source
     assert "await deliver_result(" in source
-    assert "await deliver_cached_result(" in source
+    assert "deliver=deliver_cached_result" in source
+    assert "await deliver(" in cache_stage
     assert "audio_delivery=_source_audio_delivery" in source
     assert "used_audio_part=used_audio_part" in source
     assert 'cached_file_id=(cached or {}).get("audio_file_id")' in source

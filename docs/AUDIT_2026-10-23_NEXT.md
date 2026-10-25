@@ -674,8 +674,27 @@ statement/branch coverage; существующий fresh integration расши
 36,07 % → **39,84 %**, проект 57,34 % → **57,45 %**. Полный прогон:
 **3 731 passed, 3 skipped**.
 
-До приёмки P0-3 остался сам оркестратор — цель ≤ 1 200 строк (сейчас 1 592
-строки из 3 120 исходных).
+**Шаг 24 (сделано) — cache-hit оркестрация после аудио.** Cached presentation →
+cached delivery → LiveDub flush → success cleanup вынесены в
+`pipelines/cache_hit_delivery_stage.py`. Четыре прямых сценария и один сквозной
+cache-hit integration-тест дают новой стадии 100 % statement/branch coverage и
+выполняют настоящую проводку `process_single_video` до `return True`.
+
+* thumbnail/audio и специальная обработка `AudioTooLarge` остаются в main, поэтому
+  внешний `finally` по-прежнему владеет закрытием thumbnail; выражение чтения
+  cached `audio_file_id` также сохранено на исторической границе;
+* ошибки presentation/delivery/LiveDub пробрасываются без success cleanup, а
+  `False` от LiveDub не отменяет нормальное завершение cache-hit; зависимости
+  передаются из текущих globals main и сохраняют monkeypatch-границы;
+* source-owner assertions переведены на двухмодульный контракт без изменения
+  `tests/livedub_qa_cases.py` или ослабления coverage ratchet'а.
+
+Измерено: `main_pipeline.py` 1 592 → **1 570 строк**, line-ratchet main
+39,84 % → **40,87 %**, проект 57,45 % → **57,50 %**. Полный прогон:
+**3 736 passed, 3 skipped**.
+
+До приёмки P0-3 остался сам оркестратор — цель ≤ 1 200 строк (сейчас 1 570
+строк из 3 120 исходных).
 
 ### P0-4. Сканирование секретов и SAST
 
@@ -915,7 +934,7 @@ statement/branch coverage; существующий fresh integration расши
 
 | Файл | Строк | Покрытие | Что делать |
 |---|---|---|---|
-| `pipelines/main_pipeline.py` | 1 674 | 32,5 % | выделить стадии (§P0-3), цель ≤1 200 строк; шаги 1–21 (гварды, mp3, деградация, план публикации, подпись, анализ, рендер, навигация, починка, входные данные подписи, архив, свежая и cache-hit отправка, решение о cache-hit, обложка, post-delivery extras, cache-hit ссылки и подпись, LiveDub title helpers, завершение ENG Quick, финальный cleanup ресурсов, `AudioTooLarge` early return) сделаны |
+| `pipelines/main_pipeline.py` | 1 570 | 40,9 % | выделить стадии (§P0-3), цель ≤1 200 строк; шаги 1–24 (гварды, mp3, деградация, план публикации, подпись, анализ, рендер, навигация, починка, входные данные подписи, архив, свежая и cache-hit отправка, решение о cache-hit, обложка, post-delivery extras, cache-hit ссылки и подпись, LiveDub title helpers, завершение ENG Quick, финальный cleanup ресурсов, `AudioTooLarge` early return, контекст публикации, fresh caption/persistence, cache-hit post-audio оркестрация) сделаны |
 | `core/prompts.py` | 3 830 | — | превратить в пакет `core/prompts/` с текстами в шаблонах и загрузчиком: 3,8k строк литералов невозможно рецензировать |
 | `services/telegraph*.py` (3 файла) | 1 624 + 1 897 + ~500 | 16–24 % | один пакет `services/telegraph/` с публичным API и общим HTTP-клиентом |
 
