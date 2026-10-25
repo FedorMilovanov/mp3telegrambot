@@ -99,6 +99,10 @@
   по `file_id`, очистка протухшего ID и файловый fallback теперь используют
   общую покрытую стадию. Различия fresh/cache в ID3, PDF boundaries/messages,
   chat action и quiz сохранены явно и проверены тестами.
+- Решение о cache-hit вынесено в `pipelines/cache_stage.py`: актуальность
+  записи и dirty-метаданные проверяются отдельной стадией с 35 тестами и
+  100 % statement/branch coverage; thumbnail, audio, caption и delivery не
+  связаны с этим решением внутри оркестратора.
 - Ратчет покрытия по файлам (`tools/check_coverage_ratchet.py`,
   `docs/coverage_baseline.json`): покрытие объявленных файлов может только
   расти. Компенсирует `diff-cover` там, где изменения — проводка в
@@ -130,6 +134,9 @@
 
 ### Fixed
 
+- Повреждённая структура кэша (`ai_data` не dict, `questions` не list или
+  нестроковое metadata-поле) больше не роняет обработку: запись отклоняется
+  как `dirty_meta`, а результат пересоздаётся по обычному fresh-пути.
 - Без `py-modules` в wheel не попадали `bot.py`, `bot_new.py`, `main.py` — консольная
   команда падала бы с `ImportError` уже после установки.
 - `mp3bot = "bot_new:main"` ссылался на несуществующую функцию: `bot_new` исполнял

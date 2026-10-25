@@ -1,0 +1,346 @@
+#!/usr/bin/env python3
+"""Cache-hit — только valid+clean запись; всё остальное безопасно идёт в fresh."""
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from pipelines.cache_stage import (
+    DIRTY_AI_FIELDS,
+    CacheDeps,
+    evaluate_cache,
+    load_cache,
+)
+
+
+def _cached(**overrides: Any) -> dict[str, Any]:
+    cached: dict[str, Any] = {
+        "ai_data": {
+            "main_topic": "Благодать",
+            "real_author": "John MacArthur",
+            "real_title": "Saving Faith",
+            "real_event": "Sunday sermon",
+            "format": "sermon",
+        },
+        "questions": ["Что это меняет в моей жизни?"],
+        "telegraph_url": "https://telegra.ph/synopsis",
+        "audio_file_id": "telegram-file-id",
+    }
+    cached.update(overrides)
+    return cached
+
+
+def _evaluate(
+    cached: dict[str, Any] | None,
+    *,
+    valid: bool = True,
+    reason: str = "ok",
+    is_dirty: Any = None,
+):
+    return evaluate_cache(
+        cached,
+        validate=lambda _cached: (valid, reason),
+        is_dirty=is_dirty or (lambda _text: False),
+    )
+
+
+def _production_cached() -> dict[str, Any]:
+    from core import database as database
+
+    return _cached(
+        updated_at=time.time(),
+        cache_version=database.CACHE_VERSION,
+        prompt_version=database.get_prompt_fingerprint(),
+        model_name=database.GEMINI_MODEL,
+    )
+
+
+# ── Чистое решение ────────────────────────────────────────────────────────
+
+
+def test_valid_clean_record_is_a_hit_without_mutation() -> None:
+    cached = _cached()
+    before = repr(cached)
+
+    decision = _evaluate(cached)
+
+    assert decision.hit is True
+    assert decision.valid is True
+    assert decision.reason == "ok"
+    assert decision.cached is cached
+    assert decision.ai_data is cached["ai_data"]
+    assert repr(cached) == before
+
+
+@pytest.mark.parametrize(
+    "reason",
+    ["no_record", "no_ai_data", "ttl_expired", "cache_version_mismatch", "model_mismatch"],
+)
+def test_validator_miss_keeps_its_reason_and_skips_dirty_scan(reason: str) -> None:
+    cached = _cached()
+
+    def unexpected_dirty_scan(_text: str) -> bool:
+        raise AssertionError("устаревшую запись нельзя сканировать второй раз")
+
+    decision = _evaluate(cached, valid=False, reason=reason, is_dirty=unexpected_dirty_scan)
+
+    assert decision.hit is False
+    assert decision.valid is False
+    assert decision.reason == reason
+    assert decision.cached is cached
+
+
+def test_defensive_none_record_cannot_hit_even_with_broken_validator() -> None:
+    decision = _evaluate(None, valid=True)
+    assert decision.hit is False
+    assert decision.cached is None
+    assert decision.ai_data is None
+
+
+def test_empty_ai_cannot_hit_even_with_broken_validator() -> None:
+    decision = _evaluate(_cached(ai_data={}), valid=True)
+    assert decision.valid is True
+    assert decision.ai_data == {}
+    assert decision.hit is False
+
+
+@pytest.mark.parametrize("broken_ai", [["not", "a", "dict"], "text", 42])
+def test_structurally_broken_ai_falls_back_to_fresh(broken_ai: Any) -> None:
+    decision = _evaluate(_cached(ai_data=broken_ai))
+    assert decision.hit is False
+    assert decision.valid is False
+    assert decision.reason == "dirty_meta"
+    assert decision.ai_data is None
+
+
+@pytest.mark.parametrize("broken_questions", ["question", 42, {"q": "not-a-list"}])
+def test_structurally_broken_questions_fall_back_to_fresh(broken_questions: Any) -> None:
+    decision = _evaluate(_cached(questions=broken_questions))
+    assert decision.hit is False
+    assert decision.reason == "dirty_meta"
+    assert decision.ai_data is not None
+
+
+def test_truthy_non_string_metadata_falls_back_instead_of_raising() -> None:
+    cached = _cached()
+    cached["ai_data"]["real_title"] = 2026
+
+    decision = _evaluate(cached)
+
+    assert decision.hit is False
+    assert decision.reason == "dirty_meta"
+
+
+def test_falsey_metadata_keeps_legacy_empty_value_semantics() -> None:
+    cached = _cached(questions=[])
+    cached["ai_data"].update(
+        {"main_topic": None, "real_author": 0, "real_title": "", "real_event": None}
+    )
+
+    decision = _evaluate(cached)
+
+    assert decision.hit is True
+
+
+@pytest.mark.parametrize("field", DIRTY_AI_FIELDS)
+def test_each_dirty_ai_field_forces_fresh_with_real_detector(field: str) -> None:
+    from core.text_utils import _has_dirty_meta
+
+    cached = _cached()
+    cached["ai_data"][field] = "Cocoon AI Summary"
+
+    decision = _evaluate(cached, is_dirty=_has_dirty_meta)
+
+    assert decision.hit is False
+    assert decision.valid is False
+    assert decision.reason == "dirty_meta"
+
+
+def test_dirty_question_forces_fresh_with_real_detector() -> None:
+    from core.text_utils import _has_dirty_meta
+
+    decision = _evaluate(
+        _cached(questions=["Нормальный вопрос", "Generated by AI"]),
+        is_dirty=_has_dirty_meta,
+    )
+
+    assert decision.hit is False
+    assert decision.reason == "dirty_meta"
+
+
+def test_dirty_scan_stops_at_first_bad_field() -> None:
+    calls: list[str] = []
+
+    def dirty(text: str) -> bool:
+        calls.append(text)
+        return text == "bad"
+
+    cached = _cached(questions=["must-not-be-scanned"])
+    cached["ai_data"].update({"main_topic": "bad", "real_author": "also-not-scanned"})
+
+    decision = _evaluate(cached, is_dirty=dirty)
+
+    assert decision.hit is False
+    assert calls == ["bad"]
+
+
+# ── Асинхронная DB-граница ────────────────────────────────────────────────
+
+
+def test_load_cache_reads_requested_id_and_uses_injected_policy() -> None:
+    cached = _cached()
+    calls: list[str] = []
+
+    async def read(media_id: str) -> dict[str, Any]:
+        calls.append(media_id)
+        return cached
+
+    deps = CacheDeps(
+        read=read,
+        validate=lambda value: (value is cached, "ok"),
+        is_dirty=lambda _text: False,
+    )
+
+    decision = asyncio.run(load_cache("video-123", deps))
+
+    assert calls == ["video-123"]
+    assert decision.hit is True
+    assert decision.cached is cached
+
+
+def test_default_dependencies_use_real_validator_and_clean_record(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from core import database as database
+
+    cached = _production_cached()
+    calls: list[str] = []
+
+    async def read(media_id: str) -> dict[str, Any]:
+        calls.append(media_id)
+        return cached
+
+    # production_deps() импортирует границы в момент вызова, поэтому здесь не
+    # нужен SQLite и не остаётся глобально подменённой функции после теста.
+    monkeypatch.setattr(database, "adb_get", read)
+
+    decision = asyncio.run(load_cache("default-deps-video"))
+
+    assert calls == ["default-deps-video"]
+    assert decision.hit is True
+    assert decision.reason == "ok"
+
+
+def test_load_cache_logs_only_dirty_decision(caplog: pytest.LogCaptureFixture) -> None:
+    async def read(_media_id: str) -> dict[str, Any]:
+        return _cached(ai_data=["broken"])
+
+    deps = CacheDeps(
+        read=read,
+        validate=lambda _value: (True, "ok"),
+        is_dirty=lambda _text: False,
+    )
+
+    with caplog.at_level(logging.INFO):
+        decision = asyncio.run(load_cache("dirty-video", deps))
+
+    assert decision.hit is False
+    assert "Кэш skip: dirty-video reason=dirty_meta" in caplog.text
+
+
+def test_reader_failure_is_not_silently_turned_into_a_cache_miss() -> None:
+    async def read(_media_id: str) -> dict[str, Any]:
+        raise RuntimeError("database unavailable")
+
+    deps = CacheDeps(
+        read=read,
+        validate=lambda _value: (False, "must-not-run"),
+        is_dirty=lambda _text: False,
+    )
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        asyncio.run(load_cache("video", deps))
+
+
+# ── Настоящий validator из core.database ─────────────────────────────────
+
+
+def test_real_validator_accepts_current_clean_record() -> None:
+    from core import database as database
+    from core.text_utils import _has_dirty_meta
+
+    decision = evaluate_cache(
+        _production_cached(),
+        validate=database.is_cache_valid,
+        is_dirty=_has_dirty_meta,
+    )
+
+    assert decision.hit is True
+    assert decision.reason == "ok"
+
+
+def test_real_validator_rejects_missing_record() -> None:
+    from core import database as database
+    from core.text_utils import _has_dirty_meta
+
+    decision = evaluate_cache(
+        None,
+        validate=database.is_cache_valid,
+        is_dirty=_has_dirty_meta,
+    )
+
+    assert decision.hit is False
+    assert decision.reason == "no_record"
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_reason"),
+    [
+        ("no_ai", "no_ai_data"),
+        ("legacy", "no_updated_at"),
+        ("ttl", "ttl_expired"),
+        ("cache_version", "cache_version_mismatch"),
+        ("prompt_version", "prompt_version_mismatch"),
+        ("model", "model_mismatch"),
+    ],
+)
+def test_real_validator_rejections_go_to_fresh(mutation: str, expected_reason: str) -> None:
+    from core import database as database
+    from core.text_utils import _has_dirty_meta
+
+    cached = _production_cached()
+    if mutation == "no_ai":
+        cached["ai_data"] = None
+    elif mutation == "legacy":
+        cached["updated_at"] = 0
+    elif mutation == "ttl":
+        cached["updated_at"] = time.time() - (database.CACHE_TTL_DAYS + 1) * 86400
+    elif mutation == "cache_version":
+        cached["cache_version"] = "obsolete-cache"
+    elif mutation == "prompt_version":
+        cached["prompt_version"] = "obsolete-prompt"
+    elif mutation == "model":
+        cached["model_name"] = "obsolete-model"
+
+    decision = evaluate_cache(
+        cached,
+        validate=database.is_cache_valid,
+        is_dirty=_has_dirty_meta,
+    )
+
+    assert decision.hit is False
+    assert decision.valid is False
+    assert decision.reason.startswith(expected_reason)
+
+
+def test_main_pipeline_uses_the_extracted_decision() -> None:
+    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    assert "cache_decision = await load_cache(media_id)" in src
+    assert "if cache_decision.hit:" in src
+    assert "c_ai = cache_decision.ai_data or {}" in src
+    assert "_has_dirty_meta" not in src
