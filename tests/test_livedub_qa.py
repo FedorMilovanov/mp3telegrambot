@@ -61,6 +61,11 @@ _REPLACED_CASES = {
     # Human filename preparation stays in main; probing now belongs to the
     # video-assets stage. The two-module replacement lives below.
     "test_pipeline_prepares_human_livedub_filename_before_send",
+    # Cover selection remains visible in main; upload/retry policy now has a
+    # dedicated delivery-stage owner. The two-module replacements live below.
+    "test_livedub_cover_wired_with_fallback",
+    "test_quick_qa_report_sent_after_video_not_before",
+    "test_r41_full_qa_and_autofix_run_before_primary_send",
 }
 _CASES = runpy.run_path(str(Path(__file__).with_name("livedub_qa_cases.py")))
 globals().update(
@@ -255,8 +260,12 @@ def test_cache_mp3_resend_wiring() -> None:
 def test_chat_actions_during_uploads() -> None:
     main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     stage = Path("pipelines/delivery_stage.py").read_text(encoding="utf-8")
+    video_stage = Path("pipelines/livedub_video_delivery_stage.py").read_text(
+        encoding="utf-8"
+    )
     assert 'send_action("upload_voice")' in stage
-    assert 'action="upload_video"' in main
+    assert "send_livedub_video_with_cover(" in main
+    assert 'action="upload_video"' in video_stage
 
 
 def test_pipeline_wires_pro_mix_and_autofix() -> None:
@@ -333,3 +342,39 @@ def test_pipeline_prepares_human_livedub_filename_before_send() -> None:
         "prepare_livedub_video_assets"
     )
     assert "probe_video_meta" in stage
+
+
+def test_livedub_cover_wired_with_fallback() -> None:
+    main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    stage = Path("pipelines/livedub_video_delivery_stage.py").read_text(encoding="utf-8")
+    assert "_v_cover" in main
+    assert "cover=_v_cover" in main
+    assert "send_livedub_video_with_cover(" in main
+    assert "cover=cover" in stage
+    assert "отправка без cover" in stage
+
+
+def test_quick_qa_report_sent_after_video_not_before() -> None:
+    main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    stage = Path("pipelines/livedub_video_delivery_stage.py").read_text(encoding="utf-8")
+    helper = main[main.index("async def _send_livedub_result"):main.index("performer, title = parse_title")]
+    assert "_quick_qa_report_html = format_qa_report" in helper
+    assert "главный результат режима" in helper
+    assert helper.index("_sent_msg = await send_livedub_video_with_cover") < helper.index(
+        "if _quick_qa_report_html:"
+    )
+    assert "await bot.send_video" in stage
+
+
+def test_r41_full_qa_and_autofix_run_before_primary_send() -> None:
+    main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    stage = Path("pipelines/livedub_video_delivery_stage.py").read_text(encoding="utf-8")
+    i_qa = main.index("_qa_result_full = await run_translation_qa")
+    i_fix = main.index("livedub_path = fixed", i_qa)
+    i_send = main.index("_sent_msg = await send_livedub_video_with_cover")
+    assert i_qa < i_send
+    assert i_fix < i_send
+    assert main.index("format_qa_report(_qa_result_full") > i_send
+    assert "Исправленная версия" not in main
+    assert "авто-приглушение не удалось" in main
+    assert "await bot.send_video" in stage

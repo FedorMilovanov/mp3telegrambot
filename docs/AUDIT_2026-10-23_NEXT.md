@@ -838,8 +838,28 @@ integration-вариант выполняет oversized-путь и остана
 63,77 % → **64,60 %**, проект 58,12 % → **58,14 %**. Полный прогон:
 **3 795 passed, 3 skipped**.
 
-До приёмки P0-3 остался сам оркестратор — цель ≤ 1 200 строк (сейчас 1 464
-строки из 3 120 исходных); цель ≥ 50 % statement coverage уже выполнена.
+**Шаг 32 (сделано) — cover-aware LiveDub video delivery.** Upload action,
+первичный `send_video` и retry без cover вынесены в
+`pipelines/livedub_video_delivery_stage.py`. Девять прямых тестов дают стадии
+100 % statement/branch coverage; седьмой fresh integration-вариант выполняет
+cover → retry без cover → generic failure через настоящий main wrapper.
+
+* chat-action ошибка остаётся некритичной, cancellation пробрасывается; при
+  отсутствии cover ошибка отправки не запускает retry, успешный результат
+  message сохраняется для последующего file_id/companion flow;
+* `entity too large`/`too large` никогда не повторяются без cover; прочие
+  cover-ошибки сохраняют log truncation до 100 символов и один retry, ошибка
+  которого пробрасывается в прежний generic failure handler;
+* historical cover/QA-order cases обновлены через replacement mechanism,
+  R21 и upload-action assertions разделены между main wiring и стадией;
+  `tests/livedub_qa_cases.py` остаётся byte-stable.
+
+Измерено: `main_pipeline.py` 1 464 → **1 447 строк**, line-ratchet main
+64,60 % → **65,08 %**, проект 58,14 % → **58,17 %**. Полный прогон:
+**3 805 passed, 3 skipped**.
+
+До приёмки P0-3 остался сам оркестратор — цель ≤ 1 200 строк (сейчас 1 447
+строк из 3 120 исходных); цель ≥ 50 % statement coverage уже выполнена.
 
 ### P0-4. Сканирование секретов и SAST
 
