@@ -49,6 +49,9 @@
 
 ### Changed
 
+- Весь Python-код отформатирован Ruff отдельным коммитом `62f2a8b` без смены
+  executable AST; SHA внесён в `.git-blame-ignore-revs`. Исторический LiveDub
+  fixture и Markdown-примеры не перезаписывались.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):
