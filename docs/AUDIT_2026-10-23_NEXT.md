@@ -776,8 +776,30 @@ ENG Full дополнительно выполняет настоящий main w
 52,05 % → **54,28 %**, проект 57,78 % → **57,91 %**. Полный прогон:
 **3 768 passed, 3 skipped**.
 
-До приёмки P0-3 остался сам оркестратор — цель ≤ 1 200 строк (сейчас 1 500
-строк из 3 120 исходных); цель ≥ 50 % statement coverage уже выполнена.
+**Шаг 29 (сделано) — LiveDub timeout и send/generation failure notices.**
+`send_livedub_timeout_notice` и `notify_livedub_send_failure` добавлены в
+`pipelines/livedub_failure_stage.py`. Четырнадцать прямых тестов дают общей
+failure-стадии 100 % statement/branch coverage; fresh integration теперь имеет
+четыре варианта: RUS, unavailable, timeout и size-related send failure.
+
+* flush reasons, timeout success state и generic `False` сохранены; тексты,
+  reply metadata, HTML escaping и truncation ошибки до 300 символов не
+  изменены, timeout notice по-прежнему не задаёт `parse_mode`;
+  `get_max_file_size_mb()` вызывается лениво только для size-related ошибки,
+  hint ограничен прежним порогом 50 МБ;
+* ошибка и cancellation при timeout отправке пробрасываются; ошибка generic
+  notice остаётся некритичной с log truncation до 160 символов, а flush
+  errors по-прежнему происходят до notification `try`;
+* historical timeout case обновлён через replacement mechanism, R21 source-
+  owner assertions разделены между main wiring и failure-стадией;
+  `tests/livedub_qa_cases.py` остаётся byte-stable.
+
+Измерено: `main_pipeline.py` 1 500 → **1 482 строки**, line-ratchet main
+54,28 % → **56,05 %**, проект 57,91 % → **57,95 %**. Полный прогон:
+**3 778 passed, 3 skipped**.
+
+До приёмки P0-3 остался сам оркестратор — цель ≤ 1 200 строк (сейчас 1 482
+строки из 3 120 исходных); цель ≥ 50 % statement coverage уже выполнена.
 
 ### P0-4. Сканирование секретов и SAST
 

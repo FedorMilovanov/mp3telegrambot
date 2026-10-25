@@ -950,11 +950,11 @@ def test_cache_hit_delivery_reaches_real_stage_and_returns_success(
     assert delivery.cache_hit is False
 
 
-@pytest.mark.parametrize("mode", ["", "eng"])
+@pytest.mark.parametrize("mode", ["", "eng", "eng_timeout", "eng_send_failure"])
 def test_fresh_caption_finalization_reaches_delivery_boundary(
     monkeypatch: pytest.MonkeyPatch, tmp_path, mode: str
 ) -> None:
-    """Fresh wiring reaches delivery; ENG also executes its failure notice."""
+    """Fresh wiring reaches delivery; ENG variants execute exception notices."""
     cleaned: list[str] = []
     analysis_requests = []
     publication_calls = []
@@ -1082,7 +1082,7 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
 
     notice_bot = None
     context = None
-    if mode == "eng":
+    if mode.startswith("eng"):
         import services.yandex_live_dub as live_dub
 
         async def no_cache(_media_id):
@@ -1095,7 +1095,12 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
             assert coroutine.cr_code.co_name == "_run_livedub_bg"
             coroutine.close()
             task = asyncio.get_running_loop().create_future()
-            task.set_result(None)
+            if mode == "eng_timeout":
+                task.set_exception(asyncio.TimeoutError())
+            elif mode == "eng_send_failure":
+                task.set_exception(RuntimeError("Request Entity Too Large <bad>"))
+            else:
+                task.set_result(None)
             return task
 
         class NoticeBot:
@@ -1109,11 +1114,13 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
         monkeypatch.setattr(main_pipeline, "asettings_get", no_optional_setting)
         monkeypatch.setattr(main_pipeline.asyncio, "create_task", completed_livedub_task)
         monkeypatch.setattr(live_dub, "_ensure_vot_helper", lambda: True)
+        if mode == "eng_send_failure":
+            monkeypatch.setattr(main_pipeline, "get_max_file_size_mb", lambda: 50)
         notice_bot = NoticeBot()
         context = SimpleNamespace(bot=notice_bot)
 
     monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", info)
-    monkeypatch.setattr(main_pipeline, "_db_conn", lambda: _FakeConn(mode))
+    monkeypatch.setattr(main_pipeline, "_db_conn", lambda: _FakeConn("eng" if mode.startswith("eng") else mode))
     monkeypatch.setattr(main_pipeline, "lowest_free_gb", lambda *_paths: 50.0)
     monkeypatch.setattr(main_pipeline, "cleanup_files", cleaned.append)
     monkeypatch.setattr(main_pipeline, "load_thumbnail", no_thumbnail)
@@ -1141,14 +1148,21 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
     assert _run(update, context=context) is False
     assert update.message.replies == ["❌ Ошибка: stop at delivery boundary"]
     assert cleaned == ["media1"]
-    if mode == "eng":
+    if mode.startswith("eng"):
         assert notice_bot is not None
         assert len(notice_bot.messages) == 1
         notice = notice_bot.messages[0]
         assert notice["chat_id"] == 987
         assert notice["reply_to_message_id"] == update.message.message_id
-        assert "Живой перевод Яндекса не получился" in notice["text"]
-        assert "Яндекс/VOT не отдал живой дубляж" in notice["text"]
+        if mode == "eng":
+            assert "Живой перевод Яндекса не получился" in notice["text"]
+            assert "Яндекс/VOT не отдал живой дубляж" in notice["text"]
+        elif mode == "eng_timeout":
+            assert "не успел за 30 минут" in notice["text"]
+        else:
+            assert "Не удалось отправить видео с переводом" in notice["text"]
+            assert "Request Entity Too Large &lt;bad&gt;" in notice["text"]
+            assert "LOCAL_BOT_API_URL" in notice["text"]
     else:
         assert notice_bot is None
     assert settings_calls == [True]

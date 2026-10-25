@@ -45,7 +45,11 @@ from pipelines.delivery_stage import DeliveryRequest, deliver_cached_result, del
 from pipelines.extras_stage import ExtrasRequest, run_extras
 from pipelines.fresh_caption_stage import finalize_fresh_caption
 from pipelines.livedub_dub_stage import make_livedub_video, wait_for_livedub_video
-from pipelines.livedub_failure_stage import send_full_livedub_failure_notice
+from pipelines.livedub_failure_stage import (
+    notify_livedub_send_failure,
+    send_full_livedub_failure_notice,
+    send_livedub_timeout_notice,
+)
 from pipelines.livedub_publication_stage import prepare_livedub_publication
 from pipelines.livedub_quick_stage import finish_livedub_quick
 from pipelines.publication_context_stage import prepare_publication_context
@@ -1040,48 +1044,26 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 _livedub_result_sent = True
                 return True
             except asyncio.TimeoutError:
-                await _source_audio_delivery.flush("LiveDub timeout")
-                # wait_for отменяет задачу при таймауте — перевод уже не придёт.
-                await context.bot.send_message(
+                await send_livedub_timeout_notice(
+                    bot=context.bot,
                     chat_id=update.effective_chat.id,
-                    text="⏳ Перевод «Живые голоса» не успел за 30 минут и был отменён. Отправьте ссылку ещё раз — попробуем заново.",
                     reply_to_message_id=update.message.message_id,
+                    flush_source_audio=lambda: _source_audio_delivery.flush("LiveDub timeout"),
                 )
                 _livedub_result_sent = True
                 return True
             except Exception as e:
-                await _source_audio_delivery.flush("LiveDub send/generation failure")
-                logger.warning(f"[LiveDub] fail: {e}")
-                # AUDIT R21 (живой лог: перевод сгенерировался, но отправка
-                # видео упала с "Request Entity Too Large" — юзер не получил
-                # вообще никакого объяснения, в отличие от case'ов таймаута
-                # и превышения размера ДО отправки, которые уже уведомляют).
-                try:
-                    _fail_text = str(e)
-                    _size_related = (
-                        "entity too large" in _fail_text.lower()
-                        or "too large" in _fail_text.lower()
-                    )
-                    _hint = (
-                        "\n💡 Подними локальный Bot API сервер (LOCAL_BOT_API_URL), "
-                        "чтобы отправлять до 2000 МБ."
-                        if _size_related and get_max_file_size_mb() <= 50 else ""
-                    )
-                    await context.bot.send_message(
-                        chat_id=update.effective_chat.id,
-                        text=(
-                            "⚠️ <b>Не удалось отправить видео с переводом</b>\n"
-                            f"{html_mod.escape(_fail_text[:300])}{_hint}\n\n"
-                            "Перевод сгенерирован, но отправка не удалась."
-                        ),
-                        parse_mode="HTML",
-                        reply_to_message_id=update.message.message_id,
-                    )
-                except Exception as _notify_err:
-                    logger.info(
-                        "[LiveDub] send-failure notice not sent: %s",
-                        str(_notify_err)[:160],
-                    )
+                await notify_livedub_send_failure(
+                    bot=context.bot,
+                    chat_id=update.effective_chat.id,
+                    reply_to_message_id=update.message.message_id,
+                    error=e,
+                    max_file_size_mb=get_max_file_size_mb,
+                    flush_source_audio=lambda: _source_audio_delivery.flush(
+                        "LiveDub send/generation failure"
+                    ),
+                    escape=html_mod.escape,
+                )
                 return False
 
         performer, title = parse_title(full_title, channel_name)
