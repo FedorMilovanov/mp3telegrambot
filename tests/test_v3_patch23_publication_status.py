@@ -89,13 +89,15 @@ def test_database_schema_and_pipeline_wire_publication_status():
     assert "publication_warning" in db
     assert "publication_status: str = \"unknown\"" in db
 
-    # Статус собирается стадией подписи (pipelines/caption_inputs.py), пайплайн
-    # только передаёт его в кэш — проверяются оба конца.
+    # Статус собирается в caption_inputs; fresh caption stage передаёт его в
+    # кэш, а main сохраняет warning и соединяет обе стадии.
     inputs = Path("pipelines/caption_inputs.py").read_text(encoding="utf-8")
+    fresh = Path("pipelines/fresh_caption_stage.py").read_text(encoding="utf-8")
     assert "build_publication_status(" in inputs
     assert "_pub_status = _caption_inputs.publication" in pipe
-    assert "publication_status=_pub_status.status" in pipe
-    assert "publication_missing=missing_to_json(_pub_status.missing)" in pipe
+    assert "inputs=_caption_inputs" in pipe
+    assert "publication_status=inputs.publication.status" in fresh
+    assert "publication_missing=missing_to_json(inputs.publication.missing)" in fresh
 
 
 def test_content_audit_strict_codes_do_not_block_without_explicit_flag(monkeypatch):

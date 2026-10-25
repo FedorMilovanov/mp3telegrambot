@@ -143,8 +143,13 @@
   `pipelines/publication_context_stage.py`: search title/author, AI
   questions/terms, один batch-запрос настроек, caption format/timestamps,
   план страниц и прежняя диагностика сохраняют порядок и значения fresh-пути.
-  Две прямые проверки и сквозной тест до границы `render_pages` дают стадии
-  100 % statement/branch coverage.
+  Две прямые проверки и сквозной fresh-path тест дают стадии 100 %
+  statement/branch coverage.
+- Fresh caption fit, диагностика, metadata, cache save и durable archive
+  объединены в `pipelines/fresh_caption_stage.py`. Сохранены порядок операций,
+  пропуск persistence без анализа, существующий `duration`, приоритетные
+  caption-links и исходные archive URLs; четыре прямых теста и расширенный
+  integration до `deliver_result` проверяют проводку и failure-семантику.
 - Ратчет покрытия по файлам (`tools/check_coverage_ratchet.py`,
   `docs/coverage_baseline.json`): покрытие объявленных файлов может только
   расти. Компенсирует `diff-cover` там, где изменения — проводка в

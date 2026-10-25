@@ -133,7 +133,7 @@
 | `PDF_TELEGRAPH_CACHE_SIZE` | `services/pdf_generator.py` | `64` | — | — |
 | `PLAYLIST_DELAY_SEC` | `pipelines/playlist.py` | `1.0` | да | — |
 | `PORT` | `handlers/commands.py`, `main.py`, `services/bot_lifecycle.py` | `10000` | — | — |
-| `PROMPT_EXPERIMENT_TAG` | `core/generated_pages.py`, `pipelines/main_pipeline.py` | `` | — | — |
+| `PROMPT_EXPERIMENT_TAG` | `core/generated_pages.py`, `pipelines/fresh_caption_stage.py` | `` | — | — |
 | `PROMPT_SCHEMA_VERSION` | `core/database.py` | `analysis-deep-v7` | — | — |
 | `PYTHONUTF8` | `handlers/dub_health.py`, `tools/voxcpm2/quality_sweep.py`, `tools/voxcpm2/segmented_cpu_dub.py` | `` | — | — |
 | `RENDER_GIT_COMMIT` | `services/runtime_build_identity.py` | — | — | — |
