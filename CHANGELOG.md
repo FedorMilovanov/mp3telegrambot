@@ -130,6 +130,11 @@
   cleanup и честный `bool` доставки проверяются девятью поведенческими
   тестами со 100 % statement/branch coverage. Вложенная LiveDub отправка
   остаётся в оркестраторе и передаётся callback'ом без смены контракта.
+- Финальная очистка ресурсов пайплайна вынесена в
+  `pipelines/resource_cleanup_stage.py`: cancellation LiveDub task, удаление
+  рабочего каталога и Gemini `audio_part`, закрытие thumbnail и прежние
+  failure-семантики закреплены десятью тестами со 100 % statement/branch
+  coverage; сквозной ENG Quick тест проверяет вызов из настоящего `finally`.
 - Ратчет покрытия по файлам (`tools/check_coverage_ratchet.py`,
   `docs/coverage_baseline.json`): покрытие объявленных файлов может только
   расти. Компенсирует `diff-cover` там, где изменения — проводка в

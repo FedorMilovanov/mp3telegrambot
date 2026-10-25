@@ -65,6 +65,7 @@ from pipelines.publication_plan import (
     has_ai_analysis,
     terms_total as _plan_terms_total,
 )
+from pipelines.resource_cleanup_stage import cleanup_pipeline_resources
 from pipelines.media_guards import (
     DEFAULT_MAX_DURATION_SEC,
     disk_skip,
@@ -94,7 +95,6 @@ from pipelines.livedub_title import (
 import asyncio
 import os       # FIX #11
 import logging
-import shutil     # FIX #11
 import subprocess # FIX #11
 import uuid
 import sqlite3  # LIVEDUB: direct DB read for user mode
@@ -1674,30 +1674,13 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 logger.warning(f"cleanup_files после ошибки: {_ce}")
         return False
     finally:
-        # Cancel background live-dub task before cleaning its working directory
-        if "live_dub_task" in locals() and live_dub_task is not None and not live_dub_task.done():
-            live_dub_task.cancel()
-            try:
-                await live_dub_task
-            except asyncio.CancelledError:
-                pass
-            except Exception:
-                pass
-
-        # Очищаем временную директорию LiveDub, если она создавалась
-        if "ld_work" in locals() and ld_work.exists():
-            shutil.rmtree(ld_work, ignore_errors=True)
-
-        # Удаляем audio_part из Gemini Files API — ТОЛЬКО ЗДЕСЬ,
-        # после того как все задачи (Synopsis, Shorts, Clips) завершены.
-        if used_audio_part and hasattr(used_audio_part, 'name') and used_client:
-            try:
-                await used_client.aio.files.delete(name=used_audio_part.name)
-                logger.info("Gemini Files: audio_part удалён")
-            except Exception as _del_err:
-                logger.warning(f"Gemini Files delete error: {_del_err}")
-        if thumb_buffer:
-            thumb_buffer.close()
+        await cleanup_pipeline_resources(
+            live_dub_task=live_dub_task if "live_dub_task" in locals() else None,
+            workdir=ld_work if "ld_work" in locals() else None,
+            used_audio_part=used_audio_part,
+            used_client=used_client,
+            thumbnail=thumb_buffer,
+        )
 
 
 # ─── Обработка плейлиста ─────────────────────────────────────
