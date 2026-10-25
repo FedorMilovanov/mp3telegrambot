@@ -950,7 +950,9 @@ def test_cache_hit_delivery_reaches_real_stage_and_returns_success(
     assert delivery.cache_hit is False
 
 
-@pytest.mark.parametrize("mode", ["", "eng", "eng_timeout", "eng_send_failure"])
+@pytest.mark.parametrize(
+    "mode", ["", "eng", "eng_timeout", "eng_send_failure", "eng_video_send_failure"]
+)
 def test_fresh_caption_finalization_reaches_delivery_boundary(
     monkeypatch: pytest.MonkeyPatch, tmp_path, mode: str
 ) -> None:
@@ -1099,6 +1101,10 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
                 task.set_exception(asyncio.TimeoutError())
             elif mode == "eng_send_failure":
                 task.set_exception(RuntimeError("Request Entity Too Large <bad>"))
+            elif mode == "eng_video_send_failure":
+                translated = tmp_path / "translated.mp4"
+                translated.write_bytes(b"video")
+                task.set_result((translated, False, False))
             else:
                 task.set_result(None)
             return task
@@ -1106,16 +1112,37 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
         class NoticeBot:
             def __init__(self):
                 self.messages = []
+                self.video_calls = []
+                self.actions = []
 
             async def send_message(self, **kwargs):
                 self.messages.append(kwargs)
+
+            async def send_chat_action(self, **kwargs):
+                self.actions.append(kwargs)
+
+            async def send_video(self, **kwargs):
+                self.video_calls.append(kwargs)
+                raise RuntimeError("Request Entity Too Large <bad>")
 
         monkeypatch.setattr(main_pipeline, "adb_get", no_cache)
         monkeypatch.setattr(main_pipeline, "asettings_get", no_optional_setting)
         monkeypatch.setattr(main_pipeline.asyncio, "create_task", completed_livedub_task)
         monkeypatch.setattr(live_dub, "_ensure_vot_helper", lambda: True)
-        if mode == "eng_send_failure":
+        if mode in ("eng_send_failure", "eng_video_send_failure"):
             monkeypatch.setattr(main_pipeline, "get_max_file_size_mb", lambda: 50)
+        if mode == "eng_video_send_failure":
+            import services.livedub_mix as mix
+
+            thumbs_dir = tmp_path / "thumbs"
+            thumbs_dir.mkdir()
+            monkeypatch.setattr(main_pipeline, "THUMBS_DIR", thumbs_dir)
+            monkeypatch.setattr(
+                mix,
+                "probe_video_meta",
+                lambda _path: {"width": 640, "height": 360, "duration": 12.5},
+            )
+            monkeypatch.setattr(mix, "make_video_thumbnail", lambda _path: None)
         notice_bot = NoticeBot()
         context = SimpleNamespace(bot=notice_bot)
 
@@ -1163,6 +1190,19 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
             assert "Не удалось отправить видео с переводом" in notice["text"]
             assert "Request Entity Too Large &lt;bad&gt;" in notice["text"]
             assert "LOCAL_BOT_API_URL" in notice["text"]
+        if mode == "eng_video_send_failure":
+            assert notice_bot.actions == [
+                {"chat_id": 987, "action": "upload_video"}
+            ]
+            assert len(notice_bot.video_calls) == 1
+            video_call = notice_bot.video_calls[0]
+            assert video_call["width"] == 640
+            assert video_call["height"] == 360
+            assert video_call["duration"] == 12.5
+            assert video_call["supports_streaming"] is True
+            assert "cover" not in video_call
+        else:
+            assert notice_bot.video_calls == []
     else:
         assert notice_bot is None
     assert settings_calls == [True]

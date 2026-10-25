@@ -58,6 +58,9 @@ _REPLACED_CASES = {
     # Timeout duration stays in main; its user-facing notice has a dedicated
     # failure-stage owner. The two-module replacement lives below.
     "test_pipeline_waitfor_covers_retry_budget",
+    # Human filename preparation stays in main; probing now belongs to the
+    # video-assets stage. The two-module replacement lives below.
+    "test_pipeline_prepares_human_livedub_filename_before_send",
 }
 _CASES = runpy.run_path(str(Path(__file__).with_name("livedub_qa_cases.py")))
 globals().update(
@@ -318,3 +321,15 @@ def test_pipeline_waitfor_covers_retry_budget() -> None:
     assert "timeout=1800" in main
     assert "send_livedub_timeout_notice(" in main
     assert "не успел за 30 минут" in stage
+
+
+def test_pipeline_prepares_human_livedub_filename_before_send() -> None:
+    main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    stage = Path("pipelines/livedub_video_assets_stage.py").read_text(encoding="utf-8")
+    helper = main[main.index("async def _send_livedub_result"):main.index("performer, title = parse_title")]
+    assert "prepare_livedub_send_path" in helper
+    assert "десятки одинаковых pro_dub.mp4" in helper
+    assert helper.index("prepare_livedub_send_path") < helper.index(
+        "prepare_livedub_video_assets"
+    )
+    assert "probe_video_meta" in stage

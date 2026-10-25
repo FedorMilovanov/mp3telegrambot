@@ -52,6 +52,7 @@ from pipelines.livedub_failure_stage import (
 )
 from pipelines.livedub_publication_stage import prepare_livedub_publication
 from pipelines.livedub_quick_stage import finish_livedub_quick
+from pipelines.livedub_video_assets_stage import prepare_livedub_video_assets
 from pipelines.publication_context_stage import prepare_publication_context
 from services.telegraph_pages import combined_study_reflection_enabled
 from pipelines.telegraph_nav import add_navigation
@@ -893,24 +894,9 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 # В облачном режиме PTB сам откроет путь и зальёт как раньше.
                 # width/height/duration/thumbnail: для видео >10 МБ Telegram сам
                 # их НЕ определяет — без них нет превью, длительности и стриминга.
-                _v_meta, _v_thumb = {}, None
-                try:
-                    from services.livedub_mix import probe_video_meta, make_video_thumbnail
-                    _v_meta = await asyncio.get_running_loop().run_in_executor(
-                        None, lambda: probe_video_meta(livedub_path))
-                    _v_thumb = await asyncio.get_running_loop().run_in_executor(
-                        None, lambda: make_video_thumbnail(livedub_path))
-                except Exception as _vm_err:
-                    logger.warning(f"[LiveDub] video meta: {_vm_err}")
-                # Bot API 8.3+: cover — настоящая обложка видео в чате.
-                # Используем YouTube-обложку (уже скачана основным пайплайном).
-                _v_cover = None
-                try:
-                    _cover_candidates = sorted(THUMBS_DIR.glob(f"{media_id}_thumb*"))
-                    if _cover_candidates and _cover_candidates[0].stat().st_size > 1024:
-                        _v_cover = _cover_candidates[0]
-                except Exception:
-                    pass
+                _v_meta, _v_thumb, _v_cover = await prepare_livedub_video_assets(
+                    livedub_path, media_id=media_id, thumbs_dir=THUMBS_DIR
+                )
                 _send_kwargs = dict(
                     chat_id=update.effective_chat.id,
                     video=livedub_path,

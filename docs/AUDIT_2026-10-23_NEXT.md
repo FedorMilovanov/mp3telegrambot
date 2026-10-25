@@ -798,8 +798,28 @@ failure-стадии 100 % statement/branch coverage; fresh integration тепе
 54,28 % → **56,05 %**, проект 57,91 % → **57,95 %**. Полный прогон:
 **3 778 passed, 3 skipped**.
 
-До приёмки P0-3 остался сам оркестратор — цель ≤ 1 200 строк (сейчас 1 482
-строки из 3 120 исходных); цель ≥ 50 % statement coverage уже выполнена.
+**Шаг 30 (сделано) — LiveDub video metadata, thumbnail и cover.** Probe в
+executor → thumbnail → выбор YouTube cover вынесены в
+`pipelines/livedub_video_assets_stage.py`. Шесть прямых тестов дают стадии
+100 % statement/branch coverage; пятый fresh integration-вариант доходит до
+настоящего `send_video` и проверяет последующий size-related failure notice.
+
+* lazy service imports и два executor-вызова сохранены; при ошибке thumbnail
+  metadata по-прежнему откатывается к `{}`, а не остаётся частично назначенной;
+  probe/thumbnail failure не мешает последующему выбору cover;
+* сортировка cover-кандидатов, проверка только первого и строгий порог
+  `> 1024` байт сохранены; ошибки glob/stat некритичны, а metadata передаются
+  в прежние width/height/duration/streaming kwargs;
+* historical filename/probe source-owner case обновлён через replacement
+  mechanism; `tests/livedub_qa_cases.py` остаётся byte-stable, а ratchet растёт
+  за счёт выполненного пути до Telegram `send_video`.
+
+Измерено: `main_pipeline.py` 1 482 → **1 468 строк**, line-ratchet main
+56,05 % → **63,77 %**, проект 57,95 % → **58,12 %**. Полный прогон:
+**3 785 passed, 3 skipped**.
+
+До приёмки P0-3 остался сам оркестратор — цель ≤ 1 200 строк (сейчас 1 468
+строк из 3 120 исходных); цель ≥ 50 % statement coverage уже выполнена.
 
 ### P0-4. Сканирование секретов и SAST
 
