@@ -655,8 +655,27 @@ statement/branch coverage; integration останавливается sentinel'�
 32,46 % → **36,07 %**, проект 57,23 % → **57,34 %**. Полный прогон:
 **3 727 passed, 3 skipped**.
 
-До приёмки P0-3 остался сам оркестратор — цель ≤ 1 200 строк (сейчас 1 645
-строк из 3 120 исходных).
+**Шаг 23 (сделано) — fresh caption и сохранение публикации.** Блок fit →
+диагностика → caption metadata → cache save → durable archive вынесен в
+`pipelines/fresh_caption_stage.py`. Четыре прямых теста дают стадии 100 %
+statement/branch coverage; существующий fresh integration расширен до sentinel'а
+на `deliver_result` с сохранением всех прежних проверок context/render.
+
+* порядок fit/log/save/archive и два вызова prompt fingerprint сохранены; без
+  анализа persistence пропускается, существующий `duration` не перезаписывается,
+  а ошибка cache save по-прежнему критична и не запускает archive;
+* cache получает приоритетные caption-links, archive — исходные страницы и тот
+  же `RepairReport`; main передаёт текущие зависимости явно, без смены
+  monkeypatch-границ;
+* source-owner контракты patch 23/24 переведены на новую двухмодульную
+  проводку, а generated env reference обновлён штатным генератором.
+
+Измерено: `main_pipeline.py` 1 645 → **1 592 строки**, line-ratchet main
+36,07 % → **39,84 %**, проект 57,34 % → **57,45 %**. Полный прогон:
+**3 731 passed, 3 skipped**.
+
+До приёмки P0-3 остался сам оркестратор — цель ≤ 1 200 строк (сейчас 1 592
+строки из 3 120 исходных).
 
 ### P0-4. Сканирование секретов и SAST
 

@@ -32,7 +32,7 @@ from converters.md_telegraph import (
     get_caption_timestamp_limit,                       # FIX #11
 )
 from pipelines.analysis_stage import AnalysisRequest, run_analysis
-from pipelines.archive_stage import ArchiveRequest, archive_pages
+from pipelines.archive_stage import archive_pages
 from pipelines.caption_inputs import build_caption_inputs
 from pipelines.caption_stage import CaptionSource, fit_caption
 from pipelines.cache_stage import load_cache
@@ -43,6 +43,7 @@ from pipelines.cached_presentation_stage import (
 )
 from pipelines.delivery_stage import DeliveryRequest, deliver_cached_result, deliver_result
 from pipelines.extras_stage import ExtrasRequest, run_extras
+from pipelines.fresh_caption_stage import finalize_fresh_caption
 from pipelines.livedub_quick_stage import finish_livedub_quick
 from pipelines.publication_context_stage import prepare_publication_context
 from services.telegraph_pages import combined_study_reflection_enabled
@@ -52,7 +53,6 @@ from pipelines.telegraph_render import RenderRequest, render_pages
 from pipelines.thumbnail_stage import load_thumbnail
 from core.url_utils import get_youtube_video_url, get_youtube_timestamp_url
 from core.progress import set_progress
-from core.publication_status import missing_to_json
 from pipelines.audio_failure_stage import fail_audio_too_large
 from pipelines.audio_stage import (
     AudioTooLarge,
@@ -1437,7 +1437,6 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         vk_url      = _caption_inputs.vk_url
         ai_data     = _caption_inputs.ai_data
         _pub_status = _caption_inputs.publication
-        _ai_caption_base = _caption_inputs.caption_base
         if ai_data and _pub_status.warning:
             logger.warning(
                 "Publication status for %s: status=%s missing=%s",
@@ -1464,79 +1463,27 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             reflection_link=reflection_application_tg or "",
             format_name=_mat_format,
         )
-        _fit = fit_caption(_cap_source, _ai_caption_base)
-        caption = _fit.caption
-        full_caption = _fit.full_caption
-        _ts_in_cap = _fit.timestamps_shown
-        _caption_trim_stage = _fit.trim_stage
-        if _fit.data is not None:
-            _ai_caption_base = _fit.data
-        logger.info(
-            "Caption visible_len=%d format=%s ts_total=%d ts_cap_limit=%d ts_in_cap=%d stage=%s",
-            visible_length(caption),
-            _mat_format,
-            _ts_total,
-            _cap_source.timestamps_limit(),
-            _ts_in_cap,
-            _caption_trim_stage or "none",
+        # Fresh caption fit, cache metadata и долговременный архив — одна
+        # стадия; при отсутствии анализа сохранение по-прежнему пропускается.
+        _fresh_caption = await finalize_fresh_caption(
+            source=_cap_source,
+            inputs=_caption_inputs,
+            publication=_publication,
+            rendered=_rendered,
+            repair=_repair,
+            media_id=media_id,
+            duration=duration,
+            cache_version=CACHE_VERSION,
+            model_name=GEMINI_MODEL,
+            prompt_version=get_prompt_fingerprint,
+            fit=fit_caption,
+            visible_length=visible_length,
+            save=adb_save,
+            archive=archive_pages,
         )
-        if ai_data:
-            ai_data = {
-                **ai_data,
-                "caption_trim_stage": _caption_trim_stage,
-                "caption_timestamps_total": _ts_total,
-                "caption_timestamps_shown": _ts_in_cap,
-            }
-            # Добавляем duration в ai_data чтобы /pdf мог его читать из кэша
-            if duration and not ai_data.get("duration"):
-                ai_data = {**ai_data, "duration": duration}
-            await adb_save(video_id=media_id, url=url,
-                    questions=ai_data.get("questions", []),
-                    # Сохраняем приоритетные ссылки: новые страницы > legacy compact
-                    quotes_tg_url=_q_link,
-                    questions_tg_url=_ref_link,
-                    ai_data=ai_data,
-                    telegraph_url=telegraph_url or "",
-                    cache_version=CACHE_VERSION,
-                    prompt_version=get_prompt_fingerprint(),
-                    model_name=GEMINI_MODEL,
-                    terms_tg_url=_terms_link,
-                    rutube_url=rutube_url or "",
-                    vk_url=vk_url or "",
-                    study_tg_url=study_analysis_tg or "",
-                    reflection_tg_url=reflection_application_tg or "",
-                    publication_status=_pub_status.status,
-                    publication_missing=missing_to_json(_pub_status.missing),
-                    publication_warning=_pub_status.warning)
-
-            # V3-P24: durable human-readable archive independent of expiring cache.
-            # Сборка записи, статус починки и экспорт сегментов — одна
-            # некритичная стадия: её сбой не отменяет отправку готового MP3.
-            await archive_pages(
-                ArchiveRequest(
-                    media_id=media_id,
-                    source_url=url,
-                    ai_data=ai_data,
-                    publication=_pub_status,
-                    title=title,
-                    performer=performer,
-                    search_title=search_title,
-                    author=tg_author,
-                    format_name=_mat_format,
-                    duration=duration,
-                    rutube_url=rutube_url,
-                    vk_url=vk_url,
-                    synopsis_url=telegraph_url or "",
-                    study_url=study_analysis_tg or "",
-                    reflection_url=reflection_application_tg or "",
-                    terms_url=terms_tg or "",
-                    questions_url=questions_tg or "",
-                    model=GEMINI_MODEL,
-                    prompt_version=get_prompt_fingerprint(),
-                    prompt_variant=os.getenv("PROMPT_EXPERIMENT_TAG", ""),
-                ),
-                repair=_repair,
-            )
+        caption = _fresh_caption.caption
+        full_caption = _fresh_caption.full_caption
+        ai_data = _fresh_caption.ai_data
 
         # Свежий результат отправляется одной стадией: ID3 → MP3 с retry →
         # полный текст → PDF → quiz. Ошибка MP3 остаётся критичной, а сбои

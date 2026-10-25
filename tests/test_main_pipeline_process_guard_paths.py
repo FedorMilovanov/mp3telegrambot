@@ -557,14 +557,21 @@ def test_cache_audio_too_large_executes_shared_early_return(
 
 
 
-def test_fresh_publication_context_reaches_render_boundary(
+def test_fresh_caption_finalization_reaches_delivery_boundary(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
-    """Fresh analysis reaches rendering with the exact extracted context."""
+    """Fresh wiring reaches delivery with the exact publication/caption values."""
     cleaned: list[str] = []
     analysis_requests = []
     publication_calls = []
     render_requests = []
+    navigation_calls = []
+    repair_calls = []
+    fit_calls = []
+    save_calls = []
+    archive_calls = []
+    delivery_requests = []
+    prompt_calls = []
     audio_path = tmp_path / "fresh.mp3"
     questions = {"blocks": [{"text": "Question"}]}
     terms_data = {
@@ -632,9 +639,52 @@ def test_fresh_publication_context_reaches_render_boundary(
         publication_calls.append((kwargs, context))
         return context
 
-    async def stop_at_render(request):
+    from pipelines.caption_stage import CaptionFit
+    from pipelines.telegraph_render import RenderedPages
+    from pipelines.telegraph_repair_stage import RepairReport
+
+    repair_report = RepairReport()
+
+    async def render_ready(request):
         render_requests.append(request)
-        raise RuntimeError("stop at render boundary")
+        return RenderedPages(
+            questions_url="questions",
+            terms_url="terms",
+            study_analysis_url="study",
+            alt_links={"rutube": "alt-rutube", "vk": "alt-vk"},
+        )
+
+    async def navigation_ready(pages):
+        navigation_calls.append(pages)
+
+    async def repair_ready(urls, *, enabled):
+        repair_calls.append((urls, enabled))
+        return repair_report
+
+    def fit_ready(source, caption_base):
+        fit_calls.append((source, caption_base))
+        return CaptionFit(
+            caption="fitted caption",
+            full_caption="full fitted caption",
+            timestamps_total=2,
+            timestamps_shown=1,
+            trim_stage="timestamps_trimmed",
+            data={"fitted": True},
+        )
+
+    async def save_ready(**kwargs):
+        save_calls.append(kwargs)
+
+    async def archive_ready(request, *, repair):
+        archive_calls.append((request, repair))
+
+    def prompt_ready():
+        prompt_calls.append(True)
+        return "prompt-test"
+
+    async def stop_at_delivery(request):
+        delivery_requests.append(request)
+        raise RuntimeError("stop at delivery boundary")
 
     monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", info)
     monkeypatch.setattr(main_pipeline, "_db_conn", lambda: _FakeConn(""))
@@ -648,11 +698,20 @@ def test_fresh_publication_context_reaches_render_boundary(
     monkeypatch.setattr(
         main_pipeline, "prepare_publication_context", capture_publication
     )
-    monkeypatch.setattr(main_pipeline, "render_pages", stop_at_render)
+    monkeypatch.setattr(main_pipeline, "render_pages", render_ready)
+    monkeypatch.setattr(main_pipeline, "add_navigation", navigation_ready)
+    monkeypatch.setattr(main_pipeline, "repair_pages", repair_ready)
+    monkeypatch.setattr(main_pipeline, "fit_caption", fit_ready)
+    monkeypatch.setattr(main_pipeline, "adb_save", save_ready)
+    monkeypatch.setattr(main_pipeline, "archive_pages", archive_ready)
+    monkeypatch.setattr(main_pipeline, "get_prompt_fingerprint", prompt_ready)
+    monkeypatch.setattr(main_pipeline, "deliver_result", stop_at_delivery)
+    monkeypatch.setenv("TELEGRAPH_AUTO_REPAIR_AFTER_PUBLISH", "1")
+    monkeypatch.setenv("PROMPT_EXPERIMENT_TAG", "integration")
     update = _FakeUpdate()
 
     assert _run(update) is False
-    assert update.message.replies == ["❌ Ошибка: stop at render boundary"]
+    assert update.message.replies == ["❌ Ошибка: stop at delivery boundary"]
     assert cleaned == ["media1"]
     assert settings_calls == [True]
     assert len(analysis_requests) == 1
@@ -689,3 +748,70 @@ def test_fresh_publication_context_reaches_render_boundary(
     assert render.author == publication.tg_author
     assert render.full_title == "Original fallback title"
     assert render.synopsis_outline == "outline"
+    assert navigation_calls == [[
+        ("Конспект", "https://telegra.ph/synopsis"),
+        ("Разбор материала", "study"),
+    ]]
+    assert repair_calls == [(
+        [
+            "https://telegra.ph/synopsis",
+            "study",
+            None,
+            None,
+            "questions",
+            "terms",
+        ],
+        True,
+    )]
+    assert len(fit_calls) == 1
+    caption_source, caption_base = fit_calls[0]
+    assert caption_source.format_name == "lecture"
+    assert caption_source.quotes_link == "study"
+    assert caption_source.questions_link == "questions"
+    assert caption_source.terms_link == "terms"
+    assert caption_base["real_title"] == ai_data["real_title"]
+
+    assert len(save_calls) == 1
+    saved = save_calls[0]
+    assert saved["video_id"] == "media1"
+    assert saved["ai_data"]["caption_trim_stage"] == "timestamps_trimmed"
+    assert saved["ai_data"]["caption_timestamps_total"] == 2
+    assert saved["ai_data"]["caption_timestamps_shown"] == 1
+    assert saved["ai_data"]["duration"] == 600
+    assert saved["quotes_tg_url"] == "study"
+    assert saved["questions_tg_url"] == "questions"
+    assert saved["terms_tg_url"] == "terms"
+    assert saved["rutube_url"] == "alt-rutube"
+    assert saved["vk_url"] == "alt-vk"
+    assert saved["prompt_version"] == "prompt-test"
+    assert saved["publication_status"] == "complete"
+    assert saved["publication_missing"] == "[]"
+
+    assert len(archive_calls) == 1
+    archive_request, archived_repair = archive_calls[0]
+    assert archived_repair is repair_report
+    assert archive_request.ai_data is saved["ai_data"]
+    assert archive_request.search_title == publication.search_title
+    assert archive_request.author == publication.tg_author
+    assert archive_request.format_name == "lecture"
+    assert archive_request.duration == 600
+    assert archive_request.rutube_url == "alt-rutube"
+    assert archive_request.vk_url == "alt-vk"
+    assert archive_request.study_url == "study"
+    assert archive_request.reflection_url == ""
+    assert archive_request.terms_url == "terms"
+    assert archive_request.questions_url == "questions"
+    assert archive_request.prompt_version == "prompt-test"
+    assert archive_request.prompt_variant == "integration"
+    assert prompt_calls == [True, True]
+
+    assert len(delivery_requests) == 1
+    delivery = delivery_requests[0]
+    assert delivery.mp3_path == audio_path
+    assert delivery.caption == "fitted caption"
+    assert delivery.full_caption == "full fitted caption"
+    assert delivery.ai_data is saved["ai_data"]
+    assert delivery.synopsis_url == "https://telegra.ph/synopsis"
+    assert delivery.study_url == "study"
+    assert delivery.reflection_url == ""
+    assert delivery.terms_url == "terms"
