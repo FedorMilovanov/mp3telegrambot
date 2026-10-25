@@ -1010,8 +1010,22 @@ enqueue-failure rollback, admin paths и registration.
 Измерено: проект 59,53 % → **59,82 %**. Полный прогон:
 **3 935 passed, 3 skipped**.
 
-**Цели main для P0-3 достигнуты:** 1 195 ≤ 1 200 строк и 85,12 % ≥ 50 %
-statement coverage. Открытыми остаются handlers ≥ 55 % и Telegraph ≥ 60 %.
+**Шаг 42 (сделано) — Dub wizard coverage и handlers acceptance.** Тридцать
+два прямых behavior-теста без изменения production-кода покрывают profile
+catalog/pagination, stale callbacks, `/dub` и `/dubtts`, project list, direct
+project creation, SRT validation/persistence, text/document handlers,
+auto-draft binding, oversize errors и registration ordering.
+
+* `handlers/dub_wizard.py`: **467/467 statements, 168/168 branches**;
+* handlers в целом: 1 298/2 802 (46,32 %) → **1 561/2 802 (55,71 %)**;
+  `main_pipeline.py` остаётся 1 195 строк и 85,12 % statement coverage.
+
+Измерено: проект 59,82 % → **60,57 %**. Полный прогон:
+**3 967 passed, 3 skipped**.
+
+**Цели main и handlers для P0-3 достигнуты:** main — 1 195 ≤ 1 200 строк и
+85,12 % ≥ 50 % statement coverage; handlers — 55,71 % ≥ 55 %. Открытым
+остаётся Telegraph ≥ 60 %.
 
 ### P0-4. Сканирование секретов и SAST
 
