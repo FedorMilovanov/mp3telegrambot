@@ -52,8 +52,12 @@ def test_synopsis_uses_central_reasoning_note_and_telegraph_pages_injects_blocks
     telegraph = Path("services/telegraph.py").read_text(encoding="utf-8")
     pages = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
     assert "from core.reasoning_guidance import build_synopsis_reasoning_note" in telegraph
-    assert "SYNOPSIS_REASONING_FIRST_NOTE = build_synopsis_reasoning_note()" in telegraph
-    assert "prompt = SYNOPSIS_REASONING_FIRST_NOTE" in telegraph
+    compact_telegraph = "".join(telegraph.split())
+    assert "SYNOPSIS_REASONING_FIRST_NOTE=build_synopsis_reasoning_note()" in compact_telegraph
+    assert (
+        "prompt=SYNOPSIS_REASONING_FIRST_NOTE" in compact_telegraph
+        or "prompt=(SYNOPSIS_REASONING_FIRST_NOTE" in compact_telegraph
+    )
     assert "from core.reasoning_guidance import build_reasoning_first_block" in pages
     assert "build_reasoning_first_block(\"study\")" in pages
     assert "build_reasoning_first_block(\"reflection\")" in pages

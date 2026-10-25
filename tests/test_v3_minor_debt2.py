@@ -30,11 +30,15 @@ def test_telegraph_pages_no_inner_core_globals_import():
 
 
 def test_telegraph_pages_has_module_level_time_import():
+    import ast
+
     src = pathlib.Path("services/telegraph_pages.py").read_text(encoding="utf-8")
-    # module-level import time (not inside a function)
-    lines = src.splitlines()
-    top_imports = [l for l in lines[:60] if l.strip() == "import time"]
-    assert top_imports, "module-level 'import time' not found in first 60 lines"
+    tree = ast.parse(src)
+    assert any(
+        isinstance(node, ast.Import)
+        and any(alias.name == "time" and alias.asname is None for alias in node.names)
+        for node in tree.body
+    ), "module-level 'import time' not found"
 
 
 # ---------------------------------------------------------------------------

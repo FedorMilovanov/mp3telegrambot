@@ -26,7 +26,8 @@ def test_telegraph_synopsis_wires_structured_output_with_legacy_fallback():
     assert "Synopsis structured output failed" in src
     assert "retry legacy JSON config" in src
     assert "return await _generate_synopsis_content(" in src
-    assert "client, GEMINI_MODEL" in src
+    compact_src = "".join(src.split())
+    assert "client,GEMINI_MODEL" in compact_src
     # Cross-model downgrade is opt-in through the catalog's fallback role and
     # must never be a hardcoded deprecated literal.
     assert "from core.model_catalog import fallback_model" in src
@@ -55,7 +56,8 @@ def test_synopsis_positive_reasoning_note_is_injected_into_qa_and_v2():
     assert "FULL CLEAN-VERBATIM SYNOPSIS" in note
     assert "БЕЗ СМЫСЛОВОГО СЖАТИЯ" in note
     assert "сжатая стенограмма" not in note.lower()
-    assert 'prompt = SYNOPSIS_REASONING_FIRST_NOTE + "\\n\\n" + _qa_prompt_template.format' in src
+    compact_src = "".join(src.split())
+    assert 'SYNOPSIS_REASONING_FIRST_NOTE+"\\n\\n"+_qa_prompt_template.format' in compact_src
     assert "_syn_format_note =" in src
-    assert 'SYNOPSIS_REASONING_FIRST_NOTE + "\\n" + _format_note' in src
+    assert 'SYNOPSIS_REASONING_FIRST_NOTE+"\\n"+_format_note' in compact_src
     assert "_verbatim_context" in src and "_primary_context" in src

@@ -87,6 +87,13 @@ jobs:
         if: ${{ matrix.python-version == '3.12' }}
         run: python tools/check_coverage_ratchet.py
 
+      - name: Classify a semantics-preserving formatting-only diff
+        id: formatting-only
+        if: ${{ matrix.python-version == '3.12' && github.event_name == 'pull_request' }}
+        run: |
+          git fetch --no-tags origin main
+          python tools/check_formatting_only.py --compare-ref origin/main >> "$GITHUB_OUTPUT"
+
       - name: Coverage of changed lines
         # Порог 75% на изменённые строки, а не на весь проект: поднимать
         # покрытие легаси «тестами ради тестов» — не цель. Если изменений в
@@ -98,7 +105,10 @@ jobs:
         # функция не покрыта, за файлом следит ратчет покрытия (шаг выше):
         # покрытие не может упасть. Исключение снимается тем PR, который
         # закончит разрез.
-        if: ${{ matrix.python-version == '3.12' && github.event_name == 'pull_request' }}
+        # Исключение для массового форматирования допустимо только после
+        # независимой проверки неизменных executable AST. Полный pytest и
+        # coverage ratchet выполняются даже для такого diff.
+        if: ${{ matrix.python-version == '3.12' && github.event_name == 'pull_request' && steps.formatting-only.outputs.pure != 'true' }}
         run: |
           git fetch --no-tags origin main
           diff-cover coverage.xml --compare-branch=origin/main --fail-under=75 \

@@ -32,6 +32,10 @@ _REPLACED_CASES = {
     "test_livedub_info_message_uses_safe_html_trim",
     "test_vot_token_is_documented_in_readme_help_and_status",
     "test_ytdlp_js_runtime_version_filter",
+    # Source-layout assertions are replaced by signature/AST contracts below so
+    # the historical module remains byte-stable through repository formatting.
+    "test_vot_cli_retries_for_long_translations",
+    "test_merge_video_uses_new_protocol_before_old_vot_merge",
     # P0-3: title implementation and HTML delivery now have separate source
     # owners; the two-module replacement lives in test_livedub_title.py.
     "test_livedub_send_video_caption_includes_title_and_html_parse_mode",
@@ -326,11 +330,54 @@ def test_eng_subtitles_skip_by_known_duration() -> None:
     assert "known_duration=duration" in stage
 
 
+def test_vot_cli_retries_for_long_translations() -> None:
+    """Retry defaults are introspected, independent of signature line wrapping."""
+    import inspect
+
+    from services.yandex_live_dub import get_live_dub_audio
+
+    parameters = inspect.signature(get_live_dub_audio).parameters
+    assert parameters["timeout"].default == 480
+    assert parameters["retries"].default == 2
+
+    src = Path("services/yandex_live_dub.py").read_text(encoding="utf-8")
+    assert "Перевод ещё готовится у Яндекса" in src
+    assert "merge-video повтор" in src
+    audio_fn = src[src.index("def get_live_dub_audio"):src.index("def get_live_dub_video")]
+    assert audio_fn.count("LIVEDUB_NOT_AVAILABLE") >= 2
+
+
+def test_merge_video_uses_new_protocol_before_old_vot_merge() -> None:
+    """The new-protocol call must precede the legacy fallback in the AST."""
+    import ast
+
+    src = Path("services/yandex_live_dub.py").read_text(encoding="utf-8")
+    function = next(
+        node
+        for node in ast.parse(src).body
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "get_live_dub_video"
+    )
+
+    def call_line(name: str) -> int:
+        return min(
+            node.lineno
+            for node in ast.walk(function)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == name
+        )
+
+    assert call_line("get_live_dub_audio") < call_line("_check_vot_cli")
+    assert call_line("download_original_video")
+    assert call_line("mix_tracks")
+
+
 def test_pipeline_wires_pro_mix_and_autofix() -> None:
     main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     stage = Path("pipelines/livedub_dub_stage.py").read_text(encoding="utf-8")
-    assert 'asettings_get("livedub_pro_mix")' in main
-    assert 'asettings_get("livedub_autofix")' in main
+    compact_main = "".join(main.split())
+    assert 'asettings_get("livedub_pro_mix")' in compact_main
+    assert 'asettings_get("livedub_autofix")' in compact_main
     background = Path("pipelines/livedub_background_stage.py").read_text(
         encoding="utf-8"
     )

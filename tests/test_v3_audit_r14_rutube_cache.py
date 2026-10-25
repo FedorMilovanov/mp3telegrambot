@@ -70,7 +70,8 @@ def test_load_helper_marks_early_exit_incomplete():
     assert "complete = False" in helper
     assert "досрочный выход" in helper
     # ранний выход управляем флагом allow_early_exit
-    assert "allow_early_exit and" in helper
+    compact_helper = " ".join(helper.split())
+    assert "allow_early_exit and" in compact_helper
 
 
 # ── Тайминг-фикс из того же прогона: точка после ⏱ сквозь жирный ──

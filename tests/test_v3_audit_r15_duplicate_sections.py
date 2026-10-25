@@ -85,12 +85,20 @@ def test_mini_outline_builds_real_link_not_bare_string():
 
 
 def test_telegraph_imports_link_building_utils():
+    import ast
     from pathlib import Path
-    header = Path(__file__).resolve().parents[1].joinpath("services/telegraph.py").read_text(
+
+    source = Path(__file__).resolve().parents[1].joinpath("services/telegraph.py").read_text(
         encoding="utf-8"
-    ).split("\n\n", 1)[0]
-    assert "time_to_seconds" in header
-    assert "from core.url_utils import get_youtube_timestamp_url" in header
+    )
+    imports = {
+        (node.module, alias.name)
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.ImportFrom)
+        for alias in node.names
+    }
+    assert ("core.core_utils", "time_to_seconds") in imports
+    assert ("core.url_utils", "get_youtube_timestamp_url") in imports
 
 
 def test_mini_outline_logic_produces_link_children():

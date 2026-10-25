@@ -23,7 +23,8 @@ def test_edit_telegraph_page_logs_url_on_failure():
 
 def test_telegraph_pages_exponential_backoff():
     src = open("services/telegraph_pages.py", encoding="utf-8").read()
-    assert "3 * (2 ** retry_attempt)" in src, \
+    compact_src = "".join(src.split())
+    assert "3*(2**retry_attempt)" in compact_src, \
         "telegraph_pages editPage retry must use exponential backoff"
 
 

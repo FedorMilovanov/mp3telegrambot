@@ -108,9 +108,11 @@ def test_composed_telegraph_titles_respect_256():
 
     pages = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
     assert '_full_title = f"{page_prefix}{_sep}{tg_title}"[:256]' in pages
-    assert '[:256 - len(_sfx)] + _sfx' in pages
+    compact_pages = "".join(pages.split())
+    assert '[:256-len(_sfx)]+_sfx' in compact_pages
     tg = Path("services/telegraph.py").read_text(encoding="utf-8")
-    assert "[:256 - len(_sfx)] + _sfx" in tg
+    compact_tg = "".join(tg.split())
+    assert "[:256-len(_sfx)]+_sfx" in compact_tg
     assert "fit_telegraph_title(t)" in tg
     assert len(fit_telegraph_title("Вопросы: " + ("Я" * 300))) == 256
     part = compose_telegraph_title("Очень длинный " + ("Я" * 300), " (1.2)")
