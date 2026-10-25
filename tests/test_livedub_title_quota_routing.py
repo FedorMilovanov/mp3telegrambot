@@ -54,6 +54,13 @@ def test_livedub_title_fallback_uses_common_project_aware_router() -> None:
     ]
     assert direct_first_client == []
 
+    from scripts.gemini_caller_census import DIRECT_CLASSIFICATIONS
+
+    signature = ("pipelines/livedub_title.py", "_generate_title", "inference_async")
+    old_signature = ("pipelines/main_pipeline.py", "_generate_title", "inference_async")
+    assert DIRECT_CLASSIFICATIONS[signature] == ("A", 1)
+    assert old_signature not in DIRECT_CLASSIFICATIONS
+
 
 def test_livedub_title_router_keeps_sdk_callback_and_total_timeout() -> None:
     func = _title_function()
