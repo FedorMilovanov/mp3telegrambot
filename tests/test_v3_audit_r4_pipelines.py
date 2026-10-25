@@ -69,23 +69,15 @@ def test_livedub_bg_cancels_inner_tasks_on_teardown():
 
 
 def test_too_big_early_return_still_sends_livedub():
-    """Обе ветки (кэш и основной путь) не теряют готовый дубляж при слишком большом mp3.
-
-    Тексты сообщений теперь живут в `pipelines/audio_stage.py`, поэтому проверка
-    идёт по обработчику `AudioTooLarge`: после него обязан идти `_send_livedub_result()`.
-    """
+    """Обе ветки используют общий early return, который отправляет LiveDub."""
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    handled = 0
-    start = 0
-    while True:
-        idx = src.find("except AudioTooLarge", start)
-        if idx == -1:
-            break
-        handled += 1
-        window = src[idx:idx + 900]
-        assert "_send_livedub_result()" in window, "нет отправки LiveDub после AudioTooLarge"
-        start = idx + 1
-    assert handled == 2
+    assert src.count("except AudioTooLarge") == 2
+    assert src.count("return await fail_audio_too_large(") == 2
+    assert "cache_hit=True" in src
+    assert "cache_hit=False" in src
+    failure = Path("pipelines/audio_failure_stage.py").read_text(encoding="utf-8")
+    assert "await send_livedub()" in failure
+    assert "cleanup(media_id)" in failure
     stage = Path("pipelines/audio_stage.py").read_text(encoding="utf-8")
     assert "даже после сжатия до 64 kbps" in stage
 
