@@ -64,15 +64,20 @@ grep'ом.
 
 | Нарушение | Где | Почему существует |
 |---|---|---|
-| `core → services` | `core/globals.py:27` (`gemini_quota_domains`), `core/globals.py:460`, `core/prompt_health.py:149` (`quiz_generator`), `core/utils.py:86` (`ffmpeg`) | конфиг и утилиты исторически знают о сервисах; кандидат на перенос в `services/` |
+| `core → services` | `core/globals.py` (`gemini_quota_domains`, `health_report`, `gemini_capacity_control`), `core/prompt_health.py` (`quiz_generator`), `core/utils.py` (`ffmpeg`) | конфиг и утилиты исторически знают о сервисах; кандидат на перенос чистых контрактов в `core/` |
 | `converters → services` | `converters/caption.py:12` (`search`), `converters/md_telegraph.py` (4× `telegraph`), `md_telegraph.py:2095` (`pdf_generator`) | рендеринг вызывает сетевые публикаторы напрямую |
 | `services → handlers` | `services/dub_studio_runtime.py:325,519–525`, `services/shorts_factory_full_video.py:20` | Dub Studio и Shorts поднимают хендлеры, чтобы переиспользовать меню |
 | `services → pipelines` | `services/shorts_factory_execution_guard.py:275`, `services/shorts_factory_source.py:489`, `services/translation_editorial_runner.py:38` | циклическая зависимость Shorts: сервис запускает пайплайн |
 | `pipelines → handlers` | 1 импорт | уточняется при введении контракта |
 
-Введение исполняемого контракта (`import-linter`) — шаг P1-6 из
-[`AUDIT_2026-10-23_NEXT.md`](AUDIT_2026-10-23_NEXT.md): сначала перечисленные
-импорты нужно разорвать, иначе контракт будет красным с первого дня.
+Исполняемый контракт (`import-linter`) уже подключён через
+`tools/check_import_layers.py`: направление
+`handlers → pipelines → services → converters → core` проверяется на реальном
+графе импортов. Перечисленные legacy-рёбра временно записаны как **точные**
+`ignore_imports` в `.import-linter`; wildcard-исключения запрещены. Это burn-down,
+а не постоянное разрешение: новые нарушения падают, а после удаления legacy-ребра
+его запись обязательно удаляется в том же PR (устаревшая запись тоже падает).
+Целевое состояние P1-6 — пустой список исключений.
 
 ## Путь запроса
 
