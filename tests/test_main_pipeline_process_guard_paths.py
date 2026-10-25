@@ -323,6 +323,27 @@ def test_eng_quick_refusal_is_silent_in_playlist_mode(
     assert update.message.replies == []
 
 
+def test_eng_quick_cached_path_executes_extracted_finalization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cached file_id reaches the new stage without VOT, network, or Telegram."""
+    cleaned = _eng_environment(monkeypatch, "eng_fast")
+
+    async def cached_livedub(_media_id):
+        return {"livedub_file_id_version": "v1", "livedub_file_id": "cached-video"}
+
+    monkeypatch.setattr(main_pipeline, "adb_get", cached_livedub)
+    update = _FakeUpdate()
+
+    # context=None makes the real nested sender report False. The extracted
+    # stage must explain that failure, run the caller's cleanup callback, and
+    # return the same False through process_single_video.
+    assert _run(update) is False
+    assert cleaned == ["media1"]
+    assert len(update.message.replies) == 1
+    assert "Перевод «Живые голоса» не получился" in update.message.replies[0]
+
+
 def _stop_at_delivery_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
     import services.livedub_delivery_coordinator as coordinator
 

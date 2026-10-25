@@ -125,6 +125,11 @@
   `main_pipeline.GEMINI_CLIENTS`, поэтому исторические monkeypatch-контракты
   продолжают выполняться без переписывания. Дополнительные поведенческие тесты
   закрепили in-process yt-dlp и ранние failure/cleanup ветки оркестратора.
+- Завершение ENG Quick вынесено в `pipelines/livedub_quick_stage.py`:
+  статусные сообщения, OAuth/generic failure-hint, playlist silent mode,
+  cleanup и честный `bool` доставки проверяются девятью поведенческими
+  тестами со 100 % statement/branch coverage. Вложенная LiveDub отправка
+  остаётся в оркестраторе и передаётся callback'ом без смены контракта.
 - Ратчет покрытия по файлам (`tools/check_coverage_ratchet.py`,
   `docs/coverage_baseline.json`): покрытие объявленных файлов может только
   расти. Компенсирует `diff-cover` там, где изменения — проводка в

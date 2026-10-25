@@ -35,6 +35,10 @@ _REPLACED_CASES = {
     # P0-3: title implementation and HTML delivery now have separate source
     # owners; the two-module replacement lives in test_livedub_title.py.
     "test_livedub_send_video_caption_includes_title_and_html_parse_mode",
+    # P0-3: ENG Quick finalization now has its own source owner; replacements
+    # live in test_livedub_quick_stage.py beside the executed behavior tests.
+    "test_eng_quick_never_silent",
+    "test_auth_required_marker_and_user_hint",
     # P0-3: свежая отправка MP3/PDF вынесена в отдельную стадию.
     "test_upload_retry_honors_retry_after",
     "test_mp3_chapters_wired_both_branches",
