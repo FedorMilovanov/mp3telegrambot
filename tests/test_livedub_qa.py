@@ -45,6 +45,10 @@ _REPLACED_CASES = {
     "test_audio_file_id_saved_on_first_send",
     "test_cache_mp3_resend_wiring",
     "test_chat_actions_during_uploads",
+    # P0-3: Pro-mix/fallback теперь принадлежит отдельной стадии; обе
+    # двухмодульные замены находятся ниже, исторический файл не изменяется.
+    "test_pipeline_wires_pro_mix_and_autofix",
+    "test_vot_duration_and_token_alias_threaded_through",
 }
 _CASES = runpy.run_path(str(Path(__file__).with_name("livedub_qa_cases.py")))
 globals().update(
@@ -241,3 +245,33 @@ def test_chat_actions_during_uploads() -> None:
     stage = Path("pipelines/delivery_stage.py").read_text(encoding="utf-8")
     assert 'send_action("upload_voice")' in stage
     assert 'action="upload_video"' in main
+
+
+def test_pipeline_wires_pro_mix_and_autofix() -> None:
+    main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    stage = Path("pipelines/livedub_dub_stage.py").read_text(encoding="utf-8")
+    assert 'asettings_get("livedub_pro_mix")' in main
+    assert 'asettings_get("livedub_autofix")' in main
+    assert "make_livedub_video(" in main
+    assert "pro_mix=_livedub_pro_mix" in main
+    assert "build_pro_dub" in stage
+    assert "apply_qa_audio_fixes" in main
+
+
+def test_vot_duration_and_token_alias_threaded_through() -> None:
+    """Duration and both OAuth token names survive the new source ownership."""
+    helper = Path("vot_helper/vot_live.mjs").read_text(encoding="utf-8")
+    assert "YANDEX_OAUTH_TOKEN" in helper
+    assert "knownDuration" in helper and "videoData.duration = knownDuration" in helper
+    yld = Path("services/yandex_live_dub.py").read_text(encoding="utf-8")
+    assert "duration: float = 0.0" in yld
+    assert "_vot_request_duration" in yld
+    assert 'cmd += ["--duration", str(request_duration)]' in yld
+    mix = Path("services/livedub_mix.py").read_text(encoding="utf-8")
+    assert "build_pro_dub(video_url: str, workdir: Path, duration: float = 0.0" in mix
+    assert "get_live_dub_audio(video_url, workdir, duration=duration" in mix
+    main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    stage = Path("pipelines/livedub_dub_stage.py").read_text(encoding="utf-8")
+    assert "duration=duration," in main
+    assert "pro = await build_pro_dub(" in stage
+    assert "duration=duration," in stage

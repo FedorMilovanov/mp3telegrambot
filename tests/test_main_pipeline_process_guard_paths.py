@@ -500,6 +500,54 @@ def test_eng_quick_workdir_is_removed_when_settings_fail(
     assert not (Path(tempfile.gettempdir()) / "livedub_media-cleanup").exists()
 
 
+def test_eng_quick_background_executes_extracted_dub_stage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The real background task enters the extracted Pro-mix/fallback stage."""
+    _eng_environment(monkeypatch, "eng_fast")
+
+    import services.livedub_info as livedub_info
+    import services.livedub_mix as mix
+    import services.yandex_live_dub as live_dub
+
+    started = asyncio.Event()
+    calls = []
+
+    async def info(_url, _timeout):
+        return {
+            "id": "media1",
+            "title": "Sermon",
+            "duration": 600,
+            "language": "ru",
+        }
+
+    async def pro(video_url, workdir, *, duration, lang):
+        calls.append((video_url, workdir.name, duration, lang))
+        output = workdir / "pro.mp4"
+        output.write_bytes(b"video")
+        started.set()
+        return output
+
+    async def stop_after_dub(**_kwargs):
+        await asyncio.wait_for(started.wait(), timeout=2)
+        raise RuntimeError("stop after extracted dub stage")
+
+    async def setting(name):
+        return name == "livedub_pro_mix"
+
+    monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", info)
+    monkeypatch.setattr(main_pipeline, "asettings_get", setting)
+    monkeypatch.setattr(main_pipeline, "finish_livedub_quick", stop_after_dub)
+    monkeypatch.setattr(live_dub, "_ensure_vot_helper", lambda: True)
+    monkeypatch.setattr(livedub_info, "livedub_info_enabled", lambda: False)
+    monkeypatch.setattr(mix, "build_pro_dub", pro)
+    update = _FakeUpdate()
+
+    assert _run(update) is False
+    assert calls == [(VIDEO_URL, "livedub_media1", 600, "ru")]
+    assert update.message.replies == ["❌ Ошибка: stop after extracted dub stage"]
+
+
 def _audio_too_large_environment(
     monkeypatch: pytest.MonkeyPatch, *, cache_hit: bool
 ) -> list[str]:
