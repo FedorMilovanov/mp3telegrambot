@@ -47,12 +47,16 @@ from pipelines.fresh_caption_stage import finalize_fresh_caption
 from pipelines.livedub_dub_stage import make_livedub_video, wait_for_livedub_video
 from pipelines.livedub_failure_stage import (
     notify_livedub_send_failure,
+    reject_oversized_livedub_video,
     send_full_livedub_failure_notice,
     send_livedub_timeout_notice,
 )
 from pipelines.livedub_publication_stage import prepare_livedub_publication
 from pipelines.livedub_quick_stage import finish_livedub_quick
-from pipelines.livedub_video_assets_stage import prepare_livedub_video_assets
+from pipelines.livedub_video_assets_stage import (
+    get_livedub_technical_warnings,
+    prepare_livedub_video_assets,
+)
 from pipelines.publication_context_stage import prepare_publication_context
 from services.telegraph_pages import combined_study_reflection_enabled
 from pipelines.telegraph_nav import add_navigation
@@ -839,28 +843,20 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     _livedub_video_for_downstream = Path(livedub_path)
 
                 # ── Техническая проверка целостности (всегда, дёшево) ──
-                _tech_warnings: list[str] = []
-                if not is_fallback:
-                    try:
-                        from services.livedub_qa import technical_check
-                        _tech_warnings = await asyncio.get_running_loop().run_in_executor(
-                            None, lambda: technical_check(livedub_path, duration)
-                        )
-                        for _tw in _tech_warnings:
-                            logger.warning(f"[LiveDubQA] tech: {_tw}")
-                    except Exception as _tqe:
-                        logger.warning(f"[LiveDubQA] technical_check сбой: {_tqe}")
+                _tech_warnings = await get_livedub_technical_warnings(
+                    livedub_path, expected_duration=duration, is_fallback=is_fallback
+                )
 
-                file_size = livedub_path.stat().st_size / (1024 * 1024)
-                if file_size > get_max_file_size_mb():
-                    logger.warning(f"[LiveDub] Файл слишком большой для отправки: {file_size:.1f}MB (лимит {get_max_file_size_mb()}MB)")
-                    _livedub_hint = "" if get_max_file_size_mb() > 50 else "\n💡 Подними локальный Bot API сервер (LOCAL_BOT_API_URL), чтобы отправлять до 2000 МБ."
-                    await context.bot.send_message(
-                        chat_id=update.effective_chat.id,
-                        text=f"⚠️ Видео с переводом готово, но оно весит {file_size:.1f} МБ. Текущий лимит отправки — {get_max_file_size_mb()} МБ.{_livedub_hint}",
-                        reply_to_message_id=update.message.message_id,
-                    )
-                    await _source_audio_delivery.flush("LiveDub video exceeds Telegram limit")
+                if await reject_oversized_livedub_video(
+                    livedub_path,
+                    bot=context.bot,
+                    chat_id=update.effective_chat.id,
+                    reply_to_message_id=update.message.message_id,
+                    max_file_size_mb=get_max_file_size_mb,
+                    flush_source_audio=lambda: _source_audio_delivery.flush(
+                        "LiveDub video exceeds Telegram limit"
+                    ),
+                ):
                     _livedub_result_sent = True
                     return True
                 _title_prefix = f"<b>{_livedub_title_html}</b>\n" if _livedub_title_html else ""

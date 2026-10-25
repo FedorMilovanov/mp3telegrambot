@@ -7,7 +7,11 @@ import logging
 from pathlib import Path
 
 import services.livedub_mix as mix
-from pipelines.livedub_video_assets_stage import prepare_livedub_video_assets
+import services.livedub_qa as qa
+from pipelines.livedub_video_assets_stage import (
+    get_livedub_technical_warnings,
+    prepare_livedub_video_assets,
+)
 
 
 def _prepare(video: Path, media_id: str = "media1", thumbs_dir: Path | None = None):
@@ -18,6 +22,53 @@ def _prepare(video: Path, media_id: str = "media1", thumbs_dir: Path | None = No
             thumbs_dir=thumbs_dir or video.parent,
         )
     )
+
+
+def _technical_warnings(video: Path, *, is_fallback: bool = False):
+    return asyncio.run(
+        get_livedub_technical_warnings(
+            video,
+            expected_duration=40,
+            is_fallback=is_fallback,
+        )
+    )
+
+
+def test_technical_check_is_skipped_for_original_fallback(monkeypatch, tmp_path):
+    def unexpected_call(*_args):
+        raise AssertionError("technical_check must not run for fallback")
+
+    monkeypatch.setattr(qa, "technical_check", unexpected_call)
+
+    assert _technical_warnings(tmp_path / "original.mp4", is_fallback=True) == []
+
+
+def test_technical_check_returns_and_logs_each_warning(monkeypatch, tmp_path, caplog):
+    video = tmp_path / "dub.mp4"
+    calls = []
+
+    def check(path, expected_duration):
+        calls.append((path, expected_duration))
+        return ["short", "silent"]
+
+    monkeypatch.setattr(qa, "technical_check", check)
+
+    with caplog.at_level(logging.WARNING):
+        assert _technical_warnings(video) == ["short", "silent"]
+    assert calls == [(video, 40)]
+    assert "[LiveDubQA] tech: short" in caplog.text
+    assert "[LiveDubQA] tech: silent" in caplog.text
+
+
+def test_technical_check_failure_is_nonfatal(monkeypatch, tmp_path, caplog):
+    def fail(*_args):
+        raise RuntimeError("probe failed")
+
+    monkeypatch.setattr(qa, "technical_check", fail)
+
+    with caplog.at_level(logging.WARNING):
+        assert _technical_warnings(tmp_path / "dub.mp4") == []
+    assert "[LiveDubQA] technical_check сбой: probe failed" in caplog.text
 
 
 def test_assets_probe_in_executor_and_select_real_cover(monkeypatch, tmp_path):

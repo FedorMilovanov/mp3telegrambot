@@ -5,11 +5,14 @@ from __future__ import annotations
 import asyncio
 import html
 import logging
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from pipelines.livedub_failure_stage import (
     notify_livedub_send_failure,
+    reject_oversized_livedub_video,
     send_full_livedub_failure_notice,
     send_livedub_timeout_notice,
 )
@@ -247,3 +250,124 @@ def test_send_failure_notice_cancellation_is_not_swallowed():
 
     with pytest.raises(asyncio.CancelledError):
         _notify_send_failure(bot, RuntimeError("boom"))
+
+
+def _reject_oversize(
+    bot: _Bot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    size_mb: float,
+    limit: int,
+    flushes: list | None = None,
+    flush_error: Exception | None = None,
+):
+    video = tmp_path / "dub.mp4"
+    real_stat = Path.stat
+
+    def fake_stat(path, *args, **kwargs):
+        if path == video:
+            return SimpleNamespace(st_size=int(size_mb * 1024 * 1024))
+        return real_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", fake_stat)
+    flush_calls = flushes if flushes is not None else []
+    limit_calls = []
+
+    async def flush():
+        flush_calls.append("LiveDub video exceeds Telegram limit")
+        if flush_error is not None:
+            raise flush_error
+
+    def max_file_size_mb():
+        limit_calls.append(limit)
+        return limit
+
+    result = asyncio.run(
+        reject_oversized_livedub_video(
+            video,
+            bot=bot,
+            chat_id=123,
+            reply_to_message_id=456,
+            max_file_size_mb=max_file_size_mb,
+            flush_source_audio=flush,
+        )
+    )
+    return result, flush_calls, limit_calls
+
+
+@pytest.mark.parametrize(("size_mb", "limit"), [(1.0, 50), (50.0, 50)])
+def test_oversize_guard_allows_video_at_or_below_limit(tmp_path, monkeypatch, size_mb, limit):
+    bot = _Bot()
+
+    result, flushes, limit_calls = _reject_oversize(bot, tmp_path, monkeypatch, size_mb=size_mb, limit=limit)
+
+    assert result is False
+    assert flushes == []
+    assert limit_calls == [limit]
+    assert bot.messages == []
+
+
+def test_oversize_guard_notifies_then_flushes_with_cloud_hint(tmp_path, monkeypatch, caplog):
+    bot = _Bot()
+
+    with caplog.at_level(logging.WARNING):
+        result, flushes, limit_calls = _reject_oversize(bot, tmp_path, monkeypatch, size_mb=51.5, limit=50)
+
+    assert result is True
+    assert flushes == ["LiveDub video exceeds Telegram limit"]
+    assert limit_calls == [50, 50, 50, 50]
+    assert "51.5MB (лимит 50MB)" in caplog.text
+    assert bot.messages == [
+        {
+            "chat_id": 123,
+            "text": (
+                "⚠️ Видео с переводом готово, но оно весит 51.5 МБ. "
+                "Текущий лимит отправки — 50 МБ."
+                "\n💡 Подними локальный Bot API сервер (LOCAL_BOT_API_URL), "
+                "чтобы отправлять до 2000 МБ."
+            ),
+            "reply_to_message_id": 456,
+        }
+    ]
+
+
+def test_oversize_guard_omits_hint_above_cloud_limit(tmp_path, monkeypatch):
+    bot = _Bot()
+
+    result, _, limit_calls = _reject_oversize(bot, tmp_path, monkeypatch, size_mb=52.0, limit=51)
+
+    assert result is True
+    assert limit_calls == [51, 51, 51, 51]
+    assert "LOCAL_BOT_API_URL" not in bot.messages[0]["text"]
+
+
+def test_oversize_notice_error_prevents_flush_and_propagates(tmp_path, monkeypatch):
+    bot = _Bot(RuntimeError("size notice failed"))
+    flushes = []
+
+    with pytest.raises(RuntimeError, match="size notice failed"):
+        _reject_oversize(
+            bot,
+            tmp_path,
+            monkeypatch,
+            size_mb=51.0,
+            limit=50,
+            flushes=flushes,
+        )
+    assert flushes == []
+
+
+def test_oversize_flush_error_propagates_after_notice(tmp_path, monkeypatch):
+    bot = _Bot()
+
+    with pytest.raises(RuntimeError, match="flush failed"):
+        _reject_oversize(
+            bot,
+            tmp_path,
+            monkeypatch,
+            size_mb=51.0,
+            limit=50,
+            flush_error=RuntimeError("flush failed"),
+        )
+    assert len(bot.messages) == 1

@@ -1,4 +1,4 @@
-"""Probe LiveDub video metadata/thumbnail and select the historical cover."""
+"""Run LiveDub pre-send checks and prepare metadata/thumbnail/cover assets."""
 
 from __future__ import annotations
 
@@ -8,6 +8,28 @@ from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+async def get_livedub_technical_warnings(
+    livedub_path: Path,
+    *,
+    expected_duration: int,
+    is_fallback: bool,
+) -> list[str]:
+    """Run the inexpensive integrity check unless this is the original fallback."""
+    warnings: list[str] = []
+    if not is_fallback:
+        try:
+            from services.livedub_qa import technical_check
+
+            warnings = await asyncio.get_running_loop().run_in_executor(
+                None, lambda: technical_check(livedub_path, expected_duration)
+            )
+            for warning in warnings:
+                logger.warning(f"[LiveDubQA] tech: {warning}")
+        except Exception as exc:
+            logger.warning(f"[LiveDubQA] technical_check сбой: {exc}")
+    return warnings
 
 
 async def prepare_livedub_video_assets(

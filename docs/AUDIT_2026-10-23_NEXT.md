@@ -818,8 +818,28 @@ executor → thumbnail → выбор YouTube cover вынесены в
 56,05 % → **63,77 %**, проект 57,95 % → **58,12 %**. Полный прогон:
 **3 785 passed, 3 skipped**.
 
-До приёмки P0-3 остался сам оркестратор — цель ≤ 1 200 строк (сейчас 1 468
-строк из 3 120 исходных); цель ≥ 50 % statement coverage уже выполнена.
+**Шаг 31 (сделано) — LiveDub technical preflight и oversize guard.**
+`get_livedub_technical_warnings` добавлен в video-assets стадию, а
+`reject_oversized_livedub_video` — в failure-стадию. Девять новых прямых
+тестов дополняют обе стадии до 100 % statement/branch coverage; шестой fresh
+integration-вариант выполняет oversized-путь и останавливается до `send_video`.
+
+* fallback по-прежнему пропускает technical check; executor, warning-per-item
+  и некритичный failure semantics сохранены. Строгая типизация использует
+  фактический `int` контракт `technical_check`, без подавления ошибок;
+* oversize guard сохраняет строгое `>`, все четыре чтения лимита на oversized-
+  пути, threshold hint 50 МБ, точный text/log и порядок message → flush;
+  ошибка notice предотвращает flush, а ошибка flush пробрасывается после
+  сообщения; success state остаётся в main;
+* новый integration подтверждает notice без `parse_mode` и отсутствие вызова
+  `send_video`; `tests/livedub_qa_cases.py` остаётся byte-stable.
+
+Измерено: `main_pipeline.py` 1 468 → **1 464 строки**, line-ratchet main
+63,77 % → **64,60 %**, проект 58,12 % → **58,14 %**. Полный прогон:
+**3 795 passed, 3 skipped**.
+
+До приёмки P0-3 остался сам оркестратор — цель ≤ 1 200 строк (сейчас 1 464
+строки из 3 120 исходных); цель ≥ 50 % statement coverage уже выполнена.
 
 ### P0-4. Сканирование секретов и SAST
 

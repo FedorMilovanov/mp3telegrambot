@@ -1,9 +1,10 @@
-"""ENG Full user notification when the promised LiveDub result is unavailable."""
+"""User-facing LiveDub failure notifications and pre-send size guard."""
 
 from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -98,3 +99,34 @@ async def notify_livedub_send_failure(
             "[LiveDub] send-failure notice not sent: %s",
             str(notify_error)[:160],
         )
+
+
+async def reject_oversized_livedub_video(
+    livedub_path: Path,
+    *,
+    bot: Any,
+    chat_id: Any,
+    reply_to_message_id: Any,
+    max_file_size_mb: Callable[[], int],
+    flush_source_audio: Callable[[], Awaitable[Any]],
+) -> bool:
+    """Notify and flush before upload when the generated video exceeds the limit."""
+    file_size = livedub_path.stat().st_size / (1024 * 1024)
+    if file_size > max_file_size_mb():
+        logger.warning(f"[LiveDub] Файл слишком большой для отправки: {file_size:.1f}MB (лимит {max_file_size_mb()}MB)")
+        hint = (
+            ""
+            if max_file_size_mb() > 50
+            else "\n💡 Подними локальный Bot API сервер (LOCAL_BOT_API_URL), чтобы отправлять до 2000 МБ."
+        )
+        await bot.send_message(
+            chat_id=chat_id,
+            text=(
+                f"⚠️ Видео с переводом готово, но оно весит {file_size:.1f} МБ. "
+                f"Текущий лимит отправки — {max_file_size_mb()} МБ.{hint}"
+            ),
+            reply_to_message_id=reply_to_message_id,
+        )
+        await flush_source_audio()
+        return True
+    return False
