@@ -345,6 +345,195 @@ def test_eng_quick_cached_path_executes_extracted_finalization(
     assert "Перевод «Живые голоса» не получился" in update.message.replies[0]
 
 
+def test_eng_quick_cached_file_id_delivers_publication_and_companions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cached video executes publication preparation and the real sender."""
+    cleaned = _eng_environment(monkeypatch, "eng_fast")
+
+    import services.livedub_delivery_coordinator as coordinator
+    import services.livedub_publication as publication
+
+    card = {"title": "Translated <Title>", "author": "Author"}
+    card_calls = []
+    caption_calls = []
+    companion_calls = []
+
+    class Status:
+        def __init__(self):
+            self.edits = []
+            self.deleted = False
+
+        async def edit_text(self, text):
+            self.edits.append(text)
+
+        async def delete(self):
+            self.deleted = True
+
+    class Bot:
+        def __init__(self):
+            self.videos = []
+
+        async def send_video(self, **kwargs):
+            self.videos.append(kwargs)
+            return SimpleNamespace(message_id=999)
+
+    async def cached_livedub(_media_id):
+        return {"livedub_file_id_version": "v1", "livedub_file_id": "cached-video"}
+
+    async def build_card(source_line, source_url):
+        card_calls.append((source_line, source_url))
+        return card
+
+    def format_caption(got_card, internal_caption):
+        caption_calls.append((got_card, internal_caption))
+        return "formatted caption"
+
+    async def companions(bot, **kwargs):
+        companion_calls.append((bot, kwargs))
+        return True
+
+    monkeypatch.setattr(main_pipeline, "adb_get", cached_livedub)
+    monkeypatch.setattr(publication, "build_publication_card", build_card)
+    monkeypatch.setattr(publication, "format_video_caption", format_caption)
+    monkeypatch.setattr(coordinator, "deliver_cached_companions", companions)
+    update = _FakeUpdate()
+    update.effective_chat = SimpleNamespace(id=31337)
+    update.message.message_id = 777
+    status = Status()
+    bot = Bot()
+
+    result = asyncio.run(main_pipeline.process_single_video(
+        VIDEO_URL,
+        update,
+        status_msg=status,
+        context=SimpleNamespace(bot=bot),
+    ))
+
+    assert result is True
+    assert cleaned == ["media1"]
+    assert update.message.replies == []
+    assert len(status.edits) == 1
+    assert "ENG Quick" in status.edits[0]
+    assert status.deleted is True
+    assert card_calls == [("Sermon", VIDEO_URL)]
+    assert len(caption_calls) == 1
+    assert caption_calls[0][0] is card
+    assert caption_calls[0][1] == (
+        "<b>Translated &lt;Title&gt; - Author</b>\n🎬 Живые голоса Яндекса"
+    )
+    assert bot.videos == [{
+        "chat_id": 31337,
+        "video": "cached-video",
+        "caption": "formatted caption",
+        "parse_mode": "HTML",
+        "reply_to_message_id": 777,
+        "supports_streaming": True,
+    }]
+    assert companion_calls == [(
+        bot,
+        {
+            "chat_id": 31337,
+            "video_file_id": "cached-video",
+            "publication_card": card,
+            "reply_to": 777,
+        },
+    )]
+
+
+def test_cached_file_id_pair_failure_invalidates_and_notifies(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A rejected cached pair is deleted, invalidated, flushed, and explained."""
+    cleaned = _eng_environment(monkeypatch, "eng_fast")
+
+    import core.database as database
+    import services.livedub_delivery_coordinator as coordinator
+    import services.livedub_publication as publication
+
+    card = {"title": "Cached title", "author": "Author"}
+    video_message = SimpleNamespace(message_id=999)
+    delete_calls = []
+    invalidation_calls = []
+    flush_calls = []
+    discard_calls = []
+
+    class Bot:
+        def __init__(self):
+            self.videos = []
+            self.messages = []
+
+        async def send_video(self, **kwargs):
+            self.videos.append(kwargs)
+            return video_message
+
+        async def send_message(self, **kwargs):
+            self.messages.append(kwargs)
+
+    class Deferral:
+        has_pending = False
+
+        async def flush(self, reason):
+            flush_calls.append(reason)
+
+        def discard(self, reason):
+            discard_calls.append(reason)
+
+    async def cached_livedub(_media_id):
+        return {"livedub_file_id_version": "v1", "livedub_file_id": "cached-video"}
+
+    async def prepared(**_kwargs):
+        return card, "Cached title - Author", "Cached title - Author"
+
+    async def companions(*_args, **_kwargs):
+        return False
+
+    async def delete_message(*args):
+        delete_calls.append(args)
+
+    async def invalidate(*args):
+        invalidation_calls.append(args)
+
+    async def quick(**kwargs):
+        delivered = await kwargs["send_result"]()
+        kwargs["cleanup"](kwargs["media_id"])
+        return delivered
+
+    bot = Bot()
+    deferral = Deferral()
+    monkeypatch.setattr(main_pipeline, "adb_get", cached_livedub)
+    monkeypatch.setattr(main_pipeline, "prepare_livedub_publication", prepared)
+    monkeypatch.setattr(main_pipeline, "finish_livedub_quick", quick)
+    monkeypatch.setattr(publication, "format_video_caption", lambda *_args: "caption")
+    monkeypatch.setattr(coordinator, "deliver_cached_companions", companions)
+    monkeypatch.setattr(coordinator, "delete_message_best_effort", delete_message)
+    monkeypatch.setattr(coordinator, "create_source_audio_deferral", lambda **_kwargs: deferral)
+    monkeypatch.setattr(database, "adb_set_livedub_file_id", invalidate)
+    update = _FakeUpdate()
+    update.effective_chat = SimpleNamespace(id=31337)
+    update.message.message_id = 777
+
+    result = asyncio.run(main_pipeline.process_single_video(
+        VIDEO_URL,
+        update,
+        status_msg=_FakeStatus(),
+        context=SimpleNamespace(bot=bot),
+    ))
+
+    assert result is True
+    assert cleaned == ["media1"]
+    assert len(bot.videos) == 1
+    assert delete_calls == [(bot, 31337, video_message)]
+    assert invalidation_calls == [("media1", "")]
+    assert flush_calls == ["cached LiveDub pair unavailable"]
+    assert discard_calls == []
+    assert len(bot.messages) == 1
+    assert bot.messages[0]["chat_id"] == 31337
+    assert bot.messages[0]["reply_to_message_id"] == 777
+    assert "MP3-комплект устарел" in bot.messages[0]["text"]
+    assert update.message.replies == []
+
+
 def _stop_at_delivery_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
     import services.livedub_delivery_coordinator as coordinator
 

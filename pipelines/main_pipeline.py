@@ -45,6 +45,7 @@ from pipelines.delivery_stage import DeliveryRequest, deliver_cached_result, del
 from pipelines.extras_stage import ExtrasRequest, run_extras
 from pipelines.fresh_caption_stage import finalize_fresh_caption
 from pipelines.livedub_dub_stage import make_livedub_video
+from pipelines.livedub_publication_stage import prepare_livedub_publication
 from pipelines.livedub_quick_stage import finish_livedub_quick
 from pipelines.publication_context_stage import prepare_publication_context
 from services.telegraph_pages import combined_study_reflection_enabled
@@ -549,38 +550,21 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     logger.info("[LiveDub] failure notice not sent: %s", str(_ld_notice_err)[:160])
                     return False
 
-            from services.livedub_publication import (
-                build_publication_card,
-                format_video_caption,
-            )
+            from services.livedub_publication import format_video_caption
 
-            _publication_ai = None
-            try:
-                _publication_ai = ai_data if isinstance(ai_data, dict) else None
-            except NameError:
-                _publication_ai = None
-            if _publication_ai is None:
-                try:
-                    _publication_ai = c_ai if isinstance(c_ai, dict) else None
-                except NameError:
-                    _publication_ai = None
-
-            _publication_title = str((_publication_ai or {}).get("real_title") or title or "").strip()
-            _publication_author = str((_publication_ai or {}).get("real_author") or performer or "").strip()
-            _publication_source_line = (
-                f"{_publication_title} - {_publication_author}"
-                if _publication_author
-                else (_publication_title or full_title or "Переведённое видео")
+            (
+                _publication_card,
+                _livedub_title_line,
+                _livedub_title_html,
+            ) = await prepare_livedub_publication(
+                ai_data=lambda: ai_data,
+                cached_ai_data=lambda: c_ai,
+                title=title,
+                performer=performer,
+                full_title=full_title,
+                source_url=url,
+                html_module=html_mod,
             )
-            _publication_card = await build_publication_card(_publication_source_line, url)
-            _pub_title = str(_publication_card.get("title") or _publication_title or "Переведённое видео").strip()
-            _pub_author = str(_publication_card.get("author") or _publication_author or "").strip()
-            _livedub_title_line = (
-                f"{_pub_title} - {_pub_author}"
-                if _pub_author and _pub_author.casefold() not in _pub_title.casefold()
-                else _pub_title
-            )
-            _livedub_title_html = html_mod.escape(_livedub_title_line) if _livedub_title_line else ""
 
             # Мгновенная повторная отправка по кэшированному file_id
             if _livedub_cached_file_id and context:
