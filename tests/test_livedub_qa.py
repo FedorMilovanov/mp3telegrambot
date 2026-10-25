@@ -49,6 +49,9 @@ _REPLACED_CASES = {
     # двухмодульные замены находятся ниже, исторический файл не изменяется.
     "test_pipeline_wires_pro_mix_and_autofix",
     "test_vot_duration_and_token_alias_threaded_through",
+    # Publication card/title preparation имеет отдельного source owner;
+    # объединённая отправка и запрет второй AI-карточки проверяются ниже.
+    "test_quick_modes_share_unified_publication_metadata_without_second_ai_card",
 }
 _CASES = runpy.run_path(str(Path(__file__).with_name("livedub_qa_cases.py")))
 globals().update(
@@ -275,3 +278,15 @@ def test_vot_duration_and_token_alias_threaded_through() -> None:
     assert "duration=duration," in main
     assert "pro = await build_pro_dub(" in stage
     assert "duration=duration," in stage
+
+
+def test_quick_modes_share_unified_publication_metadata_without_second_ai_card() -> None:
+    main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    stage = Path("pipelines/livedub_publication_stage.py").read_text(encoding="utf-8")
+    assert 'user_mode in ("eng_fast", "eng_fast_qa")' in main
+    assert "prepare_livedub_publication(" in main
+    assert "build_publication_card" in stage
+    assert "format_video_caption(_publication_card" in main
+    assert "_send_livedub_info_card_once" not in main
+    assert "format_livedub_info_message" not in main
+    assert "get_translation_subtitles(video_url, workdir)" in main
