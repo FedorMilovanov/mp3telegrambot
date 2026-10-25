@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import urlparse
 
 import pytest
 
@@ -266,4 +267,9 @@ def test_auth_required_marker_and_user_hint():
     env = Path(".env.example").read_text(encoding="utf-8")
     assert "VOT_API_TOKEN" in env
     assert "YANDEX_OAUTH_TOKEN" in env
-    assert "rust-server-531j.onrender.com" in env
+    prefix = "#   1. Открой в браузере: "
+    auth_line = next(line for line in env.splitlines() if line.startswith(prefix))
+    auth_url = urlparse(auth_line.removeprefix(prefix))
+    assert auth_url.scheme == "https"
+    assert auth_url.hostname == "rust-server-531j.onrender.com"
+    assert auth_url.path == "/v1/auth/handle"
