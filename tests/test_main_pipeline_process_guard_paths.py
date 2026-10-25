@@ -54,12 +54,15 @@ def _no_progress(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(main_pipeline, "set_progress", noop)
 
 
-def _run(update: _FakeUpdate, *, silent_errors: bool = False) -> bool:
+def _run(
+    update: _FakeUpdate, *, silent_errors: bool = False, context=None
+) -> bool:
     return asyncio.run(
         main_pipeline.process_single_video(
             VIDEO_URL,
             update,
             status_msg=_FakeStatus(),
+            context=context,
             silent_errors=silent_errors,
         )
     )
@@ -947,10 +950,11 @@ def test_cache_hit_delivery_reaches_real_stage_and_returns_success(
     assert delivery.cache_hit is False
 
 
+@pytest.mark.parametrize("mode", ["", "eng"])
 def test_fresh_caption_finalization_reaches_delivery_boundary(
-    monkeypatch: pytest.MonkeyPatch, tmp_path
+    monkeypatch: pytest.MonkeyPatch, tmp_path, mode: str
 ) -> None:
-    """Fresh wiring reaches delivery with the exact publication/caption values."""
+    """Fresh wiring reaches delivery; ENG also executes its failure notice."""
     cleaned: list[str] = []
     analysis_requests = []
     publication_calls = []
@@ -1076,8 +1080,40 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
         delivery_requests.append(request)
         raise RuntimeError("stop at delivery boundary")
 
+    notice_bot = None
+    context = None
+    if mode == "eng":
+        import services.yandex_live_dub as live_dub
+
+        async def no_cache(_media_id):
+            return None
+
+        async def no_optional_setting(_name):
+            return False
+
+        def completed_livedub_task(coroutine):
+            assert coroutine.cr_code.co_name == "_run_livedub_bg"
+            coroutine.close()
+            task = asyncio.get_running_loop().create_future()
+            task.set_result(None)
+            return task
+
+        class NoticeBot:
+            def __init__(self):
+                self.messages = []
+
+            async def send_message(self, **kwargs):
+                self.messages.append(kwargs)
+
+        monkeypatch.setattr(main_pipeline, "adb_get", no_cache)
+        monkeypatch.setattr(main_pipeline, "asettings_get", no_optional_setting)
+        monkeypatch.setattr(main_pipeline.asyncio, "create_task", completed_livedub_task)
+        monkeypatch.setattr(live_dub, "_ensure_vot_helper", lambda: True)
+        notice_bot = NoticeBot()
+        context = SimpleNamespace(bot=notice_bot)
+
     monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", info)
-    monkeypatch.setattr(main_pipeline, "_db_conn", lambda: _FakeConn(""))
+    monkeypatch.setattr(main_pipeline, "_db_conn", lambda: _FakeConn(mode))
     monkeypatch.setattr(main_pipeline, "lowest_free_gb", lambda *_paths: 50.0)
     monkeypatch.setattr(main_pipeline, "cleanup_files", cleaned.append)
     monkeypatch.setattr(main_pipeline, "load_thumbnail", no_thumbnail)
@@ -1099,10 +1135,22 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
     monkeypatch.setenv("TELEGRAPH_AUTO_REPAIR_AFTER_PUBLISH", "1")
     monkeypatch.setenv("PROMPT_EXPERIMENT_TAG", "integration")
     update = _FakeUpdate()
+    update.effective_chat = SimpleNamespace(id=987)
+    update.message.message_id = 777
 
-    assert _run(update) is False
+    assert _run(update, context=context) is False
     assert update.message.replies == ["❌ Ошибка: stop at delivery boundary"]
     assert cleaned == ["media1"]
+    if mode == "eng":
+        assert notice_bot is not None
+        assert len(notice_bot.messages) == 1
+        notice = notice_bot.messages[0]
+        assert notice["chat_id"] == 987
+        assert notice["reply_to_message_id"] == update.message.message_id
+        assert "Живой перевод Яндекса не получился" in notice["text"]
+        assert "Яндекс/VOT не отдал живой дубляж" in notice["text"]
+    else:
+        assert notice_bot is None
     assert settings_calls == [True]
     assert len(analysis_requests) == 1
     assert analysis_requests[0][0].mp3_path == audio_path

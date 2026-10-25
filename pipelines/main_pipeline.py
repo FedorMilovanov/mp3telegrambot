@@ -45,6 +45,7 @@ from pipelines.delivery_stage import DeliveryRequest, deliver_cached_result, del
 from pipelines.extras_stage import ExtrasRequest, run_extras
 from pipelines.fresh_caption_stage import finalize_fresh_caption
 from pipelines.livedub_dub_stage import make_livedub_video, wait_for_livedub_video
+from pipelines.livedub_failure_stage import send_full_livedub_failure_notice
 from pipelines.livedub_publication_stage import prepare_livedub_publication
 from pipelines.livedub_quick_stage import finish_livedub_quick
 from pipelines.publication_context_stage import prepare_publication_context
@@ -498,27 +499,17 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 if user_mode != "eng" or _livedub_failure_notice_sent:
                     return False
                 _livedub_failure_notice_sent = True
-                await _source_audio_delivery.flush("LiveDub unavailable")
-                reason = str(reason or "").strip()
-                if not reason:
-                    reason = "Яндекс/VOT не отдал живой дубляж для этого ролика."
-                try:
-                    await context.bot.send_message(
-                        chat_id=update.effective_chat.id,
-                        text=(
-                            "⚠️ <b>Живой перевод Яндекса не получился</b>\n"
-                            f"{html_mod.escape(reason)}\n\n"
-                            "Анализ/конспект я всё равно отправил, но видео с дубляжом "
-                            "и проверка точности перевода не запускались — проверять нечего."
-                        ),
-                        parse_mode="HTML",
-                        reply_to_message_id=update.message.message_id,
-                    )
+                _sent = await send_full_livedub_failure_notice(
+                    bot=context.bot,
+                    chat_id=update.effective_chat.id,
+                    reply_to_message_id=update.message.message_id,
+                    reason=reason,
+                    flush_source_audio=lambda: _source_audio_delivery.flush("LiveDub unavailable"),
+                    escape=html_mod.escape,
+                )
+                if _sent:
                     _livedub_result_sent = True
-                    return True
-                except Exception as _ld_notice_err:
-                    logger.info("[LiveDub] failure notice not sent: %s", str(_ld_notice_err)[:160])
-                    return False
+                return _sent
 
             from services.livedub_publication import format_video_caption
 

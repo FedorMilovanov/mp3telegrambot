@@ -298,10 +298,12 @@ def test_quick_modes_share_unified_publication_metadata_without_second_ai_card()
 def test_eng_full_livedub_failure_is_not_silent() -> None:
     main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     stage = Path("pipelines/livedub_dub_stage.py").read_text(encoding="utf-8")
+    failure_stage = Path("pipelines/livedub_failure_stage.py").read_text(encoding="utf-8")
     helper = main[main.index("async def _send_livedub_result"):main.index("performer, title = parse_title")]
     bg = main[main.index("async def _run_livedub_bg"):main.index("live_dub_task = asyncio.create_task")]
     assert "_notify_full_livedub_failure" in helper
-    assert "Живой перевод Яндекса не получился" in helper
-    assert "проверка точности перевода не запускались" in helper
+    assert "send_full_livedub_failure_notice(" in helper
+    assert "Живой перевод Яндекса не получился" in failure_stage
+    assert "проверка точности перевода не запускались" in failure_stage
     assert "wait_for_livedub_video(" in bg
     assert ".not_available" in stage and ".livedub_failed" in stage
