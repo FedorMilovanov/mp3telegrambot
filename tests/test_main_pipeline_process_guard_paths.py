@@ -951,7 +951,15 @@ def test_cache_hit_delivery_reaches_real_stage_and_returns_success(
 
 
 @pytest.mark.parametrize(
-    "mode", ["", "eng", "eng_timeout", "eng_send_failure", "eng_video_send_failure"]
+    "mode",
+    [
+        "",
+        "eng",
+        "eng_timeout",
+        "eng_send_failure",
+        "eng_video_send_failure",
+        "eng_video_too_large",
+    ],
 )
 def test_fresh_caption_finalization_reaches_delivery_boundary(
     monkeypatch: pytest.MonkeyPatch, tmp_path, mode: str
@@ -1101,7 +1109,7 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
                 task.set_exception(asyncio.TimeoutError())
             elif mode == "eng_send_failure":
                 task.set_exception(RuntimeError("Request Entity Too Large <bad>"))
-            elif mode == "eng_video_send_failure":
+            elif mode in ("eng_video_send_failure", "eng_video_too_large"):
                 translated = tmp_path / "translated.mp4"
                 translated.write_bytes(b"video")
                 task.set_result((translated, False, False))
@@ -1131,6 +1139,14 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
         monkeypatch.setattr(live_dub, "_ensure_vot_helper", lambda: True)
         if mode in ("eng_send_failure", "eng_video_send_failure"):
             monkeypatch.setattr(main_pipeline, "get_max_file_size_mb", lambda: 50)
+        elif mode == "eng_video_too_large":
+            monkeypatch.setattr(main_pipeline, "get_max_file_size_mb", lambda: 0)
+        if mode in ("eng_video_send_failure", "eng_video_too_large"):
+            import services.livedub_qa as qa
+
+            monkeypatch.setattr(
+                qa, "technical_check", lambda *_args: ["tech warning"]
+            )
         if mode == "eng_video_send_failure":
             import services.livedub_mix as mix
 
@@ -1186,6 +1202,11 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
             assert "Яндекс/VOT не отдал живой дубляж" in notice["text"]
         elif mode == "eng_timeout":
             assert "не успел за 30 минут" in notice["text"]
+        elif mode == "eng_video_too_large":
+            assert "Видео с переводом готово, но оно весит" in notice["text"]
+            assert "Текущий лимит отправки — 0 МБ." in notice["text"]
+            assert "LOCAL_BOT_API_URL" in notice["text"]
+            assert "parse_mode" not in notice
         else:
             assert "Не удалось отправить видео с переводом" in notice["text"]
             assert "Request Entity Too Large &lt;bad&gt;" in notice["text"]
@@ -1200,6 +1221,7 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
             assert video_call["height"] == 360
             assert video_call["duration"] == 12.5
             assert video_call["supports_streaming"] is True
+            assert "⚠️ tech warning" in video_call["caption"]
             assert "cover" not in video_call
         else:
             assert notice_bot.video_calls == []
