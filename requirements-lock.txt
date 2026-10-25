@@ -1,4 +1,4 @@
-# Fully resolved Python dependency lock; cross-platform runtime closure refreshed from exact CI on 2026-10-22.
+# Fully resolved Python dependency lock; cross-platform runtime/dev closure updated through a dependency PR on 2026-10-26.
 # Includes marker-dependent runtime dependencies needed by Windows as well as Linux.
 # YouTube PO-token source runtime is pinned outside pip by tools/ensure_bgutil_provider.py.
 # Regenerate intentionally through a dependency-update PR and rerun all smoke checks.
@@ -11,6 +11,7 @@ blinker==1.9.0
 brotli==1.2.1
 certifi==2026.10.19
 cffi==2.1.0
+cfgv==3.5.0
 chardet==7.7.0
 charset-normalizer==3.4.9
 click==8.4.2
@@ -19,6 +20,7 @@ coverage==7.17.0
 cryptography==50.0.0
 ctranslate2==4.8.1
 diff-cover==10.6.0
+distlib==0.4.4
 distro==1.9.0
 faster-whisper==1.2.1
 filelock==4.2.4
@@ -32,6 +34,7 @@ hf-xet==1.5.2
 httpcore==1.0.9
 httpx==0.28.1
 huggingface-hub==1.26.0
+identify==2.6.20
 idna==3.18
 iniconfig==2.3.0
 itsdangerous==2.2.0
@@ -41,12 +44,15 @@ MarkupSafe==3.0.3
 mutagen==1.48.1
 mypy==2.4.0
 mypy-extensions==1.1.0
+nodeenv==1.11.0
 numpy==2.4.6
 onnxruntime==1.28.0
-packaging==26.2
+packaging==26.3
 pathspec==1.1.1
+platformdirs==4.13.5
 Pillow==13.0.0
 pluggy==1.6.0
+pre-commit==4.7.0
 protobuf==7.35.1
 pyasn1==0.6.4
 pyasn1-modules==0.4.2
@@ -58,6 +64,7 @@ Pygments==2.20.0
 pytest==9.1.1
 pytest-asyncio==1.4.0
 pytest-cov==7.1.0
+python-discovery==1.6.4
 python-dotenv==1.2.2
 python-telegram-bot==22.8
 PyYAML==6.0.3
@@ -75,6 +82,7 @@ typing-extensions==4.16.0
 typing-inspection==0.4.2
 tzdata==2026.3
 urllib3==2.8.0
+virtualenv==21.14.13
 waitress==3.0.2
 websockets==16.1.1
 Werkzeug==3.1.9

@@ -4,6 +4,7 @@ The tool must fail on any known vulnerability, allow only reviewed exceptions
 with an unexpired review date, and reject stale allow-list entries. These tests
 drive it through a fake ``pip-audit`` so they stay offline.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -31,9 +32,7 @@ FAKE_PACKAGE = "requests"
 OTHER_PACKAGE = "httpx"
 
 
-def _report(
-    vulns: list[dict[str, object]], package: str = FAKE_PACKAGE
-) -> str:
+def _report(vulns: list[dict[str, object]], package: str = FAKE_PACKAGE) -> str:
     """A report that covers the whole lock, with ``vulns`` on one package.
 
     Coverage is part of the policy now, so a fake report must look like a real
@@ -44,8 +43,7 @@ def _report(
     return json.dumps(
         {
             "dependencies": [
-                {"name": name, "version": version,
-                 "vulns": vulns if name == package else []}
+                {"name": name, "version": version, "vulns": vulns if name == package else []}
                 for name, version in sorted(locked.items())
             ]
         }
@@ -79,19 +77,16 @@ def reviewed_exception(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
 def fake_pip_audit(monkeypatch: pytest.MonkeyPatch):
     state: dict[str, object] = {"stdout": _report([]), "returncode": 1}
 
-    def fake_run(_args, **_kwargs):
-        return subprocess.CompletedProcess(
-            args=[], returncode=state["returncode"], stdout=state["stdout"], stderr=""
-        )
+    def fake_run(args, **_kwargs):
+        state["args"] = args
+        return subprocess.CompletedProcess(args=[], returncode=state["returncode"], stdout=state["stdout"], stderr="")
 
     monkeypatch.setattr(audit_tool.shutil, "which", lambda _name: "/usr/bin/pip-audit")
     monkeypatch.setattr(audit_tool.subprocess, "run", fake_run)
     return state
 
 
-def test_clean_lock_has_no_blockers_but_flags_an_unused_exception(
-    fake_pip_audit, reviewed_exception
-) -> None:
+def test_clean_lock_has_no_blockers_but_flags_an_unused_exception(fake_pip_audit, reviewed_exception) -> None:
     """A real clean report also means every exception is obsolete."""
     report = audit_tool.audit(LOCK)
     assert report["blocking"] == []
@@ -99,17 +94,13 @@ def test_clean_lock_has_no_blockers_but_flags_an_unused_exception(
 
 
 def test_unknown_vulnerability_is_blocking(fake_pip_audit) -> None:
-    fake_pip_audit["stdout"] = _report(
-        [{"id": "CVE-2099-0001", "fix_versions": ["1.0.1"]}], package="requests"
-    )
+    fake_pip_audit["stdout"] = _report([{"id": "CVE-2099-0001", "fix_versions": ["1.0.1"]}], package="requests")
     report = audit_tool.audit(LOCK)
     assert [entry["id"] for entry in report["blocking"]] == ["CVE-2099-0001"]
     assert audit_tool.main([]) == 1
 
 
-def test_the_same_advisory_reported_twice_is_counted_once(
-    fake_pip_audit, reviewed_exception
-) -> None:
+def test_the_same_advisory_reported_twice_is_counted_once(fake_pip_audit, reviewed_exception) -> None:
     """pip-audit emits one record per alias; a duplicate must not inflate counts."""
     fake_pip_audit["stdout"] = _report(
         [
@@ -123,12 +114,8 @@ def test_the_same_advisory_reported_twice_is_counted_once(
     assert report["blocking"] == []
 
 
-def test_reviewed_exception_is_allowed_until_its_review_date(
-    fake_pip_audit, reviewed_exception
-) -> None:
-    fake_pip_audit["stdout"] = _report(
-        [{"id": ADVISORY_ID, "fix_versions": []}], package=FAKE_PACKAGE
-    )
+def test_reviewed_exception_is_allowed_until_its_review_date(fake_pip_audit, reviewed_exception) -> None:
+    fake_pip_audit["stdout"] = _report([{"id": ADVISORY_ID, "fix_versions": []}], package=FAKE_PACKAGE)
 
     fresh = audit_tool.audit(LOCK, today=dt.date(2026, 10, 23))
     assert fresh["blocking"] == []
@@ -139,9 +126,7 @@ def test_reviewed_exception_is_allowed_until_its_review_date(
     assert "review expired" in expired["blocking"][0]["reason"]
 
 
-def test_exception_does_not_cover_a_different_package(
-    fake_pip_audit, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_exception_does_not_cover_a_different_package(fake_pip_audit, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         audit_tool,
         "ALLOWED_ADVISORIES",
@@ -153,16 +138,12 @@ def test_exception_does_not_cover_a_different_package(
             )
         },
     )
-    fake_pip_audit["stdout"] = _report(
-        [{"id": ADVISORY_ID, "fix_versions": []}], package=FAKE_PACKAGE
-    )
+    fake_pip_audit["stdout"] = _report([{"id": ADVISORY_ID, "fix_versions": []}], package=FAKE_PACKAGE)
     report = audit_tool.audit(LOCK)
     assert report["blocking"]
 
 
-def test_exception_for_an_absent_advisory_is_stale(
-    fake_pip_audit, reviewed_exception
-) -> None:
+def test_exception_for_an_absent_advisory_is_stale(fake_pip_audit, reviewed_exception) -> None:
     report = audit_tool.audit(LOCK)
     assert report["stale_allow_list_entries"] == [ADVISORY_ID]
     assert audit_tool.main([]) == 1
@@ -178,14 +159,21 @@ def test_empty_report_fails_closed(fake_pip_audit) -> None:
 
 def test_report_missing_a_locked_package_fails_closed(fake_pip_audit) -> None:
     payload = json.loads(_report([]))
-    payload["dependencies"] = [
-        item for item in payload["dependencies"] if item["name"] != "requests"
-    ]
+    payload["dependencies"] = [item for item in payload["dependencies"] if item["name"] != "requests"]
     fake_pip_audit["stdout"] = json.dumps(payload)
 
     report = audit_tool.audit(LOCK)
     assert [entry["id"] for entry in report["blocking"]] == ["REPORT_MISSING_PACKAGE"]
     assert report["blocking"][0]["package"] == "requests"
+
+
+def test_exact_lock_is_audited_without_environment_dependent_resolution(fake_pip_audit) -> None:
+    """Уже resolved lock не должен терять пины из-за окружения самого pip-audit."""
+    audit_tool.audit(LOCK)
+
+    args = fake_pip_audit["args"]
+    assert "--no-deps" in args
+    assert "--disable-pip" in args
 
 
 def test_report_auditing_a_different_version_fails_closed(fake_pip_audit) -> None:
@@ -255,8 +243,7 @@ def test_the_shipped_allow_list_is_empty_again() -> None:
     to look at why `test_pdf_engine_without_pdfkit` was not enough.
     """
     assert audit_tool.ALLOWED_ADVISORIES == {}, (
-        "появилось исключение в аудите: сначала попробуйте убрать пакет или "
-        "обновиться, исключение — последний довод"
+        "появилось исключение в аудите: сначала попробуйте убрать пакет или обновиться, исключение — последний довод"
     )
 
 
@@ -275,9 +262,7 @@ def test_the_audit_is_reusable_and_reaches_both_pr_and_schedule() -> None:
     the two drift, and a scheduled audit that differs from the blocking one is
     worse than none: it reports on a pipeline nobody gates on.
     """
-    audit_workflow = (
-        ROOT / ".github" / "workflows" / "dependency-audit.yml"
-    ).read_text(encoding="utf-8")
+    audit_workflow = (ROOT / ".github" / "workflows" / "dependency-audit.yml").read_text(encoding="utf-8")
 
     assert "workflow_call:" in audit_workflow
     assert "schedule:" in audit_workflow, "a new advisory must not wait for a push"

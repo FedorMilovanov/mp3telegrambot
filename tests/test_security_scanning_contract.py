@@ -16,6 +16,7 @@ workflow не искал секреты, и не было статическог
 * pre-commit, который ставит свой ruff, — второй владелец версии рядом с
   ``requirements-lock.txt``.
 """
+
 from __future__ import annotations
 
 import re
@@ -74,6 +75,18 @@ def test_codeql_covers_python_and_the_js_helper() -> None:
     assert permissions["contents"] == "read"
 
 
+def test_pre_commit_is_installed_by_the_documented_lock() -> None:
+    """Инструкция `pip install -r requirements-lock.txt` должна давать саму команду."""
+    from tools.check_requirements_lock import direct_requirements
+    from tools.install_from_lock import locked_versions
+
+    declared = direct_requirements((ROOT / "requirements-dev.txt",))
+    locked = locked_versions(ROOT / "requirements-lock.txt")
+    assert "pre-commit" in declared, "pre-commit не объявлен в dev-зависимостях"
+    assert "pre-commit" in locked, "pre-commit не установится из документированного lock'а"
+    assert declared["pre-commit"].specifier.contains(locked["pre-commit"], prereleases=True)
+
+
 def test_pre_commit_does_not_own_a_second_ruff_version() -> None:
     """ruff ставится из lock'а; ruff-pre-commit дал бы вторую версию."""
     config = _load(PRE_COMMIT)
@@ -101,8 +114,7 @@ def test_pre_commit_pins_every_remote_repo(path: Path) -> None:
     unpinned = {
         repo["repo"]: repo.get("rev")
         for repo in config["repos"]
-        if repo["repo"] != "local"
-        and not re.fullmatch(r"v?\d+\.\d+(\.\d+)?", str(repo.get("rev", "")))
+        if repo["repo"] != "local" and not re.fullmatch(r"v?\d+\.\d+(\.\d+)?", str(repo.get("rev", "")))
     }
     assert not unpinned, f"незапиненные репозитории pre-commit: {unpinned}"
 
@@ -117,6 +129,4 @@ def test_gitleaks_allowlist_stays_narrow() -> None:
     allowlist = config["allowlist"]
     assert allowlist.get("paths", []) == [], f"allowlist разрешает пути: {allowlist.get('paths')}"
     assert allowlist.get("regexes"), "allowlist должен состоять из конкретных заглушек"
-    assert config["extend"]["useDefault"] is True, (
-        "без useDefault = true отключаются все штатные правила gitleaks"
-    )
+    assert config["extend"]["useDefault"] is True, "без useDefault = true отключаются все штатные правила gitleaks"

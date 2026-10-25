@@ -1076,7 +1076,7 @@ statement coverage; handlers — 55,71 % ≥ 55 %; Telegraph — 62,64 % ≥ 60 
 **Приёмка:** в PR есть чек `gitleaks`; коммит с настоящим по форме ключом AWS
 (образец из документации gitleaks, не печатаю его здесь, чтобы этот файл сам не стал находкой) — красный.
 
-### P0-5. pre-commit: те же гейты, но до пуша — 🟡 конфигурация влита (PR #208), есть пробел в установке
+### P0-5. pre-commit — 🟡 установка и changed-file hooks работают; `--all-files` после P1-1
 
 **Сейчас:** нет `.pre-commit-config.yaml`; цикл обратной связи — 5–10 минут вместо 3 секунд.
 
@@ -1088,9 +1088,12 @@ statement coverage; handlers — 55,71 % ≥ 55 %; Telegraph — 62,64 % ≥ 60 
 **Приёмка:** `pre-commit run --all-files` зелёный; правка `docs/env-reference.md` руками без
 `render_env_reference.py` падает на `pre-push`.
 
-**Перепроверка 2026-10-26:** конфигурация на месте, но `pre-commit` отсутствует в
-`requirements-dev.txt` и `requirements-lock.txt`. Поэтому чистая установка по инструкции не
-ставит команду `pre-commit`; зависимость и lock нужно пополнить отдельным PR.
+**Перепроверка 2026-10-26:** первый прогон выявил отсутствие `pre-commit` в
+`requirements-dev.txt` и `requirements-lock.txt`. Затем runner и его транзитивное замыкание
+добавлены в обе декларации; установка из lock даёт `pre-commit 4.7.0`, changed-file hooks
+зелёные. Общий `--all-files` пока не используется как обычная проверка: записывающий
+`ruff format` начнёт переформатировывать легаси-код, который относится к отдельной волне
+P1-1. В `CONTRIBUTING.md` вместо этого зафиксированы запуски для staged/изменённых файлов.
 
 ### P0-6. Упаковка — 🟡 код и workflow влиты (PR #207/#216), релиз не опубликован
 
@@ -1290,7 +1293,8 @@ statement coverage; handlers — 55,71 % ≥ 55 %; Telegraph — 62,64 % ≥ 60 
 ### P1-7. Мелкое, но заметное
 
 - Явные `permissions:` в 8 workflow, где их нет (по умолчанию — `contents: read`).
-- `requirements-dev.txt` уже есть; добавить в него `pytest-cov`, `mypy`, `pre-commit`, `import-linter`.
+- ~~Добавить `pytest-cov`, `mypy`, `pre-commit` в `requirements-dev.txt`~~ — добавлены;
+  `import-linter` остаётся частью P1-6.
 - `.editorconfig` (LF, UTF-8, 4 пробела, `*.ps1` → CRLF).
 - Маркер `slow` и `-m "not slow"` для быстрого локального цикла.
 
