@@ -188,6 +188,9 @@
 - Dependency audit читает уже resolved lock через `--no-deps --disable-pip`:
   собственное окружение `pip-audit` больше не может незаметно исключить из отчёта
   совпадающий установленный пин вроде `packaging`.
+- Tag push больше не запускает записывающие pre-commit hooks на всём дереве:
+  file hooks ограничены стадией commit, а на pre-push остаётся только read-only
+  `verify_repo.py`.
 - Повреждённая структура кэша (`ai_data` не dict, `questions` не list или
   нестроковое metadata-поле) больше не роняет обработку: запись отклоняется
   как `dirty_meta`, а результат пересоздаётся по обычному fresh-пути.

@@ -11,16 +11,26 @@
 # Установка один раз:
 #   pip install -r requirements-dev.txt
 #   pre-commit install && pre-commit install --hook-type pre-push
+#
+# File hooks работают на commit. На pre-push (в том числе для tag ref) остаётся
+# только read-only repo-gates ниже: иначе новый tag считается заменой всего
+# дерева, и записывающие hooks форматируют сотни неизменённых файлов.
+default_stages: [pre-commit]
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
       - id: end-of-file-fixer
+        stages: [pre-commit]
       - id: trailing-whitespace
+        stages: [pre-commit]
         args: [--markdown-linebreak-ext=md]
       - id: check-merge-conflict
+        stages: [pre-commit]
       - id: check-yaml
+        stages: [pre-commit]
       - id: check-added-large-files
+        stages: [pre-commit]
         # 2 МБ: в репозитории есть .ttf (7 файлов) и каталоги моделей, но не
         # должно быть датасетов, весов и архивов.
         args: [--maxkb=2048]
@@ -28,6 +38,7 @@ repos:
   - repo: local
     hooks:
       - id: ruff-check
+        stages: [pre-commit]
         name: ruff check (версия из requirements-lock.txt)
         entry: ruff check --fix
         language: system
@@ -35,6 +46,7 @@ repos:
         require_serial: true
 
       - id: ruff-format
+        stages: [pre-commit]
         name: ruff format (только изменённые файлы)
         entry: ruff format
         language: system
