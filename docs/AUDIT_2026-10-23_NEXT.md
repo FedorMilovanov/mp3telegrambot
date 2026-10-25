@@ -940,6 +940,22 @@ video → QA report и возвращает `(video_path, qa_result, autofix_not
 74,00 % → **85,12 %**, проект 58,45 % → **58,63 %**. Полный прогон:
 **3 849 passed, 3 skipped**.
 
+**Шаг 37 (сделано) — Dub Quickstart и multicommand coverage.** Добавлены
+тринадцать прямых behavior-тестов без изменения production-кода. Quickstart
+покрывает admin gate, usage/recipe help, создание проекта и render job,
+HTML escaping/ограничение ошибки и idempotent registration. Multicommand
+покрывает parser limits, полную dispatch table, порядок и однократный вызов
+команд, восстановление `context.args` при success/error,
+`ApplicationHandlerStop` и registration group.
+
+* `handlers/dub_quickstart.py`: 38/38 statements, 10/10 branches;
+* `handlers/dub_multicommand.py`: 53/53 statements, 16/16 branches;
+* handlers в целом: 846/2 802 (30,19 %) → **908/2 802 (32,41 %)**;
+  `main_pipeline.py` остаётся 1 195 строк и 85,12 % statement coverage.
+
+Измерено: проект 58,63 % → **58,79 %**. Полный прогон:
+**3 862 passed, 3 skipped**.
+
 **Цели main для P0-3 достигнуты:** 1 195 ≤ 1 200 строк и 85,12 % ≥ 50 %
 statement coverage. Открытыми остаются handlers ≥ 55 % и Telegraph ≥ 60 %.
 
