@@ -85,7 +85,9 @@ def test_cache_caption_branch_no_longer_deletes_timestamps_as_first_fallback():
     assert "for mini_limit in MINI_TIMESTAMP_LIMITS:" in stage
     assert stage.index("MINI_TIMESTAMP_LIMITS:") < stage.index('"timestamps": "",')
 
+    presentation = Path("pipelines/cached_presentation_stage.py").read_text(encoding="utf-8")
+    assert "fit_caption(" in presentation, "кэш-хит обязан использовать общую стадию подписи"
+    assert "_trim_timestamps(" not in presentation, "своя копия обрезки в кэш-хите вернулась"
+
     main_src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    cache_branch = main_src[main_src.index("Кэш caption visible_len"):]
-    assert "fit_caption(" in cache_branch, "кэш-хит обязан использовать общую стадию подписи"
-    assert "_trim_timestamps(" not in cache_branch, "своя копия обрезки в кэш-хите вернулась"
+    assert "await prepare_cached_presentation(" in main_src
