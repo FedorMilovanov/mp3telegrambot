@@ -107,6 +107,11 @@
   `pipelines/thumbnail_stage.py`: reuse файла, yt-dlp с timeout 30 секунд,
   использование появившегося файла после rc≠0 и некритичный `None` при ошибке
   закреплены 17 тестами; различия текстов логов сохранены.
+- Post-delivery дополнения вынесены в `pipelines/extras_stage.py`: порядок
+  Shorts → Clips → Montage → Highlights, общий candidates-запрос и выбор
+  LiveDub-файла для ENG сохранены; сбой одного необязательного рендера не
+  отменяет остальные, а отмена задачи по-прежнему не поглощается. Стадия
+  покрыта 23 тестами со 100 % statement/branch coverage.
 - Ратчет покрытия по файлам (`tools/check_coverage_ratchet.py`,
   `docs/coverage_baseline.json`): покрытие объявленных файлов может только
   расти. Компенсирует `diff-cover` там, где изменения — проводка в

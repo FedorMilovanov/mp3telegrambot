@@ -51,15 +51,12 @@ from pipelines.caption_inputs import build_caption_inputs
 from pipelines.caption_stage import CaptionSource, fit_caption
 from pipelines.cache_stage import load_cache
 from pipelines.delivery_stage import DeliveryRequest, deliver_cached_result, deliver_result
+from pipelines.extras_stage import ExtrasRequest, run_extras
 from services.telegraph_pages import combined_study_reflection_enabled
 from pipelines.telegraph_nav import add_navigation
 from pipelines.telegraph_repair_stage import repair_enabled, repair_pages
 from pipelines.telegraph_render import RenderRequest, render_pages
 from pipelines.thumbnail_stage import load_thumbnail
-from services.render_clips_montage import create_extras_candidates  # FIX #11
-from pipelines.shorts import process_and_send_shorts
-from pipelines.clips import process_and_send_clips
-from pipelines.montage import process_and_send_montage, process_and_send_highlights
 from core.url_utils import get_youtube_video_url, get_youtube_timestamp_url
 from core.progress import set_progress
 from core.publication_status import missing_to_json
@@ -113,22 +110,6 @@ except ValueError:
 _LIVEDUB_TITLE_CACHE: BoundedLRUDict = BoundedLRUDict(
     max_entries=_LIVEDUB_TITLE_CACHE_MAX
 )
-
-
-async def _run_optional_stage(name: str, awaitable, default=False):
-    """Isolate optional publication stages without changing imported bindings."""
-    try:
-        return await awaitable
-    except asyncio.CancelledError:
-        raise
-    except Exception as exc:
-        logger.error(
-            "Optional stage %s failed but pipeline continues: %s",
-            name,
-            exc,
-            exc_info=True,
-        )
-        return default
 
 
 def _clean_livedub_meta_text(text: str) -> str:
@@ -1918,122 +1899,30 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             )
         )
 
-        # ── Shorts (после основного результата) ─────────
-        _feat_shorts = await asettings_get("shorts")
-        # ENG mode: use translated video for Shorts/Clips/Montage if LiveDub succeeded.
-        # The LiveDub path is produced inside _send_livedub_result(); wait for it
-        # before rendering clips so downstream videos do not silently fall back
-        # to the English original.
-        _shorts_livedub_path = None
-        if user_mode in ("eng", "eng_fast", "eng_fast_qa"):
-            if _livedub_video_for_downstream is None and live_dub_task and context:
-                logger.info("Shorts/Clips/Montage: waiting for LiveDub video for ENG downstream renders")
-                await _send_livedub_result()
-            if _livedub_video_for_downstream and Path(_livedub_video_for_downstream).exists():
-                _shorts_livedub_path = Path(_livedub_video_for_downstream)
-                logger.info("Shorts/Clips/Montage: using TRANSLATED video (LiveDub) for ENG renders")
-        if ai_data and _feat_shorts:
-            logger.info("Shorts: feature enabled, starting pipeline")
-            await _run_optional_stage(
-                "process_and_send_shorts",
-                process_and_send_shorts(
-                    url=url,
-                    media_id=media_id,
-                    mp3_path=mp3_path,
-                    title=title,
-                    performer=performer,
-                    duration=duration,
-                    ai_data=ai_data,
-                    update=update,
-                    existing_audio_part=used_audio_part,
-                    existing_client=used_client,
-                    rutube_url=rutube_url,
-                    vk_url=vk_url,
-                    workdir=ld_work if 'ld_work' in locals() else None,
-                    livedub_video_path=_shorts_livedub_path,
-                ),
-                False,
+        # Дополнения идут после основного MP3 в прежнем порядке.
+        # Общий candidates-запрос, изоляция optional-ошибок и выбор
+        # LiveDub-файла для ENG находятся внутри покрытой стадии.
+        await run_extras(
+            ExtrasRequest(
+                source_url=url,
+                media_id=media_id,
+                mp3_path=mp3_path,
+                title=title,
+                performer=performer,
+                duration=duration,
+                ai_data=ai_data,
+                update=update,
+                get_livedub_path=lambda: _livedub_video_for_downstream,
+                send_livedub=_send_livedub_result,
+                rutube_url=rutube_url,
+                vk_url=vk_url,
+                used_audio_part=used_audio_part,
+                used_client=used_client,
+                workdir=ld_work if "ld_work" in locals() else None,
+                user_mode=user_mode,
+                live_dub_pending=bool(live_dub_task and context),
             )
-        else:
-            logger.info(f"Shorts: skipped (feat={_feat_shorts}, ai_data={'yes' if ai_data else 'no'})")
-
-        # ── Clips (после Shorts) ──────────────────────────
-        _feat_clips = await asettings_get("clips")
-        if ai_data and _feat_clips:
-            logger.info("Clips: feature enabled, starting pipeline")
-            await _run_optional_stage(
-                "process_and_send_clips",
-                process_and_send_clips(
-                    url=url,
-                    media_id=media_id,
-                    mp3_path=mp3_path,
-                    title=title,
-                    performer=performer,
-                    duration=duration,
-                    ai_data=ai_data,
-                    update=update,
-                    existing_audio_part=used_audio_part,
-                    existing_client=used_client,
-                    rutube_url=rutube_url,
-                    vk_url=vk_url,
-                    livedub_video_path=_shorts_livedub_path,
-                ),
-                False,
-            )
-        else:
-            logger.info(f"Clips: skipped (feat={_feat_clips}, ai_data={'yes' if ai_data else 'no'})")
-
-        # ── Montage + Highlights (один общий Gemini text-only вызов) ─
-        _prefetched_extras = {"montage_candidates": [], "highlights_candidates": []}
-        _feat_montage = await asettings_get("shorts_montage")
-        _feat_highlights = await asettings_get("shorts_highlights")
-
-        if ai_data and (_feat_montage or _feat_highlights):
-            logger.info("Extras: feature enabled, requesting ONE Gemini text call for montage+highlights")
-            _prefetched_extras = await _run_optional_stage(
-                "create_extras_candidates",
-                create_extras_candidates(
-                    ai_data=ai_data,
-                    title=title,
-                    performer=performer,
-                    duration=duration,
-                ),
-                {"montage_candidates": [], "highlights_candidates": []},
-            )
-
-        if ai_data and _feat_montage:
-            logger.info("Montage: feature enabled, starting pipeline")
-            await _run_optional_stage(
-                "process_and_send_montage",
-                process_and_send_montage(
-                    url=url, media_id=media_id, mp3_path=mp3_path,
-                    title=title, performer=performer, duration=duration,
-                    ai_data=ai_data, update=update,
-                    rutube_url=rutube_url, vk_url=vk_url,
-                    prefetched_candidates=_prefetched_extras.get("montage_candidates", []),
-                    livedub_video_path=_shorts_livedub_path,
-                ),
-                False,
-            )
-        else:
-            logger.info(f"Montage: skipped (feat={_feat_montage})")
-
-        if ai_data and _feat_highlights:
-            logger.info("Highlights: feature enabled, starting pipeline")
-            await _run_optional_stage(
-                "process_and_send_highlights",
-                process_and_send_highlights(
-                    url=url, media_id=media_id, mp3_path=mp3_path,
-                    title=title, performer=performer, duration=duration,
-                    ai_data=ai_data, update=update,
-                    rutube_url=rutube_url, vk_url=vk_url,
-                    prefetched_candidates=_prefetched_extras.get("highlights_candidates", []),
-                    livedub_video_path=_shorts_livedub_path,
-                ),
-                False,
-            )
-        else:
-            logger.info(f"Highlights: skipped (feat={_feat_highlights})")
+        )
 
 
         # --- LIVEDUB: отправка результата (общий хелпер) ---

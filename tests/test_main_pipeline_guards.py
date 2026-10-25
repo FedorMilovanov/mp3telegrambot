@@ -276,33 +276,3 @@ def test_sponsorblock_rejects_unknown_category(monkeypatch: pytest.MonkeyPatch) 
     """Опечатка не должна молча вырезать не то."""
     monkeypatch.setenv("SPONSORBLOCK_REMOVE", "sponsor,adverts")
     assert main_pipeline._sponsorblock_args() == []
-
-
-def test_optional_stage_returns_value() -> None:
-    async def ok():
-        return "готово"
-
-    assert asyncio.run(main_pipeline._run_optional_stage("нужный", ok())) == "готово"
-
-
-def test_optional_stage_swallows_failure_and_returns_default() -> None:
-    """Необязательная стадия падает — публикация не должна падать вместе с ней."""
-
-    async def broken():
-        raise RuntimeError("telegraph лёг")
-
-    assert asyncio.run(main_pipeline._run_optional_stage("опциональный", broken())) is False
-    assert (
-        asyncio.run(main_pipeline._run_optional_stage("опциональный", broken(), default=None))
-        is None
-    )
-
-
-def test_optional_stage_propagates_cancellation() -> None:
-    """Отмену нельзя глотать: иначе остановка бота повиснет на этой стадии."""
-
-    async def cancelled():
-        raise asyncio.CancelledError
-
-    with pytest.raises(asyncio.CancelledError):
-        asyncio.run(main_pipeline._run_optional_stage("стадия", cancelled()))
