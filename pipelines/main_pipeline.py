@@ -47,6 +47,7 @@ from pipelines.fresh_caption_stage import finalize_fresh_caption
 from pipelines.livedub_background_stage import run_livedub_background
 from pipelines.livedub_cached_delivery_stage import deliver_cached_livedub
 from pipelines.livedub_dub_stage import make_livedub_video, wait_for_livedub_video
+from pipelines.livedub_full_qa_stage import run_livedub_full_qa
 from pipelines.livedub_failure_stage import (
     notify_livedub_send_failure,
     reject_oversized_livedub_video,
@@ -565,119 +566,27 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 _qa_result_full = None
                 _autofix_note = ""
                 if _livedub_qa_enabled and not is_fallback and livedub_path and livedub_path.exists():
-                    _qa_status_full = None
-                    try:
-                        _qa_status_full = await context.bot.send_message(
-                            chat_id=update.effective_chat.id,
-                            text="🔍 Проверяю точность перевода перед отправкой (Gemini сравнивает дубляж с оригиналом)…",
-                            reply_to_message_id=update.message.message_id,
-                        )
-                    except Exception:
-                        pass
-                    try:
-                        from services.livedub_qa import run_translation_qa
-                        _orig_audio = None
-                        _mp3_candidate = DOWNLOAD_DIR / f"{media_id}.mp3"
-                        if _mp3_candidate.exists():
-                            _orig_audio = _mp3_candidate
-                        else:
-                            _mp3_64 = DOWNLOAD_DIR / f"{media_id}_64.mp3"
-                            if _mp3_64.exists():
-                                _orig_audio = _mp3_64
-                        _qa_ai_data = None
-                        try:
-                            _qa_cached = await adb_get(media_id)
-                            _qa_cache_ok, _qa_cache_reason = is_cache_valid(_qa_cached)
-                            if _qa_cache_ok:
-                                _qa_ai_data = (_qa_cached or {}).get("ai_data")
-                            elif _qa_cached:
-                                logger.info(
-                                    "[LiveDubQA] stale cached analysis ignored: %s",
-                                    _qa_cache_reason,
-                                )
-                        except Exception as _qa_cache_err:
-                            logger.info(
-                                "[LiveDubQA] cached analysis unavailable: %s",
-                                str(_qa_cache_err)[:160],
-                            )
-                        _dub_srt = None
-                        _clean_ru_full = None  # AUDIT R42: чистая RU-дорожка
-                        try:
-                            if "ld_work" in locals() and ld_work.exists():
-                                _srt_candidates = sorted(
-                                    (f for f in ld_work.glob("*.srt")
-                                     if f.name != "gemini_subs.srt"),
-                                    key=lambda f: f.stat().st_mtime, reverse=True,
-                                )
-                                _dub_srt = _srt_candidates[0] if _srt_candidates else None
-                                # AUDIT R42: чистая RU-дорожка (без EN-фона микса)
-                                try:
-                                    from services.livedub_mix import find_pro_tracks
-                                    _clean_ru_full = find_pro_tracks(ld_work)[1]
-                                except Exception:
-                                    _clean_ru_full = None
-                        except Exception:
-                            pass
-                        _qa_part = None
-                        _qa_client = None
-                        try:
-                            if used_audio_part is not None and hasattr(used_audio_part, "name"):
-                                _qa_part = used_audio_part
-                                _qa_client = used_client
-                        except NameError:
-                            pass
-                        _qa_result_full = await run_translation_qa(
-                            dub_video_path=livedub_path,
-                            original_audio_path=_orig_audio,
-                            ai_data=_qa_ai_data,
-                            duration=duration,
-                            dub_srt_path=_dub_srt,
-                            dub_audio_path=_clean_ru_full,
-                            existing_audio_part=_qa_part,
-                            existing_client=_qa_client,
-                        )
-                        # Автоправка: major-искажения глушим ПРЯМО в основном ролике.
-                        if _qa_result_full and _livedub_autofix and "ld_work" in locals():
-                            _qa_majors = [i for i in (_qa_result_full.get("issues") or [])
-                                          if str(i.get("severity")) == "major"]
-                            if _qa_majors:
-                                try:
-                                    from services.livedub_mix import (
-                                        apply_qa_audio_fixes,
-                                        prepare_livedub_send_path as _prep_fixed,
-                                    )
-                                    fixed = await apply_qa_audio_fixes(
-                                        ld_work, _qa_result_full.get("issues") or [])
-                                    if fixed and fixed.exists():
-                                        fixed = _prep_fixed(
-                                            fixed, _livedub_title_line,
-                                            fallback=f"{media_id}_fixed")
-                                        if fixed.stat().st_size / (1024 * 1024) <= get_max_file_size_mb():
-                                            livedub_path = fixed  # основной ролик = исправленный
-                                            _autofix_note = (
-                                                f"🩹 В {len(_qa_majors)} месте(ах) с искажением "
-                                                f"русский дубляж приглушён, оригинал выведен в полный голос."
-                                            )
-                                        else:
-                                            logger.info("[LiveDubQA] фикс-версия превышает лимит — шлю оригинал")
-                                    else:
-                                        # find_pro_tracks не нашёл чистые дорожки
-                                        # (глубокий vot-cli --merge-video fallback):
-                                        # честно скажем, что приглушить не смогли.
-                                        _autofix_note = (
-                                            "🩹 Найдены искажения, но авто-приглушение не удалось "
-                                            "(чистые дорожки не сохранились) — детали в отчёте ниже."
-                                        )
-                                except Exception as _fx_err:
-                                    logger.warning(f"[LiveDubQA] авто-правка сбой: {_fx_err}")
-                    except Exception as _qa_err:
-                        logger.warning(f"[LiveDubQA] сбой проверки: {_qa_err}")
-                    finally:
-                        if _qa_status_full is not None:
-                            try:
-                                await _qa_status_full.delete()
-                            except Exception:
-                                pass
+                    (
+                        livedub_path,
+                        _qa_result_full,
+                        _autofix_note,
+                    ) = await run_livedub_full_qa(
+                        video_path=livedub_path,
+                        workdir=ld_work if "ld_work" in locals() else None,
+                        download_dir=DOWNLOAD_DIR,
+                        media_id=media_id,
+                        title_line=_livedub_title_line,
+                        duration=duration,
+                        autofix=_livedub_autofix,
+                        audio_part=used_audio_part if "used_audio_part" in locals() else None,
+                        client=used_client if "used_client" in locals() else None,
+                        bot=context.bot,
+                        chat_id=update.effective_chat.id,
+                        reply_to=update.message.message_id,
+                        get_cached=adb_get,
+                        validate_cache=is_cache_valid,
+                        max_file_size_mb=get_max_file_size_mb,
+                    )
 
                 if not is_fallback and livedub_path and livedub_path.exists():
                     _livedub_video_for_downstream = Path(livedub_path)

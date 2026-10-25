@@ -131,14 +131,14 @@ def test_eng_quick_returns_delivery_status_and_respects_silent_errors():
 
 
 def test_livedub_qa_cached_analysis_must_pass_normal_cache_validity():
-    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    start = src.index("_qa_ai_data = None")
-    end = src.index("_dub_srt = None", start)
+    src = Path("pipelines/livedub_full_qa_stage.py").read_text(encoding="utf-8")
+    start = src.index("qa_ai_data = None")
+    end = src.index("dub_srt = None", start)
     block = src[start:end]
-    assert "_qa_cached = await adb_get(media_id)" in block
-    assert "is_cache_valid(_qa_cached)" in block
-    assert "if _qa_cache_ok:" in block
-    assert "_qa_ai_data = (_qa_cached or {}).get(\"ai_data\")" in block
+    assert "cached = await get_cached(media_id)" in block
+    assert "validate_cache(cached)" in block
+    assert "if cache_ok:" in block
+    assert "qa_ai_data = (cached or {}).get(\"ai_data\")" in block
     assert "stale cached analysis ignored" in block
 
 
