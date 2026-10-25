@@ -1239,6 +1239,7 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
     notice_bot = None
     context = None
     livedub_background_calls = []
+    full_qa_calls = []
     if mode.startswith("eng"):
         import services.yandex_live_dub as live_dub
 
@@ -1247,8 +1248,8 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
         async def no_cache(_media_id):
             return None
 
-        async def no_optional_setting(_name):
-            return False
+        async def no_optional_setting(name):
+            return mode == "eng_video_send_failure" and name == "livedub_qa"
 
         def completed_livedub_task(coroutine):
             if mode == "eng_video_send_failure":
@@ -1312,7 +1313,13 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
                 translated.write_bytes(b"video")
                 return translated
 
+            async def translation_subtitles(*_args):
+                return None
+
             monkeypatch.setattr(main_pipeline, "make_livedub_video", background_video)
+            monkeypatch.setattr(
+                live_dub, "get_translation_subtitles", translation_subtitles
+            )
         if mode in (
             "eng_video_send_failure",
             "eng_video_cover_retry_failure",
@@ -1323,6 +1330,12 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
             monkeypatch.setattr(
                 qa, "technical_check", lambda *_args: ["tech warning"]
             )
+        if mode == "eng_video_send_failure":
+            async def full_qa(**kwargs):
+                full_qa_calls.append(kwargs)
+                return {"issues": []}
+
+            monkeypatch.setattr(qa, "run_translation_qa", full_qa)
         if mode in ("eng_video_send_failure", "eng_video_cover_retry_failure"):
             import services.livedub_mix as mix
 
@@ -1337,6 +1350,7 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
                 lambda _path: {"width": 640, "height": 360, "duration": 12.5},
             )
             monkeypatch.setattr(mix, "make_video_thumbnail", lambda _path: None)
+            monkeypatch.setattr(mix, "find_pro_tracks", lambda *_args: (None, None))
         notice_bot = NoticeBot()
         context = SimpleNamespace(bot=notice_bot)
 
@@ -1376,8 +1390,9 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
     assert cleaned == ["media1"]
     if mode.startswith("eng"):
         assert notice_bot is not None
-        assert len(notice_bot.messages) == 1
-        notice = notice_bot.messages[0]
+        expected_notices = 2 if mode == "eng_video_send_failure" else 1
+        assert len(notice_bot.messages) == expected_notices
+        notice = notice_bot.messages[-1]
         assert notice["chat_id"] == 987
         assert notice["reply_to_message_id"] == update.message.message_id
         if mode == "eng":
@@ -1407,6 +1422,10 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
                 "duration": 600,
                 "source_lang": "",
             }
+            assert len(full_qa_calls) == 1
+            assert full_qa_calls[0]["duration"] == 600
+            assert full_qa_calls[0]["dub_audio_path"] is None
+            assert "Проверяю точность перевода" in notice_bot.messages[0]["text"]
         if mode in ("eng_video_send_failure", "eng_video_cover_retry_failure"):
             assert notice_bot.actions == [
                 {"chat_id": 987, "action": "upload_video"}

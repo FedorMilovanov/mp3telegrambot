@@ -72,6 +72,12 @@ _REPLACED_CASES = {
     "test_livedub_cover_wired_with_fallback",
     "test_quick_qa_report_sent_after_video_not_before",
     "test_r41_full_qa_and_autofix_run_before_primary_send",
+    # Full QA/autofix implementation has a dedicated owner; main retains only
+    # ordering and primary-video wiring. Two-module replacements live below.
+    "test_send_video_uses_path_not_handle",
+    "test_send_video_passes_metadata",
+    "test_livedub_autofix_mutes_major_errors_by_default",
+    "test_pipeline_passes_existing_part_to_qa",
 }
 _CASES = runpy.run_path(str(Path(__file__).with_name("livedub_qa_cases.py")))
 globals().update(
@@ -305,10 +311,10 @@ def test_cached_livedub_uses_unified_publication_card_and_companion_transaction(
 
 
 def test_pipeline_wires_dub_srt() -> None:
-    main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     stage = Path("pipelines/livedub_background_stage.py").read_text(encoding="utf-8")
+    full_stage = Path("pipelines/livedub_full_qa_stage.py").read_text(encoding="utf-8")
     assert "get_translation_subtitles" in stage
-    assert "dub_srt_path=_dub_srt" in main
+    assert "dub_srt_path=dub_srt" in full_stage
 
 
 def test_eng_subtitles_skip_by_known_duration() -> None:
@@ -330,9 +336,10 @@ def test_pipeline_wires_pro_mix_and_autofix() -> None:
     )
     assert "make_video=make_livedub_video" in main
     assert "pro_mix=_livedub_pro_mix" in main
+    full_stage = Path("pipelines/livedub_full_qa_stage.py").read_text(encoding="utf-8")
     assert "make_video(" in background
     assert "build_pro_dub" in stage
-    assert "apply_qa_audio_fixes" in main
+    assert "apply_qa_audio_fixes" in full_stage
 
 
 def test_vot_duration_and_token_alias_threaded_through() -> None:
@@ -426,15 +433,53 @@ def test_quick_qa_report_sent_after_video_not_before() -> None:
     assert "await bot.send_video" in stage
 
 
+def test_send_video_uses_path_not_handle() -> None:
+    main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    stage = Path("pipelines/livedub_full_qa_stage.py").read_text(encoding="utf-8")
+    assert "video=livedub_path" in main
+    assert "video_path = fixed" in stage
+    assert 'open(livedub_path, "rb")' not in main
+
+
+def test_send_video_passes_metadata() -> None:
+    main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    stage = Path("pipelines/livedub_full_qa_stage.py").read_text(encoding="utf-8")
+    assert 'width=_v_meta.get("width")' in main
+    assert 'duration=_v_meta.get("duration")' in main
+    assert "thumbnail=_v_thumb" in main
+    assert "video_path = fixed" in stage
+
+
+def test_livedub_autofix_mutes_major_errors_by_default(monkeypatch) -> None:
+    import services.livedub_mix as mix
+
+    monkeypatch.delenv("LIVEDUB_AUTOFIX_RU_VOLUME", raising=False)
+    assert mix._FIX_RU_GAIN == 0.0
+    source = Path("services/livedub_mix.py").read_text(encoding="utf-8")
+    stage = Path("pipelines/livedub_full_qa_stage.py").read_text(encoding="utf-8")
+    assert "LIVEDUB_AUTOFIX_RU_VOLUME" in source
+    assert "полностью вырезается" in source
+    assert "русский дубляж приглушён" in stage
+
+
+def test_pipeline_passes_existing_part_to_qa() -> None:
+    stage = Path("pipelines/livedub_full_qa_stage.py").read_text(encoding="utf-8")
+    assert "existing_audio_part=qa_part" in stage
+    assert "existing_client=qa_client" in stage
+
+
 def test_r41_full_qa_and_autofix_run_before_primary_send() -> None:
     main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    stage = Path("pipelines/livedub_video_delivery_stage.py").read_text(encoding="utf-8")
-    i_qa = main.index("_qa_result_full = await run_translation_qa")
-    i_fix = main.index("livedub_path = fixed", i_qa)
+    full_stage = Path("pipelines/livedub_full_qa_stage.py").read_text(encoding="utf-8")
+    delivery_stage = Path("pipelines/livedub_video_delivery_stage.py").read_text(
+        encoding="utf-8"
+    )
+    i_qa = full_stage.index("qa_result = await run_translation_qa")
+    i_fix = full_stage.index("video_path = fixed", i_qa)
     i_send = main.index("_sent_msg = await send_livedub_video_with_cover")
-    assert i_qa < i_send
-    assert i_fix < i_send
+    assert main.index("await run_livedub_full_qa(") < i_send
+    assert i_qa < i_fix
     assert main.index("format_qa_report(_qa_result_full") > i_send
-    assert "Исправленная версия" not in main
-    assert "авто-приглушение не удалось" in main
-    assert "await bot.send_video" in stage
+    assert "Исправленная версия" not in main + full_stage
+    assert "авто-приглушение не удалось" in full_stage
+    assert "await bot.send_video" in delivery_stage

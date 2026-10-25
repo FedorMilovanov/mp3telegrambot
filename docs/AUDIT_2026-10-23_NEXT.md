@@ -921,8 +921,27 @@ SRT/original, clean-RU input, Gemini QA, major-issue autofix и skip/report
 68,14 % → **74,00 %**, проект 58,29 % → **58,45 %**. Полный прогон:
 **3 834 passed, 3 skipped**.
 
-До приёмки P0-3 остался сам оркестратор — цель ≤ 1 200 строк (сейчас 1 286
-строк из 3 120 исходных); цель ≥ 50 % statement coverage уже выполнена.
+**Шаг 36 (сделано) — ENG Full semantic QA/autofix.** Status lifecycle,
+cache-validated analysis, primary/64 audio fallback, SRT/clean-RU discovery,
+reused Gemini part/client и size-aware autofix вынесены в
+`pipelines/livedub_full_qa_stage.py`. Main сохраняет порядок QA → primary
+video → QA report и возвращает `(video_path, qa_result, autofix_note)`.
+
+* пятнадцать прямых тестов дают стадии 100 % statement/branch coverage:
+  valid/stale/unavailable cache, все audio fallbacks, discovery errors,
+  part/client reuse, no-major/success/oversize/missing/failed autofix,
+  status send/delete errors и cancellation;
+* существующий fresh ENG video-send-failure integration теперь дополнительно
+  выполняет main wrapper и Full QA stage с реальным status → QA → video
+  порядком; historical R4/R41/R42/source assertions перенесены на нового
+  владельца, `tests/livedub_qa_cases.py` byte-stable.
+
+Измерено: `main_pipeline.py` 1 286 → **1 195 строк**, line-ratchet main
+74,00 % → **85,12 %**, проект 58,45 % → **58,63 %**. Полный прогон:
+**3 849 passed, 3 skipped**.
+
+**Цели main для P0-3 достигнуты:** 1 195 ≤ 1 200 строк и 85,12 % ≥ 50 %
+statement coverage. Открытыми остаются handlers ≥ 55 % и Telegraph ≥ 60 %.
 
 ### P0-4. Сканирование секретов и SAST
 
