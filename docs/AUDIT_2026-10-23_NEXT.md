@@ -997,6 +997,19 @@ cleanup, safe edit и admin rendering.
 Измерено: проект 59,30 % → **59,53 %**. Полный прогон:
 **3 909 passed, 3 skipped**.
 
+**Шаг 41 (сделано) — Dub audio repair coverage.** Двадцать шесть прямых
+behavior-тестов без изменения production-кода покрывают process-lock race и
+cleanup, project ownership/recipe gates, malformed segments и selectors,
+escaped/bounded listings, request validation, full/partial enqueue,
+enqueue-failure rollback, admin paths и registration.
+
+* `handlers/dub_audio_repair.py`: **254/254 statements, 84/84 branches**;
+* handlers в целом: 1 195/2 802 (42,65 %) → **1 298/2 802 (46,32 %)**;
+  `main_pipeline.py` остаётся 1 195 строк и 85,12 % statement coverage.
+
+Измерено: проект 59,53 % → **59,82 %**. Полный прогон:
+**3 935 passed, 3 skipped**.
+
 **Цели main для P0-3 достигнуты:** 1 195 ≤ 1 200 строк и 85,12 % ≥ 50 %
 statement coverage. Открытыми остаются handlers ≥ 55 % и Telegraph ≥ 60 %.
 
