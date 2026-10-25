@@ -135,6 +135,10 @@
   рабочего каталога и Gemini `audio_part`, закрытие thumbnail и прежние
   failure-семантики закреплены десятью тестами со 100 % statement/branch
   coverage; сквозной ENG Quick тест проверяет вызов из настоящего `finally`.
+- Fresh и cache-hit обработки `AudioTooLarge` объединены в
+  `pipelines/audio_failure_stage.py`: разные исторические сообщения, попытка
+  LiveDub отправки, cleanup и возврат `False` сохранены. Шесть прямых и два
+  сквозных теста покрывают обе ветки и их failure-семантику.
 - Ратчет покрытия по файлам (`tools/check_coverage_ratchet.py`,
   `docs/coverage_baseline.json`): покрытие объявленных файлов может только
   расти. Компенсирует `diff-cover` там, где изменения — проводка в

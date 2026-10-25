@@ -56,6 +56,7 @@ from pipelines.thumbnail_stage import load_thumbnail
 from core.url_utils import get_youtube_video_url, get_youtube_timestamp_url
 from core.progress import set_progress
 from core.publication_status import missing_to_json
+from pipelines.audio_failure_stage import fail_audio_too_large
 from pipelines.audio_stage import (
     AudioTooLarge,
     prepare_audio,
@@ -1211,17 +1212,9 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     missing_message="Не удалось скачать аудио",
                 )
             except AudioTooLarge as _too_big:
-                await update.message.reply_text(
-                    f"⚠️ Файл слишком большой ({_too_big.size_mb:.1f} МБ) "
-                    "даже после сжатия."
+                return await fail_audio_too_large(
+                    _too_big, update, _send_livedub_result, media_id, cleanup_files, cache_hit=True,
                 )
-                # FIX AUDIT R4: не теряем обещанный ENG-перевод (см. полную ветку).
-                try:
-                    await _send_livedub_result()
-                except Exception as _ld_send_err:
-                    logger.warning("[LiveDub] send on early return failed: %s", _ld_send_err)
-                cleanup_files(media_id)
-                return False
             mp3_path = _audio.path
             file_size_mb = _audio.size_mb
             bitrate = _audio.bitrate
@@ -1311,16 +1304,9 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 on_squeeze=_squeeze_notice,
             )
         except AudioTooLarge as _too_big:
-            await update.message.reply_text(str(_too_big))
-            # FIX AUDIT R4: у LiveDub-видео свой независимый size-check и
-            # своё сообщение — не теряем обещанный ENG-перевод из-за
-            # слишком большого MP3.
-            try:
-                await _send_livedub_result()
-            except Exception as _ld_send_err:
-                logger.warning("[LiveDub] send on early return failed: %s", _ld_send_err)
-            cleanup_files(media_id)
-            return False
+            return await fail_audio_too_large(
+                _too_big, update, _send_livedub_result, media_id, cleanup_files, cache_hit=False,
+            )
         mp3_path = _audio.path
         file_size_mb = _audio.size_mb
         bitrate = _audio.bitrate

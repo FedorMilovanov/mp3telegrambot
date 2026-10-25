@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
+from types import SimpleNamespace
 
 import pytest
 
@@ -497,4 +498,60 @@ def test_eng_quick_workdir_is_removed_when_settings_fail(
     from pathlib import Path
 
     assert not (Path(tempfile.gettempdir()) / "livedub_media-cleanup").exists()
+
+
+def _audio_too_large_environment(
+    monkeypatch: pytest.MonkeyPatch, *, cache_hit: bool
+) -> list[str]:
+    """Reach fresh/cache audio preparation without network, files, or Telegram."""
+    cleaned: list[str] = []
+
+    async def info(_url, _timeout):
+        return {"id": "media1", "title": "Sermon", "duration": 600}
+
+    async def no_thumbnail(**_kwargs):
+        return None
+
+    async def cache_decision(_media_id):
+        return SimpleNamespace(
+            hit=cache_hit,
+            cached={"telegraph_url": ""} if cache_hit else None,
+            ai_data={} if cache_hit else None,
+        )
+
+    async def too_large(**_kwargs):
+        raise main_pipeline.AudioTooLarge(60.0, 50)
+
+    monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", info)
+    monkeypatch.setattr(main_pipeline, "_db_conn", lambda: _FakeConn(""))
+    monkeypatch.setattr(main_pipeline, "lowest_free_gb", lambda *_paths: 50.0)
+    monkeypatch.setattr(main_pipeline, "cleanup_files", cleaned.append)
+    monkeypatch.setattr(main_pipeline, "load_thumbnail", no_thumbnail)
+    monkeypatch.setattr(main_pipeline, "load_cache", cache_decision)
+    monkeypatch.setattr(main_pipeline, "prepare_audio", too_large)
+    return cleaned
+
+
+def test_fresh_audio_too_large_executes_shared_early_return(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cleaned = _audio_too_large_environment(monkeypatch, cache_hit=False)
+    update = _FakeUpdate()
+
+    assert _run(update) is False
+    assert cleaned == ["media1"]
+    assert update.message.replies == [str(main_pipeline.AudioTooLarge(60.0, 50))]
+
+
+def test_cache_audio_too_large_executes_shared_early_return(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cleaned = _audio_too_large_environment(monkeypatch, cache_hit=True)
+    update = _FakeUpdate()
+
+    assert _run(update) is False
+    assert cleaned == ["media1"]
+    assert update.message.replies == [
+        "⚠️ Файл слишком большой (60.0 МБ) даже после сжатия."
+    ]
 
