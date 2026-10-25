@@ -1023,9 +1023,23 @@ auto-draft binding, oversize errors и registration ordering.
 Измерено: проект 59,82 % → **60,57 %**. Полный прогон:
 **3 967 passed, 3 skipped**.
 
+**Шаг 43 (сделано) — Telegraph transport и repair behavior.** Тридцать пять
+тестов без production-изменений выполняют node cleanup, Markdown conversion,
+FLOOD_WAIT/transient retries, recursive CONTENT_TOO_BIG splitting, partial TOC,
+edit classification, multipart chain probing и archive repair pacing.
+
+* `services/telegraph.py`: 218/896 → **365/896 statements**;
+* `services/telegraph_edit.py`: 63/71 → **70/71**;
+* `services/telegraph_repair.py`: 118/189 → **188/189**;
+* `services/telegraph*.py` в целом: 548/2 093 (26,18 %) →
+  **772/2 093 (36,88 %)**. Main и handlers не изменились.
+
+Измерено: проект 60,57 % → **61,23 %**. Полный прогон:
+**4 002 passed, 3 skipped**.
+
 **Цели main и handlers для P0-3 достигнуты:** main — 1 195 ≤ 1 200 строк и
 85,12 % ≥ 50 % statement coverage; handlers — 55,71 % ≥ 55 %. Открытым
-остаётся Telegraph ≥ 60 %.
+остаётся Telegraph ≥ 60 % (сейчас 36,88 %).
 
 ### P0-4. Сканирование секретов и SAST
 
