@@ -46,8 +46,10 @@ def test_manifest_uses_explicit_delivery_contract_not_telegram_patch_stack():
 
 def test_pipeline_calls_explicit_delivery_transactions():
     src = _source("pipelines/main_pipeline.py")
+    cached_stage = _source("pipelines/livedub_cached_delivery_stage.py")
     assert "deliver_new_companions(" in src
-    assert "deliver_cached_companions(" in src
+    assert "deliver_cached_livedub(" in src
+    assert "deliver_cached_companions(" in cached_stage
     assert "create_source_audio_deferral(" in src
     assert "format_video_caption(_publication_card" in src
 
