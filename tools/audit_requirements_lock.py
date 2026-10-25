@@ -26,6 +26,7 @@ Usage::
 Requires ``pip-audit`` on PATH (CI installs it); it is deliberately not a
 runtime dependency of the bot.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -77,9 +78,7 @@ def locked_versions(lock_path: Path = DEFAULT_LOCK) -> dict[str, str]:
     return locked
 
 
-def _coverage_problems(
-    payload: dict[str, object], locked: dict[str, str]
-) -> list[dict[str, str]]:
+def _coverage_problems(payload: dict[str, object], locked: dict[str, str]) -> list[dict[str, str]]:
     """The report must describe exactly the packages and versions we ship."""
     raw_dependencies = payload.get("dependencies")
     if not isinstance(raw_dependencies, list) or not raw_dependencies:
@@ -125,9 +124,7 @@ def _coverage_problems(
                     "version": locked[name],
                     "fix": "",
                     "reason": (
-                        "pip-audit audited "
-                        f"{reported[name] or 'an unknown version'}, not the pinned "
-                        f"{locked[name]}"
+                        f"pip-audit audited {reported[name] or 'an unknown version'}, not the pinned {locked[name]}"
                     ),
                 }
             )
@@ -137,9 +134,7 @@ def _coverage_problems(
 def _pip_audit_executable() -> str:
     executable = shutil.which("pip-audit")
     if not executable:
-        raise SystemExit(
-            "pip-audit is not installed. Install it with: python -m pip install pip-audit"
-        )
+        raise SystemExit("pip-audit is not installed. Install it with: python -m pip install pip-audit")
     return executable
 
 
@@ -147,7 +142,20 @@ def audit(lock_path: Path = DEFAULT_LOCK, *, today: dt.date | None = None) -> di
     """Return a report dict; ``blocking`` is empty when the policy passes."""
     current_day = today or dt.date.today()
     process = subprocess.run(
-        [_pip_audit_executable(), "-r", str(lock_path), "--format", "json", "--progress-spinner", "off"],
+        [
+            _pip_audit_executable(),
+            "-r",
+            str(lock_path),
+            # The input is already the exact transitive closure. Re-resolving it
+            # through pip-audit's own environment can silently omit an installed
+            # pin (for example packaging itself) and makes coverage unreliable.
+            "--no-deps",
+            "--disable-pip",
+            "--format",
+            "json",
+            "--progress-spinner",
+            "off",
+        ],
         capture_output=True,
         text=True,
         check=False,
@@ -158,8 +166,7 @@ def audit(lock_path: Path = DEFAULT_LOCK, *, today: dt.date | None = None) -> di
         payload = json.loads(process.stdout or "{}")
     except json.JSONDecodeError as exc:
         raise SystemExit(
-            "pip-audit did not return JSON; refusing to treat an unreadable "
-            f"report as a clean one: {exc}"
+            f"pip-audit did not return JSON; refusing to treat an unreadable report as a clean one: {exc}"
         ) from exc
     if not isinstance(payload, dict):
         raise SystemExit("pip-audit returned a non-object JSON report")
@@ -180,8 +187,12 @@ def audit(lock_path: Path = DEFAULT_LOCK, *, today: dt.date | None = None) -> di
                 continue
             seen.add((advisory, name, version))
             fix_versions = [str(item) for item in vulnerability.get("fix_versions") or []]
-            entry = {"id": advisory, "package": name, "version": version,
-                     "fix": ", ".join(fix_versions) or "no fix published"}
+            entry = {
+                "id": advisory,
+                "package": name,
+                "version": version,
+                "fix": ", ".join(fix_versions) or "no fix published",
+            }
             exception = ALLOWED_ADVISORIES.get(advisory)
             if exception is None or exception.package != name:
                 blocking.append(entry)
@@ -189,9 +200,7 @@ def audit(lock_path: Path = DEFAULT_LOCK, *, today: dt.date | None = None) -> di
             used.add(advisory)
             if current_day > exception.review_by:
                 blocking.append(
-                    {**entry, "reason": (
-                        f"allow-list review expired on {exception.review_by.isoformat()}"
-                    )}
+                    {**entry, "reason": (f"allow-list review expired on {exception.review_by.isoformat()}")}
                 )
                 continue
             allowed.append({**entry, "reason": exception.reason})
@@ -222,18 +231,12 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
     else:
         for entry in report["allowed"]:  # type: ignore[union-attr]
-            print(
-                f"ALLOWED {entry['id']} {entry['package']}=={entry['version']} "
-                f"(fix: {entry['fix']})"
-            )
+            print(f"ALLOWED {entry['id']} {entry['package']}=={entry['version']} (fix: {entry['fix']})")
         for entry in report["stale_allow_list_entries"]:  # type: ignore[union-attr]
             print(f"STALE allow-list entry, delete it: {entry}")
         for entry in report["blocking"]:  # type: ignore[union-attr]
             if entry["id"].startswith("REPORT_"):
-                print(
-                    f"{entry['id']} {entry['package']} "
-                    f"{entry.get('reason', '')}".rstrip()
-                )
+                print(f"{entry['id']} {entry['package']} {entry.get('reason', '')}".rstrip())
                 continue
             print(
                 f"VULNERABLE {entry['id']} {entry['package']}=={entry['version']} "
