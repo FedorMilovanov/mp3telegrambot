@@ -3,9 +3,7 @@ from __future__ import annotations
 import services.shorts_factory_retry_cache as retry_cache
 
 
-def test_active_orphan_cache_file_survives_cleanup_until_last_holder_releases(
-    monkeypatch, tmp_path
-):
+def test_active_orphan_cache_file_survives_cleanup_until_last_holder_releases(monkeypatch, tmp_path):
     cache = tmp_path / "cache"
     cache.mkdir()
     monkeypatch.setattr(retry_cache, "FACTORY_CACHE_DIR", cache)

@@ -74,17 +74,13 @@ def test_render_stage_combined_path_is_feature_flagged_and_fallbacks_to_separate
 
 
 def test_combined_and_separate_semantic_paths_forbid_model_downgrade():
-    parameter = inspect.signature(_gemini_text_request).parameters[
-        "allow_model_fallback"
-    ]
+    parameter = inspect.signature(_gemini_text_request).parameters["allow_model_fallback"]
     assert parameter.default is False
 
     function_source = inspect.getsource(_gemini_text_request)
     tree = ast.parse(function_source)
     executable_strings = [
-        node.value
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        node.value for node in ast.walk(tree) if isinstance(node, ast.Constant) and isinstance(node.value, str)
     ]
 
     # Historical comments may name retired models, but executable policy must not.
@@ -103,8 +99,8 @@ def test_combined_result_is_typed_dataclass_not_bare_tuple():
     src = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
     assert "@dataclass(frozen=True)" in src
     assert "class CombinedStudyReflectionResult" in src
-    assert "study_page_type: str = \"study\"" in src
-    assert "reflection_page_type: str = \"reflection\"" in src
+    assert 'study_page_type: str = "study"' in src
+    assert 'reflection_page_type: str = "reflection"' in src
     assert "return CombinedStudyReflectionResult" in src
     stage = Path("pipelines/telegraph_render.py").read_text(encoding="utf-8")
     assert "result.study_url" in stage
@@ -113,6 +109,8 @@ def test_combined_result_is_typed_dataclass_not_bare_tuple():
 
 def test_structured_block_schema_uses_canonical_type_enum():
     schema = combined_expanded_pages_response_schema()
-    block_type = schema["properties"]["study"]["properties"]["sections"]["items"]["properties"]["blocks"]["items"]["properties"]["type"]
+    block_type = schema["properties"]["study"]["properties"]["sections"]["items"]["properties"]["blocks"]["items"][
+        "properties"
+    ]["type"]
     assert block_type["enum"][:6] == ["paragraph", "bullet", "scripture", "source", "lexicon", "heading"]
     assert "application" in block_type["enum"]

@@ -8,12 +8,25 @@
 Современные галлюцинированные авторы («Я, Джон МакАртур, …») по-прежнему
 срезаются.
 """
+
 from core.content_audit import _scrub_mismatched_first_person_author as scrub
 
 
 def test_biblical_authors_preserved_in_scripture():
-    for name in ["Иоанн", "Павел", "Пётр", "Петр", "Иаков", "Иуда",
-                 "Давид", "Соломон", "Даниил", "Исаия", "Моисей", "Иов"]:
+    for name in [
+        "Иоанн",
+        "Павел",
+        "Пётр",
+        "Петр",
+        "Иаков",
+        "Иуда",
+        "Давид",
+        "Соломон",
+        "Даниил",
+        "Исаия",
+        "Моисей",
+        "Иов",
+    ]:
         txt = f"«Я, {name}, свидетель сему»"
         out, issues = scrub(txt, expected_author="Джон МакАртур")
         assert out == txt and not issues, f"{name} не должен срезаться: {out!r}"

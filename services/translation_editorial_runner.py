@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Standalone ENG translation-editor workflow with explicit progress ownership."""
+
 from __future__ import annotations
 
 import asyncio
@@ -41,9 +42,7 @@ async def process_translation_editorial_only(
 
     workdir = Path(tempfile.mkdtemp(prefix="translation_editorial_only_"))
     if status_msg is None:
-        status_msg = await update.message.reply_text(
-            "🔎 РЕДАКТОР ПЕРЕВОДА: получаю метаданные…"
-        )
+        status_msg = await update.message.reply_text("🔎 РЕДАКТОР ПЕРЕВОДА: получаю метаданные…")
     try:
         info = await factory_module._load_video_info(url)
         try:
@@ -56,8 +55,7 @@ async def process_translation_editorial_only(
         language = str(info.get("language") or "").strip().lower()
         if language and not language.startswith("en"):
             raise RuntimeError(
-                "Режим «ENG Редактор перевода» принимает английский источник; "
-                f"metadata language={language!r}."
+                f"Режим «ENG Редактор перевода» принимает английский источник; metadata language={language!r}."
             )
 
         free_gb = shutil.disk_usage(DOWNLOAD_DIR).free / (1024**3)

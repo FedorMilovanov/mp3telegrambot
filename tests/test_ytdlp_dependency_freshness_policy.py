@@ -57,9 +57,7 @@ def test_dependabot_tracks_the_youtube_pair_daily_and_keeps_other_pins_moving() 
     pip_updates = [
         item
         for item in updates
-        if isinstance(item, dict)
-        and item.get("package-ecosystem") == "pip"
-        and item.get("directory") == "/"
+        if isinstance(item, dict) and item.get("package-ecosystem") == "pip" and item.get("directory") == "/"
     ]
     assert len(pip_updates) == 1
     policy = pip_updates[0]

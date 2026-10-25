@@ -6,6 +6,7 @@ The successful no-bot NoChew renderer used short, deterministic candidates and
 reference-only cloning. This module restores those invariants while adding
 caption coverage checks and finer timing anchors for the generic bot pipeline.
 """
+
 from __future__ import annotations
 
 import math
@@ -270,9 +271,7 @@ def _frame_activity(samples: np.ndarray, sample_rate: int) -> tuple[np.ndarray, 
     frame = max(64, int(sample_rate * 0.02))
     hop = max(32, int(sample_rate * 0.01))
     starts = np.arange(0, max(1, len(audio) - frame + 1), hop)
-    rms = np.asarray(
-        [math.sqrt(float(np.mean(audio[pos : pos + frame] ** 2)) + 1e-12) for pos in starts]
-    )
+    rms = np.asarray([math.sqrt(float(np.mean(audio[pos : pos + frame] ** 2)) + 1e-12) for pos in starts])
     peak_db = 20.0 * math.log10(float(np.max(rms)) + 1e-12)
     threshold_db = max(-48.0, peak_db - 34.0)
     return 20.0 * np.log10(rms + 1e-12) >= threshold_db, starts, frame
@@ -298,10 +297,27 @@ def _edge_trim(samples: np.ndarray, sample_rate: int) -> np.ndarray:
 
 def _extract_reference_part(source: Path, start: float, end: float, output: Path) -> np.ndarray:
     command = [
-        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-        "-ss", f"{max(0.0, start):.6f}", "-t", f"{max(0.2, end - start):.6f}",
-        "-i", str(source), "-vn", "-ac", "1", "-ar", "16000",
-        "-af", "highpass=f=55,lowpass=f=7600", "-c:a", "pcm_f32le", str(output),
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-ss",
+        f"{max(0.0, start):.6f}",
+        "-t",
+        f"{max(0.2, end - start):.6f}",
+        "-i",
+        str(source),
+        "-vn",
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        "-af",
+        "highpass=f=55,lowpass=f=7600",
+        "-c:a",
+        "pcm_f32le",
+        str(output),
     ]
     proc = subprocess.run(command, check=False)
     if proc.returncode != 0 or not output.is_file():
@@ -338,9 +354,7 @@ def build_reference_v4(
 ) -> None:
     """Create a clean-edged reference with coherent runs and click-free joins."""
     valid = sorted(
-        (max(0.0, float(start)), max(0.0, float(end)))
-        for start, end in intervals
-        if float(end) - float(start) >= 0.35
+        (max(0.0, float(start)), max(0.0, float(end))) for start, end in intervals if float(end) - float(start) >= 0.35
     )
     if not valid:
         raise RuntimeError("Нет пригодных интервалов для voice reference.")
@@ -385,13 +399,21 @@ def build_reference_v4(
         audio[:fade] *= ramp
         audio[-fade:] *= ramp[::-1]
     sf.write(output, audio, 16000, subtype="PCM_24")
-    log(f"reference={output.name}; parts={len(parts)}; duration={len(audio)/16000:.2f}s")
+    log(f"reference={output.name}; parts={len(parts)}; duration={len(audio) / 16000:.2f}s")
 
 
 def _source_speech_onset(source: Path) -> float:
     command = [
-        "ffmpeg", "-hide_banner", "-nostats", "-i", str(source),
-        "-af", "silencedetect=noise=-42dB:d=0.12", "-f", "null", "-",
+        "ffmpeg",
+        "-hide_banner",
+        "-nostats",
+        "-i",
+        str(source),
+        "-af",
+        "silencedetect=noise=-42dB:d=0.12",
+        "-f",
+        "null",
+        "-",
     ]
     proc = subprocess.run(
         command,
@@ -416,8 +438,7 @@ __all__ = [
     "group_ready_srt_v4",
 ]
 
-_BASE_ALL = tuple(globals().get('__all__', ()))
-
+_BASE_ALL = tuple(globals().get("__all__", ()))
 
 
 import re
@@ -443,18 +464,23 @@ MAX_WORDS_PER_SECOND = 5.45
 
 _MAX_GROUP_SLACK = 0.04
 
+
 def _normal_text(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()
+
 
 def _words(value: Any) -> int:
     return len(re.findall(r"\w+", _normal_text(value), flags=re.UNICODE))
 
+
 def _sentence_end(value: Any) -> bool:
     return bool(re.search(r"[.!?…][\s\"'»”)]*$", _normal_text(value)))
+
 
 def _protected_final_pronunciation(value: Any) -> bool:
     prepared = russian_pronunciation.prepare_segment({"text": _normal_text(value)})
     return bool(prepared.get("stress_evidence_required"))
+
 
 def _atoms(cues: list[Any], *, max_seconds: float) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
@@ -483,6 +509,7 @@ def _atoms(cues: list[Any], *, max_seconds: float) -> list[dict[str, Any]]:
             )
     return result
 
+
 def _candidate(
     atoms: list[dict[str, Any]],
     left: int,
@@ -490,7 +517,7 @@ def _candidate(
     *,
     max_seconds: float,
 ) -> dict[str, Any] | None:
-    selected = atoms[left:right + 1]
+    selected = atoms[left : right + 1]
     start = float(selected[0]["start"])
     end = float(selected[-1]["end"])
     duration = end - start
@@ -523,10 +550,7 @@ def _candidate(
         if "смеется" in lowered or "смеюсь" in lowered:
             cost += 1.4
     if gaps:
-        cost += sum(
-            max(0.0, gap - PREFERRED_INTERNAL_GAP_SECONDS) * 1.8
-            for gap in gaps
-        )
+        cost += sum(max(0.0, gap - PREFERRED_INTERNAL_GAP_SECONDS) * 1.8 for gap in gaps)
     cost += -0.10 if _sentence_end(text) else 0.14
     cost += 0.035
     return {
@@ -550,13 +574,16 @@ def _candidate(
         "internal_gaps": gaps,
     }
 
+
 def _fragile_heading(text: str) -> bool:
     normalized = _normal_text(text).casefold().replace("ё", "е")
     return bool(normalized.endswith(":") or re.search(r"\bстих\s*:$", normalized))
 
+
 def _fragile_laughter(text: str) -> bool:
     normalized = _normal_text(text).casefold().replace("ё", "е")
     return bool(re.search(r"\bсмеет(?:ся|есь)?\b|\bсмеюсь\b", normalized))
+
 
 def _merge_pair(
     left: dict[str, Any],
@@ -601,6 +628,7 @@ def _merge_pair(
         "word_rate": round(rate, 6),
     }
 
+
 def _merge_fragile_groups(
     groups: list[dict[str, Any]],
     *,
@@ -626,6 +654,7 @@ def _merge_fragile_groups(
     for position, item in enumerate(result, start=1):
         item["id"] = position
     return result
+
 
 def group_ready_srt_v4(cues: list[Any], *, max_seconds: float = 7.0) -> list[dict[str, Any]]:
     """Partition ready SRT into natural bounded breaths with exact text coverage."""
@@ -683,12 +712,10 @@ def group_ready_srt_v4(cues: list[Any], *, max_seconds: float = 7.0) -> list[dic
     grouped_text = _normal_text(" ".join(str(item["source"]) for item in groups))
     if source_text != grouped_text:
         raise RuntimeError("Semantic-breath grouping изменил текст готового SRT.")
-    if any(
-        float(item["end"]) - float(item["start"]) > limit + _MAX_GROUP_SLACK + 1e-9
-        for item in groups
-    ):
+    if any(float(item["end"]) - float(item["start"]) > limit + _MAX_GROUP_SLACK + 1e-9 for item in groups):
         raise RuntimeError("Semantic-breath grouping создал слишком длинную реплику.")
     return groups
+
 
 group_ready_srt_v4 = group_ready_srt_v4
 

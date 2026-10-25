@@ -5,6 +5,7 @@ This is intentionally separate from the operational cache. The cache may expire;
 the archive is append/upsert + human-readable Markdown exports so the owner can
 open a folder, copy links, and share them without using the bot UI.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -73,8 +74,6 @@ def extract_scripture_refs(ai_data: dict[str, Any] | None) -> list[str]:
     return refs
 
 
-
-
 def collect_quality_warnings(ai_data: dict[str, Any] | None) -> list[str]:
     """Collect non-fatal quality warnings that should survive outside logs."""
     ai = ai_data or {}
@@ -102,6 +101,7 @@ def timestamp_coverage_archive_fields(ai_data: dict[str, Any] | None) -> tuple[f
         ratio = 0.0
     status = str(ai.get("segments_status") or "complete").strip() or "complete"
     return ratio, status
+
 
 def build_generated_page_record(
     *,
@@ -215,6 +215,7 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
             updated_at INTEGER DEFAULT 0
         )
     """)
+
     def _trusted_ident(name: str) -> str:
         if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
             raise ValueError(f"unsafe column name: {name!r}")
@@ -245,33 +246,78 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
 
 def _record_values(record: dict[str, Any]) -> tuple[object, ...]:
     return (
-        record.get("video_id", ""), record.get("source_url", ""),
-        record.get("title", ""), record.get("author", ""), record.get("event", ""),
-        record.get("format", ""), int(record.get("duration") or 0),
-        record.get("youtube_url", ""), record.get("rutube_url", ""), record.get("vk_url", ""),
-        record.get("synopsis_url", ""), record.get("study_url", ""), record.get("reflection_url", ""),
-        record.get("terms_url", ""), record.get("questions_url", ""),
-        _json_dumps(record.get("hashtags", [])), _json_dumps(record.get("key_categories", [])),
+        record.get("video_id", ""),
+        record.get("source_url", ""),
+        record.get("title", ""),
+        record.get("author", ""),
+        record.get("event", ""),
+        record.get("format", ""),
+        int(record.get("duration") or 0),
+        record.get("youtube_url", ""),
+        record.get("rutube_url", ""),
+        record.get("vk_url", ""),
+        record.get("synopsis_url", ""),
+        record.get("study_url", ""),
+        record.get("reflection_url", ""),
+        record.get("terms_url", ""),
+        record.get("questions_url", ""),
+        _json_dumps(record.get("hashtags", [])),
+        _json_dumps(record.get("key_categories", [])),
         _json_dumps(record.get("scripture_refs", [])),
-        record.get("publication_status", "unknown"), _json_dumps(record.get("publication_missing", [])),
-        record.get("publication_warning", ""), _json_dumps(record.get("quality_warnings", [])),
-        float(record.get("timestamp_coverage_ratio") or 0.0), record.get("segments_status", "complete"),
-        record.get("caption_trim_stage", ""), int(record.get("caption_timestamps_total") or 0),
+        record.get("publication_status", "unknown"),
+        _json_dumps(record.get("publication_missing", [])),
+        record.get("publication_warning", ""),
+        _json_dumps(record.get("quality_warnings", [])),
+        float(record.get("timestamp_coverage_ratio") or 0.0),
+        record.get("segments_status", "complete"),
+        record.get("caption_trim_stage", ""),
+        int(record.get("caption_timestamps_total") or 0),
         int(record.get("caption_timestamps_shown") or 0),
-        record.get("model", ""), record.get("prompt_version", ""), record.get("prompt_variant", ""),
-        int(record.get("created_at") or _now_ts()), int(record.get("updated_at") or _now_ts()),
+        record.get("model", ""),
+        record.get("prompt_version", ""),
+        record.get("prompt_variant", ""),
+        int(record.get("created_at") or _now_ts()),
+        int(record.get("updated_at") or _now_ts()),
     )
 
 
 _RECORD_KEYS = [
-    "video_id", "source_url", "title", "author", "event", "format", "duration",
-    "youtube_url", "rutube_url", "vk_url", "synopsis_url", "study_url", "reflection_url",
-    "terms_url", "questions_url", "hashtags", "key_categories", "scripture_refs",
-    "publication_status", "publication_missing", "publication_warning",
-    "quality_warnings", "timestamp_coverage_ratio", "segments_status",
-    "caption_trim_stage", "caption_timestamps_total", "caption_timestamps_shown",
-    "model", "prompt_version", "prompt_variant", "last_repaired_at", "repair_count",
-    "last_repair_changed_pages", "last_repair_errors", "created_at", "updated_at",
+    "video_id",
+    "source_url",
+    "title",
+    "author",
+    "event",
+    "format",
+    "duration",
+    "youtube_url",
+    "rutube_url",
+    "vk_url",
+    "synopsis_url",
+    "study_url",
+    "reflection_url",
+    "terms_url",
+    "questions_url",
+    "hashtags",
+    "key_categories",
+    "scripture_refs",
+    "publication_status",
+    "publication_missing",
+    "publication_warning",
+    "quality_warnings",
+    "timestamp_coverage_ratio",
+    "segments_status",
+    "caption_trim_stage",
+    "caption_timestamps_total",
+    "caption_timestamps_shown",
+    "model",
+    "prompt_version",
+    "prompt_variant",
+    "last_repaired_at",
+    "repair_count",
+    "last_repair_changed_pages",
+    "last_repair_errors",
+    "created_at",
+    "updated_at",
 ]
 _RECORD_SELECT = "SELECT " + ", ".join(_RECORD_KEYS) + " FROM generated_pages"
 
@@ -342,9 +388,13 @@ def _md_record(record: dict[str, Any]) -> str:
     if record.get("source_url"):
         lines.append(f"- Source: {record['source_url']}")
     for label, key in [
-        ("YouTube", "youtube_url"), ("RuTube", "rutube_url"), ("VK", "vk_url"),
-        ("Конспект", "synopsis_url"), ("Разбор", "study_url"),
-        ("Размышление", "reflection_url"), ("Термины", "terms_url"),
+        ("YouTube", "youtube_url"),
+        ("RuTube", "rutube_url"),
+        ("VK", "vk_url"),
+        ("Конспект", "synopsis_url"),
+        ("Разбор", "study_url"),
+        ("Размышление", "reflection_url"),
+        ("Термины", "terms_url"),
         ("Вопросы", "questions_url"),
     ]:
         if record.get(key):
@@ -503,10 +553,15 @@ def query_generated_pages(
         parts = [
             # FIX AUDIT R4: video_id/source_url в haystack — поиск по точному
             # идентификатору находил только то, что попало в 500 последних.
-            r.get("video_id", ""), r.get("source_url", ""),
-            r.get("title", ""), r.get("author", ""), r.get("event", ""),
-            r.get("format", ""), r.get("publication_status", ""),
-            " ".join(r.get("quality_warnings") or []), r.get("segments_status", ""),
+            r.get("video_id", ""),
+            r.get("source_url", ""),
+            r.get("title", ""),
+            r.get("author", ""),
+            r.get("event", ""),
+            r.get("format", ""),
+            r.get("publication_status", ""),
+            " ".join(r.get("quality_warnings") or []),
+            r.get("segments_status", ""),
             r.get("prompt_variant", ""),
             " ".join(r.get("hashtags") or []),
             " ".join(r.get("key_categories") or []),
@@ -529,6 +584,7 @@ def query_generated_pages(
         if len(out) >= limit:
             break
     return out
+
 
 async def aquery_generated_pages(**kwargs: Any) -> list[dict[str, Any]]:
     loop = asyncio.get_running_loop()
@@ -662,7 +718,9 @@ def save_segment_plan_export(
         md.append(f"Author: {author}")
     md.append(f"Video ID: `{video_id}`")
     if segments_status and segments_status != "complete":
-        md.append(f"⚠️ Сегменты построены по неполной сетке таймкодов (coverage {float(timestamp_coverage_ratio or 0.0):.0%}).")
+        md.append(
+            f"⚠️ Сегменты построены по неполной сетке таймкодов (coverage {float(timestamp_coverage_ratio or 0.0):.0%})."
+        )
     md.append("")
     md.append(format_segments_text(segments) if segments else "Сегменты не найдены.")
     md.append("")
@@ -716,6 +774,7 @@ def cleanup_old_segment_files(max_age_days: int = 90) -> int:
     Only deletes from SEGMENTS_DIR; archive DB records are untouched.
     """
     import time as _time
+
     cutoff = _time.time() - max_age_days * 86400
     deleted = 0
     segments_dir = ARCHIVE_DIR / "segments"

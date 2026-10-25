@@ -9,15 +9,11 @@ from services import telegraph_pages
 
 def test_primary_audio_emergency_env_cannot_enable_lite(monkeypatch):
     monkeypatch.setenv("AUDIO_ANALYSIS_FALLBACK_MODE", "lite")
-    assert gemini_analyze._audio_fallback_models("gemini-3.7-flash") == [
-        "gemini-3.7-flash"
-    ]
+    assert gemini_analyze._audio_fallback_models("gemini-3.7-flash") == ["gemini-3.7-flash"]
 
 
 def test_telegraph_semantic_fallback_is_disabled_by_default():
-    parameter = inspect.signature(telegraph_pages._gemini_text_request).parameters[
-        "allow_model_fallback"
-    ]
+    parameter = inspect.signature(telegraph_pages._gemini_text_request).parameters["allow_model_fallback"]
     assert parameter.default is False
 
 

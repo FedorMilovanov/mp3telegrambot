@@ -143,16 +143,12 @@ def test_delivery_subtitles_are_mapped_across_fragments_and_scaled() -> None:
         {
             "start_seconds": 10.0,
             "end_seconds": 14.0,
-            "_subtitle_source_segments": [
-                {"start": 10.5, "end": 12.0, "text": "Первый.", "words": []}
-            ],
+            "_subtitle_source_segments": [{"start": 10.5, "end": 12.0, "text": "Первый.", "words": []}],
         },
         {
             "start_seconds": 30.0,
             "end_seconds": 35.0,
-            "_subtitle_source_segments": [
-                {"start": 31.0, "end": 33.0, "text": "Второй.", "words": []}
-            ],
+            "_subtitle_source_segments": [{"start": 31.0, "end": 33.0, "text": "Второй.", "words": []}],
         },
     ]
 
@@ -163,7 +159,6 @@ def test_delivery_subtitles_are_mapped_across_fragments_and_scaled() -> None:
     scaled = scale_subtitle_segments(mapped, 2.0)
     assert scaled[0]["start"] == 0.25
     assert scaled[1]["start"] == 2.5
-
 
 
 def test_probe_mapping_drops_no_word_segment_crossing_window_edge() -> None:

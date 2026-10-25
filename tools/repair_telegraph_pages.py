@@ -8,6 +8,7 @@ TELEGRAPH_TOKEN is configured.
 
 Default is dry-run so technical pages can be inspected safely first.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -122,7 +123,7 @@ async def _expand_input_urls(urls: list[str], *, expand_chains: bool = True) -> 
     expanded: list[str] = []
     for url in urls:
         chain = await expand_telegraph_page_chain(url)
-        for item in (chain or [url]):
+        for item in chain or [url]:
             if item not in expanded:
                 expanded.append(item)
     return expanded
@@ -161,12 +162,7 @@ def _append_history(path: Path, summary: str, *, source: str) -> None:
     stamp = time.strftime("%Y-%m-%d %H:%M:%S %z")
     with path.open("a", encoding="utf-8") as f:
         f.write(
-            "\n\n"
-            f"## {stamp} — Telegraph deterministic repair run\n\n"
-            f"Source: `{source}`\n\n"
-            "```text\n"
-            f"{summary}\n"
-            "```\n"
+            f"\n\n## {stamp} — Telegraph deterministic repair run\n\nSource: `{source}`\n\n```text\n{summary}\n```\n"
         )
 
 
@@ -182,7 +178,9 @@ def main() -> int:
     ap.add_argument("--json-out", type=Path, default=Path("docs/telegraph_repair_run.json"))
     ap.add_argument("--history", type=Path, default=Path("docs/quality_audit_history.md"))
     ap.add_argument("--no-history", action="store_true")
-    ap.add_argument("--fail-on-unresolved", action="store_true", help="Exit non-zero if after_issues remain after repair")
+    ap.add_argument(
+        "--fail-on-unresolved", action="store_true", help="Exit non-zero if after_issues remain after repair"
+    )
     args = ap.parse_args()
 
     urls = _load_urls(args)

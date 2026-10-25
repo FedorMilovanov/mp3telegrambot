@@ -64,11 +64,11 @@ def test_pronunciation_attempts_alternate_canonical_and_syllable_hint() -> None:
 def test_known_final_stress_requires_strong_last_nucleus() -> None:
     rate = 16_000
     strong = np.zeros(rate, dtype=np.float32)
-    strong[int(0.30 * rate):int(0.42 * rate)] = _tone(rate, 0.12, 165.0, 0.18)
-    strong[int(0.55 * rate):int(0.80 * rate)] = _tone(rate, 0.25, 175.0, 0.25)
+    strong[int(0.30 * rate) : int(0.42 * rate)] = _tone(rate, 0.12, 165.0, 0.18)
+    strong[int(0.55 * rate) : int(0.80 * rate)] = _tone(rate, 0.25, 175.0, 0.25)
     weak = np.zeros(rate, dtype=np.float32)
-    weak[int(0.30 * rate):int(0.44 * rate)] = _tone(rate, 0.14, 165.0, 0.22)
-    weak[int(0.56 * rate):int(0.63 * rate)] = _tone(rate, 0.07, 175.0, 0.045)
+    weak[int(0.30 * rate) : int(0.44 * rate)] = _tone(rate, 0.14, 165.0, 0.22)
+    weak[int(0.56 * rate) : int(0.63 * rate)] = _tone(rate, 0.07, 175.0, 0.045)
     segment = _segment(1, "Это то, что грядёт.")
     segment["pronunciation"] = russian_pronunciation.prepare_segment(segment)
 
@@ -85,18 +85,14 @@ def test_start_reference_leak_and_immediate_tail_are_detected() -> None:
     rate = 16_000
     candidate = np.zeros(int(rate * 1.2), dtype=np.float32)
     rng = np.random.default_rng(17)
-    candidate[int(0.02 * rate):int(0.055 * rate)] = (
-        rng.standard_normal(int(0.035 * rate)).astype(np.float32) * 0.16
-    )
-    candidate[int(0.15 * rate):int(0.92 * rate)] = _tone(rate, 0.77, 155.0, 0.20)
+    candidate[int(0.02 * rate) : int(0.055 * rate)] = rng.standard_normal(int(0.035 * rate)).astype(np.float32) * 0.16
+    candidate[int(0.15 * rate) : int(0.92 * rate)] = _tone(rate, 0.77, 155.0, 0.20)
 
     start = direct_monolith_contract._start_artifact(candidate, rate)
 
     tail = np.zeros(int(rate * 1.45), dtype=np.float32)
-    tail[:int(0.92 * rate)] = _tone(rate, 0.92, 150.0, 0.18)
-    tail[int(0.95 * rate):int(1.10 * rate)] = (
-        rng.standard_normal(int(0.15 * rate)).astype(np.float32) * 0.075
-    )
+    tail[: int(0.92 * rate)] = _tone(rate, 0.92, 150.0, 0.18)
+    tail[int(0.95 * rate) : int(1.10 * rate)] = rng.standard_normal(int(0.15 * rate)).astype(np.float32) * 0.075
     late = detect_late_broadband_tail(tail, rate)
 
     assert start["suspicious"] is True
@@ -124,15 +120,7 @@ def _write_checkpoint(work: Path, segment_id: int, identity: dict[str, object]) 
     path = work / "checkpoints" / f"segment_{segment_id:02d}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        json.dumps(
-            {
-                "report": {
-                    "selected_source_prosody_match": {
-                        "monolith_identity": {"identity": identity}
-                    }
-                }
-            }
-        ),
+        json.dumps({"report": {"selected_source_prosody_match": {"monolith_identity": {"identity": identity}}}}),
         encoding="utf-8",
     )
 
@@ -182,10 +170,7 @@ def test_bassy_adjacent_voice_is_rejected(tmp_path: Path) -> None:
     )
 
     assert evidence["hard_ok"] is False
-    assert (
-        "adjacent_f0_median_jump" in evidence["failures"]
-        or "source_relative_f0_median_jump" in evidence["failures"]
-    )
+    assert "adjacent_f0_median_jump" in evidence["failures"] or "source_relative_f0_median_jump" in evidence["failures"]
 
 
 def test_source_prosody_is_diagnostic_when_original_is_stable() -> None:
@@ -241,9 +226,7 @@ def test_resume_compares_with_immediate_previous_checkpoint(tmp_path: Path) -> N
     work = tmp_path / "work"
     _write_checkpoint(work, 1, _identity(95.0))
     _write_checkpoint(work, 2, _identity(172.0))
-    segments = direct_monolith_contract.register_segments(
-        [_segment(1), _segment(2), _segment(3)]
-    )
+    segments = direct_monolith_contract.register_segments([_segment(1), _segment(2), _segment(3)])
 
     evidence = direct_monolith_contract.evaluate_candidate(
         _candidate(work, 174.0),
@@ -284,8 +267,11 @@ def test_expression_arc_suppresses_isolated_emotional_burst(
     assert all(item["reference_profile"] == "extended" for item in planned)
     assert all(item["expression_tier"] != "passionate" for item in planned)
     assert planned[1]["expression_tier"] == "earnest"
-    assert max(
-        abs(float(planned[index]["expression_score"]) - float(planned[index - 1]["expression_score"]))
-        for index in range(1, len(planned))
-    ) <= expressive_continuity.MAX_ADJACENT_SCORE_STEP + 1e-9
+    assert (
+        max(
+            abs(float(planned[index]["expression_score"]) - float(planned[index - 1]["expression_score"]))
+            for index in range(1, len(planned))
+        )
+        <= expressive_continuity.MAX_ADJACENT_SCORE_STEP + 1e-9
+    )
     assert report.is_file()

@@ -69,10 +69,21 @@ def test_video_candidate_prompts_format_with_all_runtime_placeholders():
         questions_block="",
         speed_limits="",
     )
-    extras = EXTRAS_PROMPT.format(**{k: common[k] for k in (
-        "title", "duration", "format_name", "real_author",
-        "analysis_summary", "argument_arc", "timestamps", "key_categories",
-    )})
+    extras = EXTRAS_PROMPT.format(
+        **{
+            k: common[k]
+            for k in (
+                "title",
+                "duration",
+                "format_name",
+                "real_author",
+                "analysis_summary",
+                "argument_arc",
+                "timestamps",
+                "key_categories",
+            )
+        }
+    )
     clips = CLIPS_PROMPT.format(
         **common,
         questions="Q1?",

@@ -5,6 +5,7 @@ This check deliberately does not import torch or voxcpm. It fails before model
 loading when paths, references, source timing, disk space or script syntax are
 wrong.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -40,9 +41,7 @@ def probe_duration(path: Path) -> float:
         errors="replace",
     )
     if proc.returncode != 0:
-        raise PreflightError(
-            f"ffprobe could not read source video: {path}\n{proc.stderr[-1000:]}"
-        )
+        raise PreflightError(f"ffprobe could not read source video: {path}\n{proc.stderr[-1000:]}")
     try:
         value = float(proc.stdout.strip())
     except ValueError as exc:
@@ -87,18 +86,12 @@ def model_snapshot_exists(root: Path) -> bool:
         return False
     direct = root / "config.json"
     if direct.is_file() and (
-        (root / "model.safetensors").is_file()
-        or any(root.glob("*.safetensors"))
-        or any(root.glob("*.bin"))
+        (root / "model.safetensors").is_file() or any(root.glob("*.safetensors")) or any(root.glob("*.bin"))
     ):
         return True
     for config in root.rglob("config.json"):
         parent = config.parent
-        if (
-            (parent / "model.safetensors").is_file()
-            or any(parent.glob("*.safetensors"))
-            or any(parent.glob("*.bin"))
-        ):
+        if (parent / "model.safetensors").is_file() or any(parent.glob("*.safetensors")) or any(parent.glob("*.bin")):
             return True
     return False
 
@@ -113,9 +106,7 @@ def compile_script(python_exe: Path, script: Path) -> None:
         errors="replace",
     )
     if proc.returncode != 0:
-        raise PreflightError(
-            f"Python syntax check failed: {script}\n{(proc.stderr or proc.stdout)[-2000:]}"
-        )
+        raise PreflightError(f"Python syntax check failed: {script}\n{(proc.stderr or proc.stdout)[-2000:]}")
 
 
 def main() -> int:
@@ -171,23 +162,17 @@ def main() -> int:
     free_bytes = shutil.disk_usage(paths["work_root"]).free
     free_gb = free_bytes / (1024**3)
     if free_gb < args.min_free_gb:
-        raise PreflightError(
-            f"not enough free disk: {free_gb:.2f} GiB; required {args.min_free_gb:.2f} GiB"
-        )
+        raise PreflightError(f"not enough free disk: {free_gb:.2f} GiB; required {args.min_free_gb:.2f} GiB")
 
     source_duration = probe_duration(paths["source_video"])
     segments = load_segments(paths["segments_json"])
     final_end = max(segment["end"] for segment in segments)
     if final_end > source_duration + 0.25:
-        raise PreflightError(
-            f"segments end at {final_end:.3f}s but source is only {source_duration:.3f}s"
-        )
+        raise PreflightError(f"segments end at {final_end:.3f}s but source is only {source_duration:.3f}s")
 
     cuda_hidden = os.environ.get("CUDA_VISIBLE_DEVICES") == "-1"
     if not cuda_hidden:
-        raise PreflightError(
-            "CUDA_VISIBLE_DEVICES must be -1 before the production process starts"
-        )
+        raise PreflightError("CUDA_VISIBLE_DEVICES must be -1 before the production process starts")
 
     report = {
         "ok": True,
@@ -207,9 +192,7 @@ def main() -> int:
 
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
-        args.report.write_text(
-            json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0

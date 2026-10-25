@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Run one small, synchronous CUDA probation stage and write a JSON report."""
+
 from __future__ import annotations
 
 import argparse
@@ -31,9 +32,7 @@ def base_report(stage: str) -> dict[str, Any]:
         "started_unix": time.time(),
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
         "cuda_launch_blocking": os.environ.get("CUDA_LAUNCH_BLOCKING"),
-        "pytorch_no_cuda_memory_caching": os.environ.get(
-            "PYTORCH_NO_CUDA_MEMORY_CACHING"
-        ),
+        "pytorch_no_cuda_memory_caching": os.environ.get("PYTORCH_NO_CUDA_MEMORY_CACHING"),
     }
 
 
@@ -89,16 +88,9 @@ def stage_memory(torch: Any, device: Any, report: dict[str, Any]) -> None:
     first = int(returned[0].item())
     last = int(returned[-1].item())
     sample_indexes = [0, 1, 1024, elements // 2, elements - 2, elements - 1]
-    mismatches = [
-        index
-        for index in sample_indexes
-        if int(returned[index].item()) != index
-    ]
+    mismatches = [index for index in sample_indexes if int(returned[index].item()) != index]
     if first != expected_first or last != expected_last or mismatches:
-        raise RuntimeError(
-            "CUDA memory round-trip mismatch: "
-            f"first={first}, last={last}, samples={mismatches}"
-        )
+        raise RuntimeError(f"CUDA memory round-trip mismatch: first={first}, last={last}, samples={mismatches}")
 
     report["checks"] = {
         "allocation_bytes": int(elements * 4),
@@ -141,20 +133,21 @@ def run_matmul(
         elapsed = time.perf_counter() - started
         timings.append(elapsed)
 
-        probes = result[
-            torch.tensor([0, size // 2, size - 1], device=device),
-            torch.tensor([0, size // 2, size - 1], device=device),
-        ].float().cpu()
+        probes = (
+            result[
+                torch.tensor([0, size // 2, size - 1], device=device),
+                torch.tensor([0, size // 2, size - 1], device=device),
+            ]
+            .float()
+            .cpu()
+        )
         values = [float(item) for item in probes.tolist()]
         if any(not math.isfinite(value) for value in values):
-            raise RuntimeError(
-                f"{dtype_name} matmul produced a non-finite probe: {values}"
-            )
+            raise RuntimeError(f"{dtype_name} matmul produced a non-finite probe: {values}")
         tolerance = 0.0 if dtype_name == "float32" else 1.0
         if any(abs(value - expected) > tolerance for value in values):
             raise RuntimeError(
-                f"{dtype_name} matmul mismatch at iteration {iteration}: "
-                f"expected={expected}, values={values}"
+                f"{dtype_name} matmul mismatch at iteration {iteration}: expected={expected}, values={values}"
             )
         del result, probes
 
@@ -191,10 +184,7 @@ def stage_sustained(
         torch.cuda.synchronize(0)
         value = float(result[0, 0].item())
         if not math.isfinite(value) or value != expected:
-            raise RuntimeError(
-                "sustained matmul probe mismatch: "
-                f"expected={expected}, value={value}"
-            )
+            raise RuntimeError(f"sustained matmul probe mismatch: expected={expected}, value={value}")
         iterations += 1
         del result
 

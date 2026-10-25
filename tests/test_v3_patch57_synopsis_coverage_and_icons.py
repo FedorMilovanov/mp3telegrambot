@@ -26,6 +26,7 @@ def test_synopsis_uses_more_timestamp_anchors_and_larger_long_targets():
     assert "Покрой ход материала до последнего опорного таймкода" in src
     assert "get_synopsis_density_profile(_duration)" in src
     from core.synopsis_quality import get_synopsis_density_profile
+
     assert get_synopsis_density_profile(3600).sections == "10-16"
     assert get_synopsis_density_profile(3600).total_chars == "9000"
 

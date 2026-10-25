@@ -1,4 +1,5 @@
 """Numbered, transactional and fail-closed SQLite migrations."""
+
 from __future__ import annotations
 
 import hashlib
@@ -73,10 +74,7 @@ def _columns(conn: sqlite3.Connection, table: str) -> set[str]:
     table = _ident(table)
     if not _table_exists(conn, table):
         raise RuntimeError(f"Required SQLite table is missing: {table}")
-    return {
-        str(_row_value(row, "name", 1))
-        for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
-    }
+    return {str(_row_value(row, "name", 1)) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
 
 
 def add_column_if_missing(
@@ -146,19 +144,12 @@ def run_migrations(
             known = {migration.version for migration in ordered}
             unknown = sorted(set(existing) - known)
             if unknown:
-                raise RuntimeError(
-                    f"Database contains unknown {scope} migrations: {unknown}"
-                )
+                raise RuntimeError(f"Database contains unknown {scope} migrations: {unknown}")
             for migration in ordered:
                 row = existing.get(migration.version)
                 if row is not None:
-                    if (
-                        str(row["name"]) != migration.name
-                        or str(row["checksum"]) != migration.checksum
-                    ):
-                        raise RuntimeError(
-                            f"Migration history mismatch for {scope} v{migration.version}."
-                        )
+                    if str(row["name"]) != migration.name or str(row["checksum"]) != migration.checksum:
+                        raise RuntimeError(f"Migration history mismatch for {scope} v{migration.version}.")
                     continue
                 migration.apply(conn)
                 conn.execute(
@@ -277,9 +268,7 @@ def _dub_v1_execution_leases(conn: sqlite3.Connection) -> None:
     )
 
 
-DUB_MIGRATIONS = (
-    Migration(1, "runner-execution-leases", _dub_v1_execution_leases),
-)
+DUB_MIGRATIONS = (Migration(1, "runner-execution-leases", _dub_v1_execution_leases),)
 
 
 def apply_database_migrations(main_module: ModuleType | None = None) -> dict[str, object]:

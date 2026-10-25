@@ -10,9 +10,10 @@ from services.livedub_qa_trust import _candidate_windows, _confirmed_result
 
 
 def test_russian_publication_title_uses_project_title_case():
-    assert _canonical_title(
-        "борьба с сексуальной безнравственностью и порнографией"
-    ) == "Борьба с Сексуальной Безнравственностью и Порнографией"
+    assert (
+        _canonical_title("борьба с сексуальной безнравственностью и порнографией")
+        == "Борьба с Сексуальной Безнравственностью и Порнографией"
+    )
 
 
 def test_audio_caption_has_description_and_source_but_no_language_label():

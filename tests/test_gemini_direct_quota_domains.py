@@ -20,9 +20,7 @@ def test_project_scoped_quota_suppresses_only_same_domain_and_scope() -> None:
         ["project-a", "PROJECT-A", "project-b"],
     )
 
-    exc = _ProjectQuotaError(
-        "429 RESOURCE_EXHAUSTED GenerateRequestsPerDayPerProjectPerModel-FreeTier"
-    )
+    exc = _ProjectQuotaError("429 RESOURCE_EXHAUSTED GenerateRequestsPerDayPerProjectPerModel-FreeTier")
     assert tracker.record_project_scoped_error(first, "inference", exc) is True
     assert tracker.should_skip(same_project, "inference") is True
     assert tracker.should_skip(other_project, "inference") is False
@@ -50,9 +48,7 @@ def test_unknown_or_unlabeled_clients_fail_open() -> None:
         [configured, unlabeled],
         ["project-a", ""],
     )
-    exc = _ProjectQuotaError(
-        "429 RESOURCE_EXHAUSTED requestsPerDayPerProject quota exhausted"
-    )
+    exc = _ProjectQuotaError("429 RESOURCE_EXHAUSTED requestsPerDayPerProject quota exhausted")
 
     assert tracker.record_project_scoped_error(unknown, "files", exc) is False
     assert tracker.record_project_scoped_error(unlabeled, "files", exc) is False
@@ -67,9 +63,7 @@ def test_multiple_scopes_can_gate_an_expensive_followup_without_cross_contaminat
         [first, sibling],
         ["project-a", "project-a"],
     )
-    exc = _ProjectQuotaError(
-        "429 RESOURCE_EXHAUSTED GenerateRequestsPerDayPerProjectPerModel-FreeTier"
-    )
+    exc = _ProjectQuotaError("429 RESOURCE_EXHAUSTED GenerateRequestsPerDayPerProjectPerModel-FreeTier")
 
     assert tracker.record_project_scoped_error(first, "inference", exc) is True
     assert tracker.should_skip(sibling, "files") is False

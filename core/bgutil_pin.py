@@ -29,6 +29,7 @@ This deployment therefore requires:
 The module is dependency-free: it is imported by provisioning tooling that runs
 before the rest of the project is importable.
 """
+
 from __future__ import annotations
 
 from typing import Final
@@ -36,9 +37,7 @@ from typing import Final
 # ── Upstream pin ─────────────────────────────────────────────────────────────
 BGUTIL_VERSION: Final[str] = "2.0.2"
 BGUTIL_COMMIT: Final[str] = "26475e9d3665b972c4aeb83b4dbaafcf64b88438"
-BGUTIL_REPOSITORY: Final[str] = (
-    "https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git"
-)
+BGUTIL_REPOSITORY: Final[str] = "https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git"
 
 # ── Runtime requirements ────────────────────────────────────────────────────
 # 2.0.x server: "engines": {"node": ">=22", "npm": ">=9"}.
@@ -107,18 +106,11 @@ def bgutil_pin_problems() -> list[str]:
             f"remote code execution {BGUTIL_SECURITY_ADVISORY} is not fixed"
         )
     if not _is_commit_sha(BGUTIL_COMMIT):
-        problems.append(
-            f"BGUTIL_COMMIT must be a full 40-hex commit sha, got {BGUTIL_COMMIT!r}"
-        )
+        problems.append(f"BGUTIL_COMMIT must be a full 40-hex commit sha, got {BGUTIL_COMMIT!r}")
     if BGUTIL_HTTP_HOST not in {"127.0.0.1", "::1", "localhost"}:
-        problems.append(
-            f"bgutil HTTP host must stay loopback, got {BGUTIL_HTTP_HOST!r}"
-        )
+        problems.append(f"bgutil HTTP host must stay loopback, got {BGUTIL_HTTP_HOST!r}")
     if BGUTIL_MIN_NODE_MAJOR < 22:
-        problems.append(
-            f"bgutil {BGUTIL_VERSION} requires Node >= 22, floor is "
-            f"{BGUTIL_MIN_NODE_MAJOR}"
-        )
+        problems.append(f"bgutil {BGUTIL_VERSION} requires Node >= 22, floor is {BGUTIL_MIN_NODE_MAJOR}")
     return problems
 
 

@@ -6,6 +6,7 @@ already-stable v1 evidence identity. This fixes the v1 hole where changing
 REVIEW_INSTRUCTIONS.md or review_contract could reuse the same immutable ZIP
 name and then fail a later verifier.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -53,9 +54,7 @@ def review_contract() -> dict[str, Any]:
         "issue_severities": sorted(ISSUE_SEVERITIES),
         "action_types": sorted(ACTION_TYPES),
         "automatically_executable_actions": sorted(EXECUTABLE_ACTIONS),
-        "borrow_span_policy": (
-            "review-only; donor media is never synthesized or inserted automatically"
-        ),
+        "borrow_span_policy": ("review-only; donor media is never synthesized or inserted automatically"),
     }
 
 
@@ -86,11 +85,7 @@ def review_instructions(*, has_timeline: bool) -> str:
 def _stable_source_identity(source: Any) -> Any:
     """Match v1 path-stable intent without importing private implementation details."""
     if isinstance(source, dict):
-        return {
-            key: _stable_source_identity(value)
-            for key, value in source.items()
-            if key != "local_path"
-        }
+        return {key: _stable_source_identity(value) for key, value in source.items() if key != "local_path"}
     if isinstance(source, list):
         return [_stable_source_identity(value) for value in source]
     return source
@@ -125,10 +120,7 @@ def _v2_identity(
 
 
 def _safe_media_id(media_id: str) -> str:
-    safe = "".join(
-        char if (char.isalnum() or char in "_-") else "_"
-        for char in str(media_id or "media")
-    )
+    safe = "".join(char if (char.isalnum() or char in "_-") else "_" for char in str(media_id or "media"))
     return safe[:100] or "media"
 
 
@@ -274,9 +266,7 @@ def build_review_pack(*args: Any, **kwargs: Any) -> Path:
         archive.writestr("REVIEW_INSTRUCTIONS.md", instructions)
 
     suffix = pack_id[7:19]
-    destination = output_dir / (
-        f"{_safe_media_id(media_id)}_translation_editorial_v2_{suffix}.zip"
-    )
+    destination = output_dir / (f"{_safe_media_id(media_id)}_translation_editorial_v2_{suffix}.zip")
     payload = buffer.getvalue()
     try:
         with destination.open("xb") as stream:

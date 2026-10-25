@@ -5,6 +5,7 @@ This keeps the Gemini 3.8/HIGH three-pass contract intact while separating
 Files API capacity from model-inference capacity. No ambient request state or
 runtime rebinding is used.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -172,8 +173,7 @@ async def create_factory_plan_resumable(
     quota_domains = capacity.factory_gemini_quota_domains()
     if len(quota_domains) != len(clients):
         logger.warning(
-            "Factory quota-domain metadata/client count mismatch; "
-            "same-project suppression disabled for this run"
+            "Factory quota-domain metadata/client count mismatch; same-project suppression disabled for this run"
         )
         quota_domains = [""] * len(clients)
 
@@ -240,9 +240,7 @@ async def create_factory_plan_resumable(
             )
             if file_size <= 18 * 1024 * 1024:
                 upload_in_progress = False
-                audio_part = candidates.types.Part.from_bytes(
-                    data=audio_path.read_bytes(), mime_type=mime_type
-                )
+                audio_part = candidates.types.Part.from_bytes(data=audio_path.read_bytes(), mime_type=mime_type)
             else:
                 upload_in_progress = True
                 if upload_budget.exhausted:
@@ -257,10 +255,7 @@ async def create_factory_plan_resumable(
                                 display_name=(f"Shorts Factory MAX — {performer} — {title}")[:500],
                             ),
                         ),
-                        label=(
-                            f"⬆️ Gemini Files · клиент {_index}/{len(clients)}: "
-                            "загружаю analysis-аудио…"
-                        ),
+                        label=(f"⬆️ Gemini Files · клиент {_index}/{len(clients)}: загружаю analysis-аудио…"),
                         status_msg=status_msg,
                     ),
                     domain="files",
@@ -268,10 +263,7 @@ async def create_factory_plan_resumable(
                 uploaded_name = str(getattr(uploaded, "name", "") or "")
                 uploaded = await capacity.await_with_heartbeat(
                     _wait_factory_upload(client, uploaded),
-                    label=(
-                        f"⏳ Gemini Files · клиент {index}/{len(clients)}: "
-                        "сервер обрабатывает аудио…"
-                    ),
+                    label=(f"⏳ Gemini Files · клиент {index}/{len(clients)}: сервер обрабатывает аудио…"),
                     status_msg=status_msg,
                 )
                 audio_part = uploaded
@@ -284,9 +276,7 @@ async def create_factory_plan_resumable(
                     audio_part=audio_part,
                     prompt=candidates._scout_prompt(title, performer, duration, source_language),
                     max_tokens=32000,
-                    label=(
-                        f"🧠 Gemini 3.8 HIGH · клиент {index}/{len(clients)} · проход 1/3…"
-                    ),
+                    label=(f"🧠 Gemini 3.8 HIGH · клиент {index}/{len(clients)} · проход 1/3…"),
                     retry_budget=scout_budget,
                     status_msg=status_msg,
                 )
@@ -298,9 +288,7 @@ async def create_factory_plan_resumable(
                     audio_part=audio_part,
                     prompt=candidates._judge_prompt(scout, duration),
                     max_tokens=28000,
-                    label=(
-                        f"🧠 Gemini 3.8 HIGH · клиент {index}/{len(clients)} · проход 2/3…"
-                    ),
+                    label=(f"🧠 Gemini 3.8 HIGH · клиент {index}/{len(clients)} · проход 2/3…"),
                     retry_budget=judge_budget,
                     status_msg=status_msg,
                 )
@@ -311,9 +299,7 @@ async def create_factory_plan_resumable(
                 audio_part=audio_part,
                 prompt=_strict_boundary_prompt(candidates._boundary_prompt(judged, duration)),
                 max_tokens=28000,
-                label=(
-                    f"🧠 Gemini 3.8 HIGH · клиент {index}/{len(clients)} · проход 3/3…"
-                ),
+                label=(f"🧠 Gemini 3.8 HIGH · клиент {index}/{len(clients)} · проход 3/3…"),
                 retry_budget=audit_budget,
                 status_msg=status_msg,
             )
@@ -379,9 +365,7 @@ async def create_factory_plan_resumable(
                 break
             if action == "quota":
                 budget.refund_last_claim()
-                project_scoped = bool(
-                    quota_domain and capacity.factory_project_quota_error(exc)
-                )
+                project_scoped = bool(quota_domain and capacity.factory_project_quota_error(exc))
                 if project_scoped:
                     exhausted_project_quota_domains.add(quota_domain)
                 logger.info(
@@ -427,11 +411,7 @@ async def create_factory_plan_resumable(
                     pass
 
     capacity_failures = sum(1 for outcome in client_outcomes if outcome == "capacity")
-    skip_detail = (
-        f" same_project_domain_skipped={same_project_domain_skipped};"
-        if same_project_domain_skipped
-        else ""
-    )
+    skip_detail = f" same_project_domain_skipped={same_project_domain_skipped};" if same_project_domain_skipped else ""
     if capacity_budget_exhausted and last_error is not None:
         attempt_limit = exhausted_attempt_limit or capacity_control.transient_attempt_limit()
         retry_count = max(0, attempt_limit - 1)

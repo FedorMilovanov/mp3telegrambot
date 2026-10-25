@@ -6,6 +6,7 @@ snapshot with the committed baseline and fails only when regex or postprocess
 markers grow beyond an explicitly allowed delta. Existing technical debt is
 therefore visible but does not block unrelated work.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -43,9 +44,7 @@ def _safe_print(value: object = "") -> None:
     except UnicodeEncodeError:
         text = str(value)
         encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
-        safe = text.encode(encoding, errors="backslashreplace").decode(
-            encoding, errors="replace"
-        )
+        safe = text.encode(encoding, errors="backslashreplace").decode(encoding, errors="replace")
         print(safe)
 
 

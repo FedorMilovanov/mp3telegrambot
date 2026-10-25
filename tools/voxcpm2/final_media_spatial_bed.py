@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Standalone post-AAC mid/side regression for direct monolithic dubbing."""
+
 from __future__ import annotations
 
 import math
@@ -262,11 +263,7 @@ def estimate_spatial_bed(
     source = source[:raw_length]
     mixed = mixed[:raw_length]
     russian = russian[:raw_length]
-    if not (
-        np.isfinite(source).all()
-        and np.isfinite(mixed).all()
-        and np.isfinite(russian).all()
-    ):
+    if not (np.isfinite(source).all() and np.isfinite(mixed).all() and np.isfinite(russian).all()):
         failures.append("NaN/Inf в spatial-bed samples")
         return report
 
@@ -302,19 +299,15 @@ def estimate_spatial_bed(
     mid_energy = float(np.dot(source_mid, source_mid))
     side_energy = float(np.dot(source_side, source_side))
     side_ratio = side_energy / max(mid_energy, 1e-18)
-    side_applicable = bool(
-        side_ratio >= spatial_bed_contract.MIN_SIDE_TO_MID_ENERGY_RATIO
-    )
+    side_applicable = bool(side_ratio >= spatial_bed_contract.MIN_SIDE_TO_MID_ENERGY_RATIO)
 
     expected_center = float(levels["center_full_mix_level"])
     expected_side = float(levels["expected_total_side_level"])
     predicted_left = russian[:, 0] * russian_gain + (
-        source[:, 0] * expected_center
-        + (source[:, 0] - source[:, 1]) * 0.5 * float(levels["spatial_side_level"])
+        source[:, 0] * expected_center + (source[:, 0] - source[:, 1]) * 0.5 * float(levels["spatial_side_level"])
     )
     predicted_right = russian[:, 1] * russian_gain + (
-        source[:, 1] * expected_center
-        + (source[:, 1] - source[:, 0]) * 0.5 * float(levels["spatial_side_level"])
+        source[:, 1] * expected_center + (source[:, 1] - source[:, 0]) * 0.5 * float(levels["spatial_side_level"])
     )
     predicted = np.column_stack((predicted_left, predicted_right))
     normalized_residual = _rms(mixed - predicted) / max(_rms(mixed), 1e-9)
@@ -342,28 +335,18 @@ def estimate_spatial_bed(
             f"center={center_level:.5f}; нужен {expected_center:.5f}"
             f"±{spatial_bed_contract.CENTER_ABSOLUTE_TOLERANCE:.3f}"
         )
-    if not (
-        spatial_bed_contract.MIN_RUSSIAN_GAIN
-        <= russian_gain
-        <= spatial_bed_contract.MAX_RUSSIAN_GAIN
-    ):
+    if not (spatial_bed_contract.MIN_RUSSIAN_GAIN <= russian_gain <= spatial_bed_contract.MAX_RUSSIAN_GAIN):
         failures.append(f"russian gain вне контракта: {russian_gain:.5f}")
     if normalized_residual > MAX_NORMALIZED_RESIDUAL:
-        failures.append(
-            f"post-AAC spatial mix residual={normalized_residual:.4f} "
-            f"> {MAX_NORMALIZED_RESIDUAL:.3f}"
-        )
+        failures.append(f"post-AAC spatial mix residual={normalized_residual:.4f} > {MAX_NORMALIZED_RESIDUAL:.3f}")
     if side_applicable:
         if side_level is None:
             failures.append("не удалось оценить stereo-side source coefficient")
         elif not (
-            float(levels["minimum_allowed_side_level"])
-            <= side_level
-            <= float(levels["maximum_allowed_side_level"])
+            float(levels["minimum_allowed_side_level"]) <= side_level <= float(levels["maximum_allowed_side_level"])
         ):
             failures.append(
-                f"side={side_level:.5f}; нужен {expected_side:.5f}"
-                f"±{spatial_bed_contract.SIDE_ABSOLUTE_TOLERANCE:.3f}"
+                f"side={side_level:.5f}; нужен {expected_side:.5f}±{spatial_bed_contract.SIDE_ABSOLUTE_TOLERANCE:.3f}"
             )
 
     window = max(1, int(sample_rate * WINDOW_SECONDS))
@@ -385,9 +368,7 @@ def estimate_spatial_bed(
         if side_applicable:
             local_source_side = _rms(source_side[start:stop])
             local_source_mid = _rms(source_mid[start:stop])
-            if local_source_side < local_source_mid * math.sqrt(
-                spatial_bed_contract.MIN_SIDE_TO_MID_ENERGY_RATIO
-            ):
+            if local_source_side < local_source_mid * math.sqrt(spatial_bed_contract.MIN_SIDE_TO_MID_ENERGY_RATIO):
                 continue
             side_eligible += 1
             local_side_value = _projection(
@@ -400,9 +381,7 @@ def estimate_spatial_bed(
     report["local_side_window_count"] = len(local_side)
     report["local_side_eligible_window_count"] = side_eligible
     if len(local_center) < required:
-        failures.append(
-            f"локальных center-окон={len(local_center)}; нужно {required} из {available}"
-        )
+        failures.append(f"локальных center-окон={len(local_center)}; нужно {required} из {available}")
     else:
         values = np.asarray(local_center, dtype=np.float64)
         median = float(np.median(values))
@@ -413,21 +392,15 @@ def estimate_spatial_bed(
             local_center_p90=p90,
         )
         if median > float(levels["maximum_allowed_center_level"]):
-            failures.append(
-                f"локальный median center={median:.5f} сохраняет исходную речь"
-            )
+            failures.append(f"локальный median center={median:.5f} сохраняет исходную речь")
         if p90 > float(levels["maximum_allowed_center_level"]) + 0.015:
-            failures.append(
-                f"локальный p90 center={p90:.5f} превышает suppression ceiling"
-            )
+            failures.append(f"локальный p90 center={p90:.5f} превышает suppression ceiling")
     if side_applicable:
         required_side = min(required, side_eligible)
         if required_side < 1:
             failures.append("stereo side глобально есть, но нет пригодных локальных side-окон")
         elif len(local_side) < required_side:
-            failures.append(
-                f"локальных side-окон={len(local_side)}; нужно {required_side} из {side_eligible}"
-            )
+            failures.append(f"локальных side-окон={len(local_side)}; нужно {required_side} из {side_eligible}")
         else:
             values = np.asarray(local_side, dtype=np.float64)
             median = float(np.median(values))
@@ -437,9 +410,7 @@ def estimate_spatial_bed(
                 local_side_p90=float(np.percentile(values, 90)),
             )
             if abs(median - expected_side) > spatial_bed_contract.SIDE_ABSOLUTE_TOLERANCE:
-                failures.append(
-                    f"локальный median side={median:.5f}; нужен {expected_side:.5f}"
-                )
+                failures.append(f"локальный median side={median:.5f}; нужен {expected_side:.5f}")
 
     report["passed"] = not failures
     return report
@@ -481,13 +452,14 @@ __all__ = [
     "verify_spatial_bed_files",
 ]
 
-_BASE_ALL = tuple(globals().get('__all__', ()))
+_BASE_ALL = tuple(globals().get("__all__", ()))
 
 
 import types
 
 
 ALIGNMENT_POLICY = "russian-reference-to-mixed-alignment-v2"
+
 
 def _align_stereo(
     source: np.ndarray,
@@ -511,9 +483,7 @@ def _align_stereo(
     length = min(len(source), len(mixed), len(russian))
     return source[:length], mixed[:length], russian[:length]
 
+
 _align_stereo = _align_stereo
 
-__all__ = sorted(
-    set(name for name in _BASE_ALL if not name.startswith("__"))
-    | {"ALIGNMENT_POLICY", "_align_stereo"}
-)
+__all__ = sorted(set(name for name in _BASE_ALL if not name.startswith("__")) | {"ALIGNMENT_POLICY", "_align_stereo"})

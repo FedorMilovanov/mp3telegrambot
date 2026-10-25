@@ -3,17 +3,24 @@
 Caption builder — формирование подписей к аудио.
 Извлечено из bot.py строки 4214–4437.
 """
+
 from typing import Any
 
 from core.text_utils import (
-    _scrub_inline, _strip_meta_lines, normalize_author_name,
-    normalize_title_text, title_case_fragment, BAD_META_PATTERNS, normalize_common_typos,  # FIX #7
+    _scrub_inline,
+    _strip_meta_lines,
+    normalize_author_name,
+    normalize_title_text,
+    title_case_fragment,
+    BAD_META_PATTERNS,
+    normalize_common_typos,  # FIX #7
 )
 from core.russian_style import polish_public_russian_text
-from core.url_utils import get_youtube_timestamp_url    # FIX #7
+from core.url_utils import get_youtube_timestamp_url  # FIX #7
 from services.search import build_platform_links, build_telegraph_links  # FIX #7
+
 # time_to_seconds и _fix_rtl_in_text перенесены в core_utils (разрыв циклов)
-from core.core_utils import (                           # FIX: circular imports
+from core.core_utils import (  # FIX: circular imports
     time_to_seconds,
     _fix_rtl_in_text,
     _fix_unclosed_bold,
@@ -21,7 +28,7 @@ from core.core_utils import (                           # FIX: circular imports
     _md_parse_inline_inner,
     _md_parse_inline,
 )
-from core.globals import html_mod                       # FIX #7: html_mod = html as html_mod в globals
+from core.globals import html_mod  # FIX #7: html_mod = html as html_mod в globals
 
 import re
 
@@ -45,18 +52,14 @@ def _polish_caption_sentence_punctuation(text: str) -> str:
     """
     value = str(text or "")
     return _TRAILING_EMOJI_PUNCT_RE.sub(
-        lambda match: (
-            f"{match.group('punct')}{match.group('space')}{match.group('emoji')}"
-        ),
+        lambda match: f"{match.group('punct')}{match.group('space')}{match.group('emoji')}",
         value,
     )
 
 
 def _polish_public_caption_text(text: str) -> str:
     """Apply narrow Russian style fixes, then punctuation polish."""
-    return _polish_caption_sentence_punctuation(
-        polish_public_russian_text(text)
-    )
+    return _polish_caption_sentence_punctuation(polish_public_russian_text(text))
 
 
 def build_caption(
@@ -81,8 +84,10 @@ def build_caption(
 
     # Шапка — используем данные от Gemini если есть, иначе из yt-dlp
     real_author = normalize_common_typos(normalize_author_name((ai_data or {}).get("real_author", "") or performer))
-    real_title  = normalize_common_typos(title_case_fragment(normalize_title_text((ai_data or {}).get("real_title", "") or title) or title))
-    real_event  = normalize_common_typos(_scrub_inline((ai_data or {}).get("real_event", "")))
+    real_title = normalize_common_typos(
+        title_case_fragment(normalize_title_text((ai_data or {}).get("real_title", "") or title) or title)
+    )
+    real_event = normalize_common_typos(_scrub_inline((ai_data or {}).get("real_event", "")))
 
     # PATCH V2 FIX: показываем real_event только если это реальный бренд-серии,
     # а не описание площадки/аудитории ("Конференция для семей..." → скрываем).
@@ -90,23 +95,33 @@ def build_caption(
         _re_lower = real_event.lower()
         _rt_lower = real_title.lower() if real_title else ""
         _GENERIC_MARKERS = (
-            "конференция для", "встреча для", "собрание для",
-            "семинар для", "съезд для", "конгресс для",
-            "conference for", "meeting for", "seminar for",
-            "homeschool", "homeschooling",
-            "для семей", "для пасторов", "для молодёжи",
-            "для студентов", "для служителей",
+            "конференция для",
+            "встреча для",
+            "собрание для",
+            "семинар для",
+            "съезд для",
+            "конгресс для",
+            "conference for",
+            "meeting for",
+            "seminar for",
+            "homeschool",
+            "homeschooling",
+            "для семей",
+            "для пасторов",
+            "для молодёжи",
+            "для студентов",
+            "для служителей",
         )
-        _is_generic   = any(marker in _re_lower for marker in _GENERIC_MARKERS)
+        _is_generic = any(marker in _re_lower for marker in _GENERIC_MARKERS)
         _is_duplicate = (_re_lower in _rt_lower) or (_rt_lower in _re_lower)
-        _too_long     = len(real_event) > 60
+        _too_long = len(real_event) > 60
         if _is_generic or _is_duplicate or _too_long:
             real_event = ""
 
     if real_event:
         parts.append(f'<b><tg-emoji emoji-id="5283043763898328413">📜</tg-emoji> {html_mod.escape(real_event)}</b>')
     safe_title = html_mod.escape(real_title)
-    title_emoji = '📖 ' if real_event else '<tg-emoji emoji-id="5283043763898328413">📜</tg-emoji> '
+    title_emoji = "📖 " if real_event else '<tg-emoji emoji-id="5283043763898328413">📜</tg-emoji> '
     parts.append(f"<b>{title_emoji}{safe_title}</b>")
     if real_author:
         parts.append(f"<b>👤 {html_mod.escape(real_author)}</b>")
@@ -137,24 +152,23 @@ def build_caption(
         parts.append("⏱ Таймкоды сокращены; полный список в конспекте.")
 
     # Краткое описание (main_topic) — между шапкой и таймкодами
-    main_topic = _polish_public_caption_text(
-        _scrub_inline((ai_data or {}).get("main_topic", ""))
-    )
+    main_topic = _polish_public_caption_text(_scrub_inline((ai_data or {}).get("main_topic", "")))
     if main_topic:
+
         def _topic_to_html(text: str) -> str:
             """Конвертирует **жирный** из Gemini в <b>жирный</b> для Telegram HTML."""
-            _count = text.count('**')
+            _count = text.count("**")
             if _count % 2 == 1:
                 # #19: rfind находит ** внутри *** и «не тот» маркер при нескольких вхождениях.
                 # Собираем только настоящие ** (не часть ***) и удаляем последний непарный.
-                _positions = [m.start() for m in re.finditer(r'(?<!\*)\*\*(?!\*)', text)]
-                idx = _positions[-1] if _positions else text.rfind('**')
-                text = text[:idx] + text[idx + 2:]
+                _positions = [m.start() for m in re.finditer(r"(?<!\*)\*\*(?!\*)", text)]
+                idx = _positions[-1] if _positions else text.rfind("**")
+                text = text[:idx] + text[idx + 2 :]
             parts_t = []
             last = 0
-            for m in re.finditer(r'\*\*(.+?)\*\*', text):
+            for m in re.finditer(r"\*\*(.+?)\*\*", text):
                 if m.start() > last:
-                    parts_t.append(html_mod.escape(text[last:m.start()]))
+                    parts_t.append(html_mod.escape(text[last : m.start()]))
                 parts_t.append(f"<b>{html_mod.escape(m.group(1))}</b>")
                 last = m.end()
             if last < len(text):
@@ -167,7 +181,7 @@ def build_caption(
             parts.append(_topic_to_html(main_topic.strip()))
         else:
             # Обрезаем до трёх предложений, без курсива
-            sentences = re.split(r'(?<=[.!?])\s+', main_topic.strip())
+            sentences = re.split(r"(?<=[.!?])\s+", main_topic.strip())
             short_topic = " ".join(sentences[:3])
             parts.append("")
             parts.append(_topic_to_html(short_topic))
@@ -186,11 +200,9 @@ def build_caption(
             # AUDIT-FIX BUG 2: правильно конвертируем **bold** в HTML <b>
             # для визуального акцента в темах таймкодов Telegram caption.
             # (DEEP-QUALITY FIX [C] добавил только комментарий, но не заменил код — исправлено)
-            _p = line.split(' ', 1)
+            _p = line.split(" ", 1)
             time_str = _p[0]
-            topic_str = _polish_public_caption_text(
-                _p[1].strip() if len(_p) == 2 else ""
-            )
+            topic_str = _polish_public_caption_text(_p[1].strip() if len(_p) == 2 else "")
 
             def _topic_bold_to_html(t: str) -> str:
                 """Конвертирует **bold** → <b>bold</b>, остальное экранирует.
@@ -199,13 +211,13 @@ def build_caption(
                 if not t:
                     return ""
                 # Чиним непарные ** (если есть)
-                _count = t.count('**')
+                _count = t.count("**")
                 if _count % 2 == 1:
                     # Удаляем последний непарный
-                    _last = t.rfind('**')
-                    t = t[:_last] + t[_last + 2:]
+                    _last = t.rfind("**")
+                    t = t[:_last] + t[_last + 2 :]
                 # Расщепляем по **bold**, чередующиеся куски: text, bold, text, bold, ...
-                parts = re.split(r'\*\*([^*\n]+)\*\*', t)
+                parts = re.split(r"\*\*([^*\n]+)\*\*", t)
                 out = []
                 for i, p in enumerate(parts):
                     if i % 2 == 0:
@@ -216,7 +228,7 @@ def build_caption(
                         out.append(f"<b>{html_mod.escape(p)}</b>")
                 result = "".join(out)
                 # zero-width space после двоеточия + цифра (чтобы Telegram не сделал ссылку)
-                result = re.sub(r':(\d)', r':​\1', result)
+                result = re.sub(r":(\d)", r":​\1", result)
                 return result
 
             topic_escaped = _topic_bold_to_html(topic_str)
@@ -227,9 +239,9 @@ def build_caption(
                     yt_link = get_youtube_timestamp_url(url, secs)
                     escaped = f'<a href="{yt_link}">{html_mod.escape(time_str)}</a> {topic_escaped}'
                 else:
-                    escaped = html_mod.escape(time_str) + (' ' + topic_escaped if topic_escaped else '')
+                    escaped = html_mod.escape(time_str) + (" " + topic_escaped if topic_escaped else "")
             else:
-                escaped = html_mod.escape(time_str) + (' ' + topic_escaped if topic_escaped else '')
+                escaped = html_mod.escape(time_str) + (" " + topic_escaped if topic_escaped else "")
             timestamp_lines.append(escaped)
         # Добавляем блок только если есть непустые таймкоды
         if timestamp_lines:
@@ -239,7 +251,14 @@ def build_caption(
 
     # Платформы + Telegraph ссылки — никогда не убираются
     platform_links = build_platform_links(url, rutube_url, vk_url)
-    tg_links       = build_telegraph_links(telegraph_url, quotes_tg_url, questions_tg_url, terms_tg_url, study_tg_url=study_tg_url, reflection_tg_url=reflection_tg_url)
+    tg_links = build_telegraph_links(
+        telegraph_url,
+        quotes_tg_url,
+        questions_tg_url,
+        terms_tg_url,
+        study_tg_url=study_tg_url,
+        reflection_tg_url=reflection_tg_url,
+    )
     if tg_links:
         parts.append("")
         parts.append("<b>📂 Читать Подробный Разбор:</b>")
@@ -254,10 +273,7 @@ def build_caption(
         # PATCH V2 FIX: нормализуем хэштеги — убираем # если Gemini добавил вопреки инструкции
         _raw_tags = ai_data["hashtags"]
         if isinstance(_raw_tags, list):
-            _tags_str = " ".join(
-                f"#{str(t).strip().lstrip('#')}"
-                for t in _raw_tags if t and str(t).strip()
-            )
+            _tags_str = " ".join(f"#{str(t).strip().lstrip('#')}" for t in _raw_tags if t and str(t).strip())
         elif isinstance(_raw_tags, str):
             _tag_words = [w.strip() for w in _raw_tags.split() if w.strip()]
             _tags_str = " ".join(f"#{t.lstrip('#')}" for t in _tag_words if t)
@@ -278,6 +294,7 @@ def build_caption(
 # Импортируются выше через: from core.core_utils import _fix_unclosed_bold, ...
 # Re-export здесь не нужен: все внешние вызывающие модули (telegraph.py,
 # markdown.py) уже обновлены и импортируют напрямую из core_utils.
+
 
 def _split_into_sentences(text: str) -> list[str]:
     """Разбивает текст на предложения по концу предложения (.!?).

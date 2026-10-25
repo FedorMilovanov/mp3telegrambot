@@ -28,11 +28,7 @@ def _install_fake_factory_modules(monkeypatch, run_pass):
         candidates,
         "types",
         SimpleNamespace(
-            Part=SimpleNamespace(
-                from_bytes=lambda *, data, mime_type: SimpleNamespace(
-                    data=data, mime_type=mime_type
-                )
-            ),
+            Part=SimpleNamespace(from_bytes=lambda *, data, mime_type: SimpleNamespace(data=data, mime_type=mime_type)),
             UploadFileConfig=lambda **kwargs: SimpleNamespace(**kwargs),
         ),
     )
@@ -77,15 +73,9 @@ def test_quota_claim_refund_preserves_existing_capacity_usage() -> None:
 
 
 def test_retry_action_separates_capacity_quota_and_other_transients() -> None:
-    assert capacity_runtime.factory_client_retry_action(
-        _ServiceError(503, "UNAVAILABLE: high demand")
-    ) == "capacity"
-    assert capacity_runtime.factory_client_retry_action(
-        _ServiceError(429, "RESOURCE_EXHAUSTED")
-    ) == "quota"
-    assert capacity_runtime.factory_client_retry_action(
-        _ServiceError(500, "INTERNAL")
-    ) == "rotate"
+    assert capacity_runtime.factory_client_retry_action(_ServiceError(503, "UNAVAILABLE: high demand")) == "capacity"
+    assert capacity_runtime.factory_client_retry_action(_ServiceError(429, "RESOURCE_EXHAUSTED")) == "quota"
+    assert capacity_runtime.factory_client_retry_action(_ServiceError(500, "INTERNAL")) == "rotate"
 
 
 def test_503_x4_then_429_rotates_even_when_stage_budget_is_exhausted(monkeypatch, tmp_path):

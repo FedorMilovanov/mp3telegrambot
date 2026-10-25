@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Canonical user-visible settings for clean Dub Studio routes."""
+
 from __future__ import annotations
 
 import json
@@ -34,18 +35,14 @@ def russian_delay_ms(request: dict[str, Any]) -> int:
     raw = _setting(request, "russian_delay_ms", 420)
     if isinstance(raw, bool):
         raise RuntimeError("russian_delay_ms не может быть bool.")
-    if isinstance(raw, float) and (
-        not math.isfinite(raw) or not raw.is_integer()
-    ):
+    if isinstance(raw, float) and (not math.isfinite(raw) or not raw.is_integer()):
         raise RuntimeError("russian_delay_ms должен быть целым числом.")
     try:
         value = int(raw)
     except (TypeError, ValueError, OverflowError) as exc:
         raise RuntimeError(f"Некорректный russian_delay_ms={raw!r}.") from exc
     if not 0 <= value <= MAX_RUSSIAN_DELAY_MS:
-        raise RuntimeError(
-            f"russian_delay_ms должен быть в диапазоне 0..{MAX_RUSSIAN_DELAY_MS}."
-        )
+        raise RuntimeError(f"russian_delay_ms должен быть в диапазоне 0..{MAX_RUSSIAN_DELAY_MS}.")
     return value
 
 

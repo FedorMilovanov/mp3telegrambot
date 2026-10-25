@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Fail-closed runtime contract and implementation fingerprints for Dub Studio."""
+
 from __future__ import annotations
 
 import hashlib
@@ -19,8 +20,69 @@ RETRY_SEED_OFFSET = 100_000
 MAX_BASE_SEED = MAX_SEED - RETRY_SEED_OFFSET
 _WEIGHT_SAMPLE_BYTES = 1024 * 1024
 
-_RENDER_MODULES = ('tools/voxcpm2/clean_runtime_contract.py', 'tools/voxcpm2/clean_source_download.py', 'tools/voxcpm2/clean_request_settings.py', 'tools/voxcpm2/clean_segment_normalizer.py', 'tools/voxcpm2/legacy_segment_migration_v45.py', 'tools/voxcpm2/clean_production_core.py', 'tools/voxcpm2/continuous_reference_policy.py', 'tools/voxcpm2/controlled_reference_gate.py', 'tools/voxcpm2/expressive_continuity.py', 'tools/voxcpm2/expressive_translation.py', 'tools/voxcpm2/strict_translation_payload.py', 'tools/voxcpm2/generic_project_runtime.py', 'tools/voxcpm2/generic_direct_runtime.py', 'tools/voxcpm2/generic_gemini_runtime.py', 'tools/voxcpm2/generic_custom_runtime.py', 'tools/voxcpm2/semantic_block_runtime.py', 'tools/voxcpm2/generic_clean_audio_repair_runtime.py', 'tools/voxcpm2/direct_max_quality_io.py', 'tools/voxcpm2/direct_timbre_analysis.py', 'tools/voxcpm2/direct_max_quality_analysis.py', 'tools/voxcpm2/direct_russian_cadence.py', 'tools/voxcpm2/direct_tail_artifact.py', 'tools/voxcpm2/direct_source_prosody.py', 'tools/voxcpm2/source_prosody_policy.py', 'tools/voxcpm2/direct_timeline_delivery_qa.py', 'tools/voxcpm2/direct_max_quality_render.py', 'tools/voxcpm2/direct_max_quality_cli.py', 'tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_shorts_production.py', 'tools/voxcpm2/direct_failure_recovery.py', 'tools/voxcpm2/direct_final_audit_v3.py', 'tools/voxcpm2/direct_surgical_io.py', 'tools/voxcpm2/direct_surgical_runtime.py', 'tools/voxcpm2/direct_surgical_polish_v2.py', 'services/speech_backends/audited_voxcpm2.py', 'services/speech_backends/base.py', 'services/speech_backends/control_plane.py', 'services/speech_backends/execution_plan.py', 'services/speech_backends/model_profiles.py', 'services/speech_backends/registry.py', 'services/speech_backends/__init__.py', 'services/speech_backends/voxcpm2.py', 'tools/voxcpm2/russian_pronunciation.py', 'tools/voxcpm2/direct_source_relative_continuity.py', 'tools/voxcpm2/direct_monolith_contract.py', 'tools/voxcpm2/direct_timeline_compaction.py', 'tools/voxcpm2/direct_retry_epoch.py')
-_RELEASE_MODULES = ('tools/voxcpm2/professional_audio_qa_v45.py', 'tools/voxcpm2/professional_audio_v45.py', 'tools/voxcpm2/semantic_tts_guard.py', 'tools/voxcpm2/semantic_tts_guard_v4.py', 'tools/voxcpm2/russian_spoken_numbers.py', 'tools/voxcpm2/final_media_qa.py', 'tools/voxcpm2/examples/john_piper_z20py4yqhyq/master_constant_mix.py', 'tools/voxcpm2/master_direct_russian_only.py', 'tools/voxcpm2/timeline_onset_repair.py', 'tools/voxcpm2/independent_qa_retry.py', 'tools/voxcpm2/spatial_bed_contract.py', 'tools/voxcpm2/final_media_spatial_bed.py', 'tools/voxcpm2/final_encoded_delivery_qa.py')
+_RENDER_MODULES = (
+    "tools/voxcpm2/clean_runtime_contract.py",
+    "tools/voxcpm2/clean_source_download.py",
+    "tools/voxcpm2/clean_request_settings.py",
+    "tools/voxcpm2/clean_segment_normalizer.py",
+    "tools/voxcpm2/legacy_segment_migration_v45.py",
+    "tools/voxcpm2/clean_production_core.py",
+    "tools/voxcpm2/continuous_reference_policy.py",
+    "tools/voxcpm2/controlled_reference_gate.py",
+    "tools/voxcpm2/expressive_continuity.py",
+    "tools/voxcpm2/expressive_translation.py",
+    "tools/voxcpm2/strict_translation_payload.py",
+    "tools/voxcpm2/generic_project_runtime.py",
+    "tools/voxcpm2/generic_direct_runtime.py",
+    "tools/voxcpm2/generic_gemini_runtime.py",
+    "tools/voxcpm2/generic_custom_runtime.py",
+    "tools/voxcpm2/semantic_block_runtime.py",
+    "tools/voxcpm2/generic_clean_audio_repair_runtime.py",
+    "tools/voxcpm2/direct_max_quality_io.py",
+    "tools/voxcpm2/direct_timbre_analysis.py",
+    "tools/voxcpm2/direct_max_quality_analysis.py",
+    "tools/voxcpm2/direct_russian_cadence.py",
+    "tools/voxcpm2/direct_tail_artifact.py",
+    "tools/voxcpm2/direct_source_prosody.py",
+    "tools/voxcpm2/source_prosody_policy.py",
+    "tools/voxcpm2/direct_timeline_delivery_qa.py",
+    "tools/voxcpm2/direct_max_quality_render.py",
+    "tools/voxcpm2/direct_max_quality_cli.py",
+    "tools/voxcpm2/examples/john_piper_z20py4yqhyq/voxcpm2_cpu_shorts_production.py",
+    "tools/voxcpm2/direct_failure_recovery.py",
+    "tools/voxcpm2/direct_final_audit_v3.py",
+    "tools/voxcpm2/direct_surgical_io.py",
+    "tools/voxcpm2/direct_surgical_runtime.py",
+    "tools/voxcpm2/direct_surgical_polish_v2.py",
+    "services/speech_backends/audited_voxcpm2.py",
+    "services/speech_backends/base.py",
+    "services/speech_backends/control_plane.py",
+    "services/speech_backends/execution_plan.py",
+    "services/speech_backends/model_profiles.py",
+    "services/speech_backends/registry.py",
+    "services/speech_backends/__init__.py",
+    "services/speech_backends/voxcpm2.py",
+    "tools/voxcpm2/russian_pronunciation.py",
+    "tools/voxcpm2/direct_source_relative_continuity.py",
+    "tools/voxcpm2/direct_monolith_contract.py",
+    "tools/voxcpm2/direct_timeline_compaction.py",
+    "tools/voxcpm2/direct_retry_epoch.py",
+)
+_RELEASE_MODULES = (
+    "tools/voxcpm2/professional_audio_qa_v45.py",
+    "tools/voxcpm2/professional_audio_v45.py",
+    "tools/voxcpm2/semantic_tts_guard.py",
+    "tools/voxcpm2/semantic_tts_guard_v4.py",
+    "tools/voxcpm2/russian_spoken_numbers.py",
+    "tools/voxcpm2/final_media_qa.py",
+    "tools/voxcpm2/examples/john_piper_z20py4yqhyq/master_constant_mix.py",
+    "tools/voxcpm2/master_direct_russian_only.py",
+    "tools/voxcpm2/timeline_onset_repair.py",
+    "tools/voxcpm2/independent_qa_retry.py",
+    "tools/voxcpm2/spatial_bed_contract.py",
+    "tools/voxcpm2/final_media_spatial_bed.py",
+    "tools/voxcpm2/final_encoded_delivery_qa.py",
+)
 
 
 def sha256_file(path: Path) -> str:
@@ -65,9 +127,7 @@ def _finite(value: Any, *, field: str) -> float:
 def _bounded_int(value: Any, *, field: str, low: int, high: int) -> int:
     if isinstance(value, bool):
         raise RuntimeError(f"{field} не может быть bool.")
-    if isinstance(value, float) and (
-        not math.isfinite(value) or not value.is_integer()
-    ):
+    if isinstance(value, float) and (not math.isfinite(value) or not value.is_integer()):
         raise RuntimeError(f"{field} должен быть целым числом.")
     try:
         result = int(value)
@@ -169,7 +229,7 @@ def _model_manifest(archive: Path) -> dict[str, Any]:
 def _voxcpm_runtime(cpu_python: Path) -> dict[str, Any]:
     if not cpu_python.is_file():
         raise RuntimeError(f"CPU Python не найден: {cpu_python}")
-    script = r'''
+    script = r"""
 import hashlib
 import importlib.metadata
 import json
@@ -198,7 +258,7 @@ payload = {
     "python_files": files,
 }
 print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
-'''
+"""
     process = subprocess.run(
         [str(cpu_python), "-c", script],
         stdout=subprocess.PIPE,
@@ -219,12 +279,7 @@ print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
     except json.JSONDecodeError as exc:
         raise RuntimeError("voxcpm runtime вернул некорректный fingerprint JSON.") from exc
     files = payload.get("python_files") if isinstance(payload, dict) else None
-    if (
-        not isinstance(payload, dict)
-        or not payload.get("module")
-        or not isinstance(files, list)
-        or not files
-    ):
+    if not isinstance(payload, dict) or not payload.get("module") or not isinstance(files, list) or not files:
         raise RuntimeError("voxcpm runtime fingerprint неполон.")
     return payload
 
@@ -278,10 +333,7 @@ def normalize_settings(
     )
     missing = [name for name in required if not callable(getattr(backend, name, None))]
     if missing:
-        raise RuntimeError(
-            "Speech backend не реализует model-independent production contract: "
-            + ", ".join(missing)
-        )
+        raise RuntimeError("Speech backend не реализует model-independent production contract: " + ", ".join(missing))
     settings["speech_backend"] = selection.backend_id
     settings["speech_backend_policy"] = BACKEND_SELECTION_POLICY
     return settings
@@ -291,9 +343,7 @@ def _backend_model_manifest(backend: Any, archive: Path) -> dict[str, Any]:
     model = Path(backend.discover_model(Path(archive))).resolve()
     artifacts: list[dict[str, Any]] = []
     for path in sorted(model.iterdir(), key=lambda item: item.name.casefold()):
-        if not path.is_file() or path.suffix.casefold() not in {
-            ".json", ".safetensors", ".bin", ".pth"
-        }:
+        if not path.is_file() or path.suffix.casefold() not in {".json", ".safetensors", ".bin", ".pth"}:
             continue
         stat = path.stat()
         item: dict[str, Any] = {

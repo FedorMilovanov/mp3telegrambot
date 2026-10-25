@@ -4,18 +4,30 @@ Utils — cleanup_files, prepare_thumbnail, format_timestamp,
 check_rate_limit, update_rate_limit, is_media_url, parse_title.
 Извлечено из bot.py строки 730–1045.
 """
+
 from core.globals import (
-    BOT_TOKEN, DOWNLOAD_DIR, THUMBS_DIR, HAS_PILLOW,
-    _video_processing_locks, _video_locks_mutex, _get_video_lock,
+    BOT_TOKEN,
+    DOWNLOAD_DIR,
+    THUMBS_DIR,
+    HAS_PILLOW,
+    _video_processing_locks,
+    _video_locks_mutex,
+    _get_video_lock,
     # FIX #33: импортируем константы лимитов из globals
-    COOLDOWN_SECONDS, DAILY_LIMIT,
-    DB_PATH, _THUMBS_CLEANUP_INTERVAL,
+    COOLDOWN_SECONDS,
+    DAILY_LIMIT,
+    DB_PATH,
+    _THUMBS_CLEANUP_INTERVAL,
 )
 from core.database import (
     _db_conn,
-    db_get, db_init, settings_get, settings_get_all,
+    db_get,
+    db_init,
+    settings_get,
+    settings_get_all,
     # FIX #33: WHITELIST_IDS и CACHE_TTL_DAYS определены в database.py
-    WHITELIST_IDS, CACHE_TTL_DAYS,
+    WHITELIST_IDS,
+    CACHE_TTL_DAYS,
 )
 from typing import Any
 from core.person_names import known_author_from_text
@@ -24,8 +36,8 @@ import logging
 import os
 import re
 import shutil
-import sqlite3          # FIX #21: не было импорта
-import time             # FIX #21: не было импорта
+import sqlite3  # FIX #21: не было импорта
+import time  # FIX #21: не было импорта
 from datetime import date  # FIX #21: не было импорта
 from io import BytesIO
 from pathlib import Path
@@ -65,6 +77,7 @@ TITLE_SEPARATORS = [" — ", " - ", " | ", " // ", ": ", " – "]
 # AUDIT L8: дневной лимит сбрасывается в полночь по Москве, а не по UTC сервера.
 try:
     from zoneinfo import ZoneInfo
+
     _LIMIT_TZ = ZoneInfo("Europe/Moscow")
 except Exception:
     # Без tzdata (Windows без библиотеки) остаёмся на UTC сервера.
@@ -75,6 +88,7 @@ def _today_str() -> str:
     if _LIMIT_TZ is None:
         return str(date.today())
     from datetime import datetime
+
     return datetime.now(tz=_LIMIT_TZ).date().isoformat()
 
 
@@ -89,6 +103,7 @@ from services.ffmpeg import YTDLP_BASE_ARGS  # noqa: E402 (импорт посл
 
 # ─── Вспомогательные функции ─────────────────────────────────
 
+
 def is_media_url(text: str) -> bool:
     return bool(VIDEO_REGEX.search(text) or PLAYLIST_REGEX.search(text))
 
@@ -100,16 +115,19 @@ def is_playlist_url(text: str) -> bool:
 def extract_media_url(text: str) -> str | None:
     """AUDIT M16: расширили поддержку — vkvideo.ru, rutube.ru, youtube-nocookie.com."""
     _SUPPORTED_HOSTS = (
-        "youtube.com", "youtu.be", "m.youtube.com",
+        "youtube.com",
+        "youtu.be",
+        "m.youtube.com",
         "youtube-nocookie.com",
-        "vkvideo.ru", "vk.com/video",
+        "vkvideo.ru",
+        "vk.com/video",
         "rutube.ru",
     )
     url_match = re.search(r"(https?://[^\s]+)", text)
     if url_match:
         url = url_match.group(0)
         # Чистим хвост (кавычки, скобки, точки в конце)
-        url = url.rstrip(').,;:!?»"\'>')
+        url = url.rstrip(").,;:!?»\"'>")
         if any(h in url for h in _SUPPORTED_HOSTS):
             return url
     match = PLAYLIST_REGEX.search(text) or VIDEO_REGEX.search(text)
@@ -121,7 +139,7 @@ def parse_title(full_title: str, channel_name: str = "") -> tuple[str, str]:
     for sep in TITLE_SEPARATORS:
         if sep in full_title:
             parts = full_title.split(sep, 1)
-            left  = parts[0].strip()
+            left = parts[0].strip()
             right = parts[1].strip()
             if not left or not right:
                 continue
@@ -137,13 +155,13 @@ def parse_title(full_title: str, channel_name: str = "") -> tuple[str, str]:
             # имя («Questions and Answers»). Сначала пробуем распознать
             # известного автора по имени — тот же сигнал, что и в
             # _split_title_author_line (LiveDub), а не гадаем по числу слов.
-            left_known  = known_author_from_text(left)
+            left_known = known_author_from_text(left)
             right_known = known_author_from_text(right)
             if left_known and not right_known:
                 return left_known, right
             if right_known and not left_known:
                 return right_known, left
-            left_words  = len(left.split())
+            left_words = len(left.split())
             right_words = len(right.split())
             if left_words <= 4 and right_words > left_words:
                 return left, right
@@ -161,6 +179,7 @@ def _crop_black_bars_image(img: Any) -> Any:
     MIN_STRIP = 4
     try:
         import numpy as np
+
         arr = np.array(img.convert("L"))
         h, w = arr.shape
         top = 0
@@ -177,10 +196,10 @@ def _crop_black_bars_image(img: Any) -> Any:
         while right > left and arr[:, right].mean() < THRESHOLD:
             right -= 1
         right += 1
-        crop_top    = top    if top    >= MIN_STRIP else 0
+        crop_top = top if top >= MIN_STRIP else 0
         crop_bottom = bottom if h - bottom >= MIN_STRIP else h
-        crop_left   = left   if left   >= MIN_STRIP else 0
-        crop_right  = right  if w - right >= MIN_STRIP else w
+        crop_left = left if left >= MIN_STRIP else 0
+        crop_right = right if w - right >= MIN_STRIP else w
         if (crop_top, crop_left, crop_bottom, crop_right) != (0, 0, h, w):
             img = img.crop((crop_left, crop_top, crop_right, crop_bottom))
     except Exception:
@@ -199,10 +218,10 @@ def prepare_thumbnail(thumb_path: Path) -> BytesIO | None:
                 img = _crop_black_bars_image(img)
                 width, height = img.size
                 min_side = min(width, height)
-                left   = (width  - min_side) // 2
-                top    = (height - min_side) // 2
-                right  = left + min_side
-                bottom = top  + min_side
+                left = (width - min_side) // 2
+                top = (height - min_side) // 2
+                right = left + min_side
+                bottom = top + min_side
                 img = img.crop((left, top, right, bottom))
                 # Resampling — актуальное имя с Pillow 9.1; floor проекта 13.x.
                 img = img.resize((480, 480), Image.Resampling.LANCZOS)
@@ -229,7 +248,7 @@ def prepare_thumbnail(thumb_path: Path) -> BytesIO | None:
 
 def cleanup_files(media_id: str, keep_mp3: bool = True) -> None:
     # Sanitize media_id — defence in depth against glob injection
-    media_id = re.sub(r'[*?\[\]/\\]', '_', str(media_id or ''))
+    media_id = re.sub(r"[*?\[\]/\\]", "_", str(media_id or ""))
     if not media_id:
         return
     for f in DOWNLOAD_DIR.glob(f"{media_id}*"):
@@ -271,6 +290,7 @@ def cleanup_stale_downloads(max_age_hours: int = 3) -> int:
     Порог по умолчанию — 3 часа (достаточно для самого длинного pipeline).
     """
     import time as _time
+
     cutoff = _time.time() - max_age_hours * 3600
     deleted = 0
     video_exts = {".mp4", ".mkv", ".webm", ".mov"}
@@ -305,6 +325,7 @@ def cleanup_botapi_server_files(max_age_hours: int = 24) -> int:
     структуру папок и служебные файлы сервера не трогаем.
     """
     import time as _time
+
     data_dir = os.getenv("LOCAL_BOT_API_DATA_DIR", "").strip()
     if not data_dir:
         # Автообнаружение (round 37: оба стандартных места). LOCALAPPDATA
@@ -355,6 +376,7 @@ def cleanup_stale_livedub_dirs(max_age_hours: int = 6) -> int:
     """
     import time as _time
     import tempfile
+
     cutoff = _time.time() - max_age_hours * 3600
     deleted = 0
     try:
@@ -391,6 +413,7 @@ def cleanup_nosub_files(max_age_hours: int = 24) -> int:
         logger.warning(f"cleanup_nosub_files error: {e}")
     return deleted
 
+
 # AUDIT-V2-CLEANUP: НЕ вызываем при импорте — side effect ломает тесты
 # и замедляет старт. Вызов уже есть в periodic maintenance (main.py:209).
 # cleanup_nosub_files()
@@ -402,6 +425,7 @@ def format_timestamp(seconds: Any) -> str:  # AUDIT-V2-FMT: принимает A
     except (TypeError, ValueError):
         return "0:00"
     import math
+
     if math.isnan(seconds) or math.isinf(seconds):
         return "0:00"
     seconds = max(0, seconds)
@@ -414,6 +438,7 @@ def format_timestamp(seconds: Any) -> str:  # AUDIT-V2-FMT: принимает A
 
 
 # ─── Защита от спама ─────────────────────────────────────────
+
 
 def check_rate_limit(user_id: int) -> tuple[bool, str]:
     """Проверяет лимиты. Возвращает (разрешено, причина). Данные хранятся в SQLite.
@@ -428,22 +453,21 @@ def check_rate_limit(user_id: int) -> tuple[bool, str]:
     if user_id in WHITELIST_IDS:
         return True, ""
 
-    now   = time.time()
+    now = time.time()
     today = _today_str()  # AUDIT L8
 
     try:
         with _db_conn() as conn:
             row = conn.execute(
-                "SELECT last_request, daily_count, daily_date FROM rate_limit WHERE user_id = ?",
-                (user_id,)
+                "SELECT last_request, daily_count, daily_date FROM rate_limit WHERE user_id = ?", (user_id,)
             ).fetchone()
     except Exception as e:
         logger.warning("check_rate_limit DB error: %s", e, exc_info=True)
         return True, ""  # при ошибке БД не блокируем пользователя
 
     last_request = row[0] if row else 0.0
-    daily_count  = row[1] if row else 0
-    daily_date   = row[2] if row else ""
+    daily_count = row[1] if row else 0
+    daily_date = row[2] if row else ""
 
     # Антиспам: cooldown между запросами
     elapsed = now - last_request
@@ -459,10 +483,7 @@ def check_rate_limit(user_id: int) -> tuple[bool, str]:
     if daily_date != today:
         daily_count = 0
     if daily_count >= DAILY_LIMIT:
-        return False, (
-            f"📵 Дневной лимит исчерпан ({DAILY_LIMIT} видео/день).\n"
-            f"Приходите завтра! 🙏"
-        )
+        return False, (f"📵 Дневной лимит исчерпан ({DAILY_LIMIT} видео/день).\nПриходите завтра! 🙏")
 
     return True, ""
 
@@ -479,7 +500,7 @@ def update_rate_limit(user_id: int) -> None:
     if user_id in WHITELIST_IDS:
         return
     today = _today_str()  # AUDIT L8
-    now   = time.time()
+    now = time.time()
     try:
         with _db_conn() as conn:
             conn.execute(
@@ -495,7 +516,7 @@ def update_rate_limit(user_id: int) -> None:
                                    END,
                     daily_date   = excluded.daily_date
                 """,
-                (user_id, now, today)
+                (user_id, now, today),
             )
             conn.commit()
     except Exception as e:
@@ -516,8 +537,7 @@ def refund_rate_limit(user_id: int) -> None:
     try:
         with _db_conn() as conn:
             conn.execute(
-                "UPDATE rate_limit SET daily_count = MAX(daily_count - 1, 0) "
-                "WHERE user_id = ? AND daily_date = ?",
+                "UPDATE rate_limit SET daily_count = MAX(daily_count - 1, 0) WHERE user_id = ? AND daily_date = ?",
                 (user_id, today),
             )
             conn.commit()
@@ -533,7 +553,9 @@ def refund_rate_limit(user_id: int) -> None:
 # ─── Безопасное логирование — маскировка секретов ─────────────
 
 import re as _re_utils
-_API_KEY_RE = _re_utils.compile(r'AIza[0-9A-Za-z_-]{35}')
+
+_API_KEY_RE = _re_utils.compile(r"AIza[0-9A-Za-z_-]{35}")
+
 
 def mask_api_key(text: str) -> str:
     """Маскирует API-ключи вида AIza... для безопасного логирования.
@@ -541,9 +563,10 @@ def mask_api_key(text: str) -> str:
     AUDIT R40: также прячет креды в URL (user:pass@ у proxy) и bot-token —
     эта маска показывается и пользователю (ошибки плейлиста), не только в лог.
     """
-    out = _API_KEY_RE.sub('***APIKEY***', str(text))
+    out = _API_KEY_RE.sub("***APIKEY***", str(text))
     try:
         from core.globals import mask_credentials
+
         out = mask_credentials(out)
     except Exception:
         pass

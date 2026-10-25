@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Strict, code-free loader for repository-owned TTS model profile manifests."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -138,13 +139,9 @@ def _exact_keys(
     unknown = sorted(set(payload) - allowed)
     missing = sorted(required - set(payload))
     if unknown:
-        raise ProfileManifestError(
-            f"{context} содержит неизвестные поля: {', '.join(unknown)}."
-        )
+        raise ProfileManifestError(f"{context} содержит неизвестные поля: {', '.join(unknown)}.")
     if missing:
-        raise ProfileManifestError(
-            f"{context} не содержит обязательные поля: {', '.join(missing)}."
-        )
+        raise ProfileManifestError(f"{context} не содержит обязательные поля: {', '.join(missing)}.")
 
 
 def _string_list(value: Any, *, field_name: str) -> tuple[str, ...]:
@@ -216,9 +213,7 @@ def _profile_from_payload(payload: dict[str, Any], *, path: Path) -> SpeechModel
     )
     schema = payload.get("schema_version")
     if isinstance(schema, bool) or schema != PROFILE_MANIFEST_SCHEMA_VERSION:
-        raise ProfileManifestError(
-            f"{context}.schema_version должен быть {PROFILE_MANIFEST_SCHEMA_VERSION}."
-        )
+        raise ProfileManifestError(f"{context}.schema_version должен быть {PROFILE_MANIFEST_SCHEMA_VERSION}.")
     backend_defaults = payload.get("backend_defaults")
     if not isinstance(backend_defaults, dict):
         raise ProfileManifestError(f"{context}.backend_defaults должен быть JSON-объектом.")
@@ -254,9 +249,7 @@ def _profile_from_payload(payload: dict[str, Any], *, path: Path) -> SpeechModel
     except (TypeError, ValueError) as exc:
         raise ProfileManifestError(f"Некорректный {context}: {exc}") from exc
     if path.stem.casefold() != profile.profile_id:
-        raise ProfileManifestError(
-            f"Имя файла {path.name} должно совпадать с profile_id={profile.profile_id}."
-        )
+        raise ProfileManifestError(f"Имя файла {path.name} должно совпадать с profile_id={profile.profile_id}.")
     return profile
 
 
@@ -273,18 +266,14 @@ def load_profile_manifest(
         raise ProfileManifestError(f"Symlink TTS manifest запрещён: {candidate}")
     resolved = candidate.resolve()
     if resolved.parent != root:
-        raise ProfileManifestError(
-            f"TTS manifest должен находиться непосредственно в catalog root: {resolved}"
-        )
+        raise ProfileManifestError(f"TTS manifest должен находиться непосредственно в catalog root: {resolved}")
     if resolved.suffix.casefold() != ".json":
         raise ProfileManifestError(f"TTS manifest должен иметь расширение .json: {resolved}")
     if not resolved.is_file():
         raise ProfileManifestError(f"TTS manifest не найден: {resolved}")
     size = resolved.stat().st_size
     if size <= 0 or size > _MAX_MANIFEST_BYTES:
-        raise ProfileManifestError(
-            f"Размер TTS manifest вне диапазона 1..{_MAX_MANIFEST_BYTES}: {resolved}"
-        )
+        raise ProfileManifestError(f"Размер TTS manifest вне диапазона 1..{_MAX_MANIFEST_BYTES}: {resolved}")
     data = resolved.read_bytes()
     profile = _profile_from_payload(_json_object(data, path=resolved), path=resolved)
     return ProfileManifestRecord(
@@ -305,25 +294,18 @@ def load_profile_catalog(
     paths = sorted(catalog_root.glob("*.json"), key=lambda item: item.name.casefold())
     if require_profiles and not paths:
         raise ProfileManifestError(f"TTS profile catalog пуст: {catalog_root}")
-    records = tuple(
-        load_profile_manifest(path, catalog_root=catalog_root)
-        for path in paths
-    )
+    records = tuple(load_profile_manifest(path, catalog_root=catalog_root) for path in paths)
     profile_ids: set[str] = set()
     aliases: dict[str, str] = {}
     for record in records:
         profile = record.profile
         if profile.profile_id in profile_ids:
-            raise ProfileManifestError(
-                f"Дублирующийся profile_id в catalog: {profile.profile_id}"
-            )
+            raise ProfileManifestError(f"Дублирующийся profile_id в catalog: {profile.profile_id}")
         profile_ids.add(profile.profile_id)
         for alias in (profile.profile_id, *profile.aliases):
             owner = aliases.get(alias)
             if owner is not None and owner != profile.profile_id:
-                raise ProfileManifestError(
-                    f"Alias {alias} занят profiles {owner} и {profile.profile_id}."
-                )
+                raise ProfileManifestError(f"Alias {alias} занят profiles {owner} и {profile.profile_id}.")
             aliases[alias] = profile.profile_id
     return records
 

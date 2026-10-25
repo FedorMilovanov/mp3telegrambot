@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """VoxCPM2 adapter implementing the generic speech-backend contract."""
+
 from __future__ import annotations
 
 import inspect
@@ -35,12 +36,8 @@ MASTER_SELECTION_POLICY = "translation-mode-specific-master-entrypoint-v1"
 
 _DEFAULT_CPU_VENV = r"C:\AI-Archive\VoxCPM2-CPU-TEST\.venv"
 _DEFAULT_ARCHIVE = r"C:\AI-Archive\VoxCPM2-paused-RTX3060"
-_RENDERER_MODULE = (
-    "tools.voxcpm2.examples.john_piper_z20py4yqhyq.voxcpm2_cpu_shorts_production"
-)
-_LEGACY_MASTER_MODULE = (
-    "tools.voxcpm2.examples.john_piper_z20py4yqhyq.master_constant_mix"
-)
+_RENDERER_MODULE = "tools.voxcpm2.examples.john_piper_z20py4yqhyq.voxcpm2_cpu_shorts_production"
+_LEGACY_MASTER_MODULE = "tools.voxcpm2.examples.john_piper_z20py4yqhyq.master_constant_mix"
 _DIRECT_MASTER_MODULE = "tools.voxcpm2.master_direct_russian_only"
 _FINAL_QA_MODULE = "tools.voxcpm2.final_media_qa"
 
@@ -98,9 +95,7 @@ def _profile_float(
     except (TypeError, ValueError, OverflowError) as exc:
         raise ValueError(f"base_backend_options.{name} должен быть числом.") from exc
     if not math.isfinite(result) or not low <= result <= high:
-        raise ValueError(
-            f"base_backend_options.{name} должен быть в диапазоне {low}..{high}."
-        )
+        raise ValueError(f"base_backend_options.{name} должен быть в диапазоне {low}..{high}.")
     return result
 
 
@@ -120,9 +115,7 @@ def _profile_int(
     except (TypeError, ValueError, OverflowError) as exc:
         raise ValueError(f"base_backend_options.{name} должен быть целым числом.") from exc
     if not low <= result <= high:
-        raise ValueError(
-            f"base_backend_options.{name} должен быть в диапазоне {low}..{high}."
-        )
+        raise ValueError(f"base_backend_options.{name} должен быть в диапазоне {low}..{high}.")
     return result
 
 
@@ -247,13 +240,9 @@ class VoxCPM2Backend:
         if not isinstance(audio_spec, BackendAudioSpec):
             raise TypeError("VoxCPM2 length planner ожидает BackendAudioSpec.")
         if not isinstance(request, BackendGenerationLengthRequest):
-            raise TypeError(
-                "VoxCPM2 length planner ожидает BackendGenerationLengthRequest."
-            )
+            raise TypeError("VoxCPM2 length planner ожидает BackendGenerationLengthRequest.")
         if audio_spec.seconds_per_step is None:
-            raise RuntimeError(
-                "VoxCPM2 length planner требует audio_spec.seconds_per_step."
-            )
+            raise RuntimeError("VoxCPM2 length planner требует audio_spec.seconds_per_step.")
 
         budget = request.duration_budget
         attempt = request.attempt
@@ -262,9 +251,7 @@ class VoxCPM2Backend:
         desired_steps = budget / seconds_per_step
         max_len = max(_MIN_MAX_LEN, int(math.ceil(desired_steps * _MAX_LEN_RATIO)))
         short_retry = (
-            attempt >= 3
-            and bool(previous)
-            and all(value < budget * _SHORT_OUTPUT_RATIO for value in previous)
+            attempt >= 3 and bool(previous) and all(value < budget * _SHORT_OUTPUT_RATIO for value in previous)
         )
         min_len = _BASE_MIN_LEN
         if short_retry:
@@ -313,9 +300,7 @@ class VoxCPM2Backend:
     ) -> BackendGenerationProfilePlan:
         """Translate an attempt number into the active VoxCPM2 quality profile."""
         if not isinstance(request, BackendGenerationProfileRequest):
-            raise TypeError(
-                "VoxCPM2 profile planner ожидает BackendGenerationProfileRequest."
-            )
+            raise TypeError("VoxCPM2 profile planner ожидает BackendGenerationProfileRequest.")
         attempt = request.attempt
         if attempt > _PROFILE_MAX_ATTEMPT:
             raise ValueError(f"Неподдерживаемая попытка VoxCPM2: {attempt}")
@@ -405,14 +390,8 @@ class VoxCPM2Backend:
         encode_sr = int(model.tts_model._encode_sample_rate)
         output_sr = int(model.tts_model.sample_rate)
         if encode_sr <= 0 or output_sr <= 0:
-            raise RuntimeError(
-                f"VoxCPM2 вернул некорректный sample rate: {encode_sr}->{output_sr}."
-            )
-        seconds_per_step = (
-            int(model.tts_model.patch_size)
-            * int(model.tts_model.chunk_size)
-            / encode_sr
-        )
+            raise RuntimeError(f"VoxCPM2 вернул некорректный sample rate: {encode_sr}->{output_sr}.")
+        seconds_per_step = int(model.tts_model.patch_size) * int(model.tts_model.chunk_size) / encode_sr
         return VoxCPM2Session(
             model,
             BackendAudioSpec(
@@ -494,19 +473,32 @@ class VoxCPM2Backend:
         return [
             str(runtime.cpu_python),
             str(runtime.renderer_entrypoint),
-            "--speech-backend", self.backend_id,
-            "--archive-root", str(runtime.archive_root),
-            "--extended-reference", self._required(values, "extended_reference"),
-            "--composite-reference", self._required(values, "composite_reference"),
-            "--segments-json", self._required(values, "segments_json"),
-            "--work-dir", self._required(values, "segment_work"),
-            "--output", self._required(values, "timeline"),
-            "--threads", self._required(values, "threads"),
-            "--steps", self._required(values, "steps"),
-            "--cfg", self._required(values, "cfg"),
-            "--cache-length", self._required(values, "cache_length"),
-            "--video-duration", self._required(values, "duration"),
-            "--base-seed", self._required(values, "base_seed"),
+            "--speech-backend",
+            self.backend_id,
+            "--archive-root",
+            str(runtime.archive_root),
+            "--extended-reference",
+            self._required(values, "extended_reference"),
+            "--composite-reference",
+            self._required(values, "composite_reference"),
+            "--segments-json",
+            self._required(values, "segments_json"),
+            "--work-dir",
+            self._required(values, "segment_work"),
+            "--output",
+            self._required(values, "timeline"),
+            "--threads",
+            self._required(values, "threads"),
+            "--steps",
+            self._required(values, "steps"),
+            "--cfg",
+            self._required(values, "cfg"),
+            "--cache-length",
+            self._required(values, "cache_length"),
+            "--video-duration",
+            self._required(values, "duration"),
+            "--base-seed",
+            self._required(values, "base_seed"),
         ]
 
     def build_master_command(
@@ -518,15 +510,24 @@ class VoxCPM2Backend:
         return [
             str(runtime.cpu_python),
             str(runtime.master_entrypoint),
-            "--source-video", self._required(values, "source"),
-            "--russian-wav", self._required(values, "timeline"),
-            "--work-dir", self._required(values, "master_work"),
-            "--mixed-video", self._required(values, "final_mixed"),
-            "--russian-only-video", self._required(values, "final_russian"),
-            "--original-level", self._required(values, "original_level"),
-            "--target-i", self._required(values, "target_i"),
-            "--target-lra", self._required(values, "target_lra"),
-            "--target-tp", self._required(values, "target_tp"),
+            "--source-video",
+            self._required(values, "source"),
+            "--russian-wav",
+            self._required(values, "timeline"),
+            "--work-dir",
+            self._required(values, "master_work"),
+            "--mixed-video",
+            self._required(values, "final_mixed"),
+            "--russian-only-video",
+            self._required(values, "final_russian"),
+            "--original-level",
+            self._required(values, "original_level"),
+            "--target-i",
+            self._required(values, "target_i"),
+            "--target-lra",
+            self._required(values, "target_lra"),
+            "--target-tp",
+            self._required(values, "target_tp"),
         ]
 
 

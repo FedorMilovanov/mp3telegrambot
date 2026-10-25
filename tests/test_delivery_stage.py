@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Свежая отправка: обязательный MP3 и изолированные необязательные дополнения."""
+
 from __future__ import annotations
 
 import logging
@@ -265,10 +266,22 @@ class RetryAfter(Exception):
 
 def test_pdf_urls_and_safe_filename() -> None:
     safe = DeliveryRequest(
-        update=None, context=None, audio_delivery=None, mp3_path=Path("x"),
-        media_id="v", source_url="u", title="t", performer="p", duration=1,
-        file_size_mb=1, caption="c", full_caption="f", download_dir=Path("d"),
-        thumbs_dir=Path("t"), study_url="study", terms_url="terms",
+        update=None,
+        context=None,
+        audio_delivery=None,
+        mp3_path=Path("x"),
+        media_id="v",
+        source_url="u",
+        title="t",
+        performer="p",
+        duration=1,
+        file_size_mb=1,
+        caption="c",
+        full_caption="f",
+        download_dir=Path("d"),
+        thumbs_dir=Path("t"),
+        study_url="study",
+        terms_url="terms",
     )
     assert safe.pdf_urls() == {"study": "study", "terms": "terms"}
     assert safe_filename('  a\\/:*?"<>|\n\r\tb  ') == "ab"
@@ -314,9 +327,7 @@ async def test_chapters_receive_links_metadata_and_thumbnail(tmp_path: Path) -> 
 
 
 @pytest.mark.asyncio
-async def test_chapters_empty_and_failure_are_nonfatal(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
+async def test_chapters_empty_and_failure_are_nonfatal(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     empty = FakeDeps()
     empty.chapters = []
     request = make_request(
@@ -434,9 +445,7 @@ async def test_audio_file_id_cache_failure_does_not_cancel_delivery(tmp_path: Pa
     fakes = FakeDeps()
     fakes.errors["save_file_id"] = RuntimeError("database busy")
 
-    result = await send_audio(
-        make_request(tmp_path, Message(), AudioDelivery()), fakes.deps()
-    )
+    result = await send_audio(make_request(tmp_path, Message(), AudioDelivery()), fakes.deps())
 
     assert result.audio.file_id == "file-id-1"
 
@@ -472,9 +481,7 @@ async def test_full_caption_failure_is_nonfatal(tmp_path: Path) -> None:
     message.fail_full_caption = True
     fakes = FakeDeps()
 
-    assert await send_full_caption(
-        make_request(tmp_path, message, AudioDelivery()), fakes.deps()
-    ) is False
+    assert await send_full_caption(make_request(tmp_path, message, AudioDelivery()), fakes.deps()) is False
 
 
 # ── PDF ───────────────────────────────────────────────────────────────────
@@ -574,9 +581,7 @@ async def test_pdf_missing_result_gets_error(tmp_path: Path, kind: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_pdf_generation_failure_is_nonfatal(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
+async def test_pdf_generation_failure_is_nonfatal(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     message = Message()
     fakes = FakeDeps()
     fakes.errors["generate_pdf"] = RuntimeError("renderer failed")
@@ -609,9 +614,7 @@ async def test_pdf_empty_metadata_uses_placeholders(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_pdf_progress_and_cleanup_failures_are_nonfatal(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_pdf_progress_and_cleanup_failures_are_nonfatal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     message = Message()
     message.status.fail_edit = True
     message.status.fail_delete = True
@@ -653,9 +656,7 @@ async def test_quiz_skips_without_generation(tmp_path: Path, mode: str) -> None:
     else:
         overrides["ai_data"] = None
 
-    assert await send_quiz(
-        make_request(tmp_path, Message(), AudioDelivery(), **overrides), fakes.deps()
-    ) == 0
+    assert await send_quiz(make_request(tmp_path, Message(), AudioDelivery(), **overrides), fakes.deps()) == 0
     assert not any(name == "generate_quiz" for name, _ in fakes.calls)
 
 
@@ -677,8 +678,7 @@ async def test_quiz_header_is_escaped_and_audio_context_reused(tmp_path: Path) -
     assert fakes.quiz_kwargs["existing_client"] == "client"
     assert message.replies == [
         (
-            "🧠 <b>Quiz: A&amp;B &lt;Тема&gt;</b>\n"
-            "Проверь понимание материала — 2 вопросов:",
+            "🧠 <b>Quiz: A&amp;B &lt;Тема&gt;</b>\nПроверь понимание материала — 2 вопросов:",
             {"parse_mode": "HTML"},
         )
     ]
@@ -705,16 +705,12 @@ async def test_quiz_empty_and_failure_are_nonfatal(tmp_path: Path, mode: str) ->
 
 
 @pytest.mark.asyncio
-async def test_cached_chapters_keep_legacy_comment_and_log(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
+async def test_cached_chapters_keep_legacy_comment_and_log(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     fakes = FakeDeps()
     request = make_request(tmp_path, Message(), AudioDelivery(), cache_hit=True)
 
     assert await embed_audio_chapters(request, fakes.deps()) is True
-    assert fakes.embed_kwargs["comment"] == (
-        "Source: https://youtu.be/vid1\nSynopsis: https://telegra.ph/synopsis"
-    )
+    assert fakes.embed_kwargs["comment"] == ("Source: https://youtu.be/vid1\nSynopsis: https://telegra.ph/synopsis")
 
     broken = FakeDeps()
     broken.errors["parse_chapters"] = RuntimeError("bad cached timestamps")
@@ -738,9 +734,7 @@ async def test_cached_instant_resend_skips_upload_chapters_and_quiz(tmp_path: Pa
     assert outcome.full_caption_sent is True
     assert outcome.pdf_status == "sent"
     assert outcome.quiz_sent == 0
-    assert message.audio_replies == [
-        {"audio": "stored-fid", "caption": "CAPTION", "parse_mode": "HTML"}
-    ]
+    assert message.audio_replies == [{"audio": "stored-fid", "caption": "CAPTION", "parse_mode": "HTML"}]
     assert audio.calls == []
     assert fakes.saved_file_ids == []
     assert not any(name == "parse_chapters" for name, _ in fakes.calls)
@@ -750,9 +744,7 @@ async def test_cached_instant_resend_skips_upload_chapters_and_quiz(tmp_path: Pa
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("clear_fails", [False, True])
-async def test_cached_stale_id_clears_and_falls_back(
-    tmp_path: Path, clear_fails: bool
-) -> None:
+async def test_cached_stale_id_clears_and_falls_back(tmp_path: Path, clear_fails: bool) -> None:
     message = Message()
     message.fail_audio_reply = True
     audio = AudioDelivery([sent_message("replacement-fid")])
@@ -815,9 +807,7 @@ async def test_cached_without_id_retries_with_legacy_log_and_no_action(
 
 
 @pytest.mark.asyncio
-async def test_cached_full_caption_failure_keeps_legacy_log(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
+async def test_cached_full_caption_failure_keeps_legacy_log(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     message = Message()
     message.fail_full_caption = True
     request = make_request(tmp_path, message, AudioDelivery(), cache_hit=True)
@@ -842,9 +832,7 @@ async def test_cached_pdf_boundaries_remain_strict(tmp_path: Path, size: int) ->
 
 
 @pytest.mark.asyncio
-async def test_cached_pdf_import_error_is_silent(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
+async def test_cached_pdf_import_error_is_silent(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     message = Message()
     fakes = FakeDeps()
     fakes.errors["generate_pdf"] = ImportError("reportlab unavailable")
@@ -857,9 +845,7 @@ async def test_cached_pdf_import_error_is_silent(
 
 
 @pytest.mark.asyncio
-async def test_cached_pdf_other_error_keeps_legacy_log(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
+async def test_cached_pdf_other_error_keeps_legacy_log(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     message = Message()
     fakes = FakeDeps()
     fakes.errors["generate_pdf"] = RuntimeError("cached renderer failed")
@@ -886,9 +872,7 @@ def test_main_pipeline_wires_delivery_stages() -> None:
 
 
 @pytest.mark.asyncio
-async def test_deliver_result_order_and_structured_outcome(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_deliver_result_order_and_structured_outcome(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from pipelines import delivery_stage as stage
 
     fakes = FakeDeps()
@@ -935,9 +919,7 @@ async def test_deliver_result_order_and_structured_outcome(
 
 
 @pytest.mark.asyncio
-async def test_audio_failure_stops_optional_extras(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_audio_failure_stops_optional_extras(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from pipelines import delivery_stage as stage
 
     request = make_request(tmp_path, Message(), AudioDelivery())

@@ -101,10 +101,7 @@ def test_failure_classifier_distinguishes_media_provider_and_login_layers():
         args=["yt-dlp"],
         returncode=1,
         stdout="",
-        stderr=(
-            "_get_pot_via_script failed: All 3 retries failed. "
-            "AxiosError: Request failed with status code 503"
-        ),
+        stderr=("_get_pot_via_script failed: All 3 retries failed. AxiosError: Request failed with status code 503"),
     )
     provider_other = subprocess.CompletedProcess(
         args=["yt-dlp"],
@@ -158,9 +155,7 @@ def test_success_without_metadata_duration_fails_closed(monkeypatch, capsys):
     monkeypatch.setattr(
         probe,
         "_run_download",
-        lambda _url, _root: subprocess.CompletedProcess(
-            args=["yt-dlp"], returncode=0, stdout="", stderr=""
-        ),
+        lambda _url, _root: subprocess.CompletedProcess(args=["yt-dlp"], returncode=0, stdout="", stderr=""),
     )
 
     assert probe.main(["https://youtu.be/example"]) == 7

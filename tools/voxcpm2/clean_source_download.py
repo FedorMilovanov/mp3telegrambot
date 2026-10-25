@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Fail-closed source cache for clean Dub Studio projects."""
+
 from __future__ import annotations
 
 import hashlib
@@ -129,8 +130,7 @@ def _metadata(url: str) -> dict[str, Any]:
         raise RuntimeError("yt-dlp metadata не содержит корректный YouTube video ID.")
     if video_id != expected_id:
         raise RuntimeError(
-            "YouTube URL и yt-dlp metadata указывают на разные ролики: "
-            f"url={expected_id}, metadata={video_id}."
+            f"YouTube URL и yt-dlp metadata указывают на разные ролики: url={expected_id}, metadata={video_id}."
         )
     return payload
 
@@ -200,10 +200,7 @@ def download_source(url: str, source: Path) -> dict[str, Any]:
         )
     manifest = _read_manifest(manifest_path)
     if _cache_matches(source, manifest, video_id=video_id):
-        pipeline.log(
-            f"Source cache verified: video_id={video_id}; "
-            f"size={source.stat().st_size}; policy={POLICY}"
-        )
+        pipeline.log(f"Source cache verified: video_id={video_id}; size={source.stat().st_size}; policy={POLICY}")
         return metadata
 
     source.unlink(missing_ok=True)
@@ -225,19 +222,14 @@ def download_source(url: str, source: Path) -> dict[str, Any]:
         timeout=1800,
     )
     if not source.is_file() or source.stat().st_size < MIN_SOURCE_BYTES:
-        raise RuntimeError(
-            f"yt-dlp не создал полноценный source.mp4: {source}"
-        )
+        raise RuntimeError(f"yt-dlp не создал полноценный source.mp4: {source}")
     _write_manifest(
         manifest_path,
         source=source,
         source_url=str(url),
         metadata=metadata,
     )
-    pipeline.log(
-        f"Source cache recorded: video_id={video_id}; "
-        f"size={source.stat().st_size}; policy={POLICY}"
-    )
+    pipeline.log(f"Source cache recorded: video_id={video_id}; size={source.stat().st_size}; policy={POLICY}")
     return metadata
 
 
@@ -247,19 +239,17 @@ __all__ = [
     "download_source",
 ]
 
-_BASE_ALL = tuple(globals().get('__all__', ()))
-
+_BASE_ALL = tuple(globals().get("__all__", ()))
 
 
 _legacy_download_source = download_source
+
 
 def download_source(url: str, source: Path) -> dict[str, Any]:
     source = Path(source)
     url_video_id = _url_video_id(str(url))
     if not url_video_id:
-        raise RuntimeError(
-            "Источник должен быть канонической ссылкой на один YouTube-ролик."
-        )
+        raise RuntimeError("Источник должен быть канонической ссылкой на один YouTube-ролик.")
     project_video_id = _project_request_video_id(source)
     if project_video_id and project_video_id != url_video_id:
         raise RuntimeError(
@@ -268,9 +258,7 @@ def download_source(url: str, source: Path) -> dict[str, Any]:
         )
     return _legacy_download_source(str(url), source)
 
+
 download_source = download_source
 
-__all__ = sorted(
-    set(_BASE_ALL)
-    | {"download_source"}
-)
+__all__ = sorted(set(_BASE_ALL) | {"download_source"})

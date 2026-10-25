@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Small bounded dict-compatible LRU for long-lived process caches."""
+
 from __future__ import annotations
 
 from collections import OrderedDict

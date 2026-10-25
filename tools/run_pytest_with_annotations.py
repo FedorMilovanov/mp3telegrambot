@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Run pytest and emit GitHub Actions annotations for failed node ids."""
+
 from __future__ import annotations
 
 import os
@@ -13,12 +14,7 @@ _FAILED_RE = re.compile(r"^FAILED\s+([^\s]+?)(?:\s+-\s+.*)?$", re.MULTILINE)
 
 def _escape(value: str) -> str:
     return (
-        str(value)
-        .replace("%", "%25")
-        .replace("\r", "%0D")
-        .replace("\n", "%0A")
-        .replace(":", "%3A")
-        .replace(",", "%2C")
+        str(value).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A").replace(":", "%3A").replace(",", "%2C")
     )
 
 

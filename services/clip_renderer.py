@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Owned long-clip renderer with explicit silence-snap policy and bounds."""
+
 from __future__ import annotations
 
 import asyncio
@@ -61,11 +62,7 @@ async def render_clip(
     try:
         start = float(start_seconds)
         end = float(end_seconds)
-        ceiling = (
-            float(silence_snap_max_end)
-            if silence_snap_max_end is not None
-            else None
-        )
+        ceiling = float(silence_snap_max_end) if silence_snap_max_end is not None else None
     except (TypeError, ValueError, OverflowError):
         logger.warning("render_clip: invalid boundaries")
         return False
@@ -131,14 +128,8 @@ async def render_clip(
         if duration <= 0.0:
             return False
 
-        encoder, _, preset = await await_owned_coroutine(
-            asyncio.to_thread(_get_video_encoder)
-        )
-        quality = (
-            ["-rc", "vbr", "-cq", "22"]
-            if encoder == "h264_nvenc"
-            else ["-crf", "22"]
-        )
+        encoder, _, preset = await await_owned_coroutine(asyncio.to_thread(_get_video_encoder))
+        quality = ["-rc", "vbr", "-cq", "22"] if encoder == "h264_nvenc" else ["-crf", "22"]
         command = [
             ffmpeg,
             "-ss",

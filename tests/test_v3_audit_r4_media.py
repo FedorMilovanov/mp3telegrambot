@@ -5,6 +5,7 @@ source_url, livedub QA temp-file leak, parse_mmss 3-digit minutes,
 shorts workdir reuse, eng_subtitles rc/.part, montage NameError, VK
 groups.getById format/token.
 """
+
 import ast
 import sys
 from pathlib import Path
@@ -65,14 +66,12 @@ def test_shorts_workdir_reuse_validates_video_stream():
     implementation = next(
         node
         for node in tree.body
-        if isinstance(node, ast.AsyncFunctionDef)
-        and node.name == "_unowned_download_video_for_shorts"
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "_unowned_download_video_for_shorts"
     )
     public_wrapper = next(
         node
         for node in tree.body
-        if isinstance(node, ast.AsyncFunctionDef)
-        and node.name == "download_video_for_shorts"
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "download_video_for_shorts"
     )
     reuse = ast.get_source_segment(src, implementation) or ""
     wrapper = ast.get_source_segment(src, public_wrapper) or ""
@@ -99,10 +98,7 @@ def test_montage_temp_vars_initialized_before_try():
     src = Path("services/render_clips_montage.py").read_text(encoding="utf-8")
     tree = ast.parse(src)
     function = next(
-        node
-        for node in tree.body
-        if isinstance(node, ast.AsyncFunctionDef)
-        and node.name == "render_montage_short"
+        node for node in tree.body if isinstance(node, ast.AsyncFunctionDef) and node.name == "render_montage_short"
     )
     first_try = next(node for node in function.body if isinstance(node, ast.Try))
 
@@ -110,10 +106,7 @@ def test_montage_temp_vars_initialized_before_try():
         node
         for node in function.body
         if isinstance(node, ast.Assign)
-        and any(
-            isinstance(target, ast.Name) and target.id == "temp_parts"
-            for target in node.targets
-        )
+        and any(isinstance(target, ast.Name) and target.id == "temp_parts" for target in node.targets)
     )
     concat_path = next(
         node
@@ -126,10 +119,7 @@ def test_montage_temp_vars_initialized_before_try():
         node
         for node in function.body
         if isinstance(node, ast.Assign)
-        and any(
-            isinstance(target, ast.Name) and target.id == "stale_parts"
-            for target in node.targets
-        )
+        and any(isinstance(target, ast.Name) and target.id == "stale_parts" for target in node.targets)
     )
     preclean = next(
         node

@@ -6,7 +6,7 @@ import subprocess
 import sys
 
 
-SCRIPT = r'''
+SCRIPT = r"""
 from __future__ import annotations
 
 import hashlib
@@ -98,7 +98,7 @@ with tempfile.TemporaryDirectory() as raw:
     assert "direct_surgical_guard" not in entrypoint
 
 print("source-owned final audit contracts: 8 checks passed")
-'''
+"""
 
 
 def test_final_direct_audit_contracts_in_isolated_process() -> None:

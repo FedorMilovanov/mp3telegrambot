@@ -5,6 +5,7 @@ The official server is an MTProto/TDLib client.  A Python SOCKS proxy can keep
 cloud Bot API requests working while the separate telegram-bot-api.exe process
 still has no system route to Telegram data centres.
 """
+
 from __future__ import annotations
 
 import os
@@ -44,8 +45,7 @@ def _classify(tail: str, route_ok: bool, proxy: str) -> str:
         return "процесс не может записывать рабочую папку Local Bot API"
     if any(token in low for token in ("409", "conflict", "logged out", "another bot api")):
         return (
-            "бот остался зарегистрирован на другом Bot API сервере; перед переходом "
-            "на local требуется облачный logOut"
+            "бот остался зарегистрирован на другом Bot API сервере; перед переходом на local требуется облачный logOut"
         )
     if not route_ok and proxy:
         return (

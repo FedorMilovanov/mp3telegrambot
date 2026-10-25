@@ -23,13 +23,9 @@ def _flat(node):
 
 
 def test_patch21_common_live_typos_and_strange_fire_title():
-    text = (
-        "Стину Лоусону, душевпопечение, авторитет Слово Божьего, "
-        "МакАртора, епифанита, Странный огонь"
-    )
+    text = "Стину Лоусону, душевпопечение, авторитет Слово Божьего, МакАртора, епифанита, Странный огонь"
     assert normalize_common_typos(text) == (
-        "Стиву Лоусону, душепопечение, авторитет Слова Божьего, "
-        "МакАртура, Епафродита, Чуждый огонь"
+        "Стиву Лоусону, душепопечение, авторитет Слова Божьего, МакАртура, Епафродита, Чуждый огонь"
     )
 
 
@@ -91,9 +87,10 @@ def test_patch21_telegraph_postprocess_applies_third_person_and_source_safety():
 
 
 def test_patch21_source_map_normalizer_prefers_original_titles():
-    assert normalize_source_map_text(
-        "• Джон МакАртур, Чуждый огонь (John MacArthur, Strange Fire)."
-    ) == "**Чуждый огонь**, Джон МакАртур (Strange Fire, John MacArthur)."
+    assert (
+        normalize_source_map_text("• Джон МакАртур, Чуждый огонь (John MacArthur, Strange Fire).")
+        == "**Чуждый огонь**, Джон МакАртур (Strange Fire, John MacArthur)."
+    )
     assert normalize_source_map_text(
         "• Кевин ДеЯнг, Грег Гилберт, Greg Gilbert, What Is the Mission of the Church?."
     ).startswith("**What Is the Mission")

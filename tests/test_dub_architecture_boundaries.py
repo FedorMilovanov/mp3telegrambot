@@ -47,12 +47,8 @@ class _ProductionDeterministicBackend(DeterministicSpeechBackend):
 
 
 def test_reference_strategy_is_selected_by_backend_not_generic_runtime():
-    assert reference_strategy_for_backend("voxcpm2").strategy_id == (
-        "voxcpm2-extended-composite"
-    )
-    assert reference_strategy_for_backend("deterministic-ci").strategy_id == (
-        "no-reference"
-    )
+    assert reference_strategy_for_backend("voxcpm2").strategy_id == ("voxcpm2-extended-composite")
+    assert reference_strategy_for_backend("deterministic-ci").strategy_id == ("no-reference")
 
 
 def test_media_master_is_not_owned_by_speech_backend(tmp_path: Path):
@@ -92,9 +88,7 @@ def test_preflight_plan_consumes_backend_model_and_media_contracts(
         display_name="Deterministic production fixture",
         model_family="deterministic-contract-fixture",
         model_revision="fixture-v1",
-        option_specs=(
-            ModelOptionSpec("sample_rate", "int", 22050, minimum=8000, maximum=96000),
-        ),
+        option_specs=(ModelOptionSpec("sample_rate", "int", 22050, minimum=8000, maximum=96000),),
         backend_defaults={"deterministic_archive": str(tmp_path)},
         backend_override_keys=("deterministic_archive",),
     )

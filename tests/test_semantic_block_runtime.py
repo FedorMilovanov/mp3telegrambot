@@ -44,15 +44,11 @@ def test_one_full_candidate_unit_keeps_original_subtitle_cues() -> None:
 
 
 def test_direct_entrypoint_uses_block_runtime_and_not_phrase_runtime() -> None:
-    source = (ROOT / "tools" / "voxcpm2" / "generic_direct_runtime.py").read_text(
-        encoding="utf-8"
-    )
+    source = (ROOT / "tools" / "voxcpm2" / "generic_direct_runtime.py").read_text(encoding="utf-8")
     assert "semantic_block_runtime.group_ready_srt" in source
     assert "semantic_block_runtime.build_direct_segments(" in source
     assert "generic_clean_direct_runtime" not in source
-    core = (ROOT / "tools" / "voxcpm2" / "clean_production_core.py").read_text(
-        encoding="utf-8"
-    )
+    core = (ROOT / "tools" / "voxcpm2" / "clean_production_core.py").read_text(encoding="utf-8")
     assert "semantic_block_runtime.build_direct_segments(" in core
 
 
@@ -87,9 +83,7 @@ def test_previous_block_is_optional_prompt_context_when_backend_exposes_it(tmp_p
 
 
 def test_direct_policy_disables_source_prosody_ranking_input() -> None:
-    source = (ROOT / "tools" / "voxcpm2" / "direct_max_quality_cli.py").read_text(
-        encoding="utf-8"
-    )
+    source = (ROOT / "tools" / "voxcpm2" / "direct_max_quality_cli.py").read_text(encoding="utf-8")
     assert "source_prosody_policy.ranking_view(display_segment)" in source
     assert 'match["source_prosody_ranking_enabled"] = False' in source
     assert 'match["source_prosody_policy"] = source_prosody_policy.POLICY' in source

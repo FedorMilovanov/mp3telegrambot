@@ -92,18 +92,19 @@ def _install_known_clients(monkeypatch, domains: list[str]):
 
 
 def test_shared_project_scope_detector_is_conservative() -> None:
-    assert quota_domains.is_project_scoped_quota_error(
-        _ServiceError(
-            429,
-            "RESOURCE_EXHAUSTED: GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+    assert (
+        quota_domains.is_project_scoped_quota_error(
+            _ServiceError(
+                429,
+                "RESOURCE_EXHAUSTED: GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+            )
         )
-    ) is True
-    assert quota_domains.is_project_scoped_quota_error(
-        _ServiceError(429, "RESOURCE_EXHAUSTED")
-    ) is False
-    assert quota_domains.is_project_scoped_quota_error(
-        _ServiceError(503, "UNAVAILABLE high demand PerProject")
-    ) is False
+        is True
+    )
+    assert quota_domains.is_project_scoped_quota_error(_ServiceError(429, "RESOURCE_EXHAUSTED")) is False
+    assert (
+        quota_domains.is_project_scoped_quota_error(_ServiceError(503, "UNAVAILABLE high demand PerProject")) is False
+    )
 
 
 def test_global_route_skips_known_same_domain_after_project_scoped_429(monkeypatch) -> None:
@@ -215,9 +216,7 @@ def test_503_budget_semantics_remain_same_client_retry_then_rotate(monkeypatch) 
 
 def test_response_validator_rotates_semantic_rejection_within_global_budget(monkeypatch) -> None:
     _install_capacity_stubs(monkeypatch)
-    first, second, third = _install_known_clients(
-        monkeypatch, ["domain-a", "domain-a", "domain-b"]
-    )
+    first, second, third = _install_known_clients(monkeypatch, ["domain-a", "domain-a", "domain-b"])
     calls: list[str] = []
 
     async def fn(client):
@@ -238,9 +237,7 @@ def test_response_validator_rotates_semantic_rejection_within_global_budget(monk
 
 def test_response_validator_cannot_expand_global_retry_budget(monkeypatch) -> None:
     _install_capacity_stubs(monkeypatch)
-    clients = _install_known_clients(
-        monkeypatch, ["domain-a", "domain-b", "domain-c", "domain-d"]
-    )
+    clients = _install_known_clients(monkeypatch, ["domain-a", "domain-b", "domain-c", "domain-d"])
     calls: list[str] = []
 
     async def fn(client):

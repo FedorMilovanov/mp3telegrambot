@@ -4,6 +4,7 @@
 The cache is request-agnostic. Progress messages are passed explicitly and no
 ContextVar, installer or runtime rebinding is used.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -61,9 +62,7 @@ def _sha256_file(path: Path) -> str:
 
 
 def _cache_key(url: str, media_id: str) -> str:
-    data = f"{str(media_id).strip()}\0{str(url).strip()}".encode(
-        "utf-8", errors="replace"
-    )
+    data = f"{str(media_id).strip()}\0{str(url).strip()}".encode("utf-8", errors="replace")
     return hashlib.sha256(data).hexdigest()[:24]
 
 
@@ -214,9 +213,7 @@ async def _cached_analysis_audio(
             return None
         if not factory_audio_probe_is_usable(await probe_media_async(cached)):
             return None
-        ephemeral = DOWNLOAD_DIR / (
-            f"{media_id}_factory_retry_{uuid.uuid4().hex[:10]}{cached.suffix.lower()}"
-        )
+        ephemeral = DOWNLOAD_DIR / (f"{media_id}_factory_retry_{uuid.uuid4().hex[:10]}{cached.suffix.lower()}")
         await asyncio.to_thread(copy_or_link, cached, ephemeral)
         logger.info(
             "Shorts Factory retry cache hit media_id=%s file=%s verified_duration=%.3fs",
@@ -342,13 +339,11 @@ async def download_factory_audio_with_retry_cache(
         verified_duration = await measure_factory_audio_duration(prepared)
         expected = float(expected_duration or 0.0)
         integrity_ok = factory_audio_probe_is_usable(probe) and (
-            expected <= 0
-            or factory_duration_matches(verified_duration, expected)
+            expected <= 0 or factory_duration_matches(verified_duration, expected)
         )
         if not integrity_ok:
             raise RuntimeError(
-                "Factory retry-cache write failed and prepared analysis audio "
-                "did not pass mandatory re-verification"
+                "Factory retry-cache write failed and prepared analysis audio did not pass mandatory re-verification"
             ) from exc
         logger.warning(
             "Factory retry-cache storage failed after media re-verification; "

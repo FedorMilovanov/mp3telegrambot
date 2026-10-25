@@ -38,19 +38,21 @@ def test_combined_pages_publish_with_page_prefix_and_quality_size_guard():
     src = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
     assert "COMBINED_STUDY_REFLECTION_MAX_PROMPT_CHARS" in src
     assert "prompt too large for quality-first mode" in src
-    assert "full_page_title = f\"{page_prefix}{_sep}{tg_title}\"" in src
+    assert 'full_page_title = f"{page_prefix}{_sep}{tg_title}"' in src
     assert "full_page_title," in src
 
 
 def test_content_audit_removes_channel_position_and_material_wording():
-    sections = [{
-        "title": "Лексика",
-        "content": (
-            "Канал занимает позицию цессационизма, основываясь на реформатской традиции. "
-            "В материале этот термин рассматривается в контексте проверки пророчества. "
-            "Материал критикует ошибочное пророчество."
-        ),
-    }]
+    sections = [
+        {
+            "title": "Лексика",
+            "content": (
+                "Канал занимает позицию цессационизма, основываясь на реформатской традиции. "
+                "В материале этот термин рассматривается в контексте проверки пророчества. "
+                "Материал критикует ошибочное пророчество."
+            ),
+        }
+    ]
     out, _, issues = audit_expanded_sections(sections, label="StudyAnalysis")
     text = out[0]["content"]
     assert "Канал занимает" not in text
@@ -68,9 +70,22 @@ def test_structured_block_aliases_render_without_schema_warnings():
         "content": "fallback",
         "blocks": [
             {"type": "quote", "quote": "«Проверьте пророков»"},
-            {"type": "lexical_analysis", "lemma": "προφητεία", "role_in_argument": "Показывает стандарт истинного пророчества."},
-            {"type": "theological_line", "title_original": "Цессационистский аргумент", "why_relevant": "Показывает достаточность Писания."},
-            {"type": "scripture", "ref": "Втор. 18:22", "quote": "если слово не сбудется", "role_in_argument": "Текст задаёт критерий проверки."},
+            {
+                "type": "lexical_analysis",
+                "lemma": "προφητεία",
+                "role_in_argument": "Показывает стандарт истинного пророчества.",
+            },
+            {
+                "type": "theological_line",
+                "title_original": "Цессационистский аргумент",
+                "why_relevant": "Показывает достаточность Писания.",
+            },
+            {
+                "type": "scripture",
+                "ref": "Втор. 18:22",
+                "quote": "если слово не сбудется",
+                "role_in_argument": "Текст задаёт критерий проверки.",
+            },
         ],
     }
     out, _, issues = audit_expanded_sections([section], label="StudyAnalysis")
@@ -97,6 +112,7 @@ def test_prompts_ban_channel_position_and_bare_key_texts():
 
 def test_error_heading_cross_is_moved_after_full_heading():
     from converters.md_telegraph import _postprocess_telegraph_nodes
+
     nodes = [{"tag": "p", "children": ["**Внутренний свет** ❌ **как высший авторитет .**"]}]
     flat = _flat(_postprocess_telegraph_nodes(nodes))
     assert "Внутренний свет" in flat
@@ -107,18 +123,24 @@ def test_error_heading_cross_is_moved_after_full_heading():
 
 def test_source_cards_are_title_first_with_original_parenthetical():
     from core.source_titles import normalize_source_card_line
+
     assert normalize_source_card_line("• John MacArthur, Strange Fire") == (
         "**Чуждый огонь**, Джон МакАртур (Strange Fire, John MacArthur)."
     )
 
 
-
 def test_scripture_text_only_block_is_not_lost_or_warned():
     from core.content_audit import audit_expanded_sections
+
     section = {
         "title": "Ключевые тексты",
         "content": "fallback",
-        "blocks": [{"type": "scripture", "text": "**2 Тимофею 3:16:** *«Всё Писание богодухновенно»*\n\nЭтот текст задаёт стандарт авторитета."}],
+        "blocks": [
+            {
+                "type": "scripture",
+                "text": "**2 Тимофею 3:16:** *«Всё Писание богодухновенно»*\n\nЭтот текст задаёт стандарт авторитета.",
+            }
+        ],
     }
     out, _, issues = audit_expanded_sections([section], label="StudyAnalysis")
     assert not any(i.code == "block_schema_warning" for i in issues)
@@ -144,6 +166,7 @@ def test_synopsis_prompt_demands_transcript_like_fidelity_and_inline_anchors():
 
 def test_structured_schema_has_argument_and_application_blocks():
     from core.candidate_schema import expanded_page_response_schema
+
     schema = expanded_page_response_schema()
     enum = schema["properties"]["sections"]["items"]["properties"]["blocks"]["items"]["properties"]["type"]["enum"]
     for block_type in ("thesis", "argument_spine", "pull_quote", "application"):
@@ -157,6 +180,7 @@ def test_structured_schema_has_argument_and_application_blocks():
 
 def test_synopsis_density_audit_requires_inline_anchors_for_long_transcripts():
     from core.synopsis_quality import audit_synopsis_density, get_synopsis_density_profile
+
     assert get_synopsis_density_profile(3600).min_total_chars >= 8500
     sections = [{"title": f"S{i}", "time": f"{i * 5}:00", "content": "x" * 1000} for i in range(10)]
     issues = audit_synopsis_density(sections, 3600)
@@ -171,7 +195,12 @@ def test_new_structured_blocks_render_argument_spine_pull_quote_and_application(
             {"type": "thesis", "text": "Писание достаточно."},
             {"type": "argument_spine", "steps": ["Реформация", "квакеры", "Оуэн"]},
             {"type": "pull_quote", "quote": "Это сердце Реформации", "timestamp": "12:34"},
-            {"type": "application", "challenge": "Проверь внутренний голос", "anchor_timestamp": "52:00", "concrete_step": "Сверь решение с конкретным текстом Писания."},
+            {
+                "type": "application",
+                "challenge": "Проверь внутренний голос",
+                "anchor_timestamp": "52:00",
+                "concrete_step": "Сверь решение с конкретным текстом Писания.",
+            },
         ],
     }
     flat = _flat(_section_to_nodes_v2(section))

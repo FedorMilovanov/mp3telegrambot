@@ -134,9 +134,7 @@ def test_normal_preflight_passes_explicit_store_root_and_starts_runner_once(
     monkeypatch.setattr(
         worker,
         "_run_with_quality_restarts",
-        lambda _store, worker_id, job, _project: calls.append(
-            f"runner:{worker_id}:{job['id']}"
-        ),
+        lambda _store, worker_id, job, _project: calls.append(f"runner:{worker_id}:{job['id']}"),
     )
 
     worker.execute_job(store, "worker-1", _job())
@@ -216,9 +214,5 @@ def test_quality_failure_restarts_same_job_until_success(
 
     assert calls == [1, 2, 3]
     assert store.finished[-1]["status"] == "succeeded"
-    retries = [
-        item["stage"]
-        for item in store.progress
-        if item["stage"].startswith("quality-retry:")
-    ]
+    retries = [item["stage"] for item in store.progress if item["stage"].startswith("quality-retry:")]
     assert retries == ["quality-retry:1/3", "quality-retry:2/3"]

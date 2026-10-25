@@ -8,6 +8,7 @@ server gets the full bounded readiness interval, and cloud media fallback is
 forbidden. The historical main.py code remains only behind that mandatory gate
 for compatibility and is not the production source of truth.
 """
+
 from pathlib import Path
 
 from services.runtime_manifest import DEFAULT_RUNTIME_FEATURES, RuntimePhase
@@ -34,9 +35,9 @@ def test_required_readiness_window_is_bounded_and_defaults_to_five_minutes():
 
 
 def test_cloud_media_fallback_is_disabled_before_any_probe():
-    function = REQUIRED[REQUIRED.index("def require_local_bot_api"):]
+    function = REQUIRED[REQUIRED.index("def require_local_bot_api") :]
     assert function.index("_disable_cloud_transport()") < function.index("probe_runtime._probe_getme")
-    helper = REQUIRED[REQUIRED.index("def _disable_cloud_transport"):REQUIRED.index("def _mark_local_ready")]
+    helper = REQUIRED[REQUIRED.index("def _disable_cloud_transport") : REQUIRED.index("def _mark_local_ready")]
     assert 'os.environ["LOCAL_BOT_API_CLOUD_FALLBACK"] = "0"' in helper
     assert 'os.environ["CLOUD_MEDIA_AUTO_COMPRESS"] = "0"' in helper
     assert 'os.environ.pop("MP3BOT_EFFECTIVE_BOT_API", None)' in helper

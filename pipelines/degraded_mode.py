@@ -12,6 +12,7 @@
 * любая проблема на этом пути не должна ломать отправку mp3: деградация не
   превращается в ошибку.
 """
+
 from __future__ import annotations
 
 import logging
@@ -23,8 +24,7 @@ logger = logging.getLogger(__name__)
 
 #: Пометка в caption. Текст видит пользователь, поэтому он зафиксирован тестом.
 AI_UNAVAILABLE_WARNING = (
-    "Gemini 3.5 сейчас недоступен или исчерпана квота. "
-    "Отправляю MP3 без AI-конспектов, разбора и вопросов."
+    "Gemini 3.5 сейчас недоступен или исчерпана квота. Отправляю MP3 без AI-конспектов, разбора и вопросов."
 )
 
 #: Сколько символов субтитров просить у YouTube для таймкодов.
@@ -105,9 +105,7 @@ async def attach_transcript_timestamps(
         if not timestamps:
             return data
         lines = len([line for line in timestamps.split("\n") if line.strip()])
-        logger.info(
-            "Degraded mode: added %d transcript timestamp lines for %s", lines, media_id
-        )
+        logger.info("Degraded mode: added %d transcript timestamp lines for %s", lines, media_id)
         return {**data, "timestamps": timestamps, "_timestamps_source": "youtube_transcript"}
     except Exception as error:  # сеть, отсутствие субтитров, битый ответ
         logger.info(

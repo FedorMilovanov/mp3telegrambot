@@ -13,6 +13,7 @@
 непустой строки после него. Дубли ``*_latest.md`` запрещены отдельной проверкой
 (``--check`` падает): файл, который называется «последний», устаревает молча.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -166,9 +167,7 @@ def collect(docs: Path = DOCS) -> list[DocEntry]:
         if path == OUTPUT or path.name == OUTPUT.name and path.parent == docs:
             continue
         relative = _display(path)
-        title, summary = _title_and_summary(
-            path.read_text(encoding="utf-8", errors="replace"), fallback=path.stem
-        )
+        title, summary = _title_and_summary(path.read_text(encoding="utf-8", errors="replace"), fallback=path.stem)
         entries.append(DocEntry(relative, title, summary, _section_for(relative)))
     return entries
 
@@ -219,16 +218,12 @@ def check(entries: list[DocEntry], output: Path = OUTPUT) -> list[str]:
     problems: list[str] = []
     for entry in entries:
         if Path(entry.path).name.endswith("_latest.md"):
-            problems.append(
-                f"{entry.path}: имя оканчивается на _latest.md — переименуйте по области и дате"
-            )
+            problems.append(f"{entry.path}: имя оканчивается на _latest.md — переименуйте по области и дате")
     expected = render(entries)
     if not output.is_file():
         problems.append(f"{_display(output)} отсутствует — запустите без --check")
     elif output.read_text(encoding="utf-8") != expected:
-        problems.append(
-            f"{_display(output)} устарел — запустите `python tools/render_docs_index.py`"
-        )
+        problems.append(f"{_display(output)} устарел — запустите `python tools/render_docs_index.py`")
     return problems
 
 

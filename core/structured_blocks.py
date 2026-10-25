@@ -6,6 +6,7 @@ live models still return useful aliases (quote, blockquote, lexical_analysis,
 theological_line).  Keep alias handling in one deterministic place so audit and
 rendering do not drift.
 """
+
 from __future__ import annotations
 
 import re
@@ -116,6 +117,7 @@ def normalize_structured_block(raw: Any) -> dict[str, Any] | None:
         if not _clean(block.get("lemma")) and text:
             # Parse common model shape: **σάββατον** (*sabbaton*, греч.) — роль...
             import re as _re
+
             m = _re.match(r"^\*\*([^*]{1,80})\*\*\s*(?:\([^)]*\))?\s*[—-]\s*(.+)$", text)
             if m:
                 block["lemma"] = m.group(1).strip()

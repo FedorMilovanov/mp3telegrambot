@@ -10,6 +10,7 @@
 5. Navigation логировала «добавлена» при CONTENT_TOO_BIG без fallback.
 6. Промты: анти-вода/плотность мысли для Study и Reflection.
 """
+
 from pathlib import Path
 
 from converters.md_telegraph import _postprocess_telegraph_nodes
@@ -23,6 +24,7 @@ def _fix(text: str) -> str:
 
 
 # ── 1. Точка только ПОСЛЕ таймкода, одна ────────────────────────
+
 
 def test_double_period_around_timestamp_collapsed():
     assert _fix("к свободе. ⏱ 12:15.") == "к свободе ⏱ 12:15."
@@ -70,6 +72,7 @@ def test_correct_timestamp_untouched():
 
 # ── 2-3. Литеральный \n и полировка на всех путях ───────────────
 
+
 def test_literal_backslash_n_removed():
     assert _fix("первая мысль \\n вторая мысль") == "первая мысль вторая мысль"
 
@@ -87,6 +90,7 @@ def test_final_polish_applied_on_create_and_edit_paths():
 
 
 # ── 4. Кружки: длинные жирные шапки и заголовки без • ───────────
+
 
 def test_bullet_stripped_from_long_bold_card_headers():
     from converters.md_telegraph import _strip_card_bullets
@@ -107,19 +111,19 @@ def test_source_map_cards_keep_their_bullet():
     единственный маркер карточки и должен остаться."""
     from converters.md_telegraph import _section_to_nodes_v2
 
-    nodes = _section_to_nodes_v2({
-        "title": "Карта источников для дальнейшего изучения",
-        "content": "• **Чикагское заявление о безошибочности Писания (1978).**\n\nКлючевой документ.",
-    })
+    nodes = _section_to_nodes_v2(
+        {
+            "title": "Карта источников для дальнейшего изучения",
+            "content": "• **Чикагское заявление о безошибочности Писания (1978).**\n\nКлючевой документ.",
+        }
+    )
+
     def _txt(n):
         return "".join(
-            c if isinstance(c, str) else "".join(map(str, c.get("children", [])))
-            for c in n.get("children", [])
+            c if isinstance(c, str) else "".join(map(str, c.get("children", []))) for c in n.get("children", [])
         )
-    assert any(
-        isinstance(n, dict) and n.get("tag") == "p" and _txt(n).lstrip().startswith("•")
-        for n in nodes
-    )
+
+    assert any(isinstance(n, dict) and n.get("tag") == "p" and _txt(n).lstrip().startswith("•") for n in nodes)
 
 
 def test_section_titles_lose_leading_bullets():
@@ -128,6 +132,7 @@ def test_section_titles_lose_leading_bullets():
 
 
 # ── 5. Навигация честная: fallback + warning вместо ложного успеха ─
+
 
 def test_navigation_checks_edit_result():
     """Результат editPage проверяется, а не логируется «успех» безусловно.
@@ -163,8 +168,10 @@ def test_navigation_checks_edit_result():
 
 # ── 6. Промты: плотность мысли ──────────────────────────────────
 
+
 def test_study_prompt_has_density_layer():
     from core.prompts import STUDY_ANALYSIS_PROMPT as p
+
     assert "ПЛОТНОСТЬ МЫСЛИ" in p
     assert "УПУЩЕННЫЕ ВОЗМОЖНОСТИ НАУЧИТЬ" in p
     assert "глубинный ход" in p
@@ -172,6 +179,7 @@ def test_study_prompt_has_density_layer():
 
 def test_reflection_prompt_has_verifiable_application_rule():
     from core.prompts import REFLECTION_APPLICATION_PROMPT as p
+
     assert "БЕЗ СЛОВ РАДИ СЛОВ" in p
     assert "ПРОВЕРЯЕМЫМ" in p
     assert "Диагностика глубже симптомов" in p

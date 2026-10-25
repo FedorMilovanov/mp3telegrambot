@@ -32,10 +32,7 @@ def test_contract_validator_preserves_prompts_and_source_owns_study() -> None:
     assert "0–3 блока; отсутствие блока является нормальным результатом" in hardened
 
     telegraph = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
-    assert (
-        "from services.study_synthesis_policy import "
-        "TEACHERLY_STUDY_PROMPT as STUDY_ANALYSIS_PROMPT"
-    ) in telegraph
+    assert ("from services.study_synthesis_policy import TEACHERLY_STUDY_PROMPT as STUDY_ANALYSIS_PROMPT") in telegraph
 
 
 def test_hardened_study_prompt_is_idempotent_and_keeps_pair_cards() -> None:
@@ -99,13 +96,16 @@ def test_complete_word_study_becomes_contextual_russian_block() -> None:
 def test_incomplete_new_word_study_is_rejected() -> None:
     from services.conspect_quality_contract import normalize_word_study_block
 
-    assert normalize_word_study_block(
-        {
-            "type": "word_study",
-            "lemma": "spoudazō (σπουδάζω, греч.)",
-            "role_in_argument": "Исключает пассивность.",
-        }
-    ) is None
+    assert (
+        normalize_word_study_block(
+            {
+                "type": "word_study",
+                "lemma": "spoudazō (σπουδάζω, греч.)",
+                "role_in_argument": "Исключает пассивность.",
+            }
+        )
+        is None
+    )
 
 
 def test_expanded_schema_exposes_full_word_study_contract() -> None:
@@ -164,8 +164,7 @@ def test_live_typo_repair_is_anchored_and_deterministic() -> None:
     from core import text_utils
 
     source = (
-        "Слово Божьего — нструмент сохранения скелета. "
-        "Систематическая проповедь Слово Божьего — единственное средство."
+        "Слово Божьего — нструмент сохранения скелета. Систематическая проповедь Слово Божьего — единственное средство."
     )
     repaired = text_utils.normalize_common_typos(source)
 

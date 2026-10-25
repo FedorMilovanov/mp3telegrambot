@@ -59,9 +59,7 @@ def _write_valid_policy(path: Path) -> None:
     # rejected by YouTube GVS even with a valid token; yt-dlp's maintained
     # default clients like visionos need no token and yield the same bestaudio).
     path.write_text(
-        "--no-plugin-dirs\n"
-        f"--plugin-dirs {po.EXPECTED_PLUGIN_DIR}\n"
-        f'--extractor-args "{po.EXPECTED_BGUTIL_ROUTE}"\n',
+        f'--no-plugin-dirs\n--plugin-dirs {po.EXPECTED_PLUGIN_DIR}\n--extractor-args "{po.EXPECTED_BGUTIL_ROUTE}"\n',
         encoding="utf-8",
     )
 
@@ -75,8 +73,7 @@ def _write_provider_tree(provider: Path, *, marker: str | None = None) -> Path:
     plugin.mkdir(parents=True)
     (plugin / "getpot_bgutil.py").write_text("# ok", encoding="utf-8")
     (provider / ".mp3bot-bgutil-version").write_text(
-        marker
-        or f"{po.BGUTIL_EXPECTED_VERSION}@{po.BGUTIL_EXPECTED_COMMIT}\n",
+        marker or f"{po.BGUTIL_EXPECTED_VERSION}@{po.BGUTIL_EXPECTED_COMMIT}\n",
         encoding="utf-8",
     )
     return server
@@ -103,8 +100,7 @@ def test_ytdlp_policy_rejects_extra_plugin_root(tmp_path: Path) -> None:
 def test_ytdlp_policy_rejects_global_plugin_enablement(tmp_path: Path) -> None:
     policy = tmp_path / "yt-dlp.conf"
     policy.write_text(
-        f"--plugin-dirs {po.EXPECTED_PLUGIN_DIR}\n"
-        f'--extractor-args "{po.EXPECTED_BGUTIL_ROUTE}"\n',
+        f'--plugin-dirs {po.EXPECTED_PLUGIN_DIR}\n--extractor-args "{po.EXPECTED_BGUTIL_ROUTE}"\n',
         encoding="utf-8",
     )
 
@@ -163,8 +159,7 @@ def test_ytdlp_policy_rejects_manual_token_or_cookie_source(tmp_path: Path) -> N
 
     _write_valid_policy(policy)
     policy.write_text(
-        policy.read_text(encoding="utf-8")
-        + '--extractor-args "youtube:po_token=mweb.gvs+manual"\n',
+        policy.read_text(encoding="utf-8") + '--extractor-args "youtube:po_token=mweb.gvs+manual"\n',
         encoding="utf-8",
     )
     with pytest.raises(po.YouTubePoTokenRuntimeError, match="manual po_token"):
@@ -203,7 +198,7 @@ def test_provider_build_ignores_legacy_env_override_and_uses_policy_tree(
 
     assert po._require_provider_build() == canonical_server.resolve()
     source = Path("services/youtube_po_token_runtime.py").read_text(encoding="utf-8")
-    assert "os.getenv(\"BGUTIL_PROVIDER_HOME\"" not in source
+    assert 'os.getenv("BGUTIL_PROVIDER_HOME"' not in source
     assert "def _provider_home" not in source
 
 
@@ -220,18 +215,14 @@ def test_bgutil_probe_uses_exact_source_plugin_path(
         return SimpleNamespace(
             returncode=0,
             stdout=(
-                f"{po.BGUTIL_EXPECTED_VERSION}\n"
-                f"{plugin_root / 'yt_dlp_plugins' / 'extractor' / 'getpot_bgutil.py'}\n"
+                f"{po.BGUTIL_EXPECTED_VERSION}\n{plugin_root / 'yt_dlp_plugins' / 'extractor' / 'getpot_bgutil.py'}\n"
             ),
             stderr="",
         )
 
     monkeypatch.setattr(po.subprocess, "run", fake_run)
 
-    assert (
-        po._require_bgutil_module(plugin_root, po.BGUTIL_EXPECTED_VERSION)
-        == po.BGUTIL_EXPECTED_VERSION
-    )
+    assert po._require_bgutil_module(plugin_root, po.BGUTIL_EXPECTED_VERSION) == po.BGUTIL_EXPECTED_VERSION
 
     command = captured["command"]
     assert command[0] == po.sys.executable
@@ -317,10 +308,7 @@ def test_runtime_rejects_reintroduced_wpc_provider_with_exact_recovery(monkeypat
 
     message = str(caught.value)
     assert "browser-based" in message
-    assert (
-        ".\\.venv\\Scripts\\python.exe -m pip uninstall -y "
-        "yt-dlp-getpot-wpc nodriver"
-    ) in message
+    assert (".\\.venv\\Scripts\\python.exe -m pip uninstall -y yt-dlp-getpot-wpc nodriver") in message
     assert "Start Bot.bat" in message
 
 

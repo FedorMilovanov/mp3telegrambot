@@ -7,6 +7,7 @@ one-word windows are merged with a neighbouring phrase when that remains within
 the clean 5.4 second production limit. The ordered Russian token stream must be
 identical before and after normalization.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -45,11 +46,7 @@ def _sha256(path: Path) -> str:
 
 def _window(item: dict[str, Any], delay: float, duration: float) -> tuple[float, float]:
     segment_id = int(item["id"])
-    start_raw = (
-        item.get("original_srt_start")
-        if item.get("original_srt_start") is not None
-        else item.get("start", 0.0)
-    )
+    start_raw = item.get("original_srt_start") if item.get("original_srt_start") is not None else item.get("start", 0.0)
     start = max(
         0.0,
         strict_core._finite(start_raw, field=f"legacy segment[{segment_id}].start"),
@@ -79,10 +76,7 @@ def _validate_original(payload: list[Any]) -> list[dict[str, Any]]:
     seen: set[int] = set()
     for position, item in enumerate(payload, start=1):
         if not isinstance(item, dict):
-            raise RuntimeError(
-                f"legacy segment[{position}] должен быть JSON-объектом, "
-                f"получено {type(item).__name__}."
-            )
+            raise RuntimeError(f"legacy segment[{position}] должен быть JSON-объектом, получено {type(item).__name__}.")
         copied = dict(item)
         segment_id = strict_core._strict_int(
             copied.get("id"),
@@ -122,11 +116,7 @@ def _split_long(
         total = sum(weights)
         cursor = start
         for part_index, (part, weight) in enumerate(zip(parts, weights, strict=True)):
-            part_end = (
-                source_end
-                if part_index == len(parts) - 1
-                else cursor + window * weight / max(1, total)
-            )
+            part_end = source_end if part_index == len(parts) - 1 else cursor + window * weight / max(1, total)
             result.append(
                 {
                     **item,
@@ -214,9 +204,7 @@ def normalize(
     delay = delay_ms / 1000.0
     original_windows = [_window(item, delay, duration_value) for item in original]
 
-    normalized = _merge_tiny(
-        _split_long(original, delay=delay, duration=duration_value)
-    )
+    normalized = _merge_tiny(_split_long(original, delay=delay, duration=duration_value))
     normalized_tokens = _tokens(normalized)
     if original_tokens != normalized_tokens:
         raise RuntimeError("Чистая нормализация изменила русский текст; операция остановлена.")

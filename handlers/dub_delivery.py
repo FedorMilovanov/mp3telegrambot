@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Delivery commands and automatic result sender for Dub Studio projects."""
+
 from __future__ import annotations
 
 from core.media_title_policy import canonical_delivery_filename
@@ -93,14 +94,16 @@ def _dynamic_outputs(project: dict[str, Any], *, include_all_video: bool) -> lis
         if not video and suffix not in _DOCUMENT_SUFFIXES:
             continue
         filename = Path(str(spec.get("filename") or path.name)).name
-        rows.append({
-            "name": str(spec.get("name") or f"dynamic_{index}"),
-            "label": str(spec.get("label") or filename),
-            "path": path,
-            "filename": filename,
-            "primary": primary,
-            "video": video,
-        })
+        rows.append(
+            {
+                "name": str(spec.get("name") or f"dynamic_{index}"),
+                "label": str(spec.get("label") or filename),
+                "path": path,
+                "filename": filename,
+                "primary": primary,
+                "video": video,
+            }
+        )
     rows.sort(key=lambda item: (not item["primary"], not item["video"], item["name"]))
     return rows
 
@@ -128,14 +131,16 @@ def _recipe_outputs(project: dict[str, Any], *, include_all_video: bool) -> list
             continue
         if not is_video and suffix not in _DOCUMENT_SUFFIXES:
             continue
-        rows.append({
-            "name": str(name),
-            "label": str(spec.get("label") or name),
-            "path": path,
-            "filename": path.name,
-            "primary": is_primary,
-            "video": is_video,
-        })
+        rows.append(
+            {
+                "name": str(name),
+                "label": str(spec.get("label") or name),
+                "path": path,
+                "filename": path.name,
+                "primary": is_primary,
+                "video": is_video,
+            }
+        )
     rows.sort(key=lambda item: (not item["primary"], not item["video"], item["name"]))
     return rows
 

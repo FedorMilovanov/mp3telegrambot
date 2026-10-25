@@ -8,7 +8,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_uppercase_one_letter_conjunction_is_not_an_acronym() -> None:
-    assert canonical_media_title("Сила И Достоинство Благочестивой Женщины - Джон Пайпер") == "Сила и Достоинство Благочестивой Женщины - Джон Пайпер"
+    assert (
+        canonical_media_title("Сила И Достоинство Благочестивой Женщины - Джон Пайпер")
+        == "Сила и Достоинство Благочестивой Женщины - Джон Пайпер"
+    )
 
 
 def test_all_internal_russian_service_words_are_lowercase() -> None:
@@ -22,17 +25,27 @@ def test_acronyms_and_internal_case_are_preserved() -> None:
 
 
 def test_title_policy_preserves_semantic_punctuation() -> None:
-    assert canonical_media_title("Сомнение — Это Не Просто Слабость - Пол Вошер") == "Сомнение — Это не Просто Слабость - Пол Вошер"
-    assert canonical_media_title("Сомнение – Это Не Просто Слабость - Пол Вошер") == "Сомнение – Это не Просто Слабость - Пол Вошер"
+    assert (
+        canonical_media_title("Сомнение — Это Не Просто Слабость - Пол Вошер")
+        == "Сомнение — Это не Просто Слабость - Пол Вошер"
+    )
+    assert (
+        canonical_media_title("Сомнение – Это Не Просто Слабость - Пол Вошер")
+        == "Сомнение – Это не Просто Слабость - Пол Вошер"
+    )
 
 
 def test_historical_manifest_filename_is_fixed_without_rerender() -> None:
     filename = "Сила И Достоинство Благочестивой Женщины - Джон Пайпер — только русский голос.mp4"
-    assert canonical_delivery_filename(filename) == "Сила и Достоинство Благочестивой Женщины - Джон Пайпер — только русский голос.mp4"
+    assert (
+        canonical_delivery_filename(filename)
+        == "Сила и Достоинство Благочестивой Женщины - Джон Пайпер — только русский голос.mp4"
+    )
 
 
 def test_core_title_owner_calls_canonical_policy_directly() -> None:
     import core.text_utils as text_utils
+
     assert text_utils.title_case_fragment("the power of grace") == "The Power of Grace"
     assert text_utils.title_case_fragment("Сила И Достоинство") == "Сила и Достоинство"
     assert text_utils.title_case_fragment("Сомнение — Это Не Слабость") == "Сомнение — Это не Слабость"

@@ -24,13 +24,15 @@ def _flat(node):
 
 def test_scripture_quote_and_explanation_are_split():
     nodes = [
-        _p([
-            "• ",
-            {"tag": "b", "children": ["1 Коринфянам 1:26 – 28: "]},
-            " ",
-            {"tag": "i", "children": ["«Посмотрите, братия...»"]},
-            " Разбор социального состава коринфской общины служит доказательством Божьего метода.",
-        ])
+        _p(
+            [
+                "• ",
+                {"tag": "b", "children": ["1 Коринфянам 1:26 – 28: "]},
+                " ",
+                {"tag": "i", "children": ["«Посмотрите, братия...»"]},
+                " Разбор социального состава коринфской общины служит доказательством Божьего метода.",
+            ]
+        )
     ]
     out = _postprocess_telegraph_nodes(nodes)
     paragraphs = [n for n in out if isinstance(n, dict) and n.get("tag") == "p"]
@@ -51,7 +53,9 @@ def test_quote_first_bullet_becomes_bold_ref_micro_block():
 
 
 def test_bolded_quote_first_bullet_is_unwrapped_to_ref_first():
-    nodes = [_p(["• ", {"tag": "b", "children": ["«Безумное мира» ", {"tag": "i", "children": ["(1 Кор 1:27)"]}, "."]}])]
+    nodes = [
+        _p(["• ", {"tag": "b", "children": ["«Безумное мира» ", {"tag": "i", "children": ["(1 Кор 1:27)"]}, "."]}])
+    ]
     out = _postprocess_telegraph_nodes(nodes)
     p = out[0]
     assert p["children"][1]["tag"] == "b"
@@ -60,7 +64,9 @@ def test_bolded_quote_first_bullet_is_unwrapped_to_ref_first():
 
 
 def test_duplicate_space_after_bold_is_removed():
-    nodes = [_p(["• ", {"tag": "b", "children": ["Суверенная благодать в эффективном призвании. "]}, " Согласно 1689."])]
+    nodes = [
+        _p(["• ", {"tag": "b", "children": ["Суверенная благодать в эффективном призвании. "]}, " Согласно 1689."])
+    ]
     out = _postprocess_telegraph_nodes(nodes)
     assert _flat(out[0]) == "• Суверенная благодать в эффективном призвании. Согласно 1689."
     assert out[0]["children"][1]["children"] == ["Суверенная благодать в эффективном призвании."]
@@ -68,12 +74,14 @@ def test_duplicate_space_after_bold_is_removed():
 
 def test_study_prompt_requires_explanation_below_scripture_quote():
     from core.prompts import STUDY_ANALYSIS_PROMPT
+
     assert "разбор — отдельным абзацем ниже" in STUDY_ANALYSIS_PROMPT
     assert "НЕ сливай цитату и объяснение в одну строку" in STUDY_ANALYSIS_PROMPT
 
 
 def test_prompt_forbids_inline_explanation_after_quote():
     from core.prompts import STUDY_ANALYSIS_PROMPT
+
     assert "объяснение сразу после цитаты в той же строке" in STUDY_ANALYSIS_PROMPT
 
 
@@ -87,9 +95,10 @@ def test_audio_prompt_main_topic_bans_pompous_author_labels():
 
 def test_audio_prompt_json_example_no_third_person_main_topic():
     from core.prompts import build_audio_analysis_prompt
+
     prompt = build_audio_analysis_prompt("T", "", "60:00", 3600, mode="deep")
     example_pos = prompt.find('"main_topic"')
-    example = prompt[example_pos:example_pos + 260]
+    example = prompt[example_pos : example_pos + 260]
     assert "МакАртур задаёт" not in example
     assert "Он вскрывает" not in example
     assert "Что если" in example or "Материал вскрывает" in example

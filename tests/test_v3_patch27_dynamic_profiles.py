@@ -27,20 +27,38 @@ def test_expanded_analysis_profiles_scale_by_duration_and_kind():
 def test_study_and_reflection_prompts_accept_profile_through_synopsis_context():
     profile = get_expanded_analysis_profile(3700, "study").prompt_block("study")
     study = STUDY_ANALYSIS_PROMPT.format(
-        title="T", author="A", duration="1:01:40", format_name="sermon",
-        hermeneutic_method="expository", main_topic="m", analysis_summary="a",
-        argument_arc="arc", key_categories="k", timestamps="0:00 t",
-        concepts="c", scripture="s", translations="tr", lexicon_notes="l",
-        synopsis_context=profile, source_pack="sources",
+        title="T",
+        author="A",
+        duration="1:01:40",
+        format_name="sermon",
+        hermeneutic_method="expository",
+        main_topic="m",
+        analysis_summary="a",
+        argument_arc="arc",
+        key_categories="k",
+        timestamps="0:00 t",
+        concepts="c",
+        scripture="s",
+        translations="tr",
+        lexicon_notes="l",
+        synopsis_context=profile,
+        source_pack="sources",
     )
     assert "ПРОФИЛЬ ГЛУБИНЫ ДЛЯ ЭТОГО МАТЕРИАЛА" in study
     assert "Профиль: deep" in study
 
     refl_profile = get_expanded_analysis_profile(600, "reflection").prompt_block("reflection")
     reflection = REFLECTION_APPLICATION_PROMPT.format(
-        title="T", author="A", duration="10:00", hermeneutic_method="mixed",
-        main_topic="m", analysis_summary="a", argument_arc="arc",
-        key_categories="k", questions_block="- q", timestamps_block="- 0:00 t",
+        title="T",
+        author="A",
+        duration="10:00",
+        hermeneutic_method="mixed",
+        main_topic="m",
+        analysis_summary="a",
+        argument_arc="arc",
+        key_categories="k",
+        questions_block="- q",
+        timestamps_block="- 0:00 t",
         synopsis_context=refl_profile,
     )
     assert "ПРОФИЛЬ ГЛУБИНЫ ДЛЯ ЭТОГО МАТЕРИАЛА" in reflection

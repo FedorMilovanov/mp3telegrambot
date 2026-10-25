@@ -7,6 +7,7 @@ frame area before measuring motion: this suppresses codec noise, film grain and
 small decorative particles without mistaking ordinary talking-head movement for
 a still image.
 """
+
 from __future__ import annotations
 
 import logging
@@ -149,11 +150,7 @@ def _classify_static_metrics(
     enough_samples = len(values) >= min_samples
 
     frozen_and_quiet = (
-        enough_samples
-        and freeze_ratio >= freeze_min
-        and med <= median_max
-        and p90 <= p90_max
-        and p98 <= p98_max
+        enough_samples and freeze_ratio >= freeze_min and med <= median_max and p90 <= p90_max and p98 <= p98_max
     )
     ultra_still = enough_samples and med <= ultra_median and p90 <= ultra_p90
     is_static = bool(frozen_and_quiet or ultra_still)
@@ -242,9 +239,7 @@ async def _run_motion_probe(
         "-",
     ]
 
-    proc = await run_cancellable_process(
-        cmd, timeout=45, text=True
-    )
+    proc = await run_cancellable_process(cmd, timeout=45, text=True)
     output = (proc.stdout or "") + "\n" + (proc.stderr or "")
     if proc.returncode != 0:
         raise RuntimeError(f"ffmpeg rc={proc.returncode}: {(proc.stderr or '')[-240:]}")
@@ -258,8 +253,7 @@ async def _run_motion_probe(
 
 def _log_probe(start: float, probe: float, is_static: bool, metrics: dict[str, float | int | str]) -> None:
     logger.info(
-        "Short visual probe: %s at %.1fs probe=%.1fs freeze=%s "
-        "YDIF median=%s p90=%s p98=%s samples=%s reason=%s",
+        "Short visual probe: %s at %.1fs probe=%.1fs freeze=%s YDIF median=%s p90=%s p98=%s samples=%s reason=%s",
         "static" if is_static else "moving/uncertain",
         start,
         probe,

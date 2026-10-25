@@ -7,14 +7,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MASTER = (
-    ROOT
-    / "tools"
-    / "voxcpm2"
-    / "examples"
-    / "john_piper_z20py4yqhyq"
-    / "master_constant_mix.py"
-)
+MASTER = ROOT / "tools" / "voxcpm2" / "examples" / "john_piper_z20py4yqhyq" / "master_constant_mix.py"
 
 
 def test_master_runs_by_absolute_path_without_pythonpath(tmp_path: Path) -> None:

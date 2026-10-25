@@ -12,6 +12,7 @@ lock'ом, где уже были ``pytest 9.1.1`` и ``yt-dlp 2026.10.21``. Н�
 * в workflow нет собственных пинов вида ``pkg==X.Y``;
 * lock остаётся единственным местом, где живёт версия.
 """
+
 from __future__ import annotations
 
 import re

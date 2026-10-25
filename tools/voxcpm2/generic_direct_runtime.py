@@ -6,6 +6,7 @@ This mode treats the uploaded Russian SRT as final editorial copy. Gemini is
 used only for a lightweight Russian output filename; it never reviews,
 rewrites, shortens, or translates the user's text.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -42,6 +43,7 @@ from tools.voxcpm2.generic_project_runtime import (
 
 
 CLEAN_DIRECT_ROUTE_POLICY = "source-owned-clean-direct-v1"
+
 
 def _read_json_value(path: Path) -> Any:
     if not path.is_file():
@@ -312,6 +314,7 @@ def _run_speech_and_master(
             raise RuntimeError(f"Прямой VoxCPM2 renderer: {detail}") from exc
         raise
 
+
 _TAG_RE = re.compile(r"<[^>]+>")
 _TIMING_RE = re.compile(
     r"^\s*(?P<start>\d{1,2}:\d{2}:\d{2}[,.]\d{1,3})\s*-->\s*"
@@ -385,10 +388,7 @@ def normalize_srt_cues(
         text = str(cue.text).strip()
 
         if start >= duration:
-            raise RuntimeError(
-                f"Реплика SRT #{number} начинается после конца видео "
-                f"({start:.3f} >= {duration:.3f})."
-            )
+            raise RuntimeError(f"Реплика SRT #{number} начинается после конца видео ({start:.3f} >= {duration:.3f}).")
         if end <= start:
             end = min(duration, start + 0.35)
             adjustments.append(f"#{number}: слишком короткий интервал расширен технически.")
@@ -455,11 +455,7 @@ def group_srt_cues(
         current_duration = current[-1].end - current[0].start
         sentence_end = bool(re.search(r"[.!?…][\"')\]]?$", current[-1].text.rstrip()))
 
-        if (
-            gap > 1.15
-            or prospective > max_seconds
-            or (sentence_end and current_duration >= target_seconds * 0.68)
-        ):
+        if gap > 1.15 or prospective > max_seconds or (sentence_end and current_duration >= target_seconds * 0.68):
             flush()
             current = [cue]
         else:
@@ -470,10 +466,7 @@ def group_srt_cues(
     if len(groups) >= 2:
         tail = groups[-1]
         previous = groups[-2]
-        if (
-            tail["end"] - tail["start"] < 2.2
-            and tail["end"] - previous["start"] <= max_seconds * 1.20
-        ):
+        if tail["end"] - tail["start"] < 2.2 and tail["end"] - previous["start"] <= max_seconds * 1.20:
             groups[-2] = {
                 "id": previous["id"],
                 "start": previous["start"],
@@ -485,7 +478,6 @@ def group_srt_cues(
     for index, group in enumerate(groups, start=1):
         group["id"] = index
     return groups
-
 
 
 def _build_direct_segments(

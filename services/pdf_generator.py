@@ -55,9 +55,7 @@ from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 try:
     import requests
 except ImportError:
-    raise ImportError(
-        "pdf_generator requires 'requests': pip install requests"
-    ) from None
+    raise ImportError("pdf_generator requires 'requests': pip install requests") from None
 
 logger = logging.getLogger(__name__)
 
@@ -75,22 +73,20 @@ _BIBLE_BOOKS_PATTERN = (
     r"Кол|Евр|Флм|Тит)"
     r")"
 )
-_BIBLE_REF_BEFORE_TC_RE = re.compile(
-    _BIBLE_BOOKS_PATTERN + r"\.?\s*\d*\s*$"
-)
+_BIBLE_REF_BEFORE_TC_RE = re.compile(_BIBLE_BOOKS_PATTERN + r"\.?\s*\d*\s*$")
 
 _STRIP_INVISIBLE_RE = re.compile(
     "["
-    "\U0001F300-\U0001FAFF"
-    "\u2600-\u27BF"
-    "\u2300-\u23FF"
-    "\u25A0-\u25FF"
-    "\u2460-\u24FF"
-    "\u200B-\u200D"
-    "\uFE0E-\uFE0F"
-    "\u205F-\u2060"
+    "\U0001f300-\U0001faff"
+    "\u2600-\u27bf"
+    "\u2300-\u23ff"
+    "\u25a0-\u25ff"
+    "\u2460-\u24ff"
+    "\u200b-\u200d"
+    "\ufe0e-\ufe0f"
+    "\u205f-\u2060"
     "\u2066-\u2069"
-    "\u00AD"
+    "\u00ad"
     "]",
     flags=re.UNICODE,
 )
@@ -102,9 +98,7 @@ _TIMECODE_RE = re.compile(r"(\d{1,2}:\d{2}(?::\d{2})?)")
 # _normalize_spaces
 _RE_MULTI_SPACE = re.compile(r"[ \t]{2,}")
 _RE_SPACE_BEFORE_PUNCT = re.compile(r"\s+([,.;:!?])")
-_RE_PUNCT_GLUE = re.compile(
-    r'([,.;:!?\u00BB"\u201D\)])([А-Яа-яЁёA-Za-z])'
-)
+_RE_PUNCT_GLUE = re.compile(r'([,.;:!?\u00BB"\u201D\)])([А-Яа-яЁёA-Za-z])')
 _RE_PAREN_OPEN = re.compile(r"([А-Яа-яЁёA-Za-z0-9])\(")
 _RE_PAREN_CLOSE = re.compile(r"\)([А-Яа-яЁёA-Za-z])")
 _RE_EM_DASH = re.compile(r"\s*—\s*")
@@ -116,9 +110,7 @@ _PREPS = (
     r"и|в|к|с|о|а|у|на|не|но|за|из|об|от|по|до"
     r"|без|для|при|над|под|или|что|как|так"
 )
-_GLUED_WORDS_RE = re.compile(
-    rf"(?<![а-яёА-ЯЁa-zA-Z])({_PREPS})([А-ЯЁ][а-яё])"
-)
+_GLUED_WORDS_RE = re.compile(rf"(?<![а-яёА-ЯЁa-zA-Z])({_PREPS})([А-ЯЁ][а-яё])")
 
 # Heading cleanup
 _HEADING_BOILERPLATE = (
@@ -128,9 +120,7 @@ _HEADING_BOILERPLATE = (
     "Digital Reading Edition",
 )
 _RE_MULTI_SPACE_SIMPLE = re.compile(r"\s{2,}")
-_RE_TRAILING_PREP = re.compile(
-    r"\s+(?:и|а|но|или|да|с|в|к|на|по|за|из|о|об)\s*$"
-)
+_RE_TRAILING_PREP = re.compile(r"\s+(?:и|а|но|или|да|с|в|к|на|по|за|из|о|об)\s*$")
 
 # Href parsing — два regex для точного матча кавычек
 _HREF_DOUBLE_RE = re.compile(r'href="([^"]+)"', re.IGNORECASE)
@@ -140,10 +130,12 @@ _HREF_SINGLE_RE = re.compile(r"href='([^']+)'", re.IGNORECASE)
 _RE_TAG_SPLIT = re.compile(r"(<[^>]+>)")
 _RE_A_OPEN = re.compile(r"<a[\s>]")
 _RE_SCRIPT = re.compile(
-    r"<script[^>]*>.*?</script>", re.DOTALL | re.IGNORECASE,
+    r"<script[^>]*>.*?</script>",
+    re.DOTALL | re.IGNORECASE,
 )
 _RE_STYLE = re.compile(
-    r"<style[^>]*>.*?</style>", re.DOTALL | re.IGNORECASE,
+    r"<style[^>]*>.*?</style>",
+    re.DOTALL | re.IGNORECASE,
 )
 _RE_EMPTY_P = re.compile(r"<p[^>]*>\s*</p>", re.IGNORECASE)
 _RE_BACK_TO_TOC_CLASS = re.compile(
@@ -155,58 +147,55 @@ _RE_BACK_TO_TOC_TEXT = re.compile(
     re.DOTALL | re.IGNORECASE,
 )
 _RE_BACK_TO_TOC_BARE = re.compile(
-    r">\s*К содержанию\s*<", re.IGNORECASE,
+    r">\s*К содержанию\s*<",
+    re.IGNORECASE,
 )
-_RE_CLOSE_TAG_GLUE = re.compile(
-    r"(</(?:b|strong|i|em|a|span)>)([А-Яа-яЁёA-Za-z])"
-)
-_RE_OPEN_TAG_GLUE = re.compile(
-    r"([А-Яа-яЁёA-Za-z])(<(?:b|strong|i|em|a|span)\b)"
-)
+_RE_CLOSE_TAG_GLUE = re.compile(r"(</(?:b|strong|i|em|a|span)>)([А-Яа-яЁёA-Za-z])")
+_RE_OPEN_TAG_GLUE = re.compile(r"([А-Яа-яЁёA-Za-z])(<(?:b|strong|i|em|a|span)\b)")
 _RE_H3 = re.compile(
-    r"<h3[^>]*>(.*?)</h3>", re.DOTALL | re.IGNORECASE,
+    r"<h3[^>]*>(.*?)</h3>",
+    re.DOTALL | re.IGNORECASE,
 )
 _RE_H3_WITH_ATTRS = re.compile(
-    r"<h3([^>]*)>(.*?)</h3>", re.DOTALL | re.IGNORECASE,
+    r"<h3([^>]*)>(.*?)</h3>",
+    re.DOTALL | re.IGNORECASE,
 )
 _RE_DATA_TITLE = re.compile(r'data-title="([^"]*)"')
 _RE_BLOCK_P_H4 = re.compile(
-    r"<(p|h4)([^>]*)>(.*?)</\1>", re.DOTALL | re.IGNORECASE,
+    r"<(p|h4)([^>]*)>(.*?)</\1>",
+    re.DOTALL | re.IGNORECASE,
 )
 _RE_BLOCKQUOTE = re.compile(
     r"<(blockquote)([^>]*)>((?:(?!<blockquote).)*?)</blockquote>",
     re.DOTALL | re.IGNORECASE,
 )
 _RE_TIMECODE_STAR_PREFIX = re.compile(r"(?<!\w)\*\s*(\d{1,2}:\d{2})")
-_RE_TIMECODE_STAR_SUFFIX = re.compile(
-    r"(\d{1,2}:\d{2}(?::\d{2})?)\s*\\\*"
-)
-_RE_TIMECODE_STAR_AFTER = re.compile(
-    r"(\d{1,2}:\d{2}(?::\d{2})?)\s+\*(?=[\s<])"
-)
+_RE_TIMECODE_STAR_SUFFIX = re.compile(r"(\d{1,2}:\d{2}(?::\d{2})?)\s*\\\*")
+_RE_TIMECODE_STAR_AFTER = re.compile(r"(\d{1,2}:\d{2}(?::\d{2})?)\s+\*(?=[\s<])")
 _RE_STRIP_TAGS = re.compile(r"<[^>]+>")
 _RE_MULTI_INLINE_SPACE = re.compile(r" {2,}")
 # PART5: sanitize_cli теперь использует translate(), regex для этого не нужен.
-_CLI_UNSAFE_TRANSLATION = str.maketrans({ch: " " for ch in "\"\'\\\n\r\t`$|;&<>"})
+_CLI_UNSAFE_TRANSLATION = str.maketrans({ch: " " for ch in "\"'\\\n\r\t`$|;&<>"})
 
 # Telegraph article parsing
 _RE_ARTICLE = re.compile(
-    r"<article[^>]*>(.*?)</article>", re.DOTALL | re.IGNORECASE,
+    r"<article[^>]*>(.*?)</article>",
+    re.DOTALL | re.IGNORECASE,
 )
 _RE_ADDRESS = re.compile(
-    r"<address[^>]*>.*?</address>", re.DOTALL | re.IGNORECASE,
+    r"<address[^>]*>.*?</address>",
+    re.DOTALL | re.IGNORECASE,
 )
 _RE_HEADER = re.compile(
-    r"<header[^>]*>.*?</header>", re.DOTALL | re.IGNORECASE,
+    r"<header[^>]*>.*?</header>",
+    re.DOTALL | re.IGNORECASE,
 )
 
 # _extract_h3_parts: platform detection
 _RE_PLATFORM_YT = re.compile(r"\bYouTube\b")
 _RE_PLATFORM_RT = re.compile(r"\bRuTube\b")
 _RE_PLATFORM_VK = re.compile(r"\bVK\b")
-_RE_H3_SEPARATOR = re.compile(
-    r"\s*\u2014\s*(?:YouTube|RuTube|VK|\d{1,2}:\d{2})"
-)
+_RE_H3_SEPARATOR = re.compile(r"\s*\u2014\s*(?:YouTube|RuTube|VK|\d{1,2}:\d{2})")
 _RE_URL_SCHEME = re.compile(r"https?://", re.IGNORECASE)
 
 
@@ -216,6 +205,7 @@ _RE_URL_SCHEME = re.compile(r"https?://", re.IGNORECASE)
 
 try:
     from bs4 import BeautifulSoup
+
     _HAS_BS4 = True
 except ImportError:
     _HAS_BS4 = False
@@ -223,6 +213,7 @@ except ImportError:
 
 try:
     from weasyprint import HTML as WeasyprintHTML
+
     _HAS_WEASYPRINT = True
 except ImportError:
     _HAS_WEASYPRINT = False
@@ -232,6 +223,7 @@ except ImportError:
 # ══════════════════════════════════════════════════════════════
 #  3. wkhtmltopdf finder
 # ══════════════════════════════════════════════════════════════
+
 
 def _find_wkhtmltopdf() -> str:
     """Ищет бинарник wkhtmltopdf: env → Windows default → PATH."""
@@ -252,14 +244,8 @@ WKHTMLTOPDF_PATH: str = _find_wkhtmltopdf()
 #  4. Fonts config
 # ══════════════════════════════════════════════════════════════
 
-PDF_BODY_FONT: str = (
-    os.environ.get("PDF_BODY_FONT", "Merriweather").strip()
-    or "Merriweather"
-)
-PDF_SANS_FONT: str = (
-    os.environ.get("PDF_SANS_FONT", "Manrope").strip()
-    or "Manrope"
-)
+PDF_BODY_FONT: str = os.environ.get("PDF_BODY_FONT", "Merriweather").strip() or "Merriweather"
+PDF_SANS_FONT: str = os.environ.get("PDF_SANS_FONT", "Manrope").strip() or "Manrope"
 
 
 # ══════════════════════════════════════════════════════════════
@@ -350,48 +336,37 @@ async def _safe_progress(
 # ══════════════════════════════════════════════════════════════
 
 _SECTION_KEYS: Tuple[str, ...] = (
-    "synopsis", "study", "reflection", "terms",
+    "synopsis",
+    "study",
+    "reflection",
+    "terms",
 )
-_SECTION_ORDER: Dict[str, int] = {
-    k: i for i, k in enumerate(_SECTION_KEYS)
-}
+_SECTION_ORDER: Dict[str, int] = {k: i for i, k in enumerate(_SECTION_KEYS)}
 
 SECTIONS: Dict[str, Dict[str, str]] = {
     "synopsis": {
         "roman": "I",
         "color": "#345E53",
         "label": "Конспект",
-        "intro": (
-            "Структурная карта материала"
-            " для последовательного чтения."
-        ),
+        "intro": ("Структурная карта материала для последовательного чтения."),
     },
     "study": {
         "roman": "II",
         "color": "#375C83",
         "label": "Разбор материала",
-        "intro": (
-            "Богословская, экзегетическая"
-            " и понятийная глубина материала."
-        ),
+        "intro": ("Богословская, экзегетическая и понятийная глубина материала."),
     },
     "reflection": {
         "roman": "III",
         "color": "#6A4E85",
         "label": "Размышление и применение",
-        "intro": (
-            "Пасторское сопровождение: диагностика сердца,"
-            " контрасты и молитвенный отклик."
-        ),
+        "intro": ("Пасторское сопровождение: диагностика сердца, контрасты и молитвенный отклик."),
     },
     "terms": {
         "roman": "IV",
         "color": "#7A5C37",
         "label": "Термины",
-        "intro": (
-            "Понятия, Писание, переводческие наблюдения"
-            " и словарные заметки."
-        ),
+        "intro": ("Понятия, Писание, переводческие наблюдения и словарные заметки."),
     },
 }
 
@@ -401,15 +376,21 @@ SECTIONS: Dict[str, Dict[str, str]] = {
 # ══════════════════════════════════════════════════════════════
 
 _WEIGHT_MAP: Dict[str, int] = {
-    "thin": 100, "hairline": 100,
-    "extralight": 200, "ultralight": 200,
+    "thin": 100,
+    "hairline": 100,
+    "extralight": 200,
+    "ultralight": 200,
     "light": 300,
-    "regular": 400, "normal": 400,
+    "regular": 400,
+    "normal": 400,
     "medium": 500,
-    "semibold": 600, "demibold": 600,
+    "semibold": 600,
+    "demibold": 600,
     "bold": 700,
-    "extrabold": 800, "ultrabold": 800,
-    "black": 900, "heavy": 900,
+    "extrabold": 800,
+    "ultrabold": 800,
+    "black": 900,
+    "heavy": 900,
 }
 
 
@@ -466,22 +447,25 @@ def _build_font_face_css(fonts_dir: Optional[str] = None) -> str:
             continue
         family, weight, style = _parse_font_filename(f.name)
         fmt = {
-            ".ttf": "truetype", ".otf": "opentype",
-            ".woff": "woff", ".woff2": "woff2",
+            ".ttf": "truetype",
+            ".otf": "opentype",
+            ".woff": "woff",
+            ".woff2": "woff2",
         }.get(f.suffix.lower(), "truetype")
         uri = _path_to_file_uri(f).replace('"', "%22")
         css_parts.append(
-            f'@font-face {{\n'
+            f"@font-face {{\n"
             f'  font-family: "{family}";\n'
             f'  src: url("{uri}") format("{fmt}");\n'
-            f'  font-weight: {weight};\n'
-            f'  font-style: {style};\n'
-            f'}}'
+            f"  font-weight: {weight};\n"
+            f"  font-style: {style};\n"
+            f"}}"
         )
     if css_parts:
         logger.info(
             "PDF fonts: загружено %d начертаний из %s",
-            len(css_parts), d,
+            len(css_parts),
+            d,
         )
     result = "\n".join(css_parts)
     with _font_face_lock:
@@ -769,6 +753,7 @@ a.bt {{
 #  10. Text helpers
 # ══════════════════════════════════════════════════════════════
 
+
 def _esc(t: str) -> str:
     """Экранирует спецсимволы HTML (&, <, >, \", ')."""
     return (
@@ -810,10 +795,7 @@ def _is_bible_ref_before(text_before: str) -> bool:
 
 def _find_all_hrefs(html_str: str) -> List[str]:
     """Извлекает все href из HTML, поддерживая оба типа кавычек."""
-    return (
-        _HREF_DOUBLE_RE.findall(html_str or "")
-        + _HREF_SINGLE_RE.findall(html_str or "")
-    )
+    return _HREF_DOUBLE_RE.findall(html_str or "") + _HREF_SINGLE_RE.findall(html_str or "")
 
 
 def _clean_text_node(text: str) -> str:
@@ -828,17 +810,14 @@ def _clean_text_node(text: str) -> str:
 def _strip_decorations_from_text_nodes(html_str: str) -> str:
     """Чистит текстовые узлы HTML, сохраняя теги нетронутыми."""
     parts = _RE_TAG_SPLIT.split(html_str)
-    return "".join(
-        part if part.startswith("<") else _clean_text_node(part)
-        for part in parts
-    )
+    return "".join(part if part.startswith("<") else _clean_text_node(part) for part in parts)
 
 
 def _normalize_spaces(text: str) -> str:
     """Нормализует пробелы, пунктуацию, тире и переносы строк."""
     if not text:
         return ""
-    text = text.replace("\u00A0", " ")
+    text = text.replace("\u00a0", " ")
     text = _SPECIAL_SPACES_RE.sub(" ", text)
     text = _RE_MULTI_SPACE.sub(" ", text)
     text = _RE_SPACE_BEFORE_PUNCT.sub(r"\1", text)
@@ -871,10 +850,7 @@ def _clean_text_with_html(text: str) -> str:
     if not text:
         return ""
     parts = _RE_TAG_SPLIT.split(text)
-    return "".join(
-        part if part.startswith("<") else _clean_text_plain(part)
-        for part in parts
-    )
+    return "".join(part if part.startswith("<") else _clean_text_plain(part) for part in parts)
 
 
 def _clean_heading(text: str) -> str:
@@ -884,7 +860,7 @@ def _clean_heading(text: str) -> str:
     text = _clean_text_plain(text)
     for p in _HEADING_BOILERPLATE:
         text = text.replace(p, "")
-    text = _RE_MULTI_SPACE_SIMPLE.sub(" ", text).strip(" \u00B7\u2014-")
+    text = _RE_MULTI_SPACE_SIMPLE.sub(" ", text).strip(" \u00b7\u2014-")
     text = _RE_TRAILING_PREP.sub("", text)
     return text.strip()
 
@@ -892,6 +868,7 @@ def _clean_heading(text: str) -> str:
 # ══════════════════════════════════════════════════════════════
 #  11. Timecode / URL helpers
 # ══════════════════════════════════════════════════════════════
+
 
 def _tc_to_seconds(tc: str) -> int:
     """Конвертирует таймкод '1:23' или '1:23:45' в секунды."""
@@ -910,16 +887,17 @@ def _replace_query_param(url: str, key: str, value: str) -> str:
     """Заменяет / добавляет query-параметр, сохраняя остальные."""
     try:
         sp = urlsplit(url)
-        params = [
-            (qk, qv)
-            for qk, qv in parse_qsl(sp.query, keep_blank_values=True)
-            if qk != key
-        ]
+        params = [(qk, qv) for qk, qv in parse_qsl(sp.query, keep_blank_values=True) if qk != key]
         params.append((key, value))
-        return urlunsplit((
-            sp.scheme, sp.netloc, sp.path,
-            urlencode(params), sp.fragment,
-        ))
+        return urlunsplit(
+            (
+                sp.scheme,
+                sp.netloc,
+                sp.path,
+                urlencode(params),
+                sp.fragment,
+            )
+        )
     except Exception:
         sep = "&" if "?" in url else "?"
         return f"{url}{sep}{key}={value}"
@@ -949,12 +927,7 @@ def _enrich_url_with_time(url: str, time_str: str) -> str:
 
 def _primary_video_url(source_links: Dict[str, str]) -> str:
     """Возвращает приоритетную ссылку: YouTube → RuTube → VK."""
-    return (
-        source_links.get("youtube")
-        or source_links.get("rutube")
-        or source_links.get("vk")
-        or ""
-    )
+    return source_links.get("youtube") or source_links.get("rutube") or source_links.get("vk") or ""
 
 
 def _linkify_timecodes(html_str: str, video_url: str) -> str:
@@ -991,17 +964,14 @@ def _linkify_timecodes(html_str: str, video_url: str) -> str:
 
             def _repl(m: re.Match, _ctx=ctx) -> str:
                 tc = m.group(1)
-                local_pre = m.string[max(0, m.start() - 50):m.start()]
+                local_pre = m.string[max(0, m.start() - 50) : m.start()]
                 pre = (_ctx + local_pre)[-50:]
                 if _is_bible_ref_before(pre):
                     return tc
                 secs = _tc_to_seconds(tc)
                 url = _video_ts_url(video_url, secs)
                 if url:
-                    return (
-                        f'<a class="tc" href="{_esc(url)}" title="{tc}">'
-                        f'{tc}</a>'
-                    )
+                    return f'<a class="tc" href="{_esc(url)}" title="{tc}">{tc}</a>'
                 return tc
 
             result.append(_TIMECODE_RE.sub(_repl, seg))
@@ -1013,14 +983,17 @@ def _linkify_timecodes(html_str: str, video_url: str) -> str:
 #  12. HTTP fetch
 # ══════════════════════════════════════════════════════════════
 
+
 def _fetch_url(
-    url: str, retries: int = 1,
+    url: str,
+    retries: int = 1,
 ) -> Optional[requests.Response]:
     """Загружает URL с повторами. Устанавливает encoding явно."""
     for attempt in range(retries + 1):
         try:
             r = requests.get(
-                url, timeout=20,
+                url,
+                timeout=20,
                 headers={"User-Agent": "ReadingPDF/2.8.1"},
             )
             r.raise_for_status()
@@ -1030,7 +1003,9 @@ def _fetch_url(
             if attempt >= retries:
                 logger.warning(
                     "HTTP fetch %s: %s (после %d попыток)",
-                    url, exc, retries + 1,
+                    url,
+                    exc,
+                    retries + 1,
                 )
                 return None
             # #104: time.sleep в sync-функции внутри executor блокирует поток пула.
@@ -1043,6 +1018,7 @@ def _fetch_url(
 # ══════════════════════════════════════════════════════════════
 #  13. Telegraph HTML polishing (decomposed)
 # ══════════════════════════════════════════════════════════════
+
 
 def _extract_h3_parts(text: str) -> Tuple[str, str, str]:
     """
@@ -1057,7 +1033,7 @@ def _extract_h3_parts(text: str) -> Tuple[str, str, str]:
 
     time_str = ""
     for m in _TIMECODE_RE.finditer(raw):
-        pre_ctx = raw[:m.start()]
+        pre_ctx = raw[: m.start()]
         if not _is_bible_ref_before(pre_ctx):
             time_str = m.group(1)
             break
@@ -1071,13 +1047,15 @@ def _extract_h3_parts(text: str) -> Tuple[str, str, str]:
         platforms.append("VK")
 
     sep = _RE_H3_SEPARATOR.search(raw)
-    cleaned = raw[:sep.start()].strip() if sep else raw
+    cleaned = raw[: sep.start()].strip() if sep else raw
     if time_str:
         cleaned = re.sub(
-            r"\s+" + re.escape(time_str) + r"\s*$", "", cleaned,
+            r"\s+" + re.escape(time_str) + r"\s*$",
+            "",
+            cleaned,
         ).strip()
     cleaned = _clean_text_plain(cleaned)
-    return cleaned, time_str, " \u00B7 ".join(platforms)
+    return cleaned, time_str, " \u00b7 ".join(platforms)
 
 
 def _strip_dangerous_tags(html_str: str) -> str:
@@ -1123,7 +1101,7 @@ def _strip_leading_ol(html_str: str) -> str:
             else:
                 depth -= 1
                 if depth == 0:
-                    html_str = html_str[:olp] + html_str[next_close + 5:]
+                    html_str = html_str[:olp] + html_str[next_close + 5 :]
                 else:
                     pos = next_close + 5
     return html_str
@@ -1144,6 +1122,7 @@ def _enrich_h3_headings(html_str: str) -> str:
     использования в _enrich_section.
     Если заголовок пуст после очистки — тег удаляется.
     """
+
     def _fix_h3(m: re.Match) -> str:
         inner = m.group(1) or ""
         yt = rt = vk = ""
@@ -1169,24 +1148,15 @@ def _enrich_h3_headings(html_str: str) -> str:
 
         pp: List[str] = []
         if yt and time_str:
-            pp.append(
-                f'<a class="pl" href="{_esc(yt)}">'
-                f'YouTube\u00a0{_esc_safe(time_str)}</a>'
-            )
+            pp.append(f'<a class="pl" href="{_esc(yt)}">YouTube\u00a0{_esc_safe(time_str)}</a>')
         if rt and time_str:
-            pp.append(
-                f'<a class="pl" href="{_esc(rt)}">'
-                f'RuTube\u00a0{_esc_safe(time_str)}</a>'
-            )
+            pp.append(f'<a class="pl" href="{_esc(rt)}">RuTube\u00a0{_esc_safe(time_str)}</a>')
         if vk and time_str:
-            pp.append(
-                f'<a class="pl" href="{_esc(vk)}">'
-                f'VK\u00a0{_esc_safe(time_str)}</a>'
-            )
+            pp.append(f'<a class="pl" href="{_esc(vk)}">VK\u00a0{_esc_safe(time_str)}</a>')
 
         if pp:
-            sep = " \u00B7 "
-            built = f'{_esc_safe(title)} \u2014 {sep.join(pp)}'
+            sep = " \u00b7 "
+            built = f"{_esc_safe(title)} \u2014 {sep.join(pp)}"
         elif time_str:
             built = f"{_esc_safe(title)} \u2014 {_esc_safe(time_str)}"
         else:
@@ -1200,6 +1170,7 @@ def _enrich_h3_headings(html_str: str) -> str:
 
 def _clean_block_elements(html_str: str) -> str:
     """Чистит текст внутри <p>, <h4>, <blockquote>."""
+
     def _fix_block(m: re.Match) -> str:
         tag = m.group(1)
         attrs = m.group(2) or ""
@@ -1242,6 +1213,7 @@ def _polish_html(html_str: str) -> str:
 # ══════════════════════════════════════════════════════════════
 #  14. Telegraph fetching
 # ══════════════════════════════════════════════════════════════
+
 
 def _fetch_telegraph_bs4(url: str) -> str:
     """Загружает и парсит Telegraph-страницу через BeautifulSoup."""
@@ -1286,10 +1258,7 @@ def _fetch_telegraph(url: str) -> str:
     cached = _TELEGRAPH_CACHE.get_cached(url)
     if cached is not None:
         return cached
-    content = (
-        _fetch_telegraph_bs4(url) if _HAS_BS4
-        else _fetch_telegraph_regex(url)
-    )
+    content = _fetch_telegraph_bs4(url) if _HAS_BS4 else _fetch_telegraph_regex(url)
     if content.strip():
         _TELEGRAPH_CACHE.put(url, content)
     return content
@@ -1299,6 +1268,7 @@ def _fetch_telegraph(url: str) -> str:
 #  15. Source links
 # ══════════════════════════════════════════════════════════════
 
+
 def _find_video_links(html_str: str) -> Dict[str, str]:
     """Ищет первые ссылки YouTube / RuTube / VK в HTML."""
     out: Dict[str, str] = {"youtube": "", "rutube": "", "vk": ""}
@@ -1306,15 +1276,11 @@ def _find_video_links(html_str: str) -> Dict[str, str]:
         href = _safe_url(href)
         if not href:
             continue
-        if not out["youtube"] and (
-            "youtube.com" in href or "youtu.be" in href
-        ):
+        if not out["youtube"] and ("youtube.com" in href or "youtu.be" in href):
             out["youtube"] = href
         elif not out["rutube"] and "rutube.ru" in href:
             out["rutube"] = href
-        elif not out["vk"] and (
-            "vk.com/" in href or "vkvideo.ru/" in href
-        ):
+        elif not out["vk"] and ("vk.com/" in href or "vkvideo.ru/" in href):
             out["vk"] = href
     return out
 
@@ -1333,6 +1299,7 @@ def _collect_sources(sections: List[Dict]) -> Dict[str, str]:
 # ══════════════════════════════════════════════════════════════
 #  16. Single-pass enrichment
 # ══════════════════════════════════════════════════════════════
+
 
 def _enrich_section(
     content_html: str,
@@ -1374,10 +1341,7 @@ def _enrich_section(
         if title:
             toc_items.append({"title": title, "id": anchor_id})
 
-        arrow = (
-            ' <a class="bt" href="#toc" '
-            'title="К содержанию">&#8593;</a>'
-        )
+        arrow = ' <a class="bt" href="#toc" title="К содержанию">&#8593;</a>'
         return f'<h3 id="{anchor_id}">{inner}{arrow}</h3>'
 
     enriched = _RE_H3_WITH_ATTRS.sub(_repl, content_html)
@@ -1389,16 +1353,15 @@ def _enrich_section(
 #  17. HTML assembly
 # ══════════════════════════════════════════════════════════════
 
+
 def _build_cover(
-    title: str, performer: str, dur: str,
+    title: str,
+    performer: str,
+    dur: str,
     available: List[Dict],
 ) -> str:
     """Генерирует HTML обложки PDF-документа."""
-    rows = "".join(
-        '<li class="cover-includes-item">'
-        f'{_esc_safe(SECTIONS[s["key"]]["label"])}</li>'
-        for s in available
-    )
+    rows = "".join(f'<li class="cover-includes-item">{_esc_safe(SECTIONS[s["key"]]["label"])}</li>' for s in available)
     return f"""
     <div class="cover">
       <div class="cover-inner">
@@ -1420,7 +1383,8 @@ def _build_cover(
 
 
 def _build_toc(
-    available: List[Dict], src: Dict[str, str],
+    available: List[Dict],
+    src: Dict[str, str],
 ) -> str:
     """Генерирует HTML глобального оглавления. Использует it['id']."""
     parts_html: List[str] = []
@@ -1436,21 +1400,23 @@ def _build_toc(
                     f'<li class="toc-item">'
                     f'<a class="toc-link" href="#{aid}">'
                     f'<span class="toc-item-title">'
-                    f'{_esc_safe(t)}</span></a></li>'
+                    f"{_esc_safe(t)}</span></a></li>"
                 )
         parts_html.append(
             f'<div class="toc-part">'
             f'<div class="toc-part-head">'
             f'<div class="toc-part-kicker">'
-            f'Часть {meta["roman"]}</div>'
+            f"Часть {meta['roman']}</div>"
             f'<div class="toc-part-title">'
-            f'{_esc_safe(meta["label"])}</div></div>'
+            f"{_esc_safe(meta['label'])}</div></div>"
             f'<ol class="toc-list">{"".join(items)}</ol></div>'
         )
 
     sl: List[str] = []
     for k, lb in [
-        ("youtube", "YouTube"), ("rutube", "RuTube"), ("vk", "VK"),
+        ("youtube", "YouTube"),
+        ("rutube", "RuTube"),
+        ("vk", "VK"),
     ]:
         if src.get(k):
             sl.append(f'<a href="{_esc(src[k])}">{lb}</a>')
@@ -1458,13 +1424,14 @@ def _build_toc(
         f'<div class="source-block">'
         f'<div class="source-label">Исходный материал</div>'
         f'<div class="source-links">{" ".join(sl)}</div></div>'
-        if sl else ""
+        if sl
+        else ""
     )
     return (
         f'<div class="toc-page" id="toc"><div class="toc-inner">'
         f'<div class="toc-heading">Содержание</div>'
-        f'{"".join(parts_html)}{src_block}'
-        f'</div></div>'
+        f"{''.join(parts_html)}{src_block}"
+        f"</div></div>"
     )
 
 
@@ -1475,9 +1442,7 @@ def _build_local_toc(sec: Dict) -> str:
         t = it.get("title", "")
         aid = it.get("id", "")
         if t and aid:
-            rows.append(
-                f'<li><a href="#{aid}">{_esc_safe(t)}</a></li>'
-            )
+            rows.append(f'<li><a href="#{aid}">{_esc_safe(t)}</a></li>')
     if not rows:
         return ""
     return f'<ol class="local-toc">{"".join(rows)}</ol>'
@@ -1493,10 +1458,10 @@ def _build_part(sec: Dict, performer: str, title: str) -> str:
     return f"""
     <div class="part-page" id="{key}">
       <div class="part-opener"><div class="part-opener-inner">
-        <div class="part-line" style="background:{meta['color']}"></div>
-        <div class="part-kicker">Часть {meta['roman']}</div>
-        <div class="part-title">{_esc_safe(meta['label'])}</div>
-        <div class="part-intro">{_esc_safe(meta['intro'])}</div>
+        <div class="part-line" style="background:{meta["color"]}"></div>
+        <div class="part-kicker">Часть {meta["roman"]}</div>
+        <div class="part-title">{_esc_safe(meta["label"])}</div>
+        <div class="part-intro">{_esc_safe(meta["intro"])}</div>
         <div class="part-meta">
           {_esc_safe(title)} \u2014 {_esc_safe(performer)}
         </div>
@@ -1526,9 +1491,7 @@ def _build_html(
       3. Обогатить каждую секцию (якоря + TOC + таймкоды)
       4. Построить обложку, оглавление, части из обогащённых данных
     """
-    raw_available = [
-        s for s in sections if (s.get("content_html") or "").strip()
-    ]
+    raw_available = [s for s in sections if (s.get("content_html") or "").strip()]
     src = _collect_sources(raw_available)
     vid = _primary_video_url(src)
 
@@ -1536,18 +1499,23 @@ def _build_html(
     enriched: List[Dict] = []
     for sec in raw_available:
         html_out, toc = _enrich_section(
-            sec["content_html"], sec["key"], vid,
+            sec["content_html"],
+            sec["key"],
+            vid,
         )
-        enriched.append({
-            "key": sec["key"],
-            "content_html": html_out,
-            "toc_items": toc,
-        })
+        enriched.append(
+            {
+                "key": sec["key"],
+                "content_html": html_out,
+                "toc_items": toc,
+            }
+        )
 
     font_css = _build_font_face_css()
     logger.info(
         "PDF style: body_font=%s sans_font=%s",
-        PDF_BODY_FONT, PDF_SANS_FONT,
+        PDF_BODY_FONT,
+        PDF_SANS_FONT,
     )
     css = CSS_TEMPLATE.format(
         font_face_css=font_css,
@@ -1556,19 +1524,17 @@ def _build_html(
     )
     cover = _build_cover(title, performer, dur, enriched)
     toc_html = _build_toc(enriched, src)
-    parts = "".join(
-        _build_part(s, performer, title) for s in enriched
-    )
+    parts = "".join(_build_part(s, performer, title) for s in enriched)
     return (
         f'<!DOCTYPE html>\n<html lang="ru">\n<head>\n'
         f'<meta charset="UTF-8">\n'
-        f'<title>{_esc_safe(title)}</title>\n'
-        f'<style>{css}</style>\n'
+        f"<title>{_esc_safe(title)}</title>\n"
+        f"<style>{css}</style>\n"
         f'</head>\n<body class="reading-pdf">\n'
-        f'{cover}{toc_html}{parts}\n'
+        f"{cover}{toc_html}{parts}\n"
         f'<div class="doc-end-vignette">'
-        f'&#9670; &#9670; &#9670;</div>\n'
-        f'</body></html>'
+        f"&#9670; &#9670; &#9670;</div>\n"
+        f"</body></html>"
     )
 
 
@@ -1646,7 +1612,10 @@ def _gen_wkhtmltopdf(
     try:
         opts = _wkhtmltopdf_options(title, performer)
         with tempfile.NamedTemporaryFile(
-            suffix=".html", mode="w", encoding="utf-8", delete=False,
+            suffix=".html",
+            mode="w",
+            encoding="utf-8",
+            delete=False,
         ) as f:
             f.write(html_str)
             tmp = f.name
@@ -1664,7 +1633,9 @@ def _gen_wkhtmltopdf(
                 args.append(str(_v))
         args += [tmp, out]
         proc = _subprocess.Popen(
-            args, stdout=_subprocess.DEVNULL, stderr=_subprocess.PIPE,
+            args,
+            stdout=_subprocess.DEVNULL,
+            stderr=_subprocess.PIPE,
         )
         try:
             _, _stderr = proc.communicate(timeout=_WKHTMLTOPDF_TIMEOUT)
@@ -1744,6 +1715,7 @@ def _gen_weasyprint(html_str: str, out: str) -> Optional[str]:
 #  19. Public API
 # ══════════════════════════════════════════════════════════════
 
+
 def generate_sermon_pdf(
     output_path: str,
     title: str,
@@ -1790,7 +1762,11 @@ def generate_sermon_pdf(
     html = _build_html(title, performer, duration_str, sections)
 
     result = _gen_wkhtmltopdf(
-        html, output_path, title, performer, wkhtmltopdf_path,
+        html,
+        output_path,
+        title,
+        performer,
+        wkhtmltopdf_path,
     )
     if result:
         return result
@@ -1850,7 +1826,9 @@ async def generate_sermon_pdf_async(
     # ── Параллельная загрузка с общим таймаутом ──
     async def _fetch_one(k: str) -> Tuple[str, str]:
         content = await loop.run_in_executor(
-            None, _fetch_telegraph, urls[k],
+            None,
+            _fetch_telegraph,
+            urls[k],
         )
         return k, content
 
@@ -1861,7 +1839,8 @@ async def generate_sermon_pdf_async(
 
     try:
         for coro in asyncio.as_completed(
-            tasks, timeout=_ASYNC_FETCH_TIMEOUT,
+            tasks,
+            timeout=_ASYNC_FETCH_TIMEOUT,
         ):
             try:
                 key, content = await coro
@@ -1873,20 +1852,26 @@ async def generate_sermon_pdf_async(
                     pct,
                 )
                 if content.strip():
-                    sections.append({
-                        "key": key, "content_html": content,
-                    })
+                    sections.append(
+                        {
+                            "key": key,
+                            "content_html": content,
+                        }
+                    )
                     logger.info("PDF: %s OK", key)
                 else:
                     logger.warning("PDF: %s — пустой контент", key)
             except Exception as exc:
                 logger.warning(
-                    "PDF: ошибка загрузки Telegraph: %s", exc,
+                    "PDF: ошибка загрузки Telegraph: %s",
+                    exc,
                 )
     except asyncio.TimeoutError:
         logger.warning(
             "PDF: таймаут загрузки %ds, используем %d/%d секций",
-            _ASYNC_FETCH_TIMEOUT, len(sections), total,
+            _ASYNC_FETCH_TIMEOUT,
+            len(sections),
+            total,
         )
         # Незавершённые executor-потоки нельзя прервать через cancel() —
         # они завершатся сами по HTTP-таймауту (_fetch_url timeout=20s).
@@ -1909,7 +1894,12 @@ async def generate_sermon_pdf_async(
     # ── Сборка и рендер ──
     await _safe_progress(progress_callback, "Сборка PDF", 60)
     html = await loop.run_in_executor(
-        None, _build_html, title, performer, duration_str, sections,
+        None,
+        _build_html,
+        title,
+        performer,
+        duration_str,
+        sections,
     )
 
     await _safe_progress(progress_callback, "Конвертация", 75)
@@ -1917,7 +1907,11 @@ async def generate_sermon_pdf_async(
         None,
         lambda: (
             _gen_wkhtmltopdf(
-                html, output_path, title, performer, wkhtmltopdf_path,
+                html,
+                output_path,
+                title,
+                performer,
+                wkhtmltopdf_path,
             )
             or _gen_weasyprint(html, output_path)
         ),

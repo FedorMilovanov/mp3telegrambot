@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Remaster an existing Russian timeline with per-segment delay and optional NVENC."""
+
 from __future__ import annotations
 
 import argparse
@@ -26,9 +27,7 @@ def run(
     )
     if proc.returncode != 0 and not allow_failure:
         tail = (proc.stderr or proc.stdout or "")[-6000:]
-        raise RuntimeError(
-            "Command failed:\n" + " ".join(command) + "\n\n" + tail
-        )
+        raise RuntimeError("Command failed:\n" + " ".join(command) + "\n\n" + tail)
     return proc
 
 
@@ -78,15 +77,9 @@ def load_segments(path: Path) -> list[dict[str, Any]]:
 
 def parse_delays(value: str, count: int) -> list[int]:
     try:
-        delays = [
-            int(part.strip())
-            for part in value.split(",")
-            if part.strip()
-        ]
+        delays = [int(part.strip()) for part in value.split(",") if part.strip()]
     except ValueError as exc:
-        raise argparse.ArgumentTypeError(
-            "delays must be comma-separated integer milliseconds"
-        ) from exc
+        raise argparse.ArgumentTypeError("delays must be comma-separated integer milliseconds") from exc
 
     if len(delays) != count:
         raise RuntimeError(f"expected {count} delays, got {len(delays)}")
@@ -101,18 +94,11 @@ def build_delay_filter(
     source_duration: float,
 ) -> str:
     count = len(segments)
-    parts = [
-        f"[0:a]asplit={count}"
-        + "".join(f"[r{i}]" for i in range(count))
-    ]
+    parts = [f"[0:a]asplit={count}" + "".join(f"[r{i}]" for i in range(count))]
     labels: list[str] = []
 
-    for index, (segment, delay_ms) in enumerate(
-        zip(segments, delays_ms, strict=True)
-    ):
-        absolute_delay_ms = (
-            int(round(segment["start"] * 1000.0)) + delay_ms
-        )
+    for index, (segment, delay_ms) in enumerate(zip(segments, delays_ms, strict=True)):
+        absolute_delay_ms = int(round(segment["start"] * 1000.0)) + delay_ms
         label = f"s{index}"
         labels.append(f"[{label}]")
         parts.append(
@@ -190,20 +176,10 @@ def main() -> int:
     gain_tag = int(round(args.original_gain * 100.0))
     gain_label = f"ENG{gain_tag:02d}"
     shifted_wav = work_dir / "macarthur_ru_final_timeline_delayed.wav"
-    cpu_master = (
-        output_dir
-        / f"MacArthur_FINAL_{gain_label}_DELAYED_VIDEO_COPY.mp4"
-    )
-    russian_only = (
-        output_dir / "MacArthur_FINAL_DELAYED_RUSSIAN_ONLY.mp4"
-    )
-    nvenc_output = (
-        output_dir / f"MacArthur_FINAL_{gain_label}_DELAYED_NVENC.mp4"
-    )
-    report_path = (
-        output_dir
-        / f"MacArthur_FINAL_{gain_label}_DELAYED_NVENC.report.json"
-    )
+    cpu_master = output_dir / f"MacArthur_FINAL_{gain_label}_DELAYED_VIDEO_COPY.mp4"
+    russian_only = output_dir / "MacArthur_FINAL_DELAYED_RUSSIAN_ONLY.mp4"
+    nvenc_output = output_dir / f"MacArthur_FINAL_{gain_label}_DELAYED_NVENC.mp4"
+    report_path = output_dir / f"MacArthur_FINAL_{gain_label}_DELAYED_NVENC.report.json"
 
     delay_filter = build_delay_filter(
         segments,
@@ -310,9 +286,7 @@ def main() -> int:
             nvenc_status = "success"
         else:
             nvenc_status = "failed"
-            nvenc_error = (
-                nvenc.stderr or nvenc.stdout or ""
-            )[-6000:]
+            nvenc_error = (nvenc.stderr or nvenc.stdout or "")[-6000:]
             if nvenc_output.exists():
                 nvenc_output.unlink()
 
@@ -334,11 +308,7 @@ def main() -> int:
         ],
         "cpu_video_copy_master": str(cpu_master),
         "russian_only": str(russian_only),
-        "nvenc_output": (
-            str(nvenc_output)
-            if nvenc_status == "success"
-            else None
-        ),
+        "nvenc_output": (str(nvenc_output) if nvenc_status == "success" else None),
         "nvenc_status": nvenc_status,
         "nvenc_error_tail": nvenc_error,
         "nvenc_profile": {
@@ -364,8 +334,7 @@ def main() -> int:
         )
     elif nvenc_status == "not_available":
         print(
-            "h264_nvenc is not available; "
-            "the CPU video-copy master remains valid.",
+            "h264_nvenc is not available; the CPU video-copy master remains valid.",
             file=sys.stderr,
         )
     return 0

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Compact repairable continuation gaps before assembled-timeline QA."""
+
 from __future__ import annotations
 
 import math
@@ -52,9 +53,7 @@ def compact_timeline_segments(
     rows: list[dict[str, Any]] = []
     for position, (raw_segment, path) in enumerate(fitted_segments, start=1):
         segment = dict(raw_segment)
-        nominal_start = _finite(segment.get("start")) + _finite(
-            segment.get("start_delay_ms")
-        ) / 1000.0
+        nominal_start = _finite(segment.get("start")) + _finite(segment.get("start_delay_ms")) / 1000.0
         nominal_duration = max(
             _MIN_WINDOW_SECONDS,
             _finite(segment.get("end")) - _finite(segment.get("start")),
@@ -115,11 +114,7 @@ def compact_timeline_segments(
         planned_end = planned_start + _finite(row["nominal_duration"])
         if index + 1 < len(rows):
             next_start = _finite(rows[index + 1]["nominal_start"])
-            minimum_end = (
-                planned_start
-                + max(_finite(segment.get("tail_guard")), 0.0)
-                + _MIN_WINDOW_SECONDS
-            )
+            minimum_end = planned_start + max(_finite(segment.get("tail_guard")), 0.0) + _MIN_WINDOW_SECONDS
             if minimum_end <= next_start < planned_end:
                 planned_end = next_start
 

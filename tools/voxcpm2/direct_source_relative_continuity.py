@@ -7,6 +7,7 @@ word duration or breath boundaries. Source F0 is therefore recorded for audit
 only. It may neither relax speaker-identity hard gates nor change candidate
 ranking until semantic/word alignment is available.
 """
+
 from __future__ import annotations
 
 import math

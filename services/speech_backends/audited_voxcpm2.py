@@ -1,4 +1,5 @@
 """VoxCPM2 adapter whose exact model call is planned and durably auditable."""
+
 from __future__ import annotations
 
 import inspect
@@ -31,9 +32,7 @@ class AuditedVoxCPM2Session(VoxCPM2Session):
         request: BackendGenerationRequest,
     ) -> BackendGenerationExecutionPlan:
         if not isinstance(request, BackendGenerationRequest):
-            raise TypeError(
-                "AuditedVoxCPM2Session ожидает BackendGenerationRequest."
-            )
+            raise TypeError("AuditedVoxCPM2Session ожидает BackendGenerationRequest.")
 
         cfg = request.option_float("cfg", default=1.9, low=0.1, high=10.0)
         steps = request.option_int("steps", default=16, low=1, high=256)

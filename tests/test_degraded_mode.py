@@ -6,6 +6,7 @@
 таймкоды добавляются без Gemini, а любая проблема с субтитрами не превращает
 деградацию в ошибку отправки.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -159,8 +160,9 @@ def test_work_directory_is_removed_even_on_failure(tmp_path) -> None:
         seen.append(work_dir)
         raise RuntimeError("сеть упала")
 
-    _attach(tmp_path, data=degraded_mode.degraded_caption_data("Н", "А"), fetch=fetch,
-            to_timestamps=lambda t, max_lines: t)
+    _attach(
+        tmp_path, data=degraded_mode.degraded_caption_data("Н", "А"), fetch=fetch, to_timestamps=lambda t, max_lines: t
+    )
     assert seen and not seen[0].exists()
 
 

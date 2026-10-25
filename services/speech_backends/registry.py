@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Small explicit registry for replaceable speech engines."""
+
 from __future__ import annotations
 
 from typing import Iterable
@@ -59,9 +60,7 @@ def resolve_backend_id(value: object) -> str:
     backend_id = _ALIASES.get(alias)
     if backend_id is None:
         available = ", ".join(backend_ids()) or "—"
-        raise RuntimeError(
-            f"Неизвестный speech backend: {value!r}. Доступно: {available}."
-        )
+        raise RuntimeError(f"Неизвестный speech backend: {value!r}. Доступно: {available}.")
     return backend_id
 
 

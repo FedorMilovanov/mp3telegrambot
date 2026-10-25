@@ -10,6 +10,7 @@ imports its prompt/schema helpers.  It has three goals:
 
 No runtime patching is performed and ``SYNOPSIS_PROMPT_V2`` is never rewritten.
 """
+
 from __future__ import annotations
 
 import logging
@@ -206,8 +207,7 @@ def normalize_word_study_block(raw: dict[str, Any]) -> dict[str, Any] | None:
         if shape not in _DROPPED_LEXICON_SHAPES:
             _DROPPED_LEXICON_SHAPES.add(shape)
             logger.warning(
-                "Study word-study dropped: missing contextual fields=%s; "
-                "decorative lexicon cards are not published",
+                "Study word-study dropped: missing contextual fields=%s; decorative lexicon cards are not published",
                 ",".join(missing),
             )
         return None
@@ -229,9 +229,5 @@ def normalize_word_study_block(raw: dict[str, Any]) -> dict[str, Any] | None:
     parts.append(_ensure_period(f"В этом стихе: {values['meaning_in_context']}"))
     parts.append(_ensure_period(f"Роль в аргументе материала: {values['role_in_argument']}"))
     parts.append(_ensure_period(f"Граница вывода: {values['limits_of_claim']}"))
-    parts.append(
-        _ensure_period(
-            f"Источник: {values['source']} ⏱ {values['anchor_timestamp']}"
-        )
-    )
+    parts.append(_ensure_period(f"Источник: {values['source']} ⏱ {values['anchor_timestamp']}"))
     return {"type": "paragraph", "text": "\n\n".join(parts)}

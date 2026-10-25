@@ -8,6 +8,7 @@ regression tests that assert on catalog facts.
 
 Catalog snapshot and routing policy version are owned by the catalog too.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -60,8 +61,7 @@ def _scheduled_migration(model: str) -> GeminiModelDiagnostic | None:
     deadline, replacement = migrations[model]
     return GeminiModelDiagnostic(
         "warning",
-        f"GEMINI_MODEL='{model}' имеет запланированную миграцию не позже {deadline}; "
-        f"перейдите на {replacement}.",
+        f"GEMINI_MODEL='{model}' имеет запланированную миграцию не позже {deadline}; перейдите на {replacement}.",
     )
 
 
@@ -127,8 +127,7 @@ def classify_gemini_model(model_name: str) -> GeminiModelDiagnostic:
     if model in FLOATING_ALIASES:
         return GeminiModelDiagnostic(
             "warning",
-            f"GEMINI_MODEL='{model}' — плавающий alias; для воспроизводимого "
-            f"production зафиксируйте {_PRIMARY_MODEL}.",
+            f"GEMINI_MODEL='{model}' — плавающий alias; для воспроизводимого production зафиксируйте {_PRIMARY_MODEL}.",
         )
     for builder in (_deprecated_alias, _scheduled_migration, _access_limited):
         diagnostic = builder(model)
@@ -137,14 +136,12 @@ def classify_gemini_model(model_name: str) -> GeminiModelDiagnostic:
     if model in preview_models():
         return GeminiModelDiagnostic(
             "warning",
-            f"GEMINI_MODEL='{model}' — preview route; production policy этого deployment "
-            f"использует {_PRIMARY_MODEL}.",
+            f"GEMINI_MODEL='{model}' — preview route; production policy этого deployment использует {_PRIMARY_MODEL}.",
         )
     if model in shutdown_models():
         return GeminiModelDiagnostic(
             "error",
-            f"GEMINI_MODEL='{model}' отключена или снята с поддержки; используйте "
-            f"{_PRIMARY_MODEL}.",
+            f"GEMINI_MODEL='{model}' отключена или снята с поддержки; используйте {_PRIMARY_MODEL}.",
         )
     diagnostic = _outside_routing(model)
     if diagnostic is not None:
@@ -158,6 +155,5 @@ def classify_gemini_model(model_name: str) -> GeminiModelDiagnostic:
         )
     return GeminiModelDiagnostic(
         "warning",
-        f"GEMINI_MODEL='{model}' не входит в проверенную routing policy этого deployment; "
-        "проверьте models.list.",
+        f"GEMINI_MODEL='{model}' не входит в проверенную routing policy этого deployment; проверьте models.list.",
     )

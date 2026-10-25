@@ -12,13 +12,7 @@ from tools.voxcpm2.examples.john_piper_z20py4yqhyq import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXAMPLE = (
-    ROOT
-    / "tools"
-    / "voxcpm2"
-    / "examples"
-    / "john_piper_z20py4yqhyq"
-)
+EXAMPLE = ROOT / "tools" / "voxcpm2" / "examples" / "john_piper_z20py4yqhyq"
 DIRECT_FILES = (
     EXAMPLE / "Run-John-Piper-FINAL-CPU.ps1",
     EXAMPLE / "voxcpm2_cpu_shorts_production.py",
@@ -47,9 +41,7 @@ def test_direct_python_modules_compile() -> None:
 
 
 def test_john_piper_segments_match_actual_source_duration() -> None:
-    segments = json.loads(
-        (EXAMPLE / "segments_ru_final.json").read_text(encoding="utf-8-sig")
-    )
+    segments = json.loads((EXAMPLE / "segments_ru_final.json").read_text(encoding="utf-8-sig"))
     assert len(segments) == 5
     assert abs(float(segments[0]["start"]) - 0.233) < 0.001
     assert abs(float(segments[-1]["end"]) - 62.514) < 0.001
@@ -111,9 +103,7 @@ def test_synthesis_supports_transactional_resumable_checkpoints(
 
     assert direct_wrapper.run(lambda: "rendered") == "rendered"
     marker = json.loads(marker_path.read_text(encoding="utf-8"))
-    completed = json.loads(
-        (tmp_path / "direct_cli_runtime.completed.json").read_text(encoding="utf-8")
-    )
+    completed = json.loads((tmp_path / "direct_cli_runtime.completed.json").read_text(encoding="utf-8"))
     assert marker == compatibility
     assert completed["compatibility"] == compatibility
     assert checkpoint.is_file()
@@ -126,16 +116,10 @@ def test_synthesis_supports_transactional_resumable_checkpoints(
     assert checkpoint.is_file()
     assert marker_path.is_file()
     assert not (tmp_path / "direct_cli_runtime.completed.json").exists()
-    failure = json.loads(
-        (tmp_path / "direct_renderer_failure.json").read_text(encoding="utf-8")
-    )
+    failure = json.loads((tmp_path / "direct_renderer_failure.json").read_text(encoding="utf-8"))
     assert failure["error_type"] == "RuntimeError"
     assert failure["message"] == "render failed"
 
-    launcher = (EXAMPLE / "Run-John-Piper-FINAL-CPU.ps1").read_text(
-        encoding="utf-8-sig"
-    )
+    launcher = (EXAMPLE / "Run-John-Piper-FINAL-CPU.ps1").read_text(encoding="utf-8-sig")
     assert 'Join-Path $SegmentWorkDir "attempts"' in launcher
-    assert 'Join-Path $SegmentWorkDir "segments_fitted"' not in launcher.split(
-        'if (-not $KeepDiagnostics) {'
-    )[-1]
+    assert 'Join-Path $SegmentWorkDir "segments_fitted"' not in launcher.split("if (-not $KeepDiagnostics) {")[-1]

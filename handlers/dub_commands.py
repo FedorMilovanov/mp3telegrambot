@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Telegram admin control surface for local VoxCPM2 Dub Studio."""
+
 from __future__ import annotations
 
 import html
@@ -43,8 +44,7 @@ async def _admin(update: Update) -> bool:
         return True
     if update.effective_message:
         await update.effective_message.reply_text(
-            f"⛔ Dub Studio доступна только администратору.\n"
-            f"Ваш Telegram ID: <code>{getattr(user, 'id', '')}</code>",
+            f"⛔ Dub Studio доступна только администратору.\nВаш Telegram ID: <code>{getattr(user, 'id', '')}</code>",
             parse_mode="HTML",
         )
     return False
@@ -72,24 +72,13 @@ def _default_render_action(project: dict[str, Any]) -> str:
 def _direct_srt_path(project: dict[str, Any]) -> Path:
     from services.dub_studio import studio_root
 
-    return (
-        studio_root()
-        / "projects"
-        / str(project["id"])
-        / "input"
-        / "ready_translation.srt"
-    ).resolve()
+    return (studio_root() / "projects" / str(project["id"]) / "input" / "ready_translation.srt").resolve()
 
 
 def _audio_segments_path(project: dict[str, Any]) -> Path:
     from services.dub_studio import studio_root
 
-    return (
-        studio_root()
-        / "projects"
-        / str(project["id"])
-        / "segments_ru_final.json"
-    ).resolve()
+    return (studio_root() / "projects" / str(project["id"]) / "segments_ru_final.json").resolve()
 
 
 def _render_label(project: dict[str, Any]) -> str:
@@ -139,13 +128,7 @@ def _project_card(
     jobs = store.recent_jobs(str(project["id"]), limit=3) if include_jobs else []
     icon = _STATUS_ICON.get(str(project["status"]), "ℹ️")
     mode = _mode(project)
-    mode_label = (
-        "Gemini MAX"
-        if mode == "gemini"
-        else "мой готовый SRT"
-        if mode == "direct"
-        else "recipe"
-    )
+    mode_label = "Gemini MAX" if mode == "gemini" else "мой готовый SRT" if mode == "direct" else "recipe"
     lines = [
         f"{icon} <b>{html.escape(_short(str(project['title']), 180))}</b>",
         f"<code>{html.escape(str(project['id']))}</code>",
@@ -185,9 +168,7 @@ def _project_card(
     first_row = [InlineKeyboardButton("🔄 Обновить", callback_data=f"dub|status|{project_id}")]
     can_render = str(project["status"]) not in {"queued", "rendering", "cancelling"}
     if mode == "direct" and not _direct_srt_path(project).is_file():
-        first_row.append(
-            InlineKeyboardButton("📎 Загрузить SRT", callback_data=f"dubwiz|srt|{project_id}")
-        )
+        first_row.append(InlineKeyboardButton("📎 Загрузить SRT", callback_data=f"dubwiz|srt|{project_id}"))
     elif can_render:
         action = _default_render_action(project)
         first_row.append(
@@ -209,14 +190,8 @@ def _project_card(
     else:
         rows.append([InlineKeyboardButton("📦 Файлы", callback_data=f"dub|files|{project_id}")])
     rows.append([InlineKeyboardButton("📜 Лог", callback_data=f"dub|log|{project_id}")])
-    if (
-        str(project.get("recipe_id")) == _GENERIC_RECIPE
-        and _audio_segments_path(project).is_file()
-        and can_render
-    ):
-        rows.append(
-            [InlineKeyboardButton("🎚 Реплики и аудиоремонт", callback_data=f"dub|audio|{project_id}")]
-        )
+    if str(project.get("recipe_id")) == _GENERIC_RECIPE and _audio_segments_path(project).is_file() and can_render:
+        rows.append([InlineKeyboardButton("🎚 Реплики и аудиоремонт", callback_data=f"dub|audio|{project_id}")])
     if str(project["status"]) in {"queued", "rendering", "cancelling"}:
         rows.append([InlineKeyboardButton("🛑 Отменить", callback_data=f"dub|cancel|{project_id}")])
     return "\n".join(lines), InlineKeyboardMarkup(rows)
@@ -282,10 +257,7 @@ def _recipe_text() -> str:
         return "Рецепты пока не зарегистрированы."
     lines = ["<b>Доступные production-рецепты:</b>"]
     for recipe in recipes:
-        lines.append(
-            f"• <code>{html.escape(recipe.recipe_id)}</code> — "
-            f"{html.escape(_short(recipe.title, 150))}"
-        )
+        lines.append(f"• <code>{html.escape(recipe.recipe_id)}</code> — {html.escape(_short(recipe.title, 150))}")
     return "\n".join(lines)
 
 
@@ -332,8 +304,7 @@ async def dub_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     worker = _store().latest_worker()
     worker_line = (
-        f"✅ worker <code>{html.escape(str(worker['worker_id']))}</code> — "
-        f"{html.escape(str(worker['status']))}"
+        f"✅ worker <code>{html.escape(str(worker['worker_id']))}</code> — {html.escape(str(worker['status']))}"
         if worker_is_fresh(worker)
         else "❌ локальный worker не отвечает"
     )
@@ -388,9 +359,7 @@ async def dublist_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
     projects = _store().list_projects(owner_user_id=update.effective_user.id, limit=10)
     if not projects:
-        await update.effective_message.reply_text(
-            "Проектов пока нет. Откройте <code>/dub</code>.", parse_mode="HTML"
-        )
+        await update.effective_message.reply_text("Проектов пока нет. Откройте <code>/dub</code>.", parse_mode="HTML")
         return
     lines = ["🎙 <b>Последние Dub Studio проекты</b>", ""]
     for project in projects:
@@ -412,9 +381,7 @@ async def dubstatus_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         text, keyboard = _project_card(project)
         await update.effective_message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
     except Exception as exc:
-        await update.effective_message.reply_text(
-            "⚠️ " + html.escape(_short(str(exc), 800)), parse_mode="HTML"
-        )
+        await update.effective_message.reply_text("⚠️ " + html.escape(_short(str(exc), 800)), parse_mode="HTML")
 
 
 async def dublog_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -425,9 +392,7 @@ async def dublog_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         text, keyboard = _log_text(project)
         await update.effective_message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
     except Exception as exc:
-        await update.effective_message.reply_text(
-            "⚠️ " + html.escape(_short(str(exc), 800)), parse_mode="HTML"
-        )
+        await update.effective_message.reply_text("⚠️ " + html.escape(_short(str(exc), 800)), parse_mode="HTML")
 
 
 async def _enqueue(update: Update, project: dict[str, Any], action: str) -> None:
@@ -455,9 +420,7 @@ async def dubrun_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             raise RuntimeError(f"Сначала загрузите готовый SRT: /dubsrt {project['id']}")
         await _enqueue(update, project, _default_render_action(project))
     except Exception as exc:
-        await update.effective_message.reply_text(
-            "⚠️ " + html.escape(_short(str(exc), 800)), parse_mode="HTML"
-        )
+        await update.effective_message.reply_text("⚠️ " + html.escape(_short(str(exc), 800)), parse_mode="HTML")
 
 
 async def dubrepair_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -471,9 +434,7 @@ async def dubrepair_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         requested = args[1].lower() if len(args) > 1 else ""
         if requested:
             if requested not in repairs:
-                raise ValueError(
-                    f"Недоступный repair action {requested}. Доступно: {', '.join(repairs)}"
-                )
+                raise ValueError(f"Недоступный repair action {requested}. Доступно: {', '.join(repairs)}")
             await _enqueue(update, project, requested)
             return
         if len(repairs) == 1:
@@ -490,13 +451,9 @@ async def dubrepair_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             ]
             for name in repairs
         ]
-        await update.effective_message.reply_text(
-            "Выберите точечный ремонт:", reply_markup=InlineKeyboardMarkup(rows)
-        )
+        await update.effective_message.reply_text("Выберите точечный ремонт:", reply_markup=InlineKeyboardMarkup(rows))
     except Exception as exc:
-        await update.effective_message.reply_text(
-            "⚠️ " + html.escape(_short(str(exc), 900)), parse_mode="HTML"
-        )
+        await update.effective_message.reply_text("⚠️ " + html.escape(_short(str(exc), 900)), parse_mode="HTML")
 
 
 async def dubcancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -505,13 +462,9 @@ async def dubcancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     try:
         project = _resolve_project(_store(), update.effective_user.id, (context.args or [None])[0])
         job = _store().request_cancel(str(project["id"]))
-        await update.effective_message.reply_text(
-            f"🛑 Запрос остановки принят для задания #{job['id']}."
-        )
+        await update.effective_message.reply_text(f"🛑 Запрос остановки принят для задания #{job['id']}.")
     except Exception as exc:
-        await update.effective_message.reply_text(
-            "⚠️ " + html.escape(_short(str(exc), 800)), parse_mode="HTML"
-        )
+        await update.effective_message.reply_text("⚠️ " + html.escape(_short(str(exc), 800)), parse_mode="HTML")
 
 
 def _outputs_text(project: dict[str, Any]) -> str:
@@ -551,9 +504,7 @@ async def dubfiles_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         project = _resolve_project(_store(), update.effective_user.id, (context.args or [None])[0])
         await update.effective_message.reply_text(_outputs_text(project), parse_mode="HTML")
     except Exception as exc:
-        await update.effective_message.reply_text(
-            "⚠️ " + html.escape(_short(str(exc), 800)), parse_mode="HTML"
-        )
+        await update.effective_message.reply_text("⚠️ " + html.escape(_short(str(exc), 800)), parse_mode="HTML")
 
 
 async def dubworker_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -628,8 +579,7 @@ async def handle_dub_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             job = store.enqueue_job(project_id, render_action)
             await _safe_edit(
                 query,
-                f"🕓 Задание #{job['id']} поставлено в очередь.\n"
-                f"<code>{html.escape(render_action)}</code>",
+                f"🕓 Задание #{job['id']} поставлено в очередь.\n<code>{html.escape(render_action)}</code>",
                 parse_mode="HTML",
             )
         elif action == "cancel":
@@ -679,8 +629,7 @@ async def handle_dub_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             job = store.enqueue_job(project_id, repair_action)
             await _safe_edit(
                 query,
-                f"🩹 Точечный ремонт поставлен в очередь: #{job['id']}\n"
-                f"<code>{html.escape(repair_action)}</code>",
+                f"🩹 Точечный ремонт поставлен в очередь: #{job['id']}\n<code>{html.escape(repair_action)}</code>",
                 parse_mode="HTML",
             )
     except BadRequest as exc:

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Обложка необязательна: файловые сценарии fresh/cache без сети и Pillow."""
+
 from __future__ import annotations
 
 import asyncio

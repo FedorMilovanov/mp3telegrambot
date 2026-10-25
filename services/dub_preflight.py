@@ -1,4 +1,5 @@
 """Backend-neutral preflight for speech, media master and final validation."""
+
 from __future__ import annotations
 
 import hashlib
@@ -52,11 +53,7 @@ def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
 
 def _project_root(project: dict[str, Any]) -> Path:
     raw = str(project.get("work_root") or "").strip()
-    root = (
-        Path(raw).resolve()
-        if raw
-        else (studio_root() / "projects" / str(project["id"])).resolve()
-    )
+    root = Path(raw).resolve() if raw else (studio_root() / "projects" / str(project["id"])).resolve()
     allowed = (studio_root() / "projects").resolve()
     try:
         root.relative_to(allowed)
@@ -95,9 +92,7 @@ def _runtime_plan(project: dict[str, Any]) -> dict[str, Any]:
     request_path = root / "request.json"
     request = _read_json(request_path)
     if int(request.get("schema_version") or 0) != 1:
-        raise RuntimeError(
-            f"Preflight: request.json отсутствует или повреждён: {request_path}"
-        )
+        raise RuntimeError(f"Preflight: request.json отсутствует или повреждён: {request_path}")
     selection = select_production_speech(
         request.get("speech_backend"),
         request.get("speech_model_profile"),
@@ -136,9 +131,7 @@ def _runtime_plan(project: dict[str, Any]) -> dict[str, Any]:
         "model_contract": selection.model_contract,
         "model_profile": selection.model_profile,
         "model_resolution": selection.resolution,
-        "model_source": model_profile_source_evidence(
-            selection.model_profile.profile_id
-        ),
+        "model_source": model_profile_source_evidence(selection.model_profile.profile_id),
         "speech_runtime": speech_runtime,
         "media_master": media_master,
         "media_runtime": media_runtime,
@@ -178,9 +171,7 @@ def _probe_imports(plan: dict[str, Any]) -> dict[str, Any]:
     if not python.is_file():
         raise RuntimeError(f"Preflight: speech Python не найден: {python}")
     if not Path(media.python_executable).is_file():
-        raise RuntimeError(
-            f"Preflight: media master Python не найден: {media.python_executable}"
-        )
+        raise RuntimeError(f"Preflight: media master Python не найден: {media.python_executable}")
     for executable in ("ffmpeg", "ffprobe"):
         if not shutil.which(executable):
             raise RuntimeError(f"Preflight: {executable} не найден в PATH.")
@@ -220,10 +211,7 @@ def _probe_imports(plan: dict[str, Any]) -> dict[str, Any]:
     )
     if process.returncode != 0:
         tail = (process.stderr or process.stdout or "")[-5000:]
-        raise RuntimeError(
-            "Preflight: backend runtime/import graph завершился с кодом "
-            f"{process.returncode}:\n{tail}"
-        )
+        raise RuntimeError(f"Preflight: backend runtime/import graph завершился с кодом {process.returncode}:\n{tail}")
     try:
         loaded = json.loads((process.stdout or "").strip())
     except json.JSONDecodeError as exc:

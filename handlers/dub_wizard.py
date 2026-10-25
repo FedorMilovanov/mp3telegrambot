@@ -8,6 +8,7 @@ Two intentionally separate production modes:
 Every new project follows one fail-closed sequence:
 mode -> production TTS profile -> YouTube URL -> normalized request -> enqueue.
 """
+
 from __future__ import annotations
 
 import html
@@ -73,9 +74,7 @@ def _extract_youtube_video_id(value: str) -> tuple[str, str]:
         raw = "https://" + raw
     video_id = clean_source_download._url_video_id(raw)
     if not video_id:
-        raise ValueError(
-            "Нужна каноническая ссылка на один YouTube-ролик: watch, youtu.be, Shorts, live или embed."
-        )
+        raise ValueError("Нужна каноническая ссылка на один YouTube-ролик: watch, youtu.be, Shorts, live или embed.")
     return video_id, f"https://youtube.com/watch?v={video_id}"
 
 
@@ -136,10 +135,12 @@ def _home_keyboard() -> InlineKeyboardMarkup:
 
 def _back_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
-        [[
-            InlineKeyboardButton("↩️ Dub Studio", callback_data="dubwiz|home|show"),
-            InlineKeyboardButton("🎛 Все режимы", callback_data="mode_menu:home"),
-        ]]
+        [
+            [
+                InlineKeyboardButton("↩️ Dub Studio", callback_data="dubwiz|home|show"),
+                InlineKeyboardButton("🎛 Все режимы", callback_data="mode_menu:home"),
+            ]
+        ]
     )
 
 
@@ -187,13 +188,9 @@ def _catalog_text(page: int) -> tuple[str, int, int]:
 def _catalog_keyboard(page: int, page_count: int) -> InlineKeyboardMarkup:
     navigation: list[InlineKeyboardButton] = []
     if page > 0:
-        navigation.append(
-            InlineKeyboardButton("←", callback_data=f"dubwiz|catalog|{page - 1}")
-        )
+        navigation.append(InlineKeyboardButton("←", callback_data=f"dubwiz|catalog|{page - 1}"))
     if page + 1 < page_count:
-        navigation.append(
-            InlineKeyboardButton("→", callback_data=f"dubwiz|catalog|{page + 1}")
-        )
+        navigation.append(InlineKeyboardButton("→", callback_data=f"dubwiz|catalog|{page + 1}"))
     rows: list[list[InlineKeyboardButton]] = []
     if navigation:
         rows.append(navigation)
@@ -221,9 +218,7 @@ def _selection_page(
     current = {choice.profile_id: choice for choice in production_tts_profile_choices()}
     missing = [profile_id for profile_id in profile_ids if profile_id not in current]
     if missing:
-        raise RuntimeError(
-            "TTS catalog изменился во время выбора: " + ", ".join(missing)
-        )
+        raise RuntimeError("TTS catalog изменился во время выбора: " + ", ".join(missing))
     choices = tuple(current[profile_id] for profile_id in profile_ids)
     page_count = max(1, (len(choices) + _PROFILE_PAGE_SIZE - 1) // _PROFILE_PAGE_SIZE)
     page = max(0, min(int(page), page_count - 1))
@@ -409,14 +404,8 @@ def _request_payload(
         "original_level": 0.18,
         "russian_delay_ms": 420,
         "whisper_model": os.getenv("DUB_WHISPER_MODEL", "large-v3"),
-        "translation_model": (
-            os.getenv("DUB_TRANSLATION_MODEL", "").strip()
-            or configured_model(ROLE_PRIMARY)
-        ),
-        "title_model": (
-            os.getenv("DUB_TITLE_MODEL", "").strip()
-            or configured_model(ROLE_UTILITY)
-        ),
+        "translation_model": (os.getenv("DUB_TRANSLATION_MODEL", "").strip() or configured_model(ROLE_PRIMARY)),
+        "title_model": (os.getenv("DUB_TITLE_MODEL", "").strip() or configured_model(ROLE_UTILITY)),
     }
     return normalize_new_production_tts_request(base, choice.profile_id)
 
@@ -426,9 +415,7 @@ async def _admin(update: Update) -> bool:
     if user and user.id in ADMIN_IDS:
         return True
     if update.effective_message:
-        await update.effective_message.reply_text(
-            "⛔ Универсальный Dub Studio доступен только администратору."
-        )
+        await update.effective_message.reply_text("⛔ Универсальный Dub Studio доступен только администратору.")
     return False
 
 
@@ -502,8 +489,11 @@ async def dubtts_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         store = DubStore()
         request_path = store.root / "projects" / project_id / "request.json"
         result = rebind_inactive_project_tts_profile(
-            store, project_id, owner_user_id=update.effective_user.id,
-            request_path=request_path, profile_value=profile_id,
+            store,
+            project_id,
+            owner_user_id=update.effective_user.id,
+            request_path=request_path,
+            profile_value=profile_id,
         )
         choice = production_tts_profile_choice(result.choice.profile_id)
         status = "уже был закреплён" if not result.changed else "закреплён"
@@ -533,13 +523,7 @@ async def _show_projects(update: Update) -> None:
         metadata = project.get("metadata") or {}
         mode = str(metadata.get("translation_mode") or "")
         profile_id = str(metadata.get("speech_model_profile") or "legacy/default")
-        mode_label = (
-            "Gemini MAX"
-            if mode == _GEMINI_MODE
-            else "готовый SRT"
-            if mode == _DIRECT_MODE
-            else "recipe"
-        )
+        mode_label = "Gemini MAX" if mode == _GEMINI_MODE else "готовый SRT" if mode == _DIRECT_MODE else "recipe"
         lines.append(
             f"• <code>{html.escape(str(project['id']))}</code> — "
             f"{html.escape(_short(str(project['title']), 72))} · "
@@ -740,19 +724,14 @@ async def _create_generic_project(
     validated_request = generic_project_runtime.validate_request_payload(request)
     write_durable_request(root / "request.json", validated_request)
 
-    model_line = (
-        f"TTS: <b>{html.escape(choice.display_name)}</b> · "
-        f"<code>{html.escape(choice.model_revision)}</code>\n"
-    )
+    model_line = f"TTS: <b>{html.escape(choice.display_name)}</b> · <code>{html.escape(choice.model_revision)}</code>\n"
     if mode == _GEMINI_MODE:
         job = store.enqueue_job(project_id, "render_gemini")
         context.user_data.pop(_WIZARD_KEY, None)
         await update.effective_message.reply_text(
             "🚀 <b>Gemini MAX запущен</b>\n\n"
             f"Проект: <code>{html.escape(project_id)}</code>\n"
-            f"Видео: <code>{html.escape(video_id)}</code>\n"
-            + model_line
-            + f"Задание: <b>#{job['id']}</b>\n\n"
+            f"Видео: <code>{html.escape(video_id)}</code>\n" + model_line + f"Задание: <b>#{job['id']}</b>\n\n"
             "Бот сам выберет лучший источник субтитров, выполнит многоступенчатый "
             "перевод, озвучит и пришлёт готовый MP4.\n\n"
             f"Статус: <code>/dubstatus {html.escape(project_id)}</code>",
@@ -838,15 +817,9 @@ async def dubsrt_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
     token = str((context.args or [""])[0]).strip().lower()
     try:
-        project = (
-            DubStore().get_project(token)
-            if token
-            else _latest_direct_draft(update.effective_user.id)
-        )
+        project = DubStore().get_project(token) if token else _latest_direct_draft(update.effective_user.id)
         if not project:
-            raise RuntimeError(
-                "Не найден ожидающий SRT-проект. Откройте /dub и выберите режим готового SRT."
-            )
+            raise RuntimeError("Не найден ожидающий SRT-проект. Откройте /dub и выберите режим готового SRT.")
         await _activate_srt_upload(update, context, str(project["id"]))
     except Exception as exc:
         await update.effective_message.reply_text(

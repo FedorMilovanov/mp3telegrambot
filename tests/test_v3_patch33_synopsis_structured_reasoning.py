@@ -21,7 +21,7 @@ def test_telegraph_synopsis_wires_structured_output_with_legacy_fallback():
     assert "def _synopsis_structured_output_enabled" in src
     assert "SYNOPSIS_STRUCTURED" in src
     assert 'os.getenv("SYNOPSIS_STRUCTURED", "0")' in src
-    assert "response_mime_type=\"application/json\"" in src
+    assert 'response_mime_type="application/json"' in src
     assert "response_schema=expanded_page_response_schema()" in src
     assert "Synopsis structured output failed" in src
     assert "retry legacy JSON config" in src
@@ -49,6 +49,7 @@ def test_synopsis_positive_reasoning_note_is_injected_into_qa_and_v2():
     src = Path("services/telegraph.py").read_text(encoding="utf-8")
     assert "SYNOPSIS_REASONING_FIRST_NOTE" in src
     from core.reasoning_guidance import build_synopsis_reasoning_note
+
     note = build_synopsis_reasoning_note()
     assert "РАЗРЕШЕНО И ЖЕЛАТЕЛЬНО" in note
     assert "ход речи автора" in note

@@ -1,4 +1,5 @@
 """Fresh caption finalization keeps fit, cache, and archive contracts together."""
+
 from __future__ import annotations
 
 import asyncio
@@ -125,18 +126,20 @@ def _dependencies(events, *, fitted=None):
 
 
 def _run(inputs, dependencies, *, duration=1200, repair=None):
-    return asyncio.run(finalize_fresh_caption(
-        source=_source(),
-        inputs=inputs,
-        publication=_publication(),
-        rendered=_rendered(),
-        repair=repair or RepairReport(),
-        media_id="media",
-        duration=duration,
-        cache_version="cache-v1",
-        model_name="model-v1",
-        **dependencies,
-    ))
+    return asyncio.run(
+        finalize_fresh_caption(
+            source=_source(),
+            inputs=inputs,
+            publication=_publication(),
+            rendered=_rendered(),
+            repair=repair or RepairReport(),
+            media_id="media",
+            duration=duration,
+            cache_version="cache-v1",
+            model_name="model-v1",
+            **dependencies,
+        )
+    )
 
 
 def test_analysis_fit_cache_and_archive_keep_order_and_values(caplog, monkeypatch):
@@ -151,7 +154,12 @@ def test_analysis_fit_cache_and_archive_keep_order_and_values(caplog, monkeypatc
         result = _run(inputs, _dependencies(events), repair=repair)
 
     assert [event[0] for event in events] == [
-        "fit", "measure", "prompt", "save", "prompt", "archive",
+        "fit",
+        "measure",
+        "prompt",
+        "save",
+        "prompt",
+        "archive",
     ]
     assert events[0][2] is caption_base
     assert result.caption == "caption"
@@ -206,8 +214,7 @@ def test_analysis_fit_cache_and_archive_keep_order_and_values(caplog, monkeypatc
     assert archive_request.prompt_version == "prompt-2"
     assert archive_request.prompt_variant == "experiment"
     assert (
-        "Caption visible_len=7 format=sermon ts_total=42 ts_cap_limit=30 "
-        "ts_in_cap=7 stage=timestamps_trimmed"
+        "Caption visible_len=7 format=sermon ts_total=42 ts_cap_limit=30 ts_in_cap=7 stage=timestamps_trimmed"
     ) in caplog.text
 
 

@@ -4,6 +4,7 @@
 HTTP заменён на `PageIO`: проверяются правила, которые раньше держались только
 на комментариях внутри 170-строчного замыкания.
 """
+
 from __future__ import annotations
 
 import logging
@@ -34,9 +35,15 @@ PAGES = [("Конспект", SYNOPSIS), ("Разбор материала", STU
 class FakeTelegraph:
     """Fake getPage/editPage с записью операций."""
 
-    def __init__(self, pages: dict[str, list], title: str = "Заголовок",
-                 author: str = "Автор", edit_ok=True, fetch_error=None,
-                 edit_error=None):
+    def __init__(
+        self,
+        pages: dict[str, list],
+        title: str = "Заголовок",
+        author: str = "Автор",
+        edit_ok=True,
+        fetch_error=None,
+        edit_error=None,
+    ):
         self.pages = pages
         self.title = title
         self.author = author
@@ -52,8 +59,7 @@ class FakeTelegraph:
             raise self.fetch_error[url]
         if url not in self.pages:
             return None
-        return PageContent(url=url, title=self.title, author=self.author,
-                           nodes=list(self.pages[url]))
+        return PageContent(url=url, title=self.title, author=self.author, nodes=list(self.pages[url]))
 
     async def edit(self, url: str, title: str, author: str, nodes: list) -> bool:
         if url in self.edit_error:
@@ -79,9 +85,7 @@ def test_nav_children_skip_self_and_separate_with_dot() -> None:
 
     both = nav_children("https://telegra.ph/other", PAGES)
     assert both[1] == " · "
-    assert [c["children"][0] for c in both if isinstance(c, dict)] == [
-        "Конспект", "Разбор материала"
-    ]
+    assert [c["children"][0] for c in both if isinstance(c, dict)] == ["Конспект", "Разбор материала"]
 
 
 def test_nav_children_empty_when_only_self() -> None:
@@ -121,9 +125,7 @@ def test_strip_trailing_nav_ignores_unrelated_last_paragraph() -> None:
 
 
 def test_has_nav_checks_only_tail() -> None:
-    nodes = [{"tag": "p", "children": [NAV_HEADER]}] + [
-        {"tag": "p", "children": ["x"]} for _ in range(5)
-    ]
+    nodes = [{"tag": "p", "children": [NAV_HEADER]}] + [{"tag": "p", "children": ["x"]} for _ in range(5)]
     assert has_nav(nodes) is False
     assert has_nav([{"tag": "p", "children": [NAV_HEADER]}]) is True
 
@@ -135,17 +137,29 @@ def test_normalize_url_expands_relative() -> None:
 
 def test_find_next_urls_finds_nested_marker_links() -> None:
     nodes = [
-        {"tag": "p", "children": [
-            {"tag": "a", "attrs": {"href": "/Part-2"}, "children": ["➡ Дальше"]},
-        ]},
-        {"tag": "p", "children": [
-            {"tag": "b", "children": [
-                {"tag": "a", "attrs": {"href": "/Part-3"}, "children": ["➡"]},
-            ]},
-        ]},
-        {"tag": "p", "children": [
-            {"tag": "a", "attrs": {"href": "/Other"}, "children": ["обычная ссылка"]},
-        ]},
+        {
+            "tag": "p",
+            "children": [
+                {"tag": "a", "attrs": {"href": "/Part-2"}, "children": ["➡ Дальше"]},
+            ],
+        },
+        {
+            "tag": "p",
+            "children": [
+                {
+                    "tag": "b",
+                    "children": [
+                        {"tag": "a", "attrs": {"href": "/Part-3"}, "children": ["➡"]},
+                    ],
+                },
+            ],
+        },
+        {
+            "tag": "p",
+            "children": [
+                {"tag": "a", "attrs": {"href": "/Other"}, "children": ["обычная ссылка"]},
+            ],
+        },
         "строка",
     ]
     assert find_next_urls(nodes) == [
@@ -159,8 +173,9 @@ def test_find_next_urls_finds_nested_marker_links() -> None:
 
 @pytest.mark.asyncio
 async def test_navigation_added_to_each_page() -> None:
-    fake = FakeTelegraph({SYNOPSIS: [{"tag": "p", "children": ["текст"]}],
-                          STUDY: [{"tag": "p", "children": ["разбор"]}]})
+    fake = FakeTelegraph(
+        {SYNOPSIS: [{"tag": "p", "children": ["текст"]}], STUDY: [{"tag": "p", "children": ["разбор"]}]}
+    )
     count = await add_navigation(PAGES, fake.io())
 
     assert count == 2
@@ -179,8 +194,9 @@ async def test_single_page_gets_no_navigation() -> None:
 
 @pytest.mark.asyncio
 async def test_repeated_run_does_not_duplicate_block() -> None:
-    fake = FakeTelegraph({SYNOPSIS: [{"tag": "p", "children": ["текст"]}],
-                          STUDY: [{"tag": "p", "children": ["разбор"]}]})
+    fake = FakeTelegraph(
+        {SYNOPSIS: [{"tag": "p", "children": ["текст"]}], STUDY: [{"tag": "p", "children": ["разбор"]}]}
+    )
     await add_navigation(PAGES, fake.io())
     first = list(fake.pages[SYNOPSIS])
     await add_navigation(PAGES, fake.io())
@@ -256,18 +272,25 @@ async def test_transient_failure_recovers_on_second_attempt(
 
 
 def next_part_nodes(href: str) -> list:
-    return [{"tag": "p", "children": [
-        {"tag": "a", "attrs": {"href": href}, "children": ["➡ Дальше"]},
-    ]}]
+    return [
+        {
+            "tag": "p",
+            "children": [
+                {"tag": "a", "attrs": {"href": href}, "children": ["➡ Дальше"]},
+            ],
+        }
+    ]
 
 
 @pytest.mark.asyncio
 async def test_chain_parts_receive_navigation() -> None:
-    fake = FakeTelegraph({
-        SYNOPSIS: next_part_nodes("/konspekt-2"),
-        STUDY: [],
-        PART2: [{"tag": "p", "children": ["часть 2"]}],
-    })
+    fake = FakeTelegraph(
+        {
+            SYNOPSIS: next_part_nodes("/konspekt-2"),
+            STUDY: [],
+            PART2: [{"tag": "p", "children": ["часть 2"]}],
+        }
+    )
     await add_navigation(PAGES, fake.io())
 
     edited = {url for url, _ in fake.edits}
@@ -280,11 +303,13 @@ async def test_chain_parts_receive_navigation() -> None:
 
 @pytest.mark.asyncio
 async def test_chain_does_not_loop_forever() -> None:
-    fake = FakeTelegraph({
-        SYNOPSIS: next_part_nodes("/konspekt-2"),
-        STUDY: [],
-        PART2: next_part_nodes("/konspekt-1"),  # ссылка назад на конспект
-    })
+    fake = FakeTelegraph(
+        {
+            SYNOPSIS: next_part_nodes("/konspekt-2"),
+            STUDY: [],
+            PART2: next_part_nodes("/konspekt-1"),  # ссылка назад на конспект
+        }
+    )
     await add_navigation(PAGES, fake.io())
 
     assert fake.fetches.count(PART2) == 1
@@ -293,11 +318,13 @@ async def test_chain_does_not_loop_forever() -> None:
 @pytest.mark.asyncio
 async def test_chain_part_with_navigation_is_not_edited_again() -> None:
     existing = [{"tag": "p", "children": ["часть 2"]}, {"tag": "p", "children": [NAV_HEADER]}]
-    fake = FakeTelegraph({
-        SYNOPSIS: next_part_nodes("/konspekt-2"),
-        STUDY: [],
-        PART2: existing,
-    })
+    fake = FakeTelegraph(
+        {
+            SYNOPSIS: next_part_nodes("/konspekt-2"),
+            STUDY: [],
+            PART2: existing,
+        }
+    )
     await add_navigation(PAGES, fake.io())
 
     assert PART2 not in {url for url, _ in fake.edits}
@@ -351,18 +378,18 @@ async def test_production_fetch_builds_getpage_url_and_maps_result(
     def fake_get(url, timeout):
         seen["url"] = url
         seen["timeout"] = timeout
-        return FakeResponse({
-            "ok": True,
-            "result": {"title": "Т", "author_name": "А", "content": [{"tag": "p"}]},
-        })
+        return FakeResponse(
+            {
+                "ok": True,
+                "result": {"title": "Т", "author_name": "А", "content": [{"tag": "p"}]},
+            }
+        )
 
     monkeypatch.setattr(requests, "get", fake_get)
     io = nav.production_page_io()
     page = await io.fetch("https://telegra.ph/konspekt-1")
 
-    assert seen["url"] == (
-        "https://api.telegra.ph/getPage/konspekt-1?return_content=true"
-    )
+    assert seen["url"] == ("https://api.telegra.ph/getPage/konspekt-1?return_content=true")
     assert seen["timeout"] == 30
     assert page == PageContent(
         url="https://telegra.ph/konspekt-1",
@@ -484,12 +511,14 @@ def test_find_next_urls_handles_string_children() -> None:
 async def test_part_queued_twice_is_visited_once() -> None:
     """Две ссылки на одну и ту же часть: обрабатываем её один раз."""
     p3 = "https://telegra.ph/konspekt-3"
-    fake = FakeTelegraph({
-        SYNOPSIS: [*next_part_nodes("/konspekt-2"), *next_part_nodes("/konspekt-3")],
-        STUDY: [],
-        PART2: next_part_nodes("/konspekt-3"),
-        p3: [{"tag": "p", "children": ["3"]}],
-    })
+    fake = FakeTelegraph(
+        {
+            SYNOPSIS: [*next_part_nodes("/konspekt-2"), *next_part_nodes("/konspekt-3")],
+            STUDY: [],
+            PART2: next_part_nodes("/konspekt-3"),
+            p3: [{"tag": "p", "children": ["3"]}],
+        }
+    )
     await add_navigation(PAGES, fake.io())
 
     assert fake.fetches.count(p3) == 1
@@ -499,8 +528,11 @@ async def test_part_queued_twice_is_visited_once() -> None:
 def test_find_next_urls_skips_marker_links_without_href() -> None:
     nodes = [
         {"tag": "p", "children": [{"tag": "a", "children": ["➡ Дальше"]}]},
-        {"tag": "p", "children": [
-            {"tag": "a", "attrs": {"href": ""}, "children": ["➡ Дальше"]},
-        ]},
+        {
+            "tag": "p",
+            "children": [
+                {"tag": "a", "attrs": {"href": ""}, "children": ["➡ Дальше"]},
+            ],
+        },
     ]
     assert find_next_urls(nodes) == []

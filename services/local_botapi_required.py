@@ -13,6 +13,7 @@ A live server is never killed merely because TDLib needed longer to establish a
 Telegram data-centre session. If startup times out, the process is left alive so
 that enabling/fixing the system TUN can let the same session finish.
 """
+
 from __future__ import annotations
 
 import os
@@ -143,9 +144,7 @@ def require_local_bot_api() -> None:
     host = parsed.hostname or "127.0.0.1"
     port = parsed.port or 8081
     if host not in _LOCAL_HOSTS:
-        raise LocalBotApiRequiredError(
-            f"LOCAL_BOT_API_URL должен указывать на localhost, получено: {local_url}"
-        )
+        raise LocalBotApiRequiredError(f"LOCAL_BOT_API_URL должен указывать на localhost, получено: {local_url}")
 
     getme_url = f"{local_url.rstrip('/')}/bot{token}/getMe"
     ok, detail = probe_runtime._probe_getme(getme_url, 2.0)
@@ -165,7 +164,9 @@ def require_local_bot_api() -> None:
             _mark_local_ready(local_url)
             print(f"✅ Local Bot API готов ({detail}); лимит отправки — 2000 МБ, сжатие отключено.")
             return
-        raise LocalBotApiRequiredError(_failure_reason(detail, _log_path(), proxy_url=os.getenv("LOCAL_BOT_API_PROXY_URL", "").strip()))
+        raise LocalBotApiRequiredError(
+            _failure_reason(detail, _log_path(), proxy_url=os.getenv("LOCAL_BOT_API_PROXY_URL", "").strip())
+        )
 
     api_id = os.getenv("TELEGRAM_API_ID", "").strip()
     api_hash = os.getenv("TELEGRAM_API_HASH", "").strip()

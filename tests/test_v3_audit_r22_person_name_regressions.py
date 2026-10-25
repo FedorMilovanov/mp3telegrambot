@@ -28,6 +28,7 @@ prompt text (core/prompts.py) taught the model to GENERATE the stale
 now aligned, plus a defensive normalize_person_names() entry catches any
 residual/cached double-л text.
 """
+
 from pathlib import Path
 
 from core.person_names import (
@@ -41,7 +42,7 @@ from core.utils import parse_title
 
 
 def test_known_author_not_matched_inside_unrelated_word():
-    """"Beggar" contains "Begg", "bagpiper" contains "piper" — neither
+    """ "Beggar" contains "Begg", "bagpiper" contains "piper" — neither
     should trigger a false author match."""
     assert known_author_from_text("The Rich Man and the Beggar") == ""
     assert known_author_from_text("bagpiper practice session") == ""

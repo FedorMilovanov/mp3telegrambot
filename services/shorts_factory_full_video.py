@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Optional delivery of the full Yandex LiveDub sermon from Shorts Factory MAX."""
+
 from __future__ import annotations
 
 import asyncio
@@ -65,8 +66,7 @@ async def send_factory_full_translation_if_enabled(
         if not silent_errors:
             try:
                 await message.reply_text(
-                    "⚠️ Нарезки готовы, но полный видео-перевод не отправился. "
-                    f"Причина: {str(exc)[:300]}"
+                    f"⚠️ Нарезки готовы, но полный видео-перевод не отправился. Причина: {str(exc)[:300]}"
                 )
             except Exception:
                 pass

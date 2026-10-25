@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Pure fail-closed speaker identity policy for assembled Russian audio."""
+
 from __future__ import annotations
 
 import math
@@ -13,6 +14,7 @@ ABSOLUTE_ADJACENT_F0_RATIO = (0.62, 1.62)
 
 ABSOLUTE_ADJACENT_P90_RATIO = (0.58, 1.72)
 
+
 def _finite(value: Any, default: float = 0.0) -> float:
     try:
         result = float(value)
@@ -20,18 +22,22 @@ def _finite(value: Any, default: float = 0.0) -> float:
         return float(default)
     return result if math.isfinite(result) else float(default)
 
+
 def _ratio(value: float, reference: float) -> float:
     return value / reference if value > 0.0 and reference > 0.0 else 0.0
+
 
 def _semitones(value: float, reference: float) -> float | None:
     ratio = _ratio(value, reference)
     return 12.0 * math.log2(ratio) if ratio > 0.0 else None
+
 
 def _append_failure(row: dict[str, Any], reason: str) -> None:
     failures = row.setdefault("failures", [])
     if reason not in failures:
         failures.append(reason)
     row["passed"] = False
+
 
 def enforce_fail_closed_identity(
     rows: list[dict[str, Any]],
@@ -60,11 +66,7 @@ def enforce_fail_closed_identity(
 
         if index == 0:
             continue
-        previous_pitch = (
-            rows[index - 1].get("pitch")
-            if isinstance(rows[index - 1].get("pitch"), dict)
-            else {}
-        )
+        previous_pitch = rows[index - 1].get("pitch") if isinstance(rows[index - 1].get("pitch"), dict) else {}
         median_ratio = _ratio(
             _finite(pitch.get("f0_median")),
             _finite(previous_pitch.get("f0_median")),
@@ -75,19 +77,12 @@ def enforce_fail_closed_identity(
         )
         row["fail_closed_neighbour_f0_median_ratio"] = median_ratio
         row["fail_closed_neighbour_f0_p90_ratio"] = p90_ratio
-        if median_ratio and not (
-            ABSOLUTE_ADJACENT_F0_RATIO[0]
-            <= median_ratio
-            <= ABSOLUTE_ADJACENT_F0_RATIO[1]
-        ):
+        if median_ratio and not (ABSOLUTE_ADJACENT_F0_RATIO[0] <= median_ratio <= ABSOLUTE_ADJACENT_F0_RATIO[1]):
             _append_failure(row, "adjacent_voice_pitch_discontinuity_fail_closed")
-        if p90_ratio and not (
-            ABSOLUTE_ADJACENT_P90_RATIO[0]
-            <= p90_ratio
-            <= ABSOLUTE_ADJACENT_P90_RATIO[1]
-        ):
+        if p90_ratio and not (ABSOLUTE_ADJACENT_P90_RATIO[0] <= p90_ratio <= ABSOLUTE_ADJACENT_P90_RATIO[1]):
             _append_failure(row, "adjacent_voice_range_discontinuity_fail_closed")
     return rows
+
 
 __all__ = [
     "ABSOLUTE_ADJACENT_F0_RATIO",

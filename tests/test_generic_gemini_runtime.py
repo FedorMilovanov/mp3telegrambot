@@ -49,9 +49,7 @@ def test_gemini_output_contract_requires_real_primary_video(tmp_path: Path) -> N
             {
                 "phase": "completed",
                 "translation_mode": "gemini",
-                "telegram_outputs": [
-                    {"path": str(named), "primary": True, "video": True}
-                ],
+                "telegram_outputs": [{"path": str(named), "primary": True, "video": True}],
             },
             ensure_ascii=False,
         ),

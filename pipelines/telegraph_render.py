@@ -17,6 +17,7 @@ Study/Reflection и отдельного opt-in «объединённого» �
 * если Reflection вернул компактную замену (URL «Вопросы»), он переезжает в
   `questions`, иначе навигация назовёт Вопросами чужую страницу.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -32,6 +33,7 @@ logger = logging.getLogger(__name__)
 REFLECTION_PREFIX = "razmyshlenie-"
 #: Префикс страницы «Вопросы» — так выглядит компактная замена.
 QUESTIONS_PREFIX = "voprosy-"
+
 
 class CombinedResult(Protocol):
     """Что вернул объединённый режим Study+Reflection."""
@@ -202,12 +204,8 @@ async def _render_combined(
             request.search_title,
             request.author,
             yt_url=request.url,
-            study_compact_fn=lambda: deps.analytics(
-                ai_data, request.search_title, request.author, request.url
-            ),
-            reflection_compact_fn=lambda: deps.questions(
-                request.questions, request.search_title, request.author
-            ),
+            study_compact_fn=lambda: deps.analytics(ai_data, request.search_title, request.author, request.url),
+            reflection_compact_fn=lambda: deps.questions(request.questions, request.search_title, request.author),
             rutube_url=request.rutube_url,
             vk_url=request.vk_url,
             synopsis_outline=request.synopsis_outline,
@@ -250,9 +248,7 @@ async def _render_study_or_reflection(
                 request.search_title,
                 request.author,
                 yt_url=request.url,
-                compact_fn=lambda: deps.analytics(
-                    ai_data, request.search_title, request.author, request.url
-                ),
+                compact_fn=lambda: deps.analytics(ai_data, request.search_title, request.author, request.url),
                 rutube_url=request.rutube_url,
                 vk_url=request.vk_url,
                 synopsis_outline=request.synopsis_outline,
@@ -273,9 +269,7 @@ async def _render_study_or_reflection(
                 ai_data=request.ai_data or {},
                 duration=request.duration,
                 yt_url=request.url,
-                compact_fn=lambda: deps.questions(
-                    request.questions, request.search_title, request.author
-                ),
+                compact_fn=lambda: deps.questions(request.questions, request.search_title, request.author),
                 rutube_url=request.rutube_url,
                 vk_url=request.vk_url,
                 synopsis_outline=request.synopsis_outline,
@@ -318,9 +312,7 @@ async def render_pages(
             return None
         if not plan.terms:
             return None
-        return await deps.terms(
-            terms_data, request.search_title, request.author, request.url
-        )
+        return await deps.terms(terms_data, request.search_title, request.author, request.url)
 
     alt_links, analytics, questions, terms = await asyncio.gather(
         _alt_links(request, deps),
@@ -337,15 +329,12 @@ async def render_pages(
         raise alt_links
     resolved_links = alt_links
 
-    study, reflection = await _render_study_or_reflection(
-        request, deps, combined=request.combined_enabled
-    )
+    study, reflection = await _render_study_or_reflection(request, deps, combined=request.combined_enabled)
 
     moved = False
     if reflection and is_reflection_fallback(reflection):
         logger.warning(
-            "Navigation v10: reflection URL выглядит как fallback Вопросы (%s) — "
-            "перемещаю в questions, из nav убираю",
+            "Navigation v10: reflection URL выглядит как fallback Вопросы (%s) — перемещаю в questions, из nav убираю",
             reflection,
         )
         questions = questions or reflection

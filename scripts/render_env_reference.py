@@ -15,6 +15,7 @@
 Колонки: имя, где читается, литеральный дефолт (если он есть в коде), описан
 ли в ``.env.example``, управляется ли стартовой политикой (``POLICY_OWNED``).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -34,19 +35,56 @@ ROOT_FILES = ("main.py", "bot_new.py", "bot.py")
 
 #: Переменные, которыми управляет ОС/интерпретатор/CI, а не проект.
 SYSTEM_VARS = {
-    "PATH", "HOME", "USERPROFILE", "TEMP", "TMP", "TMPDIR", "APPDATA",
-    "LOCALAPPDATA", "PROGRAMFILES", "SYSTEMROOT", "COMSPEC", "SHELL",
-    "PYTHONPATH", "PYTHONIOENCODING", "PYTHONUNBUFFERED", "PYTHONDONTWRITEBYTECODE",
-    "LANG", "LC_ALL", "TZ", "CI", "GITHUB_ACTIONS", "GITHUB_REF",
-    "GITHUB_EVENT_NAME", "GITHUB_REPOSITORY", "CUDA_VISIBLE_DEVICES",
-    "NO_PROXY", "no_proxy", "HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy",
+    "PATH",
+    "HOME",
+    "USERPROFILE",
+    "TEMP",
+    "TMP",
+    "TMPDIR",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "PROGRAMFILES",
+    "SYSTEMROOT",
+    "COMSPEC",
+    "SHELL",
+    "PYTHONPATH",
+    "PYTHONIOENCODING",
+    "PYTHONUNBUFFERED",
+    "PYTHONDONTWRITEBYTECODE",
+    "LANG",
+    "LC_ALL",
+    "TZ",
+    "CI",
+    "GITHUB_ACTIONS",
+    "GITHUB_REF",
+    "GITHUB_EVENT_NAME",
+    "GITHUB_REPOSITORY",
+    "CUDA_VISIBLE_DEVICES",
+    "NO_PROXY",
+    "no_proxy",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "http_proxy",
+    "https_proxy",
 }
 
 #: (регулярка, индекс группы с именем, индекс группы с дефолтом или None)
 PATTERNS = (
     (re.compile(r"os\.getenv\(\s*[\"']([A-Z][A-Z0-9_]*)[\"']\s*(?:,\s*([\"'][^\"']*[\"']|[-+]?\d+(?:\.\d+)?))?"), 1, 2),
-    (re.compile(r"os\.environ\.get\(\s*[\"']([A-Z][A-Z0-9_]*)[\"']\s*(?:,\s*([\"'][^\"']*[\"']|[-+]?\d+(?:\.\d+)?))?"), 1, 2),
-    (re.compile(r"os\.environ\.setdefault\(\s*[\"']([A-Z][A-Z0-9_]*)[\"']\s*,\s*([\"'][^\"']*[\"']|[-+]?\d+(?:\.\d+)?)"), 1, 2),
+    (
+        re.compile(
+            r"os\.environ\.get\(\s*[\"']([A-Z][A-Z0-9_]*)[\"']\s*(?:,\s*([\"'][^\"']*[\"']|[-+]?\d+(?:\.\d+)?))?"
+        ),
+        1,
+        2,
+    ),
+    (
+        re.compile(
+            r"os\.environ\.setdefault\(\s*[\"']([A-Z][A-Z0-9_]*)[\"']\s*,\s*([\"'][^\"']*[\"']|[-+]?\d+(?:\.\d+)?)"
+        ),
+        1,
+        2,
+    ),
     (re.compile(r"os\.environ\[\s*[\"']([A-Z][A-Z0-9_]*)[\"']\s*\]"), 1, None),
     (re.compile(r"env(?:iron)?\.get\(\s*[\"']([A-Z][A-Z0-9_]*)[\"']"), 1, None),
 )
@@ -69,11 +107,7 @@ def _sources() -> list[Path]:
     for directory in SCAN_DIRS:
         base = ROOT / directory
         if base.is_dir():
-            files.extend(
-                path
-                for path in sorted(base.rglob("*.py"))
-                if "__pycache__" not in path.parts
-            )
+            files.extend(path for path in sorted(base.rglob("*.py")) if "__pycache__" not in path.parts)
     return files
 
 
@@ -87,7 +121,7 @@ def collect() -> dict[str, Entry]:
             # add or remove an environment variable from the generated contract.
             for match in pattern.finditer(source):
                 line_start = source.rfind("\n", 0, match.start()) + 1
-                if source[line_start:match.start()].lstrip().startswith("#"):
+                if source[line_start : match.start()].lstrip().startswith("#"):
                     continue
                 name = match.group(name_group)
                 if name in SYSTEM_VARS or name.startswith(("GITHUB_", "RUNNER_")):
@@ -98,7 +132,7 @@ def collect() -> dict[str, Entry]:
                     value = match.group(default_group)
                     if value:
                         entry.defaults.add(value.strip("\"'"))
-                matched_source = source[line_start:match.end()]
+                matched_source = source[line_start : match.end()]
                 if "os.environ[" in matched_source or "setdefault" in matched_source:
                     entry.written = True
     return entries
@@ -106,10 +140,7 @@ def collect() -> dict[str, Entry]:
 
 def _documented_names() -> set[str]:
     text = (ROOT / ".env.example").read_text(encoding="utf-8")
-    return {
-        match.group(1)
-        for match in re.finditer(r"(?m)^[#\s]*([A-Z][A-Z0-9_]*)=", text)
-    }
+    return {match.group(1) for match in re.finditer(r"(?m)^[#\s]*([A-Z][A-Z0-9_]*)=", text)}
 
 
 def _policy_owned() -> dict[str, list[str]]:
@@ -130,12 +161,14 @@ def _policy_owned() -> dict[str, list[str]]:
     )
     result = subprocess.run(
         [sys.executable, "-c", code],
-        cwd=str(ROOT), capture_output=True, text=True, check=False,
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if result.returncode != 0:
         print(
-            "env reference: не удалось получить POLICY_OWNED: "
-            f"{result.stderr.strip()[:400]}",
+            f"env reference: не удалось получить POLICY_OWNED: {result.stderr.strip()[:400]}",
             file=sys.stderr,
         )
         return {}

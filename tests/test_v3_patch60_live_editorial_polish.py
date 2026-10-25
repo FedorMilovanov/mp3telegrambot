@@ -47,7 +47,12 @@ def test_source_card_duplicate_cyrillic_parenthetical_is_removed():
 
 
 def test_telegraph_spacing_polish_fixes_glued_source_text():
-    nodes = [{"tag": "p", "children": ["-Достаточность в работеFaith Alone.Глубокий анализ в труде«Учение». Сперджен,* «Лекции»*"]}]
+    nodes = [
+        {
+            "tag": "p",
+            "children": ["-Достаточность в работеFaith Alone.Глубокий анализ в труде«Учение». Сперджен,* «Лекции»*"],
+        }
+    ]
     out = _postprocess_telegraph_nodes(nodes)
     flat = _flat(out)
     assert "- Достаточность" in flat
@@ -66,12 +71,19 @@ def test_title_topic_audit_flags_low_overlap_and_parser_records_warning():
     )
     assert issue is not None
     data = {
-        "real_author": "A", "real_title": "Святой Дух Откровения", "format": "sermon",
+        "real_author": "A",
+        "real_title": "Святой Дух Откровения",
+        "format": "sermon",
         "main_topic": "Пастырская верность и церковная дисциплина.",
         "timestamps": [{"time": "0:00", "topic": "Библейская экклезиология"}],
-        "hashtags": [], "analysis_summary": "a", "argument_arc": "b", "key_categories": [], "questions": [],
+        "hashtags": [],
+        "analysis_summary": "a",
+        "argument_arc": "b",
+        "key_categories": [],
+        "questions": [],
         "terms_data": {"concepts": [], "scripture": [], "translations": [], "lexicon_notes": []},
-        "whisper_hints": [], "hermeneutic_method": "mixed",
+        "whisper_hints": [],
+        "hermeneutic_method": "mixed",
     }
     parsed = _parse_gemini_response(json.dumps(data, ensure_ascii=False), duration=100)
     assert parsed and parsed.get("title_topic_warning")
@@ -104,10 +116,16 @@ def test_third_person_scrubber_handles_author_surnames_from_live_pages():
 
 
 def test_postprocess_repairs_split_hyphenated_term_and_dannyy_source_wording():
-    nodes = [{"tag": "p", "children": [
-        "• ", {"tag": "b", "children": ["Историко"]},
-        " — грамматический метод. Данный академический труд исследует тему."
-    ]}]
+    nodes = [
+        {
+            "tag": "p",
+            "children": [
+                "• ",
+                {"tag": "b", "children": ["Историко"]},
+                " — грамматический метод. Данный академический труд исследует тему.",
+            ],
+        }
+    ]
     out = _postprocess_telegraph_nodes(nodes)
     flat = _flat(out)
     assert "Историко-грамматический метод" in flat

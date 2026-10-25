@@ -190,9 +190,7 @@ def test_similar_expressive_identity_is_committed_and_reported(monkeypatch, tmp_
     assert built is True
     assert "identity similarity=" in detail
     payload = json.loads(report.read_text(encoding="utf-8"))
-    assert payload["identity_spectral_similarity"] >= (
-        controlled_reference_gate.MIN_IDENTITY_SPECTRAL_SIMILARITY
-    )
+    assert payload["identity_spectral_similarity"] >= (controlled_reference_gate.MIN_IDENTITY_SPECTRAL_SIMILARITY)
     assert payload["identity_reference"] == str(identity)
 
 

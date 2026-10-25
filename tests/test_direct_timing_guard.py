@@ -80,24 +80,30 @@ def test_dynamic_stop_requires_independent_candidates() -> None:
         candidate(1, 700, 6.3, slot),
         candidate(2, 700, 6.5, slot),
     ]
-    assert guard.evaluate_dynamic_timing_failure(
-        duplicate_seed,
-        segment=item,
-        speech_slot=slot,
-        retry_epoch=0,
-        max_tempo=1.36,
-    ) is None
+    assert (
+        guard.evaluate_dynamic_timing_failure(
+            duplicate_seed,
+            segment=item,
+            speech_slot=slot,
+            retry_epoch=0,
+            max_tempo=1.36,
+        )
+        is None
+    )
     independent = [
         candidate(1, 700, 6.3, slot),
         candidate(2, 701, 6.5, slot),
     ]
-    assert guard.evaluate_dynamic_timing_failure(
-        independent,
-        segment=item,
-        speech_slot=slot,
-        retry_epoch=0,
-        max_tempo=1.36,
-    ) is not None
+    assert (
+        guard.evaluate_dynamic_timing_failure(
+            independent,
+            segment=item,
+            speech_slot=slot,
+            retry_epoch=0,
+            max_tempo=1.36,
+        )
+        is not None
+    )
 
 
 def test_failure_scope_changes_with_text_model_and_reference() -> None:

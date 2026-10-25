@@ -1,4 +1,5 @@
 """Single-event-loop process lifecycle for the production bot entrypoint."""
+
 from __future__ import annotations
 
 import asyncio
@@ -33,16 +34,10 @@ def _serve_health(main_module: ModuleType) -> None:
     try:
         from waitress import serve
     except ImportError as exc:
-        environment = (
-            os.getenv("ENV") or os.getenv("APP_ENV") or ""
-        ).strip().casefold()
+        environment = (os.getenv("ENV") or os.getenv("APP_ENV") or "").strip().casefold()
         if environment in {"prod", "production"}:
-            raise RuntimeError(
-                "waitress is required in production; install requirements.txt"
-            ) from exc
-        logger.warning(
-            "waitress не установлен — health-check использует Flask dev server"
-        )
+            raise RuntimeError("waitress is required in production; install requirements.txt") from exc
+        logger.warning("waitress не установлен — health-check использует Flask dev server")
         app.run(host="0.0.0.0", port=port, use_reloader=False)
         return
     logger.info("HTTP health-check: waitress на порту %d", port)

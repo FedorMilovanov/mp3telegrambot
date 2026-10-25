@@ -11,6 +11,7 @@ Usage:
   python tools/audit_telegraph_pages.py --url-file docs/telegraph_repair_targets_2026-06-16.md
   python tools/audit_telegraph_pages.py --sample-html sample.html
 """
+
 from __future__ import annotations
 
 import argparse
@@ -113,7 +114,9 @@ def expand_telegraph_url_chain_sync(url: str, *, max_pages: int | None = None, t
                 if guessed and guessed not in seen and guessed not in queue:
                     try:
                         gpath = telegraph_path_from_url(guessed)
-                        gresp = requests.get(f"https://api.telegra.ph/getPage/{gpath}?return_content=false", timeout=timeout)
+                        gresp = requests.get(
+                            f"https://api.telegra.ph/getPage/{gpath}?return_content=false", timeout=timeout
+                        )
                         if (gresp.json() or {}).get("ok"):
                             next_urls.append(guessed)
                     except Exception:
@@ -132,7 +135,7 @@ def expand_input_urls(urls: list[str], *, expand_chains: bool = True, timeout: i
     out: list[str] = []
     for url in urls:
         chain = expand_telegraph_url_chain_sync(url, timeout=timeout)
-        for item in (chain or [url]):
+        for item in chain or [url]:
             if item not in out:
                 out.append(item)
     return out
@@ -188,13 +191,12 @@ async def fetch_page_html(url: str, *, prefer_playwright: bool = True, timeout: 
 
 
 def _issues_to_dict(issues: list[TelegraphDomIssue]) -> list[dict]:
-    return [
-        {"code": i.code, "severity": i.severity, "message": i.message, "snippet": i.snippet}
-        for i in issues
-    ]
+    return [{"code": i.code, "severity": i.severity, "message": i.message, "snippet": i.snippet} for i in issues]
 
 
-def append_history(history_path: Path, *, results: list[tuple[str, list[TelegraphDomIssue]]], fetcher: str, source: str) -> None:
+def append_history(
+    history_path: Path, *, results: list[tuple[str, list[TelegraphDomIssue]]], fetcher: str, source: str
+) -> None:
     history_path.parent.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y-%m-%d %H:%M:%S %z")
     summary = summarize_dom_issues(results)
@@ -244,7 +246,9 @@ def main() -> int:
     ap.add_argument("--requests-only", action="store_true", help="Disable Playwright even if installed")
     ap.add_argument("--no-expand-chains", action="store_true", help="Do not follow Telegraph ➡ Дальше multipart links")
     ap.add_argument("--sample-html", type=Path, default=None, help="Audit one local HTML file without network")
-    ap.add_argument("--repair-targets-out", type=Path, default=None, help="Write Markdown URL list for pages with issues")
+    ap.add_argument(
+        "--repair-targets-out", type=Path, default=None, help="Write Markdown URL list for pages with issues"
+    )
     ap.add_argument("--no-history", action="store_true")
     args = ap.parse_args()
 
@@ -264,11 +268,13 @@ def main() -> int:
         if args.limit:
             urls = urls[: max(1, args.limit)]
         urls = expand_input_urls(urls, expand_chains=not args.no_expand_chains, timeout=args.timeout)
-        results, fetcher = asyncio.run(run_audit(
-            urls,
-            prefer_playwright=not args.requests_only,
-            timeout=args.timeout,
-        ))
+        results, fetcher = asyncio.run(
+            run_audit(
+                urls,
+                prefer_playwright=not args.requests_only,
+                timeout=args.timeout,
+            )
+        )
 
     args.json_out.parent.mkdir(parents=True, exist_ok=True)
     args.json_out.write_text(
@@ -276,7 +282,8 @@ def main() -> int:
             [{"url": url, "issues": _issues_to_dict(issues)} for url, issues in results],
             ensure_ascii=False,
             indent=2,
-        ) + "\n",
+        )
+        + "\n",
         encoding="utf-8",
     )
     if args.repair_targets_out:

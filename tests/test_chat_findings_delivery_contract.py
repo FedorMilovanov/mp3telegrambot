@@ -10,7 +10,7 @@ def test_shorts_delivery_uses_measured_timeline_and_actual_trim_range() -> None:
     assert "delivery_duration" in source
     assert "start_seconds=timing.source_start" in source
     assert "end_seconds=timing.source_end" in source
-    assert 'duration=max(1, int(round(delivery_duration)))' in source
+    assert "duration=max(1, int(round(delivery_duration)))" in source
     assert 'duration=int(c["duration_seconds"])' not in source
     assert "select_delivery_file" in source
     assert "pre_subtitle_path" in source

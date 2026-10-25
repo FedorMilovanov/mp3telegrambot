@@ -8,6 +8,7 @@ before synthesis so completed segments remain resumable after a later failure.
 written only after the renderer returns successfully. This prevents a failed
 run from being mistaken for a completed render without sacrificing resumability.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -136,8 +137,7 @@ def _prepare_runtime_marker() -> tuple[Path, dict[str, Any]]:
     checkpoints_exist = any((work_dir / "checkpoints").glob("segment_*.json"))
     if checkpoints_exist and current != expected:
         print(
-            "[DIRECT-CLI] renderer/model/runtime fingerprint изменился; "
-            "старые checkpoints удалены",
+            "[DIRECT-CLI] renderer/model/runtime fingerprint изменился; старые checkpoints удалены",
             flush=True,
         )
         _clear_checkpoint_state(work_dir)

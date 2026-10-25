@@ -7,7 +7,8 @@ from core.segment_planner import (
     format_segments_text,
     get_segment_by_index,
     parse_timestamp_lines,
-    parse_segment_selection, seconds_to_timestamp,
+    parse_segment_selection,
+    seconds_to_timestamp,
 )
 
 
@@ -62,7 +63,7 @@ def test_segments_and_cutseg_commands_are_registered():
     # cc3a2b5: video_id is truncated to `vid` so callback_data fits Telegram's
     # 64-byte limit.
     assert "segcut:{vid}:{segment.index}" in commands
-    assert '[:48]' in commands, "video_id must be truncated for callback_data 64-byte limit"
+    assert "[:48]" in commands, "video_id must be truncated for callback_data 64-byte limit"
     assert 'CommandHandler("segments"' in main
     assert 'CommandHandler("cutseg"' in main
     assert 'CommandHandler("cut"' in main

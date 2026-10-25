@@ -71,9 +71,7 @@ def test_matching_source_prosody_is_reported_but_not_ranked() -> None:
     penalty = source_prosody_penalty(candidate, _segment())
     report = candidate["source_prosody_match"]
 
-    assert source_prosody_policy.POLICY == (
-        "diagnostic-only-no-cross-language-ranking-v2"
-    )
+    assert source_prosody_policy.POLICY == ("diagnostic-only-no-cross-language-ranking-v2")
     assert candidate_pitch_evidence_ok(candidate) is True
     assert penalty == 0.0
     assert report["available"] is True
@@ -172,9 +170,7 @@ def test_missing_source_prosody_is_neutral_not_fabricated() -> None:
     assert penalty == 0.0
     assert report["available"] is False
     assert report["source_prosody_ranking_enabled"] is False
-    assert report["reason"] == (
-        "source_prosody отсутствует; применён русский cadence gate"
-    )
+    assert report["reason"] == ("source_prosody отсутствует; применён русский cadence gate")
 
 
 def test_nonfinite_source_metrics_never_poison_candidate_score() -> None:
@@ -194,6 +190,4 @@ def test_nonfinite_source_metrics_never_poison_candidate_score() -> None:
     assert penalty == 0.0
     assert report["available"] is False
     assert report["source_prosody_ranking_enabled"] is False
-    assert report["reason"] == (
-        "невалидные source F0/voiced метрики; применён русский cadence gate"
-    )
+    assert report["reason"] == ("невалидные source F0/voiced метрики; применён русский cadence gate")

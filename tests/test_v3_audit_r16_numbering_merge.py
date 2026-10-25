@@ -8,6 +8,7 @@
    только после реального editPage. Structured edit outcome distinguishes
    CONTENT_TOO_BIG from transient transport failures.
 """
+
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,6 +19,7 @@ def _telegraph_src() -> str:
 
 
 # ── 1. Сквозная нумерация вместо «•» ─────────────────────────────
+
 
 def test_global_numbering_formula_matches_expected_sequence():
     """Точная симуляция скриншота: части [4]+[2]+[3] секций → части 2 и 3
@@ -52,6 +54,7 @@ def test_mini_outline_still_builds_real_link_after_r16_edit():
 
 # ── 2. Слияние тонких хвостовых частей через реальный editPage ──
 
+
 def test_merge_loop_present_and_uses_classified_real_editpage_as_ground_truth():
     src = _telegraph_src()
     block = src.split("success = await _publish_recursive(sections)", 1)[1].split(
@@ -60,7 +63,7 @@ def test_merge_loop_present_and_uses_classified_real_editpage_as_ground_truth():
     assert "while len(published_parts) >= 2:" in block
     assert "_edit_telegraph_page_classified(" in block
     assert "if not _merged_result.ok:" in block and "break" in block
-    assert "_merged_result.error != \"CONTENT_TOO_BIG\"" in block
+    assert '_merged_result.error != "CONTENT_TOO_BIG"' in block
     assert "published_parts.pop()" in block
     assert "published_parts[-2] = (_combined_secs, _prev_url)" in block
 

@@ -19,6 +19,7 @@ anchor_timestamp + concrete_step) ВСЕГДА даёт жирный тригг�
 предыдущий абзац ещё не жирный — оборачиваем предыдущий абзац в <b>
 (дожимая контракт постфактум) и убираем задвоенный inline-таймкод.
 """
+
 from converters.md_telegraph import _postprocess_telegraph_nodes
 
 
@@ -45,15 +46,19 @@ TS_LINK = {
 
 def test_non_bold_trigger_before_shag_gets_wrapped_bold():
     nodes = [
-        {"tag": "p", "children": [
-            "Желание понравиться неверующим друзьям и сделать весть комфортной ",
-            dict(TS_LINK),
-            ". ",
-            dict(TS_LINK),
-        ]},
-        {"tag": "p", "children": [
-            "Шаг: В следующем разговоре о вере расскажите не о том, как вам стало хорошо в церкви."
-        ]},
+        {
+            "tag": "p",
+            "children": [
+                "Желание понравиться неверующим друзьям и сделать весть комфортной ",
+                dict(TS_LINK),
+                ". ",
+                dict(TS_LINK),
+            ],
+        },
+        {
+            "tag": "p",
+            "children": ["Шаг: В следующем разговоре о вере расскажите не о том, как вам стало хорошо в церкви."],
+        },
     ]
     out = _postprocess_telegraph_nodes(nodes)
     trigger_para = out[0]
@@ -65,12 +70,15 @@ def test_non_bold_trigger_before_shag_gets_wrapped_bold():
 
 def test_duplicate_adjacent_timestamp_link_collapsed():
     nodes = [
-        {"tag": "p", "children": [
-            "Желание понравиться неверующим друзьям и сделать весть комфортной ",
-            dict(TS_LINK),
-            ". ",
-            dict(TS_LINK),
-        ]},
+        {
+            "tag": "p",
+            "children": [
+                "Желание понравиться неверующим друзьям и сделать весть комфортной ",
+                dict(TS_LINK),
+                ". ",
+                dict(TS_LINK),
+            ],
+        },
         {"tag": "p", "children": ["Шаг: сделать нечто конкретное."]},
     ]
     out = _postprocess_telegraph_nodes(nodes)
@@ -106,8 +114,7 @@ def test_paragraph_not_followed_by_shag_is_untouched():
 
 def test_fix_present_in_source():
     from pathlib import Path
-    src = Path(__file__).resolve().parents[1].joinpath("converters/md_telegraph.py").read_text(
-        encoding="utf-8"
-    )
+
+    src = Path(__file__).resolve().parents[1].joinpath("converters/md_telegraph.py").read_text(encoding="utf-8")
     assert "_dedup_adjacent_timestamp_link" in src
     assert 'startswith("Шаг:")' in src or "startswith('Шаг:')" in src

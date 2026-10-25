@@ -126,4 +126,3 @@ def test_source_owned_alignment_is_bounded() -> None:
     assert "ORIGINAL_ALIGNMENT_PROBE_SECONDS = 180.0" in source
     assert "_estimate_alignment_lag" in source
     assert "_align_three" in source
-

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Shared Telegraph API field limits for every create/edit transport."""
+
 from __future__ import annotations
 
 

@@ -72,7 +72,8 @@ def test_recovered_cache_is_preserved_when_companion_adds_variant(tmp_path: Path
     backup = path.with_suffix(path.suffix + ".bak")
     old = {
         "old-video": {
-            "schema_version": 2, "saved_at": 1,
+            "schema_version": 2,
+            "saved_at": 1,
             "variants": {"clean": {"audio_file_id": "old-clean"}, "mixed": {"audio_file_id": "old-mixed"}},
         }
     }

@@ -7,9 +7,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "tts-weighted-smoke.yml"
-CONTRACT_WORKFLOW = (
-    ROOT / ".github" / "workflows" / "tts-weighted-smoke-contract.yml"
-)
+CONTRACT_WORKFLOW = ROOT / ".github" / "workflows" / "tts-weighted-smoke-contract.yml"
 
 
 def _load(path: Path) -> dict:
@@ -81,14 +79,7 @@ def test_attestation_is_a_hard_precondition_for_upload_and_cleanup() -> None:
     upload_index = names.index("Upload weighted smoke attestation")
     summary_index = names.index("Publish sanitized summary")
     cleanup_index = names.index("Remove smoke data")
-    assert (
-        doctor_index
-        < synthesis_index
-        < attestation_index
-        < upload_index
-        < summary_index
-        < cleanup_index
-    )
+    assert doctor_index < synthesis_index < attestation_index < upload_index < summary_index < cleanup_index
 
     doctor = steps[doctor_index]
     synthesis = steps[synthesis_index]
@@ -114,14 +105,9 @@ def test_weighted_job_uploads_only_one_fixed_privacy_safe_attestation() -> None:
     actions = [str(step.get("uses") or "") for step in steps if step.get("uses")]
 
     assert actions == ["actions/checkout@v4", "actions/upload-artifact@v4"]
-    upload = next(
-        step for step in steps if step.get("name") == "Upload weighted smoke attestation"
-    )
+    upload = next(step for step in steps if step.get("name") == "Upload weighted smoke attestation")
     settings = upload["with"]
-    assert settings["name"] == (
-        "tts-weighted-smoke-attestation-${{ github.run_id }}-"
-        "${{ github.run_attempt }}"
-    )
+    assert settings["name"] == ("tts-weighted-smoke-attestation-${{ github.run_id }}-${{ github.run_attempt }}")
     assert settings["path"] == "tts-weighted-smoke-attestation/attestation.json"
     assert settings["if-no-files-found"] == "error"
     assert settings["retention-days"] == "90"
@@ -161,10 +147,7 @@ def test_hosted_closeout_downloads_verifies_then_updates_exact_issue() -> None:
         "actions/github-script@v7",
     ]
     download = steps[download_index]
-    assert download["with"]["name"] == (
-        "tts-weighted-smoke-attestation-${{ github.run_id }}-"
-        "${{ github.run_attempt }}"
-    )
+    assert download["with"]["name"] == ("tts-weighted-smoke-attestation-${{ github.run_id }}-${{ github.run_attempt }}")
     assert download["with"]["path"] == "downloaded-attestation"
 
     verify = steps[verify_index]
@@ -200,10 +183,7 @@ def test_issue_write_token_never_reaches_self_hosted_job() -> None:
     assert "actions" not in weighted["permissions"]
     assert closeout["permissions"]["issues"] == "write"
 
-    weighted_source = "\n".join(
-        str(step.get("run") or "") + str(step.get("with") or "")
-        for step in weighted["steps"]
-    )
+    weighted_source = "\n".join(str(step.get("run") or "") + str(step.get("with") or "") for step in weighted["steps"])
     assert "github.token" not in weighted_source
     assert "issues.createComment" not in weighted_source
     assert "issues.update" not in weighted_source

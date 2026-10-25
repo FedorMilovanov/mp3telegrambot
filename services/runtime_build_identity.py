@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Privacy-safe build and dependency identity for startup and admin diagnostics."""
+
 from __future__ import annotations
 
 import html
@@ -48,11 +49,7 @@ def _git_command(*args: str) -> subprocess.CompletedProcess[str] | None:
 
 
 def _git_identity() -> tuple[str, str]:
-    env_sha = _validated_sha(
-        os.getenv("MP3BOT_BUILD_SHA")
-        or os.getenv("GITHUB_SHA")
-        or os.getenv("RENDER_GIT_COMMIT")
-    )
+    env_sha = _validated_sha(os.getenv("MP3BOT_BUILD_SHA") or os.getenv("GITHUB_SHA") or os.getenv("RENDER_GIT_COMMIT"))
     head = _git_command("rev-parse", "HEAD")
     git_sha = "unknown"
     if head is not None and head.returncode == 0:
@@ -86,15 +83,12 @@ def runtime_build_identity_payload(
         safe_dirty = "unknown"
 
     package_versions = {
-        name: str((versions or {}).get(name) or _distribution_version(name))[:80]
-        for name in _DISTRIBUTIONS
+        name: str((versions or {}).get(name) or _distribution_version(name))[:80] for name in _DISTRIBUTIONS
     }
-    model = str(
-        factory_model
-        or os.getenv("SHORTS_FACTORY_MODEL")
-        or os.getenv("GEMINI_MODEL")
+    model = (
+        str(factory_model or os.getenv("SHORTS_FACTORY_MODEL") or os.getenv("GEMINI_MODEL") or "unknown").strip()[:80]
         or "unknown"
-    ).strip()[:80] or "unknown"
+    )
 
     if gemini_client_count is None:
         try:

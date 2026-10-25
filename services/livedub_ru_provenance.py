@@ -13,6 +13,7 @@ subdirectories, symlinks, derived artifacts and changed files are rejected. A
 returned file is recorded only when the current VOT call created or modified it.
 If provenance is missing or invalid, the existing selector remains the fallback.
 """
+
 from __future__ import annotations
 
 import json
@@ -90,11 +91,7 @@ def write_ru_audio_provenance(path: Path | str, *, voice_style: str = "") -> boo
     candidate = Path(path)
     temp: Path | None = None
     try:
-        if (
-            not candidate.is_file()
-            or candidate.is_symlink()
-            or candidate.suffix.casefold() != ".mp3"
-        ):
+        if not candidate.is_file() or candidate.is_symlink() or candidate.suffix.casefold() != ".mp3":
             return False
         if _is_derived(candidate):
             return False
@@ -110,9 +107,7 @@ def write_ru_audio_provenance(path: Path | str, *, voice_style: str = "") -> boo
             "mtime_ns": int(stat.st_mtime_ns),
             "voice_style": str(voice_style or "")[:24],
         }
-        temp = marker.with_name(
-            f"{marker.name}.{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex[:8]}.tmp"
-        )
+        temp = marker.with_name(f"{marker.name}.{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex[:8]}.tmp")
         parent.mkdir(parents=True, exist_ok=True)
         with temp.open("w", encoding="utf-8", newline="\n") as handle:
             json.dump(payload, handle, ensure_ascii=False, separators=(",", ":"))
@@ -168,7 +163,6 @@ def _voice_style(args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
     if len(args) > 4:
         return str(args[4] or "")
     return "live"
-
 
 
 def snapshot_ru_audio_candidates(workdir: Path | str) -> dict[str, tuple[int, int]]:

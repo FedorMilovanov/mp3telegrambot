@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """One-command creation and queueing for Dub Studio recipes."""
+
 from __future__ import annotations
 
 import html
@@ -19,8 +20,7 @@ def _recipe_help() -> str:
     if not recipes:
         return "Рецепты пока не зарегистрированы."
     return "\n".join(
-        f"• <code>{html.escape(recipe.recipe_id)}</code> — {html.escape(recipe.title[:150])}"
-        for recipe in recipes
+        f"• <code>{html.escape(recipe.recipe_id)}</code> — {html.escape(recipe.title[:150])}" for recipe in recipes
     )
 
 

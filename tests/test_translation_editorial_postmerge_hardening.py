@@ -18,9 +18,7 @@ def _composition_document(piece_ids: list[str]) -> dict:
                 "piece_id": piece_id,
                 "kind": "short",
                 "assembly_mode": "continuous",
-                "segments": [
-                    {"start_seconds": start, "end_seconds": start + 10.0}
-                ],
+                "segments": [{"start_seconds": start, "end_seconds": start + 10.0}],
             }
         )
     document = {
@@ -48,9 +46,7 @@ def test_composition_rejects_windows_reserved_piece_id() -> None:
 
 
 def test_composition_rejects_case_insensitive_output_collision() -> None:
-    errors = composition.validate_composition_document(
-        _composition_document(["Short", "short"])
-    )
+    errors = composition.validate_composition_document(_composition_document(["Short", "short"]))
 
     assert any("case-insensitive filesystem" in error for error in errors)
 
@@ -144,9 +140,7 @@ async def test_apply_safe_repairs_blocks_oversized_drop_before_ffmpeg(
             source_video_path=source,
             output_path=output,
             duration=100.0,
-            repairs=[
-                {"type": "drop_span", "start_seconds": 10.0, "end_seconds": 19.0}
-            ],
+            repairs=[{"type": "drop_span", "start_seconds": 10.0, "end_seconds": 19.0}],
         )
 
     assert ffmpeg_called is False

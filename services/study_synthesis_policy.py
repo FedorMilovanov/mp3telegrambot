@@ -1,4 +1,5 @@
 """Source-owned effective Study Analysis generation policy."""
+
 from __future__ import annotations
 
 from core.study_quality import render_word_study_as_prose

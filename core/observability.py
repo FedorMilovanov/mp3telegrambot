@@ -71,9 +71,7 @@ def extract_usage_metadata(response: Any) -> dict[str, int]:
     input_tokens = _safe_int(getattr(meta, "prompt_token_count", 0))
     output_tokens = _safe_int(getattr(meta, "candidates_token_count", 0))
     cached_tokens = _safe_int(getattr(meta, "cached_content_token_count", 0))
-    thinking_tokens = _safe_int(
-        getattr(meta, "thoughts_token_count", getattr(meta, "thinking_token_count", 0))
-    )
+    thinking_tokens = _safe_int(getattr(meta, "thoughts_token_count", getattr(meta, "thinking_token_count", 0)))
     total_tokens = _safe_int(getattr(meta, "total_token_count", 0))
     if not total_tokens:
         total_tokens = input_tokens + output_tokens + thinking_tokens
@@ -491,8 +489,7 @@ def format_gemini_metrics_report(hours: int = 24, recent_limit: int = 5) -> str:
         lines.append("<b>Recent errors</b>")
         for row in summary["recent_errors"][:5]:
             lines.append(
-                f"• <code>{_h(row.get('task'), 32)}</code> "
-                f"{_h(row.get('model'), 32)}: {_h(row.get('error'), 120)}"
+                f"• <code>{_h(row.get('task'), 32)}</code> {_h(row.get('model'), 32)}: {_h(row.get('error'), 120)}"
             )
 
     if recent:

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Fail-closed boundary around the optional Highlights quality pipeline."""
+
 from __future__ import annotations
 
 import asyncio
@@ -71,9 +72,7 @@ async def verify_highlights_candidate(
                 "probe_process_not_reaped",
                 detail=detail,
             )
-        logger.exception(
-            "Highlights quality gate raised an unrelated RuntimeError"
-        )
+        logger.exception("Highlights quality gate raised an unrelated RuntimeError")
         return None, _failure_report(
             "quality_gate_error:RuntimeError",
             detail=detail,

@@ -4,6 +4,7 @@
 Handlers and playlist processing import this boundary directly. No runtime
 installer rebinding is required to route Factory or translation-editorial jobs.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -24,9 +25,7 @@ async def _reply_factory_requirement(update: Any, *, silent_errors: bool) -> Non
     if message is None:
         return
     try:
-        await message.reply_text(
-            "❌ SHORTS FACTORY MAX требует faster-whisper large-v3."
-        )
+        await message.reply_text("❌ SHORTS FACTORY MAX требует faster-whisper large-v3.")
     except Exception:
         pass
 

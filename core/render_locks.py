@@ -6,6 +6,7 @@ jobs for the same video. This is deliberately process-local; it protects the
 common Telegram double-click / repeated command case without introducing a DB job
 queue yet.
 """
+
 from __future__ import annotations
 
 import asyncio

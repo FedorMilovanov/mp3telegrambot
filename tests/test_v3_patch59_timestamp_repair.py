@@ -14,12 +14,14 @@ def test_timestamp_repair_schema_contract():
 
 
 def test_format_repaired_timestamps_filters_bad_and_formats():
-    data = {"timestamps": [
-        {"time": "0:00", "topic": "Начало"},
-        {"time": "1:02:03", "topic": "Финал"},
-        {"time": "99:00", "topic": "За пределами"},
-        {"time": "bad", "topic": "bad"},
-    ]}
+    data = {
+        "timestamps": [
+            {"time": "0:00", "topic": "Начало"},
+            {"time": "1:02:03", "topic": "Финал"},
+            {"time": "99:00", "topic": "За пределами"},
+            {"time": "bad", "topic": "bad"},
+        ]
+    }
     out = _format_repaired_timestamps(data, duration=4000)
     assert "0:00 Начало" in out
     assert "1:02:03 Финал" in out

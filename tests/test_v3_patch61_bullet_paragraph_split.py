@@ -12,15 +12,20 @@ def _flat(node):
 
 
 def test_postprocess_splits_glued_bullet_cards_into_paragraphs():
-    nodes = [{
-        "tag": "p",
-        "children": [
-            "• ", {"tag": "b", "children": ["Библейская экклезиология"]},
-            " — устройство церкви. • ", {"tag": "b", "children": ["Спасение господством"]},
-            " — сотериология. • ", {"tag": "b", "children": ["Церковная дисциплина"]},
-            " — исправление согрешающего."
-        ],
-    }]
+    nodes = [
+        {
+            "tag": "p",
+            "children": [
+                "• ",
+                {"tag": "b", "children": ["Библейская экклезиология"]},
+                " — устройство церкви. • ",
+                {"tag": "b", "children": ["Спасение господством"]},
+                " — сотериология. • ",
+                {"tag": "b", "children": ["Церковная дисциплина"]},
+                " — исправление согрешающего.",
+            ],
+        }
+    ]
     out = _postprocess_telegraph_nodes(nodes)
     paragraphs = [n for n in out if isinstance(n, dict) and n.get("tag") == "p"]
     assert len(paragraphs) == 3

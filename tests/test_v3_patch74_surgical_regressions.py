@@ -10,7 +10,7 @@ from core.globals import _is_gemini_3x
 
 
 def test_json_parser_recovers_truncated_object_without_final_top_level_brace():
-    raw = '''```json
+    raw = """```json
 {
   "real_author": "A",
   "real_title": "T",
@@ -20,7 +20,7 @@ def test_json_parser_recovers_truncated_object_without_final_top_level_brace():
   "timestamps": [
     {"time":"0:00", "topic":"Start"},
     {"time":"10:00", "topic":"Middle"}
-'''
+"""
     parsed = _parse_gemini_response(raw, duration=3600)
     assert parsed is not None
     assert parsed["real_author"] == "A"

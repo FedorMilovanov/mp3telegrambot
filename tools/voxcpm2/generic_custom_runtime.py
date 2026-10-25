@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Source-owned custom-translation Dub Studio entrypoint."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -26,8 +27,15 @@ def _clean_source_groups(cues: list[Any]) -> list[dict[str, Any]]:
 
 
 def _run_clean_speech_and_master(
-    *, root: Path, request: dict[str, Any], source: Path, cues: list[Any],
-    duration: float, segments_json: Path, final_mixed: Path, final_russian: Path,
+    *,
+    root: Path,
+    request: dict[str, Any],
+    source: Path,
+    cues: list[Any],
+    duration: float,
+    segments_json: Path,
+    final_mixed: Path,
+    final_russian: Path,
 ) -> Path:
     extended, composite = continuous_reference_policy.build_calm_references(
         source=source, cues=cues, duration=duration, reference_dir=root / "references"
@@ -43,10 +51,16 @@ def _run_clean_speech_and_master(
     )
     production.log("source-guided emotional arc prepared; custom text preserved; " + detail)
     return clean.render_and_master(
-        root=root, request=request, source=source, duration=duration,
-        segments_json=segments_json, extended_reference=extended,
-        composite_reference=composite, final_mixed=final_mixed,
-        final_russian=final_russian, force_fresh=True,
+        root=root,
+        request=request,
+        source=source,
+        duration=duration,
+        segments_json=segments_json,
+        extended_reference=extended,
+        composite_reference=composite,
+        final_mixed=final_mixed,
+        final_russian=final_russian,
+        force_fresh=True,
     )
 
 

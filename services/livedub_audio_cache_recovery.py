@@ -5,6 +5,7 @@ This module is a normal service, not a runtime installer.  The companion cache
 calls it directly, so corruption recovery and exact-generation verification do
 not depend on import order or monkey-patching private functions.
 """
+
 from __future__ import annotations
 
 import json
@@ -64,9 +65,7 @@ def _expected_generation(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def _atomic_copy(source: Path, target: Path) -> bool:
-    temp = target.with_name(
-        f"{target.name}.{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex[:8]}.tmp"
-    )
+    temp = target.with_name(f"{target.name}.{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex[:8]}.tmp")
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         with source.open("rb") as src, temp.open("wb") as dst:
@@ -91,9 +90,7 @@ def _atomic_copy(source: Path, target: Path) -> bool:
 
 
 def _atomic_write(path: Path, data: dict[str, Any]) -> None:
-    temp = path.with_name(
-        f"{path.name}.{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex[:8]}.tmp"
-    )
+    temp = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex[:8]}.tmp")
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         encoded = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")

@@ -5,6 +5,7 @@ shares substantial state with the full pipeline.  This module owns only the
 small post-delivery contract: status-message lifecycle, honest failure hints,
 and returning the real delivery status to playlist accounting.
 """
+
 from __future__ import annotations
 
 import logging
@@ -35,9 +36,7 @@ async def finish_livedub_quick(
     """
     if status_msg:
         try:
-            await status_msg.edit_text(
-                f"⚡ Режим ENG Quick: жду перевод «Живые голоса»...\n📝 {title}"
-            )
+            await status_msg.edit_text(f"⚡ Режим ENG Quick: жду перевод «Живые голоса»...\n📝 {title}")
         except Exception:
             pass
 

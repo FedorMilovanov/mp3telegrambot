@@ -77,9 +77,7 @@ def _profile() -> SpeechModelProfile:
         model_revision="doctor-fixture-v1",
         production_enabled=True,
         required_capabilities=(),
-        option_specs=(
-            ModelOptionSpec("threads", "int", 3, minimum=1, maximum=64),
-        ),
+        option_specs=(ModelOptionSpec("threads", "int", 3, minimum=1, maximum=64),),
     )
 
 

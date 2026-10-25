@@ -36,15 +36,11 @@ def test_legacy_migration_preserves_explicit_zero_delay(monkeypatch, tmp_path: P
 
     assert migration.migrate(root, {"russian_delay_ms": 0}) is True
 
-    migrated = json.loads(
-        (root / "segments_ru_final.json").read_text(encoding="utf-8")
-    )
+    migrated = json.loads((root / "segments_ru_final.json").read_text(encoding="utf-8"))
     assert migrated
     assert {item["start_delay_ms"] for item in migrated} == {0}
     assert migrated[-1]["end"] == 2.0
-    assert "segments_ru_final.pre_v45.json" in {
-        path.name for path in root.iterdir()
-    }
+    assert "segments_ru_final.pre_v45.json" in {path.name for path in root.iterdir()}
 
 
 def test_legacy_migration_uses_canonical_delay_parser() -> None:

@@ -17,7 +17,11 @@ def test_candidate_validation_report_counts_reasons():
 
 def test_validate_candidate_times_accepts_good_range():
     ok, reason, start, end, dur = validate_candidate_times(
-        "1:05", "2:10", duration=300, min_sec=30, max_sec=90,
+        "1:05",
+        "2:10",
+        duration=300,
+        min_sec=30,
+        max_sec=90,
         time_to_seconds=time_to_seconds,
     )
     assert ok is True
@@ -35,14 +39,22 @@ def test_validate_candidate_times_rejects_bad_ranges():
     ]
     for start_raw, end_raw, expected in cases:
         ok, reason, *_ = validate_candidate_times(
-            start_raw, end_raw, duration=180, min_sec=30, max_sec=120,
+            start_raw,
+            end_raw,
+            duration=180,
+            min_sec=30,
+            max_sec=120,
             time_to_seconds=time_to_seconds,
         )
         assert ok is False
         assert reason == expected
 
     ok, reason, *_ = validate_candidate_times(
-        "1:00", "3:30", duration=300, min_sec=30, max_sec=120,
+        "1:00",
+        "3:30",
+        duration=300,
+        min_sec=30,
+        max_sec=120,
         time_to_seconds=time_to_seconds,
     )
     assert ok is False

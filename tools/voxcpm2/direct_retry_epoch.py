@@ -7,6 +7,7 @@ every job retry. This module advances only that segment's seed epoch after a raw
 assembled or post-AAC delivery failure. Successful segment checkpoints keep
 their original epoch and remain reusable during hour-long renders.
 """
+
 from __future__ import annotations
 from collections.abc import Mapping
 
@@ -37,9 +38,7 @@ def _strict_segment_id(value: Any) -> int:
         raise RuntimeError(f"Некорректный segment_id: {value!r}")
     result = int(value)
     if not 1 <= result <= MAX_SEGMENT_ID:
-        raise RuntimeError(
-            f"segment_id должен быть в диапазоне 1..{MAX_SEGMENT_ID}: {result}."
-        )
+        raise RuntimeError(f"segment_id должен быть в диапазоне 1..{MAX_SEGMENT_ID}: {result}.")
     return result
 
 
@@ -125,9 +124,7 @@ def advance_retry_epoch(
     path = retry_epoch_path(work_dir, segment)
     previous = load_retry_epoch(work_dir, segment)
     if previous >= MAX_RETRY_EPOCH:
-        raise RuntimeError(
-            f"Сегмент #{segment}: исчерпан retry epoch {MAX_RETRY_EPOCH}."
-        )
+        raise RuntimeError(f"Сегмент #{segment}: исчерпан retry epoch {MAX_RETRY_EPOCH}.")
     history_payload = _read_payload(path)
     history = history_payload.get("history")
     if not isinstance(history, list):
@@ -192,6 +189,7 @@ def _polish_base_invalidate_segment_for_retry(
         "reason": str(reason or "delivery_failure"),
     }
 
+
 BASE_POLICY = POLICY
 _base_load_retry_epoch = load_retry_epoch
 _base_advance_retry_epoch = advance_retry_epoch
@@ -226,9 +224,7 @@ def load_retry_epoch(
     if not scope_fingerprint:
         return int(_base_load_retry_epoch(work_dir, segment))
     fingerprint = str(scope_fingerprint).strip().lower()
-    if len(fingerprint) != 64 or any(
-        char not in "0123456789abcdef" for char in fingerprint
-    ):
+    if len(fingerprint) != 64 or any(char not in "0123456789abcdef" for char in fingerprint):
         raise RuntimeError("scope_fingerprint должен быть SHA-256 hex.")
     payload = _read_payload(retry_epoch_path(work_dir, segment))
     return int(_scope_epochs(payload).get(fingerprint, 0))
@@ -247,9 +243,7 @@ def advance_retry_epoch(
     payload_before = _read_payload(path)
     raw_previous = int(_base_load_retry_epoch(work_dir, segment))
     if raw_previous >= MAX_RETRY_EPOCH:
-        raise RuntimeError(
-            f"Сегмент #{segment}: исчерпан raw retry epoch {MAX_RETRY_EPOCH}."
-        )
+        raise RuntimeError(f"Сегмент #{segment}: исчерпан raw retry epoch {MAX_RETRY_EPOCH}.")
 
     evidence_payload = dict(evidence or {})
     fingerprint = _scope_fingerprint(evidence_payload)
@@ -281,16 +275,8 @@ def advance_retry_epoch(
     if fingerprint and scope_next is not None:
         scope_epochs[fingerprint] = scope_next
         if len(scope_epochs) > 64:
-            referenced = {
-                _scope_fingerprint(item.get("evidence"))
-                for item in history
-                if isinstance(item, Mapping)
-            }
-            scope_epochs = {
-                key: value
-                for key, value in scope_epochs.items()
-                if key in referenced
-            }
+            referenced = {_scope_fingerprint(item.get("evidence")) for item in history if isinstance(item, Mapping)}
+            scope_epochs = {key: value for key, value in scope_epochs.items() if key in referenced}
 
     payload = {
         "schema_version": 2,
@@ -308,7 +294,6 @@ def advance_retry_epoch(
     }
     _atomic_write(path, payload)
     return payload
-
 
 
 def invalidate_segment_for_retry(

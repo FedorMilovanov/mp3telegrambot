@@ -28,6 +28,7 @@ normalize_title_text() -> normalize_person_names(), который подмен�
 чтобы оба потребителя (parse_title и LiveDub caption) использовали ОДНУ
 и ту же логику, а не рассинхронизированные копии.
 """
+
 from core.person_names import (
     KNOWN_AUTHOR_RU,
     KNOWN_CHANNEL_AUTHOR_RU,
@@ -50,9 +51,7 @@ def test_parse_title_fixes_generic_session_label_mistaken_for_title():
     """Живой баг: короткая сторона — общее название формата («Questions and
     Answers»), а не имя, но длинная сторона (список фамилий) была короче
     по словам и потому раньше ошибочно становилась title."""
-    performer, title = parse_title(
-        "MacArthur, Mohler, and Sproul: Questions and Answers", "Ligonier Ministries"
-    )
+    performer, title = parse_title("MacArthur, Mohler, and Sproul: Questions and Answers", "Ligonier Ministries")
     assert performer == "Джон МакАртур"
     assert title == "Questions and Answers"
     # Критично: в исправленном title не должно остаться ни markdown-звёздочек,
@@ -73,9 +72,7 @@ def test_parse_title_falls_back_to_word_count_when_no_known_author():
     """Когда ни одна сторона не содержит распознанного имени — поведение
     не меняется, работает старый подсчёт слов (пример из реального прогона
     сессии, автор ещё не в реестре под этим именем)."""
-    performer, title = parse_title(
-        "Разве Константин придумал Троицу? - Натан Бузениц", "Fedor Milovanov"
-    )
+    performer, title = parse_title("Разве Константин придумал Троицу? - Натан Бузениц", "Fedor Milovanov")
     assert performer == "Натан Бузениц"
     assert title == "Разве Константин придумал Троицу?"
 
@@ -90,9 +87,8 @@ def test_known_registries_shared_between_parse_title_and_livedub_caption():
     """Реестр должен жить в одном месте (core/person_names.py) — LiveDub title
     helpers импортируют его, а не держат вторую независимую копию."""
     from pathlib import Path
-    src = Path(__file__).resolve().parents[1].joinpath("pipelines/livedub_title.py").read_text(
-        encoding="utf-8"
-    )
+
+    src = Path(__file__).resolve().parents[1].joinpath("pipelines/livedub_title.py").read_text(encoding="utf-8")
     assert "from core.person_names import" in src
     assert "KNOWN_AUTHOR_RU as _KNOWN_AUTHOR_RU" in src
     # старая полная копия словаря (уникальный маркер записи) не должна остаться

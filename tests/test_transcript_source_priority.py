@@ -22,10 +22,7 @@ def _source(path: Path) -> str:
 
 def test_manual_captions_are_selected_before_automatic_and_whisper() -> None:
     source = _source(PROJECT)
-    choose = source[
-        source.index("def choose_caption_track"):
-        source.index("def parse_manual_vtt")
-    ]
+    choose = source[source.index("def choose_caption_track") : source.index("def parse_manual_vtt")]
     assert choose.index('manual = metadata.get("subtitles")') < choose.index(
         'automatic = metadata.get("automatic_captions")'
     )
@@ -36,14 +33,9 @@ def test_manual_captions_are_selected_before_automatic_and_whisper() -> None:
 
 def test_failed_manual_download_falls_back_to_auto_then_whisper() -> None:
     source = _source(PROJECT)
-    acquire = source[
-        source.index("def acquire_transcript"):
-        source.index("def _compact_context")
-    ]
+    acquire = source[source.index("def acquire_transcript") : source.index("def _compact_context")]
     manual_download = acquire.index("kind=preferred_kind")
-    automatic_fallback = acquire.index(
-        'used_kind, used_language = "automatic", ranked[0]'
-    )
+    automatic_fallback = acquire.index('used_kind, used_language = "automatic", ranked[0]')
     whisper_fallback = acquire.index("whisper_transcribe_auto")
     assert manual_download < automatic_fallback < whisper_fallback
     assert "pipeline.normalize_cues(cues, duration)" in acquire

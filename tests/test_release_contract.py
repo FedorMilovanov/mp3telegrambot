@@ -12,6 +12,7 @@
   версии до сборки, публикует wheel, sdist и контрольные суммы;
 * документ установки существует и описывает автозапуск и откат.
 """
+
 from __future__ import annotations
 
 import re
@@ -58,9 +59,9 @@ def test_released_version_has_a_dated_section() -> None:
     """Текущая версия обязана быть описана — иначе релиз выходит «молча»."""
     version = _version()
     text = CHANGELOG.read_text(encoding="utf-8")
-    assert re.search(
-        rf"^## \[{re.escape(version)}\] - \d{{4}}-\d{{2}}-\d{{2}}$", text, flags=re.MULTILINE
-    ), f"в CHANGELOG.md нет раздела «## [{version}] - YYYY-MM-DD»"
+    assert re.search(rf"^## \[{re.escape(version)}\] - \d{{4}}-\d{{2}}-\d{{2}}$", text, flags=re.MULTILINE), (
+        f"в CHANGELOG.md нет раздела «## [{version}] - YYYY-MM-DD»"
+    )
 
 
 def test_version_is_unique_and_ordered() -> None:
@@ -96,18 +97,12 @@ def test_release_workflow_verifies_before_publishing() -> None:
 def test_release_publishes_artifacts_with_checksums() -> None:
     workflow = yaml.safe_load(RELEASE_WORKFLOW.read_text(encoding="utf-8"))
     permissions = workflow["jobs"]["build"]["permissions"]
-    assert permissions == {"contents": "write"}, (
-        "публикация релиза требует contents: write и ничего больше"
-    )
+    assert permissions == {"contents": "write"}, "публикация релиза требует contents: write и ничего больше"
     text = RELEASE_WORKFLOW.read_text(encoding="utf-8")
     assert "python -m build --outdir dist" in text
     assert "SHA256SUMS" in text
-    assert "gh release create" in text, (
-        "публикация через gh CLI: сторонний action — лишняя зависимость в supply chain"
-    )
-    assert "--no-deps --no-index dist/*.whl" in text, (
-        "wheel не проверяется установкой без зависимостей"
-    )
+    assert "gh release create" in text, "публикация через gh CLI: сторонний action — лишняя зависимость в supply chain"
+    assert "--no-deps --no-index dist/*.whl" in text, "wheel не проверяется установкой без зависимостей"
     # Правило «workflow не ставит пакеты в обход lock'а» проверяется отдельно и
     # для всех workflow сразу (tests/test_workflows_install_from_lock.py) — здесь
     # его дублировать не нужно, иначе появляется вторая, менее точная реализация.
@@ -129,17 +124,11 @@ def test_deployment_document_covers_install_update_and_rollback() -> None:
 def test_install_script_is_safe_by_construction() -> None:
     """Скрипт автозапуска: без второго экземпляра, с перезапуском и явной остановкой."""
     text = INSTALL_SCRIPT.read_text(encoding="utf-8")
-    assert "MultipleInstances IgnoreNew" in text, (
-        "два экземпляра бота — двойные ответы и гонки за SQLite"
-    )
+    assert "MultipleInstances IgnoreNew" in text, "два экземпляра бота — двойные ответы и гонки за SQLite"
     assert "RestartCount" in text, "падение процесса иначе означает простой до перезагрузки"
-    assert "LogonType S4U" in text, (
-        "SYSTEM ломает %TEMP%, .env и CUDA: задача должна идти от пользователя"
-    )
+    assert "LogonType S4U" in text, "SYSTEM ломает %TEMP%, .env и CUDA: задача должна идти от пользователя"
     assert "ValidateSet('Install', 'Start', 'Stop', 'Uninstall', 'Status')" in text
-    assert "ExecutionTimeLimit ([TimeSpan]::Zero)" in text, (
-        "бот живёт постоянно: лимит времени задачи его бы убил"
-    )
+    assert "ExecutionTimeLimit ([TimeSpan]::Zero)" in text, "бот живёт постоянно: лимит времени задачи его бы убил"
 
 
 @pytest.mark.parametrize("flag", ["--version"])

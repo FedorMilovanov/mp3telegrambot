@@ -18,9 +18,7 @@ def _chirp(start_hz: float, end_hz: float):
     fade = int(0.05 * sample_rate)
     audio[:fade] *= np.linspace(0.0, 1.0, fade)
     audio[-fade:] *= np.linspace(1.0, 0.0, fade)
-    audio = np.concatenate(
-        [audio, np.zeros(int(0.18 * sample_rate), dtype=np.float32)]
-    )
+    audio = np.concatenate([audio, np.zeros(int(0.18 * sample_rate), dtype=np.float32)])
     return audio, sample_rate
 
 
@@ -96,9 +94,7 @@ def test_linked_phrase_underfill_is_deferred_to_timeline_without_cross_language_
     assert cadence["duration_ratio"] < 0.50
     assert "continuation_too_short" not in cadence["failures"]
     assert cadence["timeline_compaction_required"] is True
-    assert cadence["candidate_continuation_policy"] == (
-        "defer-short-continuation-to-timeline-v1"
-    )
+    assert cadence["candidate_continuation_policy"] == ("defer-short-continuation-to-timeline-v1")
     assert candidate["cadence_hard_ok"] is True
     assert candidate_pitch_evidence_ok(candidate) is True
     assert candidate["source_prosody_match"]["diagnostic_penalty"] >= cadence["penalty"]

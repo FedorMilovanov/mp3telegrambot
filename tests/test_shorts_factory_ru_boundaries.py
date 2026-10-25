@@ -199,13 +199,16 @@ def test_candidate_role_is_explicit_not_inferred_from_duration():
     candidate = _short(start=100.0, end=400.0)
     speech = [(100.0, 400.0)]
 
-    assert align_candidates_to_ru_speech(
-        [candidate],
-        source_duration=500.0,
-        speech_intervals=speech,
-        delay_seconds=0.0,
-        candidate_kind="short",
-    ) == []
+    assert (
+        align_candidates_to_ru_speech(
+            [candidate],
+            source_duration=500.0,
+            speech_intervals=speech,
+            delay_seconds=0.0,
+            candidate_kind="short",
+        )
+        == []
+    )
 
     aligned_long = align_candidates_to_ru_speech(
         [candidate],

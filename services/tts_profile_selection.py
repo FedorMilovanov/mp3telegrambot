@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Safe selection and durable binding of production TTS model profiles."""
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -115,17 +116,11 @@ def _choice(profile: SpeechModelProfile) -> ProductionTTSProfileChoice:
 
 def production_tts_profile_choices() -> tuple[ProductionTTSProfileChoice, ...]:
     """Return every selectable production profile, default first."""
-    choices = tuple(
-        _choice(profile)
-        for profile in registered_model_profiles()
-        if profile.production_enabled
-    )
+    choices = tuple(_choice(profile) for profile in registered_model_profiles() if profile.production_enabled)
     if not choices:
         raise RuntimeError("Нет ни одного production-enabled TTS model profile.")
     if not any(choice.profile_id == DEFAULT_MODEL_PROFILE_ID for choice in choices):
-        raise RuntimeError(
-            f"Default TTS profile отсутствует в production catalog: {DEFAULT_MODEL_PROFILE_ID}"
-        )
+        raise RuntimeError(f"Default TTS profile отсутствует в production catalog: {DEFAULT_MODEL_PROFILE_ID}")
     return tuple(
         sorted(
             choices,
@@ -240,17 +235,18 @@ def write_durable_request(path: Path, payload: Mapping[str, Any]) -> None:
         raise ValueError("Durable request должен быть JSON-объектом.")
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    serialized = json.dumps(
-        dict(payload),
-        ensure_ascii=False,
-        indent=2,
-        allow_nan=False,
-    ) + "\n"
+    serialized = (
+        json.dumps(
+            dict(payload),
+            ensure_ascii=False,
+            indent=2,
+            allow_nan=False,
+        )
+        + "\n"
+    )
     if len(serialized.encode("utf-8")) > _MAX_REQUEST_BYTES:
         raise ValueError("Durable request превышает допустимый размер.")
-    temporary = target.with_name(
-        f".{target.name}.{os.getpid()}.{secrets.token_hex(6)}.tmp"
-    )
+    temporary = target.with_name(f".{target.name}.{os.getpid()}.{secrets.token_hex(6)}.tmp")
     try:
         with temporary.open("x", encoding="utf-8", newline="\n") as handle:
             handle.write(serialized)
@@ -298,10 +294,7 @@ def rebind_inactive_project_tts_profile(
     except (RuntimeError, ValueError):
         previous_profile_id = str(previous_raw or "unknown")
     current_fingerprint = str(current.get("speech_profile_fingerprint") or "")
-    if (
-        previous_profile_id == choice.profile_id
-        and current_fingerprint == choice.fingerprint
-    ):
+    if previous_profile_id == choice.profile_id and current_fingerprint == choice.fingerprint:
         return ProjectTTSProfileRebindResult(
             project_id=str(project["id"]),
             previous_profile_id=previous_profile_id,
@@ -328,10 +321,7 @@ def rebind_inactive_project_tts_profile(
                 raise PermissionError("Владелец проекта изменился во время TTS rebind.")
             locked_status = str(row["status"] or "").strip().lower()
             if locked_status not in _REBINDABLE_PROJECT_STATES:
-                raise RuntimeError(
-                    "Project status изменился во время TTS rebind: "
-                    f"{locked_status or 'unknown'}."
-                )
+                raise RuntimeError(f"Project status изменился во время TTS rebind: {locked_status or 'unknown'}.")
             active = conn.execute(
                 """
                 SELECT id, status FROM dub_jobs
@@ -342,8 +332,7 @@ def rebind_inactive_project_tts_profile(
             ).fetchone()
             if active is not None:
                 raise RuntimeError(
-                    "Нельзя менять TTS-профиль при active job "
-                    f"#{int(active['id'])} ({active['status']})."
+                    f"Нельзя менять TTS-профиль при active job #{int(active['id'])} ({active['status']})."
                 )
 
             try:
@@ -389,10 +378,7 @@ def rebind_inactive_project_tts_profile(
                 None,
                 "tts_profile_rebound",
                 "info",
-                (
-                    f"TTS profile изменён: {previous_profile_id} -> "
-                    f"{choice.profile_id} ({choice.model_revision})"
-                ),
+                (f"TTS profile изменён: {previous_profile_id} -> {choice.profile_id} ({choice.model_revision})"),
                 {
                     "previous_profile_id": previous_profile_id,
                     "profile_id": choice.profile_id,

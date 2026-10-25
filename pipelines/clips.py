@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Long Clips pipeline with explicit candidate and public-duration ownership."""
+
 from __future__ import annotations
 
 import asyncio
@@ -137,20 +138,13 @@ async def process_and_send_clips(
         real_author = (ai_data or {}).get("real_author", "") or performer or ""
         real_event = (ai_data or {}).get("real_event", "") or ""
         do_snapshot = (
-            bool(snapshot_override)
-            if snapshot_override is not None
-            else bool(await asettings_get("clips_snapshot"))
+            bool(snapshot_override) if snapshot_override is not None else bool(await asettings_get("clips_snapshot"))
         )
-        caption_builder = (
-            _FACTORY_CLIP_CAPTION_BUILDER
-            if factory_publication
-            else build_clip_caption
-        )
+        caption_builder = _FACTORY_CLIP_CAPTION_BUILDER if factory_publication else build_clip_caption
 
         total = len(candidates)
         logger.info(
-            "Clips: format=%s snapshot=%s candidates=%d public_max=%s "
-            "factory_publication=%s snap_to_silence=%s",
+            "Clips: format=%s snapshot=%s candidates=%d public_max=%s factory_publication=%s snap_to_silence=%s",
             format_name,
             do_snapshot,
             total,
@@ -222,8 +216,7 @@ async def process_and_send_clips(
             delivery_duration = float(clip_probe.duration)
             if (
                 public_max_seconds is not None
-                and delivery_duration
-                > float(public_max_seconds) + PUBLIC_CLIP_DURATION_EPSILON_SEC
+                and delivery_duration > float(public_max_seconds) + PUBLIC_CLIP_DURATION_EPSILON_SEC
             ):
                 logger.warning(
                     "Clips %d/%d rejected: final %.3fs exceeds public %.3fs",
@@ -254,8 +247,7 @@ async def process_and_send_clips(
                     )
                     continue
                 logger.warning(
-                    "Factory Clip %d/%d exceeds upload limit: %.1fMB > %.1fMB; "
-                    "fitting the exact audited interval",
+                    "Factory Clip %d/%d exceeds upload limit: %.1fMB > %.1fMB; fitting the exact audited interval",
                     i,
                     total,
                     clip_size_mb,
@@ -283,8 +275,7 @@ async def process_and_send_clips(
                 delivery_duration = float(clip_probe.duration)
                 if (
                     public_max_seconds is not None
-                    and delivery_duration
-                    > float(public_max_seconds) + PUBLIC_CLIP_DURATION_EPSILON_SEC
+                    and delivery_duration > float(public_max_seconds) + PUBLIC_CLIP_DURATION_EPSILON_SEC
                 ):
                     logger.warning(
                         "Factory Clip %d/%d fitted duration %.3fs exceeds %.3fs",
@@ -367,9 +358,7 @@ async def process_and_send_clips(
     except Exception as exc:
         logger.warning("Clips process_and_send error: %s", exc)
         try:
-            await update.message.reply_text(
-                f"🎬 Ошибка при подготовке Clips: {str(exc)[:150]}"
-            )
+            await update.message.reply_text(f"🎬 Ошибка при подготовке Clips: {str(exc)[:150]}")
         except Exception:
             pass
         return sent

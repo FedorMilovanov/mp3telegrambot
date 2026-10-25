@@ -12,6 +12,7 @@ Both variants are validated independently with ffprobe, sent independently, and
 cached independently.  Legacy one-file cache entries remain readable and are
 migrated on the next successful delivery.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -136,9 +137,12 @@ def _probe_audio(path: Path) -> tuple[bool, int]:
         proc = _run_text(
             [
                 ffprobe,
-                "-v", "error",
-                "-show_entries", "format=duration:stream=codec_type",
-                "-of", "json",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration:stream=codec_type",
+                "-of",
+                "json",
                 str(path),
             ],
             timeout=60,
@@ -193,14 +197,21 @@ def _extract_mix_mp3(video_path: Path) -> Path:
             [
                 ffmpeg,
                 "-y",
-                "-i", str(video_path),
-                "-map", "0:a:0",
+                "-i",
+                str(video_path),
+                "-map",
+                "0:a:0",
                 "-vn",
-                "-map_metadata", "0",
-                "-c:a", "libmp3lame",
-                "-b:a", os.getenv("LIVEDUB_AUDIO_BITRATE", "160k").strip() or "160k",
-                "-ar", "44100",
-                "-ac", "2",
+                "-map_metadata",
+                "0",
+                "-c:a",
+                "libmp3lame",
+                "-b:a",
+                os.getenv("LIVEDUB_AUDIO_BITRATE", "160k").strip() or "160k",
+                "-ar",
+                "44100",
+                "-ac",
+                "2",
                 str(temp),
             ],
             timeout=timeout,
@@ -211,9 +222,7 @@ def _extract_mix_mp3(video_path: Path) -> Path:
         if not ok:
             raise RuntimeError("созданный объединённый MP3 не прошёл ffprobe")
         if not _duration_compatible(video_duration, mp3_duration):
-            raise RuntimeError(
-                f"длительность объединённого MP3 {mp3_duration}с не совпадает с видео {video_duration}с"
-            )
+            raise RuntimeError(f"длительность объединённого MP3 {mp3_duration}с не совпадает с видео {video_duration}с")
         os.replace(temp, output)
         return output
     finally:
@@ -379,8 +388,7 @@ async def _send_variant(
         raise RuntimeError(f"{_VARIANT_LABELS[variant]}: MP3 не прошёл ffprobe")
     if not _duration_compatible(reference_duration, duration):
         raise RuntimeError(
-            f"{_VARIANT_LABELS[variant]}: длительность {duration}с не совпадает с видео "
-            f"{reference_duration}с"
+            f"{_VARIANT_LABELS[variant]}: длительность {duration}с не совпадает с видео {reference_duration}с"
         )
 
     kwargs: dict[str, Any] = {
@@ -475,11 +483,8 @@ async def _send_new_audio(
         logger.info("[LiveDubAudio] complete companion set delivered: %d/%d", sent, expected)
         return True
     if sent:
-        raise RuntimeError(
-            f"отправлен неполный комплект MP3 ({sent}/{expected}); " + "; ".join(failures)
-        )
+        raise RuntimeError(f"отправлен неполный комплект MP3 ({sent}/{expected}); " + "; ".join(failures))
     raise RuntimeError("оба MP3 не отправлены: " + "; ".join(failures))
-
 
 
 def validate_livedub_audio_companion() -> str:

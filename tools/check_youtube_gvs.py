@@ -6,6 +6,7 @@ production yt-dlp base arguments used by MP3Bot. It is a manual diagnostic,
 not a startup health check: repeatedly probing YouTube on every bot launch
 would add latency and unnecessary anti-bot pressure.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -96,10 +97,7 @@ def _duration_matches(actual: float, expected: float) -> bool:
 
 def _find_downloaded_media(workdir: Path) -> Path | None:
     candidates = [
-        path
-        for path in workdir.iterdir()
-        if path.is_file()
-        and not path.name.endswith((".part", ".ytdl", ".temp"))
+        path for path in workdir.iterdir() if path.is_file() and not path.name.endswith((".part", ".ytdl", ".temp"))
     ]
     if not candidates:
         return None
@@ -209,10 +207,7 @@ def _print_egress_diagnostics() -> None:
 
     proxy = _proxy_for_ytdlp()
     print(f"GVS egress: yt-dlp --proxy = {proxy or '(none — direct egress)'}")
-    print(
-        f"GVS auth: cookies.txt = "
-        f"{'present' if COOKIES_FILE.exists() else 'MISSING (unauthenticated)'}"
-    )
+    print(f"GVS auth: cookies.txt = {'present' if COOKIES_FILE.exists() else 'MISSING (unauthenticated)'}")
     log_path = bgutil_http_log_path()
     if log_path is not None:
         print(f"GVS bgutil log: {log_path} (grep 'Using proxy' after the run)")
@@ -235,7 +230,13 @@ def _http_403_hint() -> str:
     egress = proxy or "direct (residential)"
     lines = [
         "GVS_403_HINT: token is valid and IP-consistent; this is an auth/egress refusal.",
-        "  egress = " + egress + ("  (datacenter-class IPs are routinely refused)" if proxy else "  (if still 403, the client/account is the issue)"),
+        "  egress = "
+        + egress
+        + (
+            "  (datacenter-class IPs are routinely refused)"
+            if proxy
+            else "  (if still 403, the client/account is the issue)"
+        ),
     ]
     if not has_cookies:
         lines.append(
@@ -293,9 +294,15 @@ def main(argv: list[str] | None = None) -> int:
         # self._downloader.proxies, which includes ambient HTTP(S)_PROXY — so
         # clearing these in-process is the only way to make a real direct run.
         for _key in (
-            "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
-            "http_proxy", "https_proxy", "all_proxy",
-            "YTDLP_PROXY_URL", "TELEGRAM_PROXY_URL", "LOCAL_BOT_API_PROXY_URL",
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "ALL_PROXY",
+            "http_proxy",
+            "https_proxy",
+            "all_proxy",
+            "YTDLP_PROXY_URL",
+            "TELEGRAM_PROXY_URL",
+            "LOCAL_BOT_API_PROXY_URL",
         ):
             os.environ.pop(_key, None)
         print("GVS egress: --direct forced (proxy env cleared in-process)")
@@ -349,10 +356,7 @@ def main(argv: list[str] | None = None) -> int:
             return 5
 
         if not _duration_matches(duration, expected_duration):
-            print(
-                "GVS_ACCEPTANCE=FAIL_DURATION_MISMATCH "
-                f"metadata={expected_duration:.3f}s ffprobe={duration:.3f}s"
-            )
+            print(f"GVS_ACCEPTANCE=FAIL_DURATION_MISMATCH metadata={expected_duration:.3f}s ffprobe={duration:.3f}s")
             return 9
 
         print(

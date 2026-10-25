@@ -5,6 +5,7 @@ Recent Telegram commands survive process restarts, stale backlog is rejected bef
 normal handlers run, and polling transport failures are logged explicitly.  This
 module does not replace PTB class methods.
 """
+
 from __future__ import annotations
 
 import logging
@@ -26,15 +27,11 @@ def _bounded_env_seconds(name: str, *, default: int, minimum: int, maximum: int)
 
 
 def _max_stale_noncommand_age() -> int:
-    return _bounded_env_seconds(
-        "BOT_PENDING_NONCOMMAND_MAX_AGE_SEC", default=900, minimum=60, maximum=24 * 3600
-    )
+    return _bounded_env_seconds("BOT_PENDING_NONCOMMAND_MAX_AGE_SEC", default=900, minimum=60, maximum=24 * 3600)
 
 
 def _max_stale_command_age() -> int:
-    return _bounded_env_seconds(
-        "BOT_PENDING_COMMAND_MAX_AGE_SEC", default=6 * 3600, minimum=5 * 60, maximum=24 * 3600
-    )
+    return _bounded_env_seconds("BOT_PENDING_COMMAND_MAX_AGE_SEC", default=6 * 3600, minimum=5 * 60, maximum=24 * 3600)
 
 
 def _message_age_seconds(update: Any) -> float | None:

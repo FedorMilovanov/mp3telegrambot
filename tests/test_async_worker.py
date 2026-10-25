@@ -151,9 +151,7 @@ async def test_repeated_cancel_after_soft_timeout_does_not_orphan_inner() -> Non
             raise
         return "finished"
 
-    outer = asyncio.create_task(
-        await_owned_with_soft_timeout(inner(), timeout=0.01)
-    )
+    outer = asyncio.create_task(await_owned_with_soft_timeout(inner(), timeout=0.01))
     await started.wait()
     await asyncio.sleep(0.03)
 

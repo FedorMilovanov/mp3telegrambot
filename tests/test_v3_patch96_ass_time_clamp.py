@@ -5,6 +5,7 @@ Whisper occasionally returns a slightly negative word.start. The old formatter
 produced '-1:59:59.-50' for negative input, which libass/ffmpeg reject and which
 broke rendering of the whole subtitle line. Negative input must clamp to zero.
 """
+
 import re
 
 from services.shorts_video import _seconds_to_ass_time

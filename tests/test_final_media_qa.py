@@ -11,14 +11,7 @@ from tools.voxcpm2 import final_media_qa
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MASTER = (
-    ROOT
-    / "tools"
-    / "voxcpm2"
-    / "examples"
-    / "john_piper_z20py4yqhyq"
-    / "master_constant_mix.py"
-)
+MASTER = ROOT / "tools" / "voxcpm2" / "examples" / "john_piper_z20py4yqhyq" / "master_constant_mix.py"
 
 
 def _media(
@@ -77,9 +70,9 @@ def test_master_verifies_encoded_mp4_not_only_pcm() -> None:
     assert "limiter_linear = 10.0 ** (float(target_tp) / 20.0)" in source
     assert '"limiter_auto_level": False' in source
     assert '"limiter_latency_compensated": True' in source
-    assert 'post-aac-original-bed-regression-v2' in qa
-    assert 'estimate_original_bed' in qa
-    assert 'original_bed' in qa
+    assert "post-aac-original-bed-regression-v2" in qa
+    assert "estimate_original_bed" in qa
+    assert "original_bed" in qa
 
 
 def test_original_bed_regression_accepts_fixed_eighteen_percent() -> None:

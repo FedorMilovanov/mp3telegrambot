@@ -5,6 +5,7 @@ The validator checks the JSON report, segment files, timing coverage, tempo
 limits, CUDA safety flag and final duration. It is intentionally lightweight so
 it can run in CI or from the normal bot environment.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -40,14 +41,10 @@ def validate_report(
     warnings: list[str] = []
 
     if report.get("cuda_available") is not False:
-        raise ValidationError(
-            "CPU safety check failed: cuda_available must be exactly false"
-        )
+        raise ValidationError("CPU safety check failed: cuda_available must be exactly false")
 
     source_duration = _number(report.get("video_duration"), "video_duration")
-    final_duration = _number(
-        report.get("final_audio_duration"), "final_audio_duration"
-    )
+    final_duration = _number(report.get("final_audio_duration"), "final_audio_duration")
 
     if source_duration <= 0 or final_duration <= 0:
         raise ValidationError("source and final durations must be positive")
@@ -100,27 +97,19 @@ def validate_report(
         if end <= start:
             raise ValidationError(f"segment {segment_id} has invalid time window")
         if abs((end - start) - target) > 0.02:
-            raise ValidationError(
-                f"segment {segment_id} target duration disagrees with window"
-            )
+            raise ValidationError(f"segment {segment_id} target duration disagrees with window")
         if raw <= 0 or fitted <= 0:
             raise ValidationError(f"segment {segment_id} has non-positive audio")
         if abs(fitted - target) > duration_tolerance:
             raise ValidationError(
-                f"segment {segment_id} fitted duration mismatch: "
-                f"target={target:.3f}, fitted={fitted:.3f}"
+                f"segment {segment_id} fitted duration mismatch: target={target:.3f}, fitted={fitted:.3f}"
             )
         if not min_tempo <= tempo <= max_tempo:
-            raise ValidationError(
-                f"segment {segment_id} tempo {tempo:.3f} outside "
-                f"{min_tempo:.3f}..{max_tempo:.3f}"
-            )
+            raise ValidationError(f"segment {segment_id} tempo {tempo:.3f} outside {min_tempo:.3f}..{max_tempo:.3f}")
 
         calculated_tempo = raw / target
         if abs(calculated_tempo - tempo) > 0.01:
-            raise ValidationError(
-                f"segment {segment_id} tempo field is inconsistent with durations"
-            )
+            raise ValidationError(f"segment {segment_id} tempo field is inconsistent with durations")
 
         text = str(segment.get("text") or "").strip()
         if not text:
@@ -131,14 +120,10 @@ def validate_report(
             if not path_text:
                 raise ValidationError(f"segment {segment_id} missing {field}")
             if require_files and not Path(path_text).is_file():
-                raise ValidationError(
-                    f"segment {segment_id} file does not exist: {path_text}"
-                )
+                raise ValidationError(f"segment {segment_id} file does not exist: {path_text}")
 
         if tempo < 0.80 or tempo > 1.25:
-            warnings.append(
-                f"segment {segment_id}: tempo {tempo:.3f} needs listening review"
-            )
+            warnings.append(f"segment {segment_id}: tempo {tempo:.3f} needs listening review")
 
         previous_end = end
 

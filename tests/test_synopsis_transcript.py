@@ -1,4 +1,5 @@
 """Regression tests for YouTube transcript-backed Synopsis."""
+
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
@@ -199,6 +200,7 @@ Final sentence.
 
 def test_verbatim_synopsis_bare_timestamps_become_youtube_links():
     from converters.md_telegraph import _section_to_nodes_v2
+
     nodes = _section_to_nodes_v2(
         {"title": "Стенограмма", "time": "0:00", "content": "0:07 Мы откроем книгу.\n\n2:41 Мир сегодня..."},
         yt_url="https://www.youtube.com/watch?v=abc123",
@@ -212,6 +214,7 @@ def test_verbatim_synopsis_bare_timestamps_become_youtube_links():
 
 def test_dot_bold_list_items_are_repaired_before_telegraph_parse():
     from services.telegraph import _md_to_telegraph_nodes
+
     nodes = _md_to_telegraph_nodes(".**От сухого интеллектуализма к заветной нежности.** Текст")
     flat = _flat(nodes)
     assert flat.startswith("• От сухого интеллектуализма")
@@ -221,10 +224,13 @@ def test_dot_bold_list_items_are_repaired_before_telegraph_parse():
 def test_escaped_markdown_markers_are_not_rendered_raw():
     from converters.md_telegraph import _section_to_nodes_v2
     from services.telegraph import _md_to_telegraph_nodes
+
     nodes = _md_to_telegraph_nodes(r"• \*\*Семейное поклонение\*\* — практика")
     assert "**" not in _flat(nodes)
     assert any(isinstance(c, dict) and c.get("tag") == "b" for n in nodes for c in n.get("children", []))
-    sec_nodes = _section_to_nodes_v2({"title": "T", "content": r"• \\*\\*Directory for Family Worship\\*\\* — источник"})
+    sec_nodes = _section_to_nodes_v2(
+        {"title": "T", "content": r"• \\*\\*Directory for Family Worship\\*\\* — источник"}
+    )
     assert "**" not in _flat(sec_nodes)
     assert "\\" not in _flat(sec_nodes)
 
@@ -232,6 +238,7 @@ def test_escaped_markdown_markers_are_not_rendered_raw():
 def test_misbolded_bullet_lead_keeps_only_term_bold():
     from converters.md_telegraph import _section_to_nodes_v2
     from services.telegraph import _md_to_telegraph_nodes
+
     raw = "• **שָׁנַן — Показывает важность интенсивного**, глубокого запечатления."
     nodes = _md_to_telegraph_nodes(raw)
     flat = _flat(nodes).replace("\u200e", "").replace("  ", " ")
@@ -261,8 +268,8 @@ def test_synopsis_wires_youtube_transcript_into_prompt():
     assert "ОПОРНЫЕ ТАЙМКОДЫ ДЛЯ ПОКРЫТИЯ (не summary)" in src
     assert "пиши по transcript/audio" in src
     assert "download_youtube_transcript_text" in src
-    assert "source_lang: str = \"\"" in src
-    assert "lang=source_lang or \"en\"" in src
+    assert 'source_lang: str = ""' in src
+    assert 'lang=source_lang or "en"' in src
     assert "expected_duration=_duration" in src
     assert "synopsis_transcript_" in src
     assert "--write-subs" in ytt and "--write-auto-subs" in ytt
@@ -283,7 +290,7 @@ def test_pipeline_passes_youtube_language_to_synopsis_transcript():
 
 def test_transcript_language_globs_are_deduped_in_source():
     src = Path("services/youtube_transcript.py").read_text(encoding="utf-8")
-    assert "prefs = [f\"{lang_root}.*\", lang_root, \"en.*\", \"en\"]" in src
+    assert 'prefs = [f"{lang_root}.*", lang_root, "en.*", "en"]' in src
     assert "seen: set[str]" in src
 
 

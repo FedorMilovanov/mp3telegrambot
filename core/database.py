@@ -3,10 +3,20 @@
 Database layer — db_init, db_save, db_get, settings, rate_limit, cache.
 Извлечено из bot.py строки 88–555.
 """
+
 from core.globals import (
-    BOT_TOKEN, GEMINI_API_KEY, DOWNLOAD_DIR, THUMBS_DIR,
-    DB_PATH, HAS_GEMINI, HAS_PILLOW, LOCAL_BOT_API_URL,
-    flask_app, _video_processing_locks, _video_locks_mutex, _get_video_lock,
+    BOT_TOKEN,
+    GEMINI_API_KEY,
+    DOWNLOAD_DIR,
+    THUMBS_DIR,
+    DB_PATH,
+    HAS_GEMINI,
+    HAS_PILLOW,
+    LOCAL_BOT_API_URL,
+    flask_app,
+    _video_processing_locks,
+    _video_locks_mutex,
+    _get_video_lock,
 )
 from core.model_catalog import ROLE_PRIMARY, configured_model
 
@@ -15,7 +25,7 @@ import hashlib
 from pathlib import Path  # round 31: db_backup  # FIX #6: был не импортирован — нужен для get_prompt_fingerprint
 import json
 import logging
-import os          # FIX #6: был не импортирован — нужен для os.getenv
+import os  # FIX #6: был не импортирован — нужен для os.getenv
 import re
 import sqlite3
 import time
@@ -63,18 +73,16 @@ def current_livedub_file_id_cache_version() -> str:
         "eq": os.getenv("LIVEDUB_VOICE_EQ", "1").strip() or "1",
         "rnnoise": os.getenv("LIVEDUB_RNNOISE_MODEL", "").strip(),
     }
-    return LIVEDUB_FILE_ID_CACHE_VERSION + ":" + ";".join(
-        f"{k}={v}" for k, v in knobs.items()
-    )
+    return LIVEDUB_FILE_ID_CACHE_VERSION + ":" + ";".join(f"{k}={v}" for k, v in knobs.items())
 
 
 def current_livedub_file_id_cache_fingerprint() -> str:
     """Короткий fingerprint версии LiveDub file_id для логов и /status."""
-    return hashlib.sha1(
-        current_livedub_file_id_cache_version().encode("utf-8")
-    ).hexdigest()[:10]
+    return hashlib.sha1(current_livedub_file_id_cache_version().encode("utf-8")).hexdigest()[:10]
+
 
 # DB_PATH импортирован из globals — дублирующее определение убрано (FIX #19)
+
 
 def db_init() -> None:
     with _db_conn() as conn:
@@ -166,42 +174,42 @@ def db_init() -> None:
         # Миграция video_cache: добавляем колонки если их нет (для старых баз данных)
         migrated = []
         for col, default in [
-            ("questions",        "'[]'"),
-            ("share_text",       "''"),
-            ("quotes_tg_url",    "''"),
+            ("questions", "'[]'"),
+            ("share_text", "''"),
+            ("quotes_tg_url", "''"),
             ("questions_tg_url", "''"),
-            ("ai_data",          "''"),
-            ("telegraph_url",    "''"),
-            ("analytics_json",   "''"),
+            ("ai_data", "''"),
+            ("telegraph_url", "''"),
+            ("analytics_json", "''"),
             # Умный кэш — версионирование
-            ("cache_version",    "''"),
-            ("prompt_version",   "''"),
-            ("model_name",       "''"),
-            ("updated_at",       "0"),
+            ("cache_version", "''"),
+            ("prompt_version", "''"),
+            ("model_name", "''"),
+            ("updated_at", "0"),
             # Блок «Слова»
-            ("terms_tg_url",     "''"),
+            ("terms_tg_url", "''"),
             # Альтернативные платформы (кэшируем чтобы не искать повторно)
-            ("rutube_url",           "''"),
-            ("vk_url",               "''"),
+            ("rutube_url", "''"),
+            ("vk_url", "''"),
             # Новые article-like страницы
-            ("study_tg_url",         "''"),
-            ("reflection_tg_url",    "''"),
+            ("study_tg_url", "''"),
+            ("reflection_tg_url", "''"),
             # Publication completeness/status (V3-P23)
-            ("publication_status",  "'unknown'"),
+            ("publication_status", "'unknown'"),
             ("publication_missing", "'[]'"),
             ("publication_warning", "''"),
             # LIVEDUB: telegram file_id готового перевода — повторная отправка
             # мгновенна (без второго прогона vot-cli и заливки сотен МБ).
             # livedub_file_id_version защищает от ресенда старых mp4 после
             # изменения микса/таймингов.
-            ("livedub_file_id",         "''"),
+            ("livedub_file_id", "''"),
             ("livedub_file_id_version", "''"),
             # MP3 file_id — мгновенный resend при кэш-хите (без заливки 50МБ)
-            ("audio_file_id",           "''"),
+            ("audio_file_id", "''"),
         ]:
             # FIX SQL-injection: валидация ВНЕ try/except — ValueError не должен
             # быть поглощён блоком except sqlite3.OperationalError
-            if not col.replace('_', '').isalnum():
+            if not col.replace("_", "").isalnum():
                 raise ValueError(f"Небезопасное имя колонки для миграции: {col!r}")
             try:
                 col_type = "INTEGER DEFAULT 0" if col == "updated_at" else f"TEXT DEFAULT {default}"
@@ -228,6 +236,7 @@ def db_init() -> None:
         if migrated:
             pass
 
+
 def db_cleanup_old_records() -> None:
     """Удаляет записи кэша старше CACHE_TTL_DAYS. Вызывать после определения констант.
 
@@ -251,9 +260,7 @@ def db_cleanup_old_records() -> None:
             # AUDIT M9: чистим short_trims старше 7 дней
             try:
                 trims_cutoff = int(time.time()) - 7 * 86400
-                trims = conn.execute(
-                    "DELETE FROM short_trims WHERE created_at < ?", (trims_cutoff,)
-                ).rowcount
+                trims = conn.execute("DELETE FROM short_trims WHERE created_at < ?", (trims_cutoff,)).rowcount
             except sqlite3.OperationalError:
                 trims = 0
             conn.commit()
@@ -265,27 +272,40 @@ def db_cleanup_old_records() -> None:
     except Exception as _ce:
         logger.warning("db_cleanup_old_records failed: %s", _ce, exc_info=True)
 
-def db_save(video_id: str, url: str, questions: list[Any],
-            quotes_tg_url: str = "", questions_tg_url: str = "",
-            ai_data: dict[str, Any] | None = None, telegraph_url: str = "",
-            cache_version: str = "", prompt_version: str = "", model_name: str = "",
-            terms_tg_url: str = "",
-            rutube_url: str = "", vk_url: str = "",
-            study_tg_url: str = "", reflection_tg_url: str = "",
-            publication_status: str = "unknown", publication_missing: str = "[]",
-            publication_warning: str = "") -> None:
+
+def db_save(
+    video_id: str,
+    url: str,
+    questions: list[Any],
+    quotes_tg_url: str = "",
+    questions_tg_url: str = "",
+    ai_data: dict[str, Any] | None = None,
+    telegraph_url: str = "",
+    cache_version: str = "",
+    prompt_version: str = "",
+    model_name: str = "",
+    terms_tg_url: str = "",
+    rutube_url: str = "",
+    vk_url: str = "",
+    study_tg_url: str = "",
+    reflection_tg_url: str = "",
+    publication_status: str = "unknown",
+    publication_missing: str = "[]",
+    publication_warning: str = "",
+) -> None:
     # busy_timeout is set inside the sqlite connection below.
-    _cache_version  = cache_version  or CACHE_VERSION
+    _cache_version = cache_version or CACHE_VERSION
     _prompt_version = prompt_version or get_prompt_fingerprint()
-    _model_name     = model_name     or GEMINI_MODEL
-    _updated_at     = int(time.time())
+    _model_name = model_name or GEMINI_MODEL
+    _updated_at = int(time.time())
     # AUDIT R5: приватные in-memory ключи (стенограмма-грунт для Study/
     # Reflection) не персистим — иначе кэш раздувается на ~24КБ на видео.
     if isinstance(ai_data, dict) and any(k.startswith("_") for k in ai_data):
         ai_data = {k: v for k, v in ai_data.items() if not k.startswith("_")}
     with _db_conn() as conn:
         conn.execute("PRAGMA busy_timeout=5000")
-        conn.execute("""
+        conn.execute(
+            """
             INSERT INTO video_cache
                 (video_id, url, questions, quotes_tg_url, questions_tg_url,
                  ai_data, telegraph_url,
@@ -312,18 +332,31 @@ def db_save(video_id: str, url: str, questions: list[Any],
                 publication_status = excluded.publication_status,
                 publication_missing = excluded.publication_missing,
                 publication_warning = excluded.publication_warning
-        """, (video_id, url,
-              json.dumps(questions, ensure_ascii=False),
-              quotes_tg_url, questions_tg_url,
-              json.dumps(ai_data, ensure_ascii=False) if ai_data else "",
-              telegraph_url or "",
-              _cache_version, _prompt_version, _model_name, _updated_at,
-              terms_tg_url or "",
-              rutube_url or "", vk_url or "",
-              study_tg_url or "", reflection_tg_url or "",
-              publication_status or "unknown", publication_missing or "[]",
-              publication_warning or ""))
+        """,
+            (
+                video_id,
+                url,
+                json.dumps(questions, ensure_ascii=False),
+                quotes_tg_url,
+                questions_tg_url,
+                json.dumps(ai_data, ensure_ascii=False) if ai_data else "",
+                telegraph_url or "",
+                _cache_version,
+                _prompt_version,
+                _model_name,
+                _updated_at,
+                terms_tg_url or "",
+                rutube_url or "",
+                vk_url or "",
+                study_tg_url or "",
+                reflection_tg_url or "",
+                publication_status or "unknown",
+                publication_missing or "[]",
+                publication_warning or "",
+            ),
+        )
         conn.commit()
+
 
 _FILE_ID_COLUMNS = {"livedub_file_id", "audio_file_id"}
 
@@ -338,8 +371,7 @@ def _db_set_file_id(video_id: str, column: str, file_id: str) -> None:
         if column == "livedub_file_id":
             version = current_livedub_file_id_cache_version() if file_id else ""
             cur = conn.execute(
-                "UPDATE video_cache SET livedub_file_id = ?, livedub_file_id_version = ? "
-                "WHERE video_id = ?",
+                "UPDATE video_cache SET livedub_file_id = ?, livedub_file_id_version = ? WHERE video_id = ?",
                 (file_id or "", version, video_id),
             )
             if cur.rowcount == 0:
@@ -388,6 +420,7 @@ def db_backup(max_keep: int = 7) -> str:
     Возвращает путь созданной копии или '' (уже есть сегодняшняя/ошибка).
     """
     import time as _time
+
     try:
         day = _time.strftime("%Y%m%d")
         dst = Path(str(DB_PATH) + f".bak.{day}")
@@ -425,7 +458,8 @@ def db_get(video_id: str) -> dict[str, Any] | None:
             "rutube_url, vk_url, study_tg_url, reflection_tg_url, "
             "publication_status, publication_missing, publication_warning, "
             "livedub_file_id, livedub_file_id_version, audio_file_id "
-            "FROM video_cache WHERE video_id = ?", (video_id,)
+            "FROM video_cache WHERE video_id = ?",
+            (video_id,),
         ).fetchone()
     if not row:
         return None
@@ -441,48 +475,55 @@ def db_get(video_id: str) -> dict[str, Any] | None:
     except Exception as _e:
         logger.debug("db_get: questions JSON parse failed for %s: %s", video_id, _e)
     return {
-        "url":               row[0],
-        "questions":         questions,
-        "quotes_tg_url":     row[2],
-        "questions_tg_url":  row[3],
-        "ai_data":           ai_data,
-        "telegraph_url":     row[5],
-        "cache_version":     row[6]  or "",
-        "prompt_version":    row[7]  or "",
-        "model_name":        row[8]  or "",
-        "updated_at":        row[9]  or 0,
-        "terms_tg_url":      row[10] or "",
-        "rutube_url":        row[11] or "",
-        "vk_url":            row[12] or "",
-        "study_tg_url":      row[13] or "",
+        "url": row[0],
+        "questions": questions,
+        "quotes_tg_url": row[2],
+        "questions_tg_url": row[3],
+        "ai_data": ai_data,
+        "telegraph_url": row[5],
+        "cache_version": row[6] or "",
+        "prompt_version": row[7] or "",
+        "model_name": row[8] or "",
+        "updated_at": row[9] or 0,
+        "terms_tg_url": row[10] or "",
+        "rutube_url": row[11] or "",
+        "vk_url": row[12] or "",
+        "study_tg_url": row[13] or "",
         "reflection_tg_url": row[14] or "",
-        "publication_status":  row[15] or "unknown",
+        "publication_status": row[15] or "unknown",
         "publication_missing": row[16] or "[]",
         "publication_warning": row[17] or "",
-        "livedub_file_id":     row[18] or "",
+        "livedub_file_id": row[18] or "",
         "livedub_file_id_version": row[19] or "",
-        "audio_file_id":       row[20] or "",
+        "audio_file_id": row[20] or "",
     }
 
+
 # ─── Async-обёртки для DB (не блокируют event loop) ──────────
+
 
 async def adb_get(video_id: str) -> dict[str, Any] | None:
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, db_get, video_id)
 
+
 async def adb_save(video_id: str, url: str, questions: list[Any], **kwargs: Any) -> None:
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, lambda: db_save(video_id, url, questions, **kwargs))
+
 
 async def asettings_get(key: str) -> bool:
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, settings_get, key)
 
+
 async def asettings_set(key: str, value: bool) -> None:
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, settings_set, key, value)
 
+
 db_init()
+
 
 def _one_time_enable_subtitles() -> None:
     """AUDIT: одноразовая миграция — включаем красивые субтитры по умолчанию.
@@ -492,9 +533,7 @@ def _one_time_enable_subtitles() -> None:
     """
     try:
         with _db_conn() as conn:
-            row = conn.execute(
-                "SELECT value FROM bot_settings WHERE key = '_migration_enable_subs_v1'"
-            ).fetchone()
+            row = conn.execute("SELECT value FROM bot_settings WHERE key = '_migration_enable_subs_v1'").fetchone()
             if row:
                 return  # уже применено
             for k in ("shorts_subtitles", "shorts_subtitles_karaoke"):
@@ -502,14 +541,9 @@ def _one_time_enable_subtitles() -> None:
                     "INSERT OR REPLACE INTO bot_settings (key, value) VALUES (?, '1')",
                     (k,),
                 )
-            conn.execute(
-                "INSERT INTO bot_settings (key, value) VALUES "
-                "('_migration_enable_subs_v1', '1')"
-            )
+            conn.execute("INSERT INTO bot_settings (key, value) VALUES ('_migration_enable_subs_v1', '1')")
             conn.commit()
-        logging.getLogger(__name__).info(
-            "🎨 Миграция: красивые субтитры Shorts включены по умолчанию"
-        )
+        logging.getLogger(__name__).info("🎨 Миграция: красивые субтитры Shorts включены по умолчанию")
     except Exception:
         pass
 
@@ -519,12 +553,25 @@ _one_time_enable_subtitles()
 
 # ─── Short trim helpers ───────────────────────────────────────
 
-def short_trim_save(short_id: str, video_path: str, start_seconds: float, end_seconds: float,
-                    visual_mode: str = "full_frame_vertical", yt_url: str = "",
-                    vk_url: str = "", rutube_url: str = "", performer: str = "",
-                    real_author: str = "", real_event: str = "", format_name: str = "",
-                    candidate_json: str = "{}", video_path_nosub: str = "",
-                    nosub_expiry: int = 0, source_duration: int = 0) -> None:
+
+def short_trim_save(
+    short_id: str,
+    video_path: str,
+    start_seconds: float,
+    end_seconds: float,
+    visual_mode: str = "full_frame_vertical",
+    yt_url: str = "",
+    vk_url: str = "",
+    rutube_url: str = "",
+    performer: str = "",
+    real_author: str = "",
+    real_event: str = "",
+    format_name: str = "",
+    candidate_json: str = "{}",
+    video_path_nosub: str = "",
+    nosub_expiry: int = 0,
+    source_duration: int = 0,
+) -> None:
     """AUDIT M5: source_duration — длительность исходного видео, для ограничения end_s.
 
     ``start_seconds``/``end_seconds`` — float, потому что их считает ffprobe.
@@ -533,18 +580,36 @@ def short_trim_save(short_id: str, video_path: str, start_seconds: float, end_se
     """
     with _db_conn() as conn:
         conn.execute("PRAGMA busy_timeout=5000")
-        conn.execute("""
+        conn.execute(
+            """
             INSERT OR REPLACE INTO short_trims
                 (short_id, video_path, start_seconds, end_seconds, visual_mode,
                  yt_url, vk_url, rutube_url, performer, real_author, real_event,
                  format_name, candidate_json, video_path_nosub, nosub_expiry,
                  source_duration)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (short_id, video_path, start_seconds, end_seconds, visual_mode,
-              yt_url, vk_url, rutube_url, performer, real_author, real_event,
-              format_name, candidate_json, video_path_nosub, nosub_expiry,
-              source_duration))
+        """,
+            (
+                short_id,
+                video_path,
+                start_seconds,
+                end_seconds,
+                visual_mode,
+                yt_url,
+                vk_url,
+                rutube_url,
+                performer,
+                real_author,
+                real_event,
+                format_name,
+                candidate_json,
+                video_path_nosub,
+                nosub_expiry,
+                source_duration,
+            ),
+        )
         conn.commit()
+
 
 def short_trim_get(short_id: str) -> dict[str, Any] | None:
     with _db_conn() as conn:
@@ -555,7 +620,8 @@ def short_trim_get(short_id: str) -> dict[str, Any] | None:
                 "SELECT video_path, start_seconds, end_seconds, visual_mode, yt_url, vk_url, "
                 "rutube_url, performer, real_author, real_event, format_name, candidate_json, "
                 "video_path_nosub, nosub_expiry, source_duration "
-                "FROM short_trims WHERE short_id = ?", (short_id,)
+                "FROM short_trims WHERE short_id = ?",
+                (short_id,),
             ).fetchone()
             has_src_dur = True
         except sqlite3.OperationalError:
@@ -564,22 +630,29 @@ def short_trim_get(short_id: str) -> dict[str, Any] | None:
                 "SELECT video_path, start_seconds, end_seconds, visual_mode, yt_url, vk_url, "
                 "rutube_url, performer, real_author, real_event, format_name, candidate_json, "
                 "video_path_nosub, nosub_expiry "
-                "FROM short_trims WHERE short_id = ?", (short_id,)
+                "FROM short_trims WHERE short_id = ?",
+                (short_id,),
             ).fetchone()
             has_src_dur = False
     if not row:
         return None
     return {
-        "video_path": row[0], "start_seconds": row[1], "end_seconds": row[2],
-        "visual_mode": row[3], "yt_url": row[4], "vk_url": row[5],
-        "rutube_url": row[6], "performer": row[7], "real_author": row[8],
-        "real_event": row[9], "format_name": row[10],
+        "video_path": row[0],
+        "start_seconds": row[1],
+        "end_seconds": row[2],
+        "visual_mode": row[3],
+        "yt_url": row[4],
+        "vk_url": row[5],
+        "rutube_url": row[6],
+        "performer": row[7],
+        "real_author": row[8],
+        "real_event": row[9],
+        "format_name": row[10],
         "candidate_json": row[11] or "{}",
         "video_path_nosub": row[12] or "",
         "nosub_expiry": row[13] or 0,
         "source_duration": (row[14] or 0) if has_src_dur else 0,
     }
-
 
 
 def is_cache_valid(cached: dict[str, Any] | None) -> tuple[bool, str]:
@@ -612,99 +685,97 @@ def is_cache_valid(cached: dict[str, Any] | None) -> tuple[bool, str]:
 
 # Дефолтные значения всех настроек
 SETTINGS_DEFAULTS: dict[str, bool] = {
-    "synopsis":               True,   # Конспект (Telegraph)
-    "analytics":              True,   # Аналитика
-    "questions":              True,   # Вопросы для размышления
-    "terms":                  True,   # Слова (понятия, Писание, переводы, лексика)
-    "shorts":                 False,  # Shorts-кандидаты (вырезка фрагментов)
-    "shorts_audio_normalize": True,   # Нормализация громкости для shorts
-    "shorts_snapshot":        True,   # Snapshot (plain) для каждого short
-    "shorts_subtitles":         True,   # Субтитры (burn-in) для Shorts — ВКЛ по умолчанию (AUDIT)
-    "shorts_subtitles_karaoke": True,   # Karaoke word-level подсветка
-    "shorts_subtitles_light":   False,  # Лёгкий режим: medium модель вместо large-v3
+    "synopsis": True,  # Конспект (Telegraph)
+    "analytics": True,  # Аналитика
+    "questions": True,  # Вопросы для размышления
+    "terms": True,  # Слова (понятия, Писание, переводы, лексика)
+    "shorts": False,  # Shorts-кандидаты (вырезка фрагментов)
+    "shorts_audio_normalize": True,  # Нормализация громкости для shorts
+    "shorts_snapshot": True,  # Snapshot (plain) для каждого short
+    "shorts_subtitles": True,  # Субтитры (burn-in) для Shorts — ВКЛ по умолчанию (AUDIT)
+    "shorts_subtitles_karaoke": True,  # Karaoke word-level подсветка
+    "shorts_subtitles_light": False,  # Лёгкий режим: medium модель вместо large-v3
     "shorts_subtitles_gemini_hints": True,  # Gemini terms/title hints for Whisper initial_prompt
     "shorts_boundary_padding": True,  # Take a little before/after selected short boundaries
-    "shorts_montage":         False,  # Тематическая склейка из разных моментов
-    "shorts_highlights":      False,  # Рекламный highlights reel
-    "shorts_title_poster":    True,   # Стильный постер с заголовком для Shorts
-    "clips":                  False,  # Длинные clips (5–15 мин) из Q&A / лекций
-    "clips_snapshot":         True,   # Poster/snapshot для каждого clip
-    "segments":               False,  # Selectable timestamp-based Q&A/theme cuts
-    "segments_render":        True,   # Allow /cut rendering from timestamp segments
-    "segments_subtitles":     True,   # Burn subtitles into /cut rendered segments
-    "segments_batch_render":  False,  # Allow /cut VIDEO_ID 1,3,5 / all
+    "shorts_montage": False,  # Тематическая склейка из разных моментов
+    "shorts_highlights": False,  # Рекламный highlights reel
+    "shorts_title_poster": True,  # Стильный постер с заголовком для Shorts
+    "clips": False,  # Длинные clips (5–15 мин) из Q&A / лекций
+    "clips_snapshot": True,  # Poster/snapshot для каждого clip
+    "segments": False,  # Selectable timestamp-based Q&A/theme cuts
+    "segments_render": True,  # Allow /cut rendering from timestamp segments
+    "segments_subtitles": True,  # Burn subtitles into /cut rendered segments
+    "segments_batch_render": False,  # Allow /cut VIDEO_ID 1,3,5 / all
     # ── Новая продуктовая модель: две сильных article-like страницы ──────────
-    "study_analysis":         True,   # «Разбор материала» (аналитика+термины+богословие)
-    "reflection_application": True,   # «Размышление и применение» (пасторский guide)
-    "caption_full_text":      True,   # Отправлять полный текст отдельным сообщением
-    "generate_pdf":           False,  # Генерировать PDF (выключено по умолчанию)
-    "generate_quiz":          False,  # Quiz по видео (Telegram native polls)
-    "eng_subtitles":          True,   # Субтитры для ENG режима (Whisper+Gemini)
-    "livedub_qa":             True,   # Смысловая проверка перевода через Gemini (ENG Full)
-    "livedub_pro_mix":        True,   # Собственный микс: слышный оригинал + ducking + задержка
-    "livedub_autofix":        True,   # Авто-правка по QA: глушить major-искажения перевода
+    "study_analysis": True,  # «Разбор материала» (аналитика+термины+богословие)
+    "reflection_application": True,  # «Размышление и применение» (пасторский guide)
+    "caption_full_text": True,  # Отправлять полный текст отдельным сообщением
+    "generate_pdf": False,  # Генерировать PDF (выключено по умолчанию)
+    "generate_quiz": False,  # Quiz по видео (Telegram native polls)
+    "eng_subtitles": True,  # Субтитры для ENG режима (Whisper+Gemini)
+    "livedub_qa": True,  # Смысловая проверка перевода через Gemini (ENG Full)
+    "livedub_pro_mix": True,  # Собственный микс: слышный оригинал + ducking + задержка
+    "livedub_autofix": True,  # Авто-правка по QA: глушить major-искажения перевода
 }
 
 SETTINGS_LABELS: dict[str, str] = {
-    "synopsis":               "📋 Конспект",
-    "analytics":              "📊 Аналитика",
-    "questions":              "🗣 Вопросы",
-    "terms":                  "🔤 Термины",
-    "shorts":                 "✂️ Shorts",
+    "synopsis": "📋 Конспект",
+    "analytics": "📊 Аналитика",
+    "questions": "🗣 Вопросы",
+    "terms": "🔤 Термины",
+    "shorts": "✂️ Shorts",
     "shorts_audio_normalize": "🔊 Normalize",
-    "shorts_snapshot":        "📸 Snapshot",
-    "shorts_subtitles":       "💬 Субтитры",
+    "shorts_snapshot": "📸 Snapshot",
+    "shorts_subtitles": "💬 Субтитры",
     "shorts_subtitles_karaoke": "🎤 Karaoke",
     "shorts_subtitles_light": "⚡ Light model",
     "shorts_subtitles_gemini_hints": "🧠 Gemini hints",
     "shorts_boundary_padding": "↔️ Запас краёв",
-    "shorts_title_poster":    "🖼 Poster",
-    "shorts_montage":         "🎬 Montage",
-    "shorts_highlights":      "🌟 Highlights",
-    "clips":                  "🎬 Clips",
-    "clips_snapshot":         "📸 Poster",
-    "segments":               "🧩 Сегменты",
-    "segments_render":        "🎞 Рендер сегментов",
-    "segments_subtitles":     "💬 Субтитры сегментов",
-    "segments_batch_render":  "📦 Пакетная нарезка",
-    "study_analysis":         "📖 Разбор материала",
+    "shorts_title_poster": "🖼 Poster",
+    "shorts_montage": "🎬 Montage",
+    "shorts_highlights": "🌟 Highlights",
+    "clips": "🎬 Clips",
+    "clips_snapshot": "📸 Poster",
+    "segments": "🧩 Сегменты",
+    "segments_render": "🎞 Рендер сегментов",
+    "segments_subtitles": "💬 Субтитры сегментов",
+    "segments_batch_render": "📦 Пакетная нарезка",
+    "study_analysis": "📖 Разбор материала",
     "reflection_application": "🙏 Размышление и применение",
-    "caption_full_text":      "📋 Полный текст отдельно",
-    "generate_pdf":           "📄 Генерировать PDF",
-    "generate_quiz":          "🧠 Quiz по видео",
-    "eng_subtitles":          "💬 Субтитры ENG",
-    "livedub_qa":             "🔍 Проверка перевода",
-    "livedub_pro_mix":        "🎚 Pro-микс звука",
-    "livedub_autofix":        "🩹 Авто-правка перевода",
+    "caption_full_text": "📋 Полный текст отдельно",
+    "generate_pdf": "📄 Генерировать PDF",
+    "generate_quiz": "🧠 Quiz по видео",
+    "eng_subtitles": "💬 Субтитры ENG",
+    "livedub_qa": "🔍 Проверка перевода",
+    "livedub_pro_mix": "🎚 Pro-микс звука",
+    "livedub_autofix": "🩹 Авто-правка перевода",
 }
 
 # ─── Скорость Shorts (не bool, отдельная настройка) ──────────
 SHORTS_SPEED_STEPS: list[str] = ["1.0", "1.1", "1.3", "1.5"]
-SHORTS_SPEED_DEFAULT: str     = "1.0"
+SHORTS_SPEED_DEFAULT: str = "1.0"
+
 
 def shorts_speed_get() -> str:
     """Читает текущую скорость Shorts из БД."""
     try:
         with _db_conn() as conn:
             conn.execute("PRAGMA busy_timeout=5000")
-            row = conn.execute(
-                "SELECT value FROM bot_settings WHERE key = 'shorts_speed'"
-            ).fetchone()
+            row = conn.execute("SELECT value FROM bot_settings WHERE key = 'shorts_speed'").fetchone()
         if row and row[0] in SHORTS_SPEED_STEPS:
             return str(row[0])
     except Exception:
         pass
     return SHORTS_SPEED_DEFAULT
 
+
 def shorts_speed_set(value: str) -> None:
     """Сохраняет скорость Shorts в БД."""
     with _db_conn() as conn:
         conn.execute("PRAGMA busy_timeout=5000")
-        conn.execute(
-            "INSERT OR REPLACE INTO bot_settings (key, value) VALUES ('shorts_speed', ?)",
-            (value,)
-        )
+        conn.execute("INSERT OR REPLACE INTO bot_settings (key, value) VALUES ('shorts_speed', ?)", (value,))
         conn.commit()
+
 
 def shorts_speed_cycle() -> str:
     """Циклически переключает скорость и возвращает новое значение."""
@@ -735,10 +806,7 @@ def settings_set(key: str, value: bool) -> None:
     """Сохраняет настройку в БД."""
     with _db_conn() as conn:
         conn.execute("PRAGMA busy_timeout=5000")
-        conn.execute(
-            "INSERT OR REPLACE INTO bot_settings (key, value) VALUES (?, ?)",
-            (key, "1" if value else "0")
-        )
+        conn.execute("INSERT OR REPLACE INTO bot_settings (key, value) VALUES (?, ?)", (key, "1" if value else "0"))
         conn.commit()
 
 
@@ -774,6 +842,7 @@ async def ashorts_speed_cycle() -> str:
 async def acheck_rate_limit(user_id: int) -> tuple[bool, str]:
     """AUDIT M4: async-обёртка для check_rate_limit (вызывается в handle_message)."""
     from core.utils import check_rate_limit
+
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, check_rate_limit, user_id)
 
@@ -781,6 +850,7 @@ async def acheck_rate_limit(user_id: int) -> tuple[bool, str]:
 async def aupdate_rate_limit(user_id: int) -> None:
     """AUDIT M4: async-обёртка для update_rate_limit."""
     from core.utils import update_rate_limit
+
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, update_rate_limit, user_id)
 
@@ -788,8 +858,10 @@ async def aupdate_rate_limit(user_id: int) -> None:
 async def arefund_rate_limit(user_id: int) -> None:
     """FIX AUDIT R4: async-обёртка для refund_rate_limit (см. core/utils.py)."""
     from core.utils import refund_rate_limit
+
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, refund_rate_limit, user_id)
+
 
 # PART5: atomic-ish reservation for async handlers in this bot process.
 # check_rate_limit() и update_rate_limit() исторически разделены, поэтому два
@@ -860,6 +932,7 @@ CHANNEL_MAP: dict[str, dict[str, str]] = {
     },
 }
 
+
 def load_channel_mappings() -> None:
     raw = os.getenv("CHANNEL_MAPPINGS", "{}")
     try:
@@ -868,7 +941,9 @@ def load_channel_mappings() -> None:
     except Exception:
         pass
 
+
 load_channel_mappings()
+
 
 def get_channel_mapping(channel_name: str) -> dict[str, str] | None:
     """AUDIT M8: subset-match по словам вместо fuzzy in.
@@ -889,6 +964,8 @@ def get_channel_mapping(channel_name: str) -> dict[str, str] | None:
         if map_words and map_words.issubset(key_words):
             return mapping
     return None
+
+
 # ─── Лимит размера отправляемых файлов ──────────────────────────────────
 # Облачный Bot API (api.telegram.org): максимум 50 МБ на отправку.
 # Локальный Bot API сервер (LOCAL_BOT_API_URL задан): до 2000 МБ.
@@ -935,15 +1012,17 @@ def set_effective_max_file_size_mb(using_local_bot_api: bool) -> None:
     if _MAX_FILE_SIZE_MB_EXPLICIT:
         return
     MAX_FILE_SIZE_MB = 2000 if using_local_bot_api else 50
+
+
 # ─── Gemini deployment policy ───────────────────────────────────────────
 # Модель задаётся один раз в core/model_catalog.py по роли ROLE_PRIMARY.
 # Устаревшие alias'ы (например, 3.7-flash) нормализуются автоматически, поэтому
 # старый .env не ломает routing после обновления каталога.
 # ВАЖНО: смена GEMINI_MODEL автоматически инвалидирует кэш (model_mismatch в database.py)
-GEMINI_MODEL  = configured_model(ROLE_PRIMARY)
+GEMINI_MODEL = configured_model(ROLE_PRIMARY)
 
 # ─── Умный кэш — версионирование ─────────────────────────────
-CACHE_VERSION         = os.getenv("CACHE_VERSION",         "2026-03-22-v5")
+CACHE_VERSION = os.getenv("CACHE_VERSION", "2026-03-22-v5")
 try:
     CACHE_TTL_DAYS = int(os.getenv("CACHE_TTL_DAYS", "45").strip() or "45")
 except ValueError:
@@ -1037,6 +1116,7 @@ def _hash_prompts_source() -> str:
     """
     try:
         from pathlib import Path as _P
+
         root = _P(__file__).resolve().parent.parent
         h = hashlib.sha256()
         for rel in _GENERATION_CONTRACT_FILES:
@@ -1058,6 +1138,7 @@ def get_prompt_fingerprint() -> str:
     )
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
+
 # ─── Защита от спама ─────────────────────────────────────────
 # WHITELIST — ваши люди, без ограничений.
 # Узнать свой Telegram ID: написать @userinfobot
@@ -1078,15 +1159,26 @@ db_cleanup_old_records()
 # конфигурация UI должна жить рядом с SETTINGS_DEFAULTS/SETTINGS_LABELS.
 SETTINGS_GROUPS: list[tuple[str, list[str]]] = [
     ("📋 Конспект", ["synopsis", "caption_full_text", "generate_pdf", "generate_quiz"]),
-    ("📖 Разборы",  ["study_analysis", "reflection_application"]),
+    ("📖 Разборы", ["study_analysis", "reflection_application"]),
     ("📊 Компактные", ["analytics", "questions", "terms"]),
-    ("✂️ Шортс",   ["shorts", "shorts_audio_normalize", "shorts_subtitles",
-                    "shorts_subtitles_karaoke", "shorts_subtitles_light",
-                    "shorts_subtitles_gemini_hints", "shorts_boundary_padding",
-                    "shorts_title_poster", "shorts_snapshot",
-                    "shorts_montage", "shorts_highlights",
-                    "__speed__"]),
-    ("🎬 Клипы",    ["clips", "clips_snapshot"]),
+    (
+        "✂️ Шортс",
+        [
+            "shorts",
+            "shorts_audio_normalize",
+            "shorts_subtitles",
+            "shorts_subtitles_karaoke",
+            "shorts_subtitles_light",
+            "shorts_subtitles_gemini_hints",
+            "shorts_boundary_padding",
+            "shorts_title_poster",
+            "shorts_snapshot",
+            "shorts_montage",
+            "shorts_highlights",
+            "__speed__",
+        ],
+    ),
+    ("🎬 Клипы", ["clips", "clips_snapshot"]),
     ("🧩 Сегменты", ["segments", "segments_render", "segments_subtitles", "segments_batch_render"]),
     ("🇬🇧 ENG Режим", ["eng_subtitles", "livedub_qa", "livedub_pro_mix", "livedub_autofix"]),
 ]

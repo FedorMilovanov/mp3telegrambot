@@ -46,9 +46,7 @@ def test_numbered_migration_is_applied_once(tmp_path: Path):
     with sqlite3.connect(path) as conn:
         columns = {row[1] for row in conn.execute("PRAGMA table_info(video_cache)")}
         assert "value" in columns
-        assert conn.execute(
-            "SELECT COUNT(*) FROM schema_migrations WHERE scope='test'"
-        ).fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM schema_migrations WHERE scope='test'").fetchone()[0] == 1
 
 
 def test_unknown_operational_error_is_not_swallowed(tmp_path: Path):
@@ -66,9 +64,7 @@ def test_unknown_operational_error_is_not_swallowed(tmp_path: Path):
         )
 
     with sqlite3.connect(path) as conn:
-        assert conn.execute(
-            "SELECT COUNT(*) FROM schema_migrations WHERE scope='test'"
-        ).fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM schema_migrations WHERE scope='test'").fetchone()[0] == 0
 
 
 def test_history_checksum_mismatch_fails_closed(tmp_path: Path):
@@ -78,9 +74,7 @@ def test_history_checksum_mismatch_fails_closed(tmp_path: Path):
     run_migrations(path, scope="test", migrations=(migration,))
 
     with sqlite3.connect(path) as conn:
-        conn.execute(
-            "UPDATE schema_migrations SET checksum='tampered' WHERE scope='test' AND version=1"
-        )
+        conn.execute("UPDATE schema_migrations SET checksum='tampered' WHERE scope='test' AND version=1")
         conn.commit()
 
     with pytest.raises(RuntimeError, match="history mismatch"):

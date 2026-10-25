@@ -7,6 +7,7 @@ normalised renderer state and the outer bot preflight. It deliberately wraps
 only public direct-CLI boundaries and keeps the previously audited base
 implementations unchanged.
 """
+
 from __future__ import annotations
 
 import hashlib

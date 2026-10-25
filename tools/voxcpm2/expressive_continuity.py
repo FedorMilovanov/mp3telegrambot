@@ -7,6 +7,7 @@ matching source-speech windows, builds a smoothed emotional/prosodic arc, assign
 either a calm or controlled-expressive real voice reference, and writes a fully
 transparent report.  It never changes the Russian text and never wraps VoxCPM.
 """
+
 from __future__ import annotations
 
 import json
@@ -47,20 +48,20 @@ def _window(item: dict[str, Any], duration: float) -> tuple[float, float]:
     )
     end = _number(item.get("source_end", item.get("end", start)))
     if end <= start:
-        end = _number(item.get("end", start + 0.35)) + max(
-            0,
-            int(item.get("start_delay_ms", 0) or 0),
-        ) / 1000.0
+        end = (
+            _number(item.get("end", start + 0.35))
+            + max(
+                0,
+                int(item.get("start_delay_ms", 0) or 0),
+            )
+            / 1000.0
+        )
     return min(float(duration), start), min(float(duration), max(start + 0.35, end))
 
 
 def _robust_z(values: list[float], valid: list[bool]) -> list[float]:
     usable = np.asarray(
-        [
-            value
-            for value, keep in zip(values, valid, strict=True)
-            if keep and math.isfinite(value)
-        ],
+        [value for value, keep in zip(values, valid, strict=True) if keep and math.isfinite(value)],
         dtype=np.float64,
     )
     if len(usable) < 2:
@@ -106,27 +107,19 @@ def _source_style(
     cadence = classify_cadence(punctuation)
     if score <= -0.72:
         tier = "reflective"
-        instruction = (
-            "calm and reflective, sincere, slightly slower, natural connected phrasing"
-        )
+        instruction = "calm and reflective, sincere, slightly slower, natural connected phrasing"
     elif score <= -0.12:
         tier = "warm"
         instruction = "warm and sincere, gently expressive, natural pace and pauses"
     elif score <= 0.48:
         tier = "earnest"
-        instruction = (
-            "earnest and conversational, clearly shaped emphasis, natural rhythm"
-        )
+        instruction = "earnest and conversational, clearly shaped emphasis, natural rhythm"
     elif score <= 1.08:
         tier = "emphatic"
-        instruction = (
-            "firm and emphatic, controlled intensity, clear stress, do not shout"
-        )
+        instruction = "firm and emphatic, controlled intensity, clear stress, do not shout"
     else:
         tier = "passionate"
-        instruction = (
-            "passionate and urgent but controlled, strong emphasis, never shout"
-        )
+        instruction = "passionate and urgent but controlled, strong emphasis, never shout"
 
     if rate_z <= -0.85 and "slightly slower" not in instruction:
         instruction += ", slightly slower"
@@ -184,10 +177,7 @@ def plan_segments(
             activity = audio_policy.activity_stats(clip, sample_rate)
             source_text = str(item.get("source") or item.get("text") or "")
             speech_rate = _words(source_text) / max(0.35, end - start)
-            valid_pitch = bool(
-                _number(pitch.get("voiced_ratio")) >= 0.12
-                and _number(pitch.get("f0_median")) >= 55.0
-            )
+            valid_pitch = bool(_number(pitch.get("voiced_ratio")) >= 0.12 and _number(pitch.get("f0_median")) >= 55.0)
             contour = prosody_contour(clip, sample_rate)
             metrics.append(
                 {
@@ -195,20 +185,12 @@ def plan_segments(
                     "end": round(end, 3),
                     "speech_rate": round(speech_rate, 4),
                     "contour": contour,
-                    **{
-                        key: round(_number(value), 5)
-                        for key, value in pitch.items()
-                    },
-                    **{
-                        key: round(_number(value), 5)
-                        for key, value in activity.items()
-                    },
+                    **{key: round(_number(value), 5) for key, value in pitch.items()},
+                    **{key: round(_number(value), 5) for key, value in activity.items()},
                 }
             )
             rms_values.append(_number(activity.get("rms_dbfs"), -60.0))
-            pitch_values.append(
-                _number(pitch.get("f0_p90") or pitch.get("f0_median"), 0.0)
-            )
+            pitch_values.append(_number(pitch.get("f0_p90") or pitch.get("f0_median"), 0.0))
             rate_values.append(speech_rate)
             pitch_valid.append(valid_pitch)
 
@@ -226,12 +208,7 @@ def plan_segments(
             punctuation_boost += 0.10
         if re.search(r"(?:^|\s)[—–-](?:\s|$)|:", text):
             punctuation_boost += 0.05
-        raw_scores.append(
-            rms_z[index] * 0.52
-            + pitch_z[index] * 0.30
-            + rate_z[index] * 0.18
-            + punctuation_boost
-        )
+        raw_scores.append(rms_z[index] * 0.52 + pitch_z[index] * 0.30 + rate_z[index] * 0.18 + punctuation_boost)
 
     scores = _smooth(raw_scores)
     result: list[dict[str, Any]] = []
@@ -271,9 +248,7 @@ def plan_segments(
         )
 
     if [str(item.get("text") or "") for item in result] != original_text:
-        raise RuntimeError(
-            "План эмоциональности изменил русский текст; операция остановлена."
-        )
+        raise RuntimeError("План эмоциональности изменил русский текст; операция остановлена.")
 
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(
@@ -337,10 +312,7 @@ def _expressive_candidates(segments: list[dict[str, Any]]) -> list[dict[str, Any
         if _number((item.get("source_prosody") or {}).get("voiced_ratio")) >= 0.12
         and _number((item.get("source_prosody") or {}).get("f0_p90")) >= 60.0
     ]
-    rms_values = [
-        _number((item.get("source_prosody") or {}).get("rms_dbfs"), -60.0)
-        for item in segments
-    ]
+    rms_values = [_number((item.get("source_prosody") or {}).get("rms_dbfs"), -60.0) for item in segments]
     median_f0 = float(np.median(voiced)) if voiced else 120.0
     median_p90 = float(np.median(p90_values)) if p90_values else median_f0 * 1.30
     median_rms = float(np.median(rms_values)) if rms_values else -24.0
@@ -396,10 +368,7 @@ __all__ = [
     "plan_segments",
 ]
 
-_BASE_ALL = tuple(globals().get('__all__', ()))
-
-
-
+_BASE_ALL = tuple(globals().get("__all__", ()))
 
 
 from tools.voxcpm2 import russian_pronunciation
@@ -416,12 +385,14 @@ MIN_STRONG_NEIGHBOUR_SCORE = 0.20
 
 _legacy_plan_segments = plan_segments
 
+
 def _number(value: Any, default: float = 0.0) -> float:
     try:
         result = float(value)
     except (TypeError, ValueError, OverflowError):
         return float(default)
     return result if math.isfinite(result) else float(default)
+
 
 def _monolithic_scores(values: list[float]) -> list[float]:
     if not values:
@@ -449,6 +420,7 @@ def _monolithic_scores(values: list[float]) -> list[float]:
         current = [max(-0.65, min(0.68, value)) for value in limited]
     return current
 
+
 def _tier(scores: list[float], index: int) -> str:
     score = scores[index]
     if score <= -0.38:
@@ -462,11 +434,8 @@ def _tier(scores: list[float], index: int) -> str:
         neighbours.append(scores[index - 1])
     if index + 1 < len(scores):
         neighbours.append(scores[index + 1])
-    return (
-        "emphatic"
-        if neighbours and max(neighbours) >= MIN_STRONG_NEIGHBOUR_SCORE
-        else "earnest"
-    )
+    return "emphatic" if neighbours and max(neighbours) >= MIN_STRONG_NEIGHBOUR_SCORE else "earnest"
+
 
 def _style(tier: str, cadence: str) -> str:
     base = {
@@ -482,6 +451,7 @@ def _style(tier: str, cadence: str) -> str:
     if cadence in {"terminal", "firm_terminal"}:
         return base + ", finish naturally without a sudden emotional burst"
     return base
+
 
 def plan_segments(
     *,
@@ -499,18 +469,13 @@ def plan_segments(
     )
     if len(measured) != len(original_text):
         raise RuntimeError("Source expression analysis изменил число сегментов.")
-    scores = _monolithic_scores(
-        [_number(item.get("expression_score")) for item in measured]
-    )
+    scores = _monolithic_scores([_number(item.get("expression_score")) for item in measured])
     result: list[dict[str, Any]] = []
     report_segments: list[dict[str, Any]] = []
     for index, item in enumerate(measured):
         updated = dict(item)
         tier = _tier(scores, index)
-        cadence = str(
-            updated.get("cadence_type")
-            or classify_cadence(original_text[index])
-        )
+        cadence = str(updated.get("cadence_type") or classify_cadence(original_text[index]))
         updated.update(
             expression_policy=POLICY,
             expression_arc_policy=ARC_POLICY,
@@ -566,6 +531,7 @@ def plan_segments(
     )
     return result
 
+
 def plan_json(
     *,
     source: Path,
@@ -592,6 +558,7 @@ def plan_json(
     temporary.replace(segments_path)
     return planned
 
+
 def build_controlled_expressive_reference(
     *,
     source: Path,
@@ -601,6 +568,7 @@ def build_controlled_expressive_reference(
 ) -> bool:
     """Keep the calm composite; expression may not replace speaker identity."""
     return False
+
 
 POLICY = POLICY
 

@@ -60,9 +60,7 @@ def _rendered_result(tmp_path: Path, document: dict, piece: dict) -> dict:
             "duration_seconds": piece_duration(piece),
         },
     }
-    provenance["result_id"] = composition._canonical_sha256(
-        composition._result_identity_payload(provenance)
-    )
+    provenance["result_id"] = composition._canonical_sha256(composition._result_identity_payload(provenance))
     sidecar.write_text(json.dumps(provenance, ensure_ascii=False, indent=2), encoding="utf-8")
     return {
         "piece_id": piece["piece_id"],
@@ -248,10 +246,7 @@ def test_piece_id_must_be_filesystem_safe_before_render(tmp_path: Path) -> None:
     ]
     document = _refresh(document)
 
-    assert any(
-        "piece_id must already be filesystem-safe" in item
-        for item in validate_composition_document(document)
-    )
+    assert any("piece_id must already be filesystem-safe" in item for item in validate_composition_document(document))
 
 
 def test_partial_release_target_is_rejected(tmp_path: Path) -> None:
@@ -365,9 +360,7 @@ def test_release_handoff_rehashes_real_output_and_sidecar(tmp_path: Path) -> Non
     assert handoff["provider_write_authorized"] is False
     assert handoff["target_system"] == "video-channel-manager"
     assert handoff["release_target"]["youtube_channel_id"] == "UC123"
-    assert handoff["outputs"][0]["source_segments"] == [
-        {"start_seconds": 10.0, "end_seconds": 40.0}
-    ]
+    assert handoff["outputs"][0]["source_segments"] == [{"start_seconds": 10.0, "end_seconds": 40.0}]
     assert handoff["outputs"][0]["publication"]["title"] == "Вера и дела"
     assert handoff["outputs"][0]["media"]["bytes"] == result["output_bytes"]
     assert handoff["outputs"][0]["media"]["result_id"] == result["result_id"]

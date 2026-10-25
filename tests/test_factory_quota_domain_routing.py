@@ -61,18 +61,17 @@ def _install_factory_stubs(monkeypatch, run_pass):
 
 
 def test_project_scope_detector_requires_explicit_project_quota_name() -> None:
-    assert capacity.factory_project_quota_error(
-        _ServiceError(
-            429,
-            "RESOURCE_EXHAUSTED: GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+    assert (
+        capacity.factory_project_quota_error(
+            _ServiceError(
+                429,
+                "RESOURCE_EXHAUSTED: GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+            )
         )
-    ) is True
-    assert capacity.factory_project_quota_error(
-        _ServiceError(429, "RESOURCE_EXHAUSTED")
-    ) is False
-    assert capacity.factory_project_quota_error(
-        _ServiceError(503, "UNAVAILABLE: high demand PerProject")
-    ) is False
+        is True
+    )
+    assert capacity.factory_project_quota_error(_ServiceError(429, "RESOURCE_EXHAUSTED")) is False
+    assert capacity.factory_project_quota_error(_ServiceError(503, "UNAVAILABLE: high demand PerProject")) is False
 
 
 def test_same_explicit_project_domain_is_skipped_after_project_scoped_429(

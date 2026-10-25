@@ -6,6 +6,7 @@
 лимита Telegram — всё это выяснялось на пользователе. Здесь каждая из этих
 веток воспроизводится без сети и без ffmpeg.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -31,9 +32,7 @@ def _no_real_io(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
         return await coro
 
     monkeypatch.setattr(audio_stage, "await_owned_coroutine", owned)
-    monkeypatch.setattr(
-        audio_stage, "normalize_mp3_lossless", lambda path: normalized.append(path) or True
-    )
+    monkeypatch.setattr(audio_stage, "normalize_mp3_lossless", lambda path: normalized.append(path) or True)
     return normalized
 
 
@@ -246,9 +245,7 @@ def test_already_64k_is_not_recompressed_into_itself(tmp_path, monkeypatch) -> N
 # ── чистые помощники ────────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(
-    ("duration", "expected"), [(0, "128K"), (3599, "128K"), (3601, "64K"), (10_800, "64K")]
-)
+@pytest.mark.parametrize(("duration", "expected"), [(0, "128K"), (3599, "128K"), (3601, "64K"), (10_800, "64K")])
 def test_quality_depends_on_duration(duration, expected) -> None:
     assert audio_stage.audio_quality(duration) == expected
 

@@ -44,20 +44,29 @@ def test_factory_timestamps_preserve_millisecond_precision():
 def test_factory_score_floors_can_only_be_tightened(monkeypatch):
     monkeypatch.setenv("SHORTS_FACTORY_MIN_SHORT_SCORE", "70")
     monkeypatch.setenv("SHORTS_FACTORY_MIN_LONG_SCORE", "10")
-    assert gate._score_threshold(
-        "SHORTS_FACTORY_MIN_SHORT_SCORE",
-        gate.DEFAULT_MIN_SHORT_SCORE,
-    ) == gate.DEFAULT_MIN_SHORT_SCORE
-    assert gate._score_threshold(
-        "SHORTS_FACTORY_MIN_LONG_SCORE",
-        gate.DEFAULT_MIN_LONG_SCORE,
-    ) == gate.DEFAULT_MIN_LONG_SCORE
+    assert (
+        gate._score_threshold(
+            "SHORTS_FACTORY_MIN_SHORT_SCORE",
+            gate.DEFAULT_MIN_SHORT_SCORE,
+        )
+        == gate.DEFAULT_MIN_SHORT_SCORE
+    )
+    assert (
+        gate._score_threshold(
+            "SHORTS_FACTORY_MIN_LONG_SCORE",
+            gate.DEFAULT_MIN_LONG_SCORE,
+        )
+        == gate.DEFAULT_MIN_LONG_SCORE
+    )
 
     monkeypatch.setenv("SHORTS_FACTORY_MIN_SHORT_SCORE", "95")
-    assert gate._score_threshold(
-        "SHORTS_FACTORY_MIN_SHORT_SCORE",
-        gate.DEFAULT_MIN_SHORT_SCORE,
-    ) == 95.0
+    assert (
+        gate._score_threshold(
+            "SHORTS_FACTORY_MIN_SHORT_SCORE",
+            gate.DEFAULT_MIN_SHORT_SCORE,
+        )
+        == 95.0
+    )
 
 
 def test_factory_subtitle_profile_requires_exact_large_v3(monkeypatch):
@@ -93,42 +102,57 @@ def test_factory_livedub_timeout_cannot_be_lowered(monkeypatch):
 
 def test_factory_timing_quality_bounds_are_direction_aware(monkeypatch):
     monkeypatch.setenv("SHORTS_FACTORY_RU_MIN_SILENCE_SEC", "0.05")
-    assert timing._env_float(
-        "SHORTS_FACTORY_RU_MIN_SILENCE_SEC",
-        0.25,
-        0.10,
-        1.50,
-    ) == 0.10
+    assert (
+        timing._env_float(
+            "SHORTS_FACTORY_RU_MIN_SILENCE_SEC",
+            0.25,
+            0.10,
+            1.50,
+        )
+        == 0.10
+    )
 
     monkeypatch.setenv("SHORTS_FACTORY_RU_MIN_COVERAGE", "0.10")
-    assert timing._env_quality_min(
-        "SHORTS_FACTORY_RU_MIN_COVERAGE",
-        0.45,
-        0.15,
-        0.98,
-    ) == 0.45
+    assert (
+        timing._env_quality_min(
+            "SHORTS_FACTORY_RU_MIN_COVERAGE",
+            0.45,
+            0.15,
+            0.98,
+        )
+        == 0.45
+    )
     monkeypatch.setenv("SHORTS_FACTORY_RU_MIN_COVERAGE", "0.70")
-    assert timing._env_quality_min(
-        "SHORTS_FACTORY_RU_MIN_COVERAGE",
-        0.45,
-        0.15,
-        0.98,
-    ) == 0.70
+    assert (
+        timing._env_quality_min(
+            "SHORTS_FACTORY_RU_MIN_COVERAGE",
+            0.45,
+            0.15,
+            0.98,
+        )
+        == 0.70
+    )
 
     monkeypatch.setenv("SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_BURST_SEC", "1.5")
-    assert timing._env_quality_max(
-        "SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_BURST_SEC",
-        4.0,
-        1.0,
-        20.0,
-    ) == 1.5
+    assert (
+        timing._env_quality_max(
+            "SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_BURST_SEC",
+            4.0,
+            1.0,
+            20.0,
+        )
+        == 1.5
+    )
     monkeypatch.setenv("SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_BURST_SEC", "8.0")
-    assert timing._env_quality_max(
-        "SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_BURST_SEC",
-        4.0,
-        1.0,
-        20.0,
-    ) == 4.0
+    assert (
+        timing._env_quality_max(
+            "SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_BURST_SEC",
+            4.0,
+            1.0,
+            20.0,
+        )
+        == 4.0
+    )
 
 
 def test_factory_exact_audited_ends_are_explicit_not_ambient():
@@ -148,9 +172,7 @@ def test_factory_exact_audited_ends_are_explicit_not_ambient():
 def test_no_downgrade_is_not_a_runtime_installer_stack():
     assert not Path("services/shorts_factory_no_downgrade.py").exists()
     quality = Path("services/shorts_factory_quality_gate.py").read_text(encoding="utf-8")
-    execution_source = Path("services/shorts_factory_execution_guard.py").read_text(
-        encoding="utf-8"
-    )
+    execution_source = Path("services/shorts_factory_execution_guard.py").read_text(encoding="utf-8")
     manifest = Path("services/runtime_manifest.py").read_text(encoding="utf-8")
     assert "install_factory_no_downgrade_policy" not in quality
     assert "install_factory_no_downgrade_policy" not in execution_source

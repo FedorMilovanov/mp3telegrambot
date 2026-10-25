@@ -4,6 +4,7 @@ Covers: event-loop-bound lock cleanup on restart, token masking on handlers
 and tracebacks, tzdata for Moscow-midnight limits, SIGTERM in health-check
 mode, /stop process exit, guarded env parsing, Start Bot.bat launcher.
 """
+
 import logging
 import sys
 from pathlib import Path
@@ -12,12 +13,11 @@ from pathlib import Path
 def test_restart_uses_source_owned_cross_loop_cleanup():
     main = Path("main.py").read_text(encoding="utf-8")
     owner = Path("services/restart_state_runtime.py").read_text(encoding="utf-8")
-    run_block = main[main.index("def run_bot():"):main.index("def main():")]
+    run_block = main[main.index("def run_bot():") : main.index("def main():")]
     assert "from services.restart_state_runtime import reset_cross_loop_state" in run_block
     assert run_block.index("reset_cross_loop_state()") < run_block.index("asyncio.new_event_loop()")
     assert "reset_delivery_runtime_state" in owner
     assert "ContextVar" not in owner
-
 
 
 def test_token_mask_filter_attached_to_handlers():
@@ -33,9 +33,13 @@ def test_token_mask_filter_masks_child_logger_record(monkeypatch):
 
     f = _TokenMaskFilter()
     rec = logging.LogRecord(
-        name="services.search", level=logging.ERROR, pathname=__file__,
-        lineno=1, msg="GET ?access_token=vk1.a.SECRETSECRETSECRET failed",
-        args=(), exc_info=None,
+        name="services.search",
+        level=logging.ERROR,
+        pathname=__file__,
+        lineno=1,
+        msg="GET ?access_token=vk1.a.SECRETSECRETSECRET failed",
+        args=(),
+        exc_info=None,
     )
     assert f.filter(rec) is True
     assert "SECRETSECRET" not in rec.getMessage()
@@ -52,8 +56,13 @@ def test_token_mask_filter_masks_exception_traceback(monkeypatch):
     except RuntimeError:
         exc_info = sys.exc_info()
     rec = logging.LogRecord(
-        name="main", level=logging.ERROR, pathname=__file__, lineno=1,
-        msg="Unhandled handler error", args=(), exc_info=exc_info,
+        name="main",
+        level=logging.ERROR,
+        pathname=__file__,
+        lineno=1,
+        msg="Unhandled handler error",
+        args=(),
+        exc_info=exc_info,
     )
     f.filter(rec)
     assert rec.exc_text
@@ -92,7 +101,7 @@ def test_default_scope_set_my_commands_guarded():
     src = Path("main.py").read_text(encoding="utf-8")
     idx = src.find("set_my_commands(default_commands")
     assert idx != -1
-    assert "try:" in src[idx - 120:idx]
+    assert "try:" in src[idx - 120 : idx]
 
 
 def test_env_int_parsing_guarded():
@@ -104,7 +113,7 @@ def test_env_int_parsing_guarded():
     g = Path("core/globals.py").read_text(encoding="utf-8")
     idx = g.find("_VIDEO_LOCK_TTL_SEC = float(")
     assert idx != -1
-    lock_block = g[idx:idx + 260]
+    lock_block = g[idx : idx + 260]
     assert 'os.getenv("VIDEO_LOCK_TTL_SEC", "3600")' in lock_block
     assert "except ValueError:" in lock_block
     assert "_VIDEO_LOCK_TTL_SEC = 3600.0" in lock_block

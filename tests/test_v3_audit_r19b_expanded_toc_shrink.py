@@ -9,6 +9,7 @@ section(s) into the front of part 2 and retry with the TOC intact first;
 only drop the TOC as a last resort (down to 1 section, or no next part to
 shift into).
 """
+
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -64,7 +65,7 @@ def test_shrink_guarded_by_more_than_one_part():
 def test_old_unconditional_edge_a_language_removed():
     src = _telegraph_pages_src()
     assert "(Edge-A fallback)" not in src
-    assert "include_outline=False" in src   # безопасный drop-TOC fallback присутствует
+    assert "include_outline=False" in src  # безопасный drop-TOC fallback присутствует
 
 
 def test_related_materials_still_wired_through_shared_helper():

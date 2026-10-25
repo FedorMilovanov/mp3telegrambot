@@ -46,17 +46,19 @@ def test_grouping_preserves_every_word_in_order() -> None:
 
 def test_direct_segments_apply_420ms_delay_without_rewriting() -> None:
     cue = Cue(1.0, 4.0, "Точный текст.")
-    blocks = [{
-        "id": 1,
-        "start": 1.0,
-        "end": 4.0,
-        "source": "Точный текст.",
-        "semantic_block_id": 1,
-        "source_cue_count": 1,
-        "semantic_block_duration": 3.0,
-        "source_parts": ["Точный текст."],
-        "source_cues": [cue],
-    }]
+    blocks = [
+        {
+            "id": 1,
+            "start": 1.0,
+            "end": 4.0,
+            "source": "Точный текст.",
+            "semantic_block_id": 1,
+            "source_cue_count": 1,
+            "semantic_block_duration": 3.0,
+            "source_parts": ["Точный текст."],
+            "source_cues": [cue],
+        }
+    ]
     segments, subtitles = _build_direct_segments(blocks, delay_ms=420, duration=5.0)
     assert segments[0]["start_delay_ms"] == 420
     assert segments[0]["text"] == "Точный текст."

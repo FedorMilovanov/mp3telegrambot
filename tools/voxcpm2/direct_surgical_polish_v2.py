@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Second-pass fail-closed contracts for universal direct VoxCPM2 jobs."""
+
 from __future__ import annotations
 
 import hashlib
@@ -145,9 +146,10 @@ def _segments(values: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
         if total_text > MAX_TOTAL_TEXT_CHARS:
             raise RuntimeError("Суммарный текст слишком велик.")
         slot = end - start - tail
-        if item.get("speech_slot") is not None and abs(
-            _number(item["speech_slot"], f"segment[{sid}].speech_slot") - slot
-        ) > 1e-6:
+        if (
+            item.get("speech_slot") is not None
+            and abs(_number(item["speech_slot"], f"segment[{sid}].speech_slot") - slot) > 1e-6
+        ):
             raise RuntimeError(f"Сегмент #{sid}: сохранённый speech_slot не совпадает.")
         item.update(id=sid, text=text, start=start, end=end, tail_guard=tail)
         seen.add(sid)
@@ -229,8 +231,11 @@ def _spectrum(value: Any, count: int) -> bool:
 
 
 def _cached_reference(
-    *, source: Path, output: Path,
-    hash_file: Callable[[Path], str], expected_sample_rate: int,
+    *,
+    source: Path,
+    output: Path,
+    hash_file: Callable[[Path], str],
+    expected_sample_rate: int,
 ) -> dict[str, Any] | None:
     source, output = Path(source).resolve(), Path(output).resolve()
     if not source.is_file() or not output.is_file():
@@ -267,7 +272,10 @@ def _cached_reference(
 
 
 def _enrich_reference_report(
-    report: dict[str, Any], *, source: Path, hash_file: Callable[[Path], str],
+    report: dict[str, Any],
+    *,
+    source: Path,
+    hash_file: Callable[[Path], str],
 ) -> dict[str, Any]:
     result = dict(report)
     spectrum = result.get("spectral_envelope")
@@ -333,9 +341,7 @@ class _LazySession:
             raise RuntimeError("BackendSessionConfig.options должен быть mapping.")
         self.audio_spec = _AudioSpec(encode, output, options.get("cache_length", 4096))
         try:
-            self.supports_continuation_context = bool(
-                getattr(backend.capabilities(), "continuation_context", False)
-            )
+            self.supports_continuation_context = bool(getattr(backend.capabilities(), "continuation_context", False))
         except Exception:
             self.supports_continuation_context = False
 
@@ -375,11 +381,7 @@ def _scope_epochs(payload: Mapping[str, Any]) -> dict[str, int]:
         if not isinstance(entry, Mapping):
             continue
         evidence = entry.get("evidence")
-        fingerprint = _sha(
-            evidence.get("failure_scope_fingerprint")
-            if isinstance(evidence, Mapping)
-            else ""
-        )
+        fingerprint = _sha(evidence.get("failure_scope_fingerprint") if isinstance(evidence, Mapping) else "")
         if not fingerprint:
             continue
         try:

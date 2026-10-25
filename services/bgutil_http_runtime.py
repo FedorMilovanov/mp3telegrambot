@@ -13,6 +13,7 @@ supply-chain identity. We only start ``server/build/main.js`` and prove its
 ``/ping`` version before production continues. A server that was not spawned by
 this Python process is never trusted merely because it reports the same version.
 """
+
 from __future__ import annotations
 
 import atexit
@@ -122,9 +123,7 @@ def _external_probe_addresses(port: int) -> list[tuple[int, str, int]]:
     legitimately have no non-loopback address.
     """
     try:
-        infos = socket.getaddrinfo(
-            socket.gethostname(), None, family=socket.AF_INET
-        )
+        infos = socket.getaddrinfo(socket.gethostname(), None, family=socket.AF_INET)
     except (OSError, socket.gaierror):
         return []
     addresses: list[tuple[int, str, int]] = []
@@ -266,9 +265,7 @@ def ensure_bgutil_http_runtime(
         )
 
     if _OWNED_PROCESS is not None and _OWNED_PROCESS.poll() is None:
-        raise BgutilHttpRuntimeError(
-            "Ранее запущенный управляемый bgutil HTTP provider перестал отвечать на /ping"
-        )
+        raise BgutilHttpRuntimeError("Ранее запущенный управляемый bgutil HTTP provider перестал отвечать на /ping")
 
     try:
         process = subprocess.Popen(
@@ -288,9 +285,7 @@ def ensure_bgutil_http_runtime(
             **_spawn_kwargs(),
         )
     except OSError as exc:
-        raise BgutilHttpRuntimeError(
-            "Не удалось запустить pinned bgutil HTTP provider через Node.js"
-        ) from exc
+        raise BgutilHttpRuntimeError("Не удалось запустить pinned bgutil HTTP provider через Node.js") from exc
 
     _OWNED_PROCESS = process
     _register_cleanup_once()
@@ -299,9 +294,7 @@ def ensure_bgutil_http_runtime(
         if process.poll() is not None:
             code = process.returncode
             _OWNED_PROCESS = None
-            raise BgutilHttpRuntimeError(
-                f"bgutil HTTP provider завершился во время startup (rc={code})"
-            )
+            raise BgutilHttpRuntimeError(f"bgutil HTTP provider завершился во время startup (rc={code})")
         payload = _ping(base_url)
         if payload is not None:
             try:
@@ -314,9 +307,7 @@ def ensure_bgutil_http_runtime(
         time.sleep(0.25)
 
     stop_owned_bgutil_http_runtime()
-    raise BgutilHttpRuntimeError(
-        f"bgutil HTTP provider не стал готов за {startup_timeout:g}с: {base_url}/ping"
-    )
+    raise BgutilHttpRuntimeError(f"bgutil HTTP provider не стал готов за {startup_timeout:g}с: {base_url}/ping")
 
 
 __all__ = [

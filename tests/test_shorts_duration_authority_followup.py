@@ -8,14 +8,17 @@ def _candidate(start: float, end: float) -> dict:
 
 
 def test_semantic_candidate_past_source_duration_is_rejected():
-    assert safety.plan_short_source_window(
-        _candidate(850.0, 901.0),
-        speed=1.0,
-        boundary_padding=True,
-        source_duration=900.0,
-        pre_roll=1.5,
-        post_roll=2.5,
-    ) is None
+    assert (
+        safety.plan_short_source_window(
+            _candidate(850.0, 901.0),
+            speed=1.0,
+            boundary_padding=True,
+            source_duration=900.0,
+            pre_roll=1.5,
+            post_roll=2.5,
+        )
+        is None
+    )
 
 
 def test_nonfinite_optional_padding_does_not_poison_window():

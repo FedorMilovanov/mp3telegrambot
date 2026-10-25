@@ -25,9 +25,7 @@ def test_recent_pending_command_survives_restart() -> None:
 
 def test_very_old_pending_command_is_not_executed(monkeypatch) -> None:
     monkeypatch.delenv("BOT_PENDING_COMMAND_MAX_AGE_SEC", raising=False)
-    reason, age = runtime._stale_pending_reason(
-        _update("/dubfix project all", age_seconds=7 * 3600)
-    )
+    reason, age = runtime._stale_pending_reason(_update("/dubfix project all", age_seconds=7 * 3600))
     assert reason == "stale-command"
     assert age is not None and age >= 7 * 3600 - 10
 
@@ -35,9 +33,7 @@ def test_very_old_pending_command_is_not_executed(monkeypatch) -> None:
 def test_stale_noncommand_backlog_is_dropped(monkeypatch) -> None:
     monkeypatch.delenv("BOT_PENDING_NONCOMMAND_MAX_AGE_SEC", raising=False)
     assert runtime._is_command(_update("https://youtube.com/watch?v=abc")) is False
-    reason, _age = runtime._stale_pending_reason(
-        _update("https://youtube.com/watch?v=abc", age_seconds=901)
-    )
+    reason, _age = runtime._stale_pending_reason(_update("https://youtube.com/watch?v=abc", age_seconds=901))
     assert reason == "stale-noncommand"
 
 

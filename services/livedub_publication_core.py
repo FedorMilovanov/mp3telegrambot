@@ -6,6 +6,7 @@ module therefore owns its exact Gemini 3.8 Flash/HIGH semantic contract while
 delegating transport capacity to the shared Gemini capacity owner. A
 deterministic metadata fallback remains available when Gemini is unavailable.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -25,15 +26,54 @@ _CACHE: OrderedDict[str, dict[str, Any]] = OrderedDict()
 _INFLIGHT: dict[str, asyncio.Task] = {}
 
 _RU_LOWER_WORDS = {
-    "а", "без", "близ", "бы", "в", "вместо", "вне", "во", "вокруг", "для",
-    "до", "за", "из", "из-за", "или", "и", "к", "ко", "кроме", "ли", "между",
-    "на", "над", "не", "ни", "но", "о", "об", "около", "от", "перед", "по",
-    "под", "после", "при", "про", "против", "ради", "с", "среди", "со", "у",
-    "через", "же", "да",
+    "а",
+    "без",
+    "близ",
+    "бы",
+    "в",
+    "вместо",
+    "вне",
+    "во",
+    "вокруг",
+    "для",
+    "до",
+    "за",
+    "из",
+    "из-за",
+    "или",
+    "и",
+    "к",
+    "ко",
+    "кроме",
+    "ли",
+    "между",
+    "на",
+    "над",
+    "не",
+    "ни",
+    "но",
+    "о",
+    "об",
+    "около",
+    "от",
+    "перед",
+    "по",
+    "под",
+    "после",
+    "при",
+    "про",
+    "против",
+    "ради",
+    "с",
+    "среди",
+    "со",
+    "у",
+    "через",
+    "же",
+    "да",
 }
 _TITLE_OVERRIDES = {
-    "the battle against sexual immorality & pornography":
-        "Борьба с Сексуальной Безнравственностью и Порнографией",
+    "the battle against sexual immorality & pornography": "Борьба с Сексуальной Безнравственностью и Порнографией",
 }
 _KNOWN_ACRONYMS = {"ИИ", "ВЗ", "НЗ", "США", "РФ", "СССР", "РПЦ"}
 _AUTHOR_OVERRIDES = {
@@ -133,7 +173,7 @@ def _capitalize_word(word: str) -> str:
         word = word.lower()
     for index, char in enumerate(word):
         if char.isalpha():
-            return word[:index] + char.upper() + word[index + 1:]
+            return word[:index] + char.upper() + word[index + 1 :]
     return word
 
 
@@ -193,9 +233,7 @@ def safe_audio_filename(value: str) -> str:
 
 def publication_models() -> list[str]:
     """Return the one approved model for semantic publication copy."""
-    configured = (
-        os.getenv("LIVEDUB_INFO_MODEL", _PUBLICATION_MODEL) or _PUBLICATION_MODEL
-    ).strip()
+    configured = (os.getenv("LIVEDUB_INFO_MODEL", _PUBLICATION_MODEL) or _PUBLICATION_MODEL).strip()
     if configured != _PUBLICATION_MODEL:
         logger.warning(
             "[LiveDubPublicationCore] refusing semantic model override %r; using %s",
@@ -312,8 +350,7 @@ async def _generate_quality(source_line: str) -> dict[str, str] | None:
         config = _quality_config(model)
         if config is None:
             logger.warning(
-                "[LiveDubPublicationCore] quality config unavailable for %s; "
-                "using deterministic fallback instead",
+                "[LiveDubPublicationCore] quality config unavailable for %s; using deterministic fallback instead",
                 model,
             )
             continue
@@ -339,9 +376,7 @@ async def _generate_quality(source_line: str) -> dict[str, str] | None:
                     domain="inference",
                 )
                 raw = str(getattr(response, "text", "") or "").strip()
-                raw = re.sub(
-                    r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.MULTILINE
-                ).strip()
+                raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.MULTILINE).strip()
                 data = json.loads(raw)
                 title = canonical_title(str(data.get("title") or ""))
                 author = canonical_author(str(data.get("author") or ""))
@@ -398,9 +433,7 @@ async def build_publication_card(source_line: str, source_url: str = "") -> dict
     try:
         import services.livedub_publication as publication
 
-        source_url = publication._source_url(
-            source_url or publication._CURRENT_SOURCE_URL.get()
-        )
+        source_url = publication._source_url(source_url or publication._CURRENT_SOURCE_URL.get())
     except Exception:
         source_url = plain(source_url, 600)
     url_key = _url_key(source_url)
@@ -413,11 +446,7 @@ async def build_publication_card(source_line: str, source_url: str = "") -> dict
 
     loop = asyncio.get_running_loop()
     task = _INFLIGHT.get(primary_key)
-    if (
-        task is None
-        or task.done()
-        or getattr(task, "get_loop", lambda: loop)() is not loop
-    ):
+    if task is None or task.done() or getattr(task, "get_loop", lambda: loop)() is not loop:
         # run_bot can recover by creating a new event loop in the same process.
         # Never await a task left attached to the previous, already-dead loop.
         task = loop.create_task(_build_uncached(source_line, source_url))

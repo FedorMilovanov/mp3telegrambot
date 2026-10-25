@@ -51,6 +51,4 @@ def test_deepest_error_line_prefers_final_exception() -> None:
             "ModuleNotFoundError: No module named 'broken_dependency'",
         ]
     )
-    assert worker._deepest_error_line(error) == (
-        "ModuleNotFoundError: No module named 'broken_dependency'"
-    )
+    assert worker._deepest_error_line(error) == ("ModuleNotFoundError: No module named 'broken_dependency'")

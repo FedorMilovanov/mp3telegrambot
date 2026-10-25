@@ -6,6 +6,7 @@ prompts can only *request* the model to avoid: mixed Greek/Cyrillic tokens,
 third-person analytic wrappers, source-map title hallucinations, bare headings
 and recurring typo remnants.
 """
+
 from __future__ import annotations
 
 import os
@@ -82,7 +83,7 @@ def flatten_telegraph_nodes(nodes: Any) -> str:
 
 
 def _snippet(text: str, start: int, end: int, radius: int = 80) -> str:
-    return text[max(0, start - radius): min(len(text), end + radius)].replace("\n", " / ")
+    return text[max(0, start - radius) : min(len(text), end + radius)].replace("\n", " / ")
 
 
 def audit_telegraph_page(
@@ -95,22 +96,36 @@ def audit_telegraph_page(
     issues: list[PageAuditIssue] = []
 
     for m in _TYPO_RE.finditer(text):
-        issues.append(PageAuditIssue("typo", f"possible unnormalized typo: {m.group(0)}", _snippet(text, m.start(), m.end())))
+        issues.append(
+            PageAuditIssue("typo", f"possible unnormalized typo: {m.group(0)}", _snippet(text, m.start(), m.end()))
+        )
 
     mixed = find_mixed_greek_cyrillic_tokens(text)
     for token in mixed:
         pos = text.find(token)
-        issues.append(PageAuditIssue("mixed_greek_cyrillic", f"mixed Greek/Cyrillic token: {token}", _snippet(text, pos, pos + len(token))))
+        issues.append(
+            PageAuditIssue(
+                "mixed_greek_cyrillic", f"mixed Greek/Cyrillic token: {token}", _snippet(text, pos, pos + len(token))
+            )
+        )
 
     for m in _THIRD_PERSON_RE.finditer(text):
-        issues.append(PageAuditIssue("third_person", f"third-person wrapper: {m.group(0)}", _snippet(text, m.start(), m.end())))
+        issues.append(
+            PageAuditIssue("third_person", f"third-person wrapper: {m.group(0)}", _snippet(text, m.start(), m.end()))
+        )
 
     for m in _POMPOUS_RE.finditer(text):
-        issues.append(PageAuditIssue("pompous_label", f"pompous label: {m.group(0)}", _snippet(text, m.start(), m.end())))
+        issues.append(
+            PageAuditIssue("pompous_label", f"pompous label: {m.group(0)}", _snippet(text, m.start(), m.end()))
+        )
 
     if page_type.lower() in {"study", "studyanalysis", "reflection", "synopsis", ""}:
         for m in _BARE_BULLET_RE.finditer(text):
-            issues.append(PageAuditIssue("possible_bare_bullet", "possible bare bullet heading", _snippet(text, m.start(), m.end())))
+            issues.append(
+                PageAuditIssue(
+                    "possible_bare_bullet", "possible bare bullet heading", _snippet(text, m.start(), m.end())
+                )
+            )
 
     # Source-title hallucination audit must be source-card scoped. A global
     # regex produced false positives on translation-fork analysis like
@@ -150,23 +165,27 @@ def audit_telegraph_page(
                 if canon_m:
                     canon_title = _fold_title(canon_m.group(1))
                     if canon_title and canon_title not in _fold_title(line):
-                        issues.append(PageAuditIssue(
-                            "source_map_original_title",
-                            "source card contains non-official Russian title "
-                            f"(canonical: {canon_m.group(1).strip()})",
-                            line[:240],
-                        ))
+                        issues.append(
+                            PageAuditIssue(
+                                "source_map_original_title",
+                                "source card contains non-official Russian title "
+                                f"(canonical: {canon_m.group(1).strip()})",
+                                line[:240],
+                            )
+                        )
                     continue
                 if _SOURCE_RU_WITH_ORIGINAL_RE.search(line):
                     continue  # standard format, unknown title — conservative skip
                 raw_title = re.sub(r"^\s*[•\-]\s*", "", line).split(",", 1)[0].strip().strip("*")
                 if raw_title and f"**{raw_title}**" in normalized:
                     continue
-                issues.append(PageAuditIssue(
-                    "source_map_original_title",
-                    "source card may contain invented Russian title before original title",
-                    line[:240],
-                ))
+                issues.append(
+                    PageAuditIssue(
+                        "source_map_original_title",
+                        "source card may contain invented Russian title before original title",
+                        line[:240],
+                    )
+                )
 
     return issues
 

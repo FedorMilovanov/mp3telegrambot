@@ -28,20 +28,38 @@ def test_audio_prompt_puts_reasoning_before_base_principles():
 def test_study_reflection_prompts_accept_reasoning_guidance_via_synopsis_context():
     study_context = build_reasoning_first_block("study")
     study = STUDY_ANALYSIS_PROMPT.format(
-        title="T", author="A", duration="50:00", format_name="sermon",
-        hermeneutic_method="expository", main_topic="m", analysis_summary="a",
-        argument_arc="arc", key_categories="k", timestamps="0:00 t",
-        concepts="c", scripture="s", translations="tr", lexicon_notes="l",
-        synopsis_context=study_context, source_pack="sources",
+        title="T",
+        author="A",
+        duration="50:00",
+        format_name="sermon",
+        hermeneutic_method="expository",
+        main_topic="m",
+        analysis_summary="a",
+        argument_arc="arc",
+        key_categories="k",
+        timestamps="0:00 t",
+        concepts="c",
+        scripture="s",
+        translations="tr",
+        lexicon_notes="l",
+        synopsis_context=study_context,
+        source_pack="sources",
     )
     assert "РАЗРЕШЕНО И ЖЕЛАТЕЛЬНО" in study
     assert "исследовательские линзы" in study
 
     reflection_context = build_reasoning_first_block("reflection")
     reflection = REFLECTION_APPLICATION_PROMPT.format(
-        title="T", author="A", duration="50:00", hermeneutic_method="mixed",
-        main_topic="m", analysis_summary="a", argument_arc="arc",
-        key_categories="k", questions_block="- q", timestamps_block="- 0:00 t",
+        title="T",
+        author="A",
+        duration="50:00",
+        hermeneutic_method="mixed",
+        main_topic="m",
+        analysis_summary="a",
+        argument_arc="arc",
+        key_categories="k",
+        questions_block="- q",
+        timestamps_block="- 0:00 t",
         synopsis_context=reflection_context,
     )
     assert "пастырский нерв" in reflection
@@ -59,6 +77,6 @@ def test_synopsis_uses_central_reasoning_note_and_telegraph_pages_injects_blocks
         or "prompt=(SYNOPSIS_REASONING_FIRST_NOTE" in compact_telegraph
     )
     assert "from core.reasoning_guidance import build_reasoning_first_block" in pages
-    assert "build_reasoning_first_block(\"study\")" in pages
-    assert "build_reasoning_first_block(\"reflection\")" in pages
+    assert 'build_reasoning_first_block("study")' in pages
+    assert 'build_reasoning_first_block("reflection")' in pages
     assert build_synopsis_reasoning_note().startswith("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")

@@ -7,6 +7,7 @@
 ``/healthz`` — называть причину, а секреты не должны попадать в лог ни в каком
 формате.
 """
+
 from __future__ import annotations
 
 import json
@@ -336,9 +337,7 @@ def test_metrics_agree_with_healthz() -> None:
     верят тому, который удобнее.
     """
     snapshot = _snapshot(last_update_age_seconds=900.0)
-    text = render_prometheus(
-        snapshot=snapshot, db_ok=True, free_disk_gb=50.0, keys_configured=1
-    )
+    text = render_prometheus(snapshot=snapshot, db_ok=True, free_disk_gb=50.0, keys_configured=1)
     payload, status = build_health(
         snapshot=snapshot,
         db_ok=True,
@@ -353,13 +352,9 @@ def test_metrics_agree_with_healthz() -> None:
 
 def test_metrics_without_key_count_still_work() -> None:
     """``/metrics`` не знает про ключи Gemini и не должен из-за этого врать."""
-    text = render_prometheus(
-        snapshot=_snapshot(last_update_age_seconds=1.0), db_ok=True, free_disk_gb=50.0
-    )
+    text = render_prometheus(snapshot=_snapshot(last_update_age_seconds=1.0), db_ok=True, free_disk_gb=50.0)
     assert "mp3bot_up 1" in text
-    assert collect_problems(
-        snapshot=_snapshot(last_update_age_seconds=1.0), db_ok=True, free_disk_gb=50.0
-    ) == []
+    assert collect_problems(snapshot=_snapshot(last_update_age_seconds=1.0), db_ok=True, free_disk_gb=50.0) == []
 
 
 def test_absent_values_are_reported_as_minus_one() -> None:
@@ -415,9 +410,7 @@ def test_json_logs_carry_update_and_job(monkeypatch: pytest.MonkeyPatch) -> None
 
 def test_json_logs_mask_secrets_too(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GEMINI_API_KEY", "AIzaSECRETSECRETSECRETSECRETSECRETSECRET123")
-    payload = json.loads(
-        JsonFormatter().format(_record("ключ AIzaSECRETSECRETSECRETSECRETSECRETSECRET123"))
-    )
+    payload = json.loads(JsonFormatter().format(_record("ключ AIzaSECRETSECRETSECRETSECRETSECRETSECRET123")))
     assert "AIzaSECRET" not in json.dumps(payload)
 
 

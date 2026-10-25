@@ -15,6 +15,7 @@
 * корневые документы (архитектура, безопасность, участие) на месте и
   достижимы из индекса.
 """
+
 from __future__ import annotations
 
 import sys
@@ -38,11 +39,7 @@ def test_index_is_up_to_date() -> None:
 
 def test_every_document_is_indexed() -> None:
     entries = {entry.path for entry in collect()}
-    on_disk = {
-        path.relative_to(ROOT).as_posix()
-        for path in DOCS.rglob("*.md")
-        if path != OUTPUT
-    }
+    on_disk = {path.relative_to(ROOT).as_posix() for path in DOCS.rglob("*.md") if path != OUTPUT}
     assert entries == on_disk
 
 
@@ -58,9 +55,7 @@ def test_index_links_point_at_existing_files() -> None:
 
 def test_no_document_is_called_latest() -> None:
     offenders = sorted(
-        path.relative_to(ROOT).as_posix()
-        for path in DOCS.rglob("*.md")
-        if path.name.endswith("_latest.md")
+        path.relative_to(ROOT).as_posix() for path in DOCS.rglob("*.md") if path.name.endswith("_latest.md")
     )
     assert not offenders, f"суффикс _latest запрещён: {offenders}"
 

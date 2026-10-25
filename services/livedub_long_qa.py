@@ -7,6 +7,7 @@ SRT helper is intentionally capped. This adapter checks long media in
 chronological, overlapping segments and merges findings into global timestamps.
 It reuses the existing QA prompt per segment; there is no second prompt stack.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -66,9 +67,12 @@ def _ffprobe_duration(path: Path) -> float:
         proc = subprocess.run(
             [
                 ffprobe,
-                "-v", "error",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
                 str(path),
             ],
             capture_output=True,
@@ -94,15 +98,23 @@ def _extract_audio_segment(source: Path, start: int, length: int, output: Path) 
             [
                 ffmpeg,
                 "-y",
-                "-ss", str(max(0, start)),
-                "-t", str(max(1, length)),
-                "-i", str(source),
+                "-ss",
+                str(max(0, start)),
+                "-t",
+                str(max(1, length)),
+                "-i",
+                str(source),
                 "-vn",
-                "-map", "0:a:0",
-                "-c:a", "libmp3lame",
-                "-b:a", "64k",
-                "-ac", "1",
-                "-ar", "32000",
+                "-map",
+                "0:a:0",
+                "-c:a",
+                "libmp3lame",
+                "-b:a",
+                "64k",
+                "-ac",
+                "1",
+                "-ar",
+                "32000",
                 str(temp),
             ],
             capture_output=True,
@@ -181,12 +193,11 @@ def _slice_srt(source: Path, start: int, length: int, output: Path) -> Optional[
             continue
         rel_begin = max(0, begin - start_ms)
         rel_finish = min(end_ms - start_ms, finish - start_ms)
-        text_lines = lines[ts_idx + 1:]
+        text_lines = lines[ts_idx + 1 :]
         if not text_lines:
             continue
         blocks.append(
-            f"{index}\n{_format_srt_time(rel_begin)} --> {_format_srt_time(rel_finish)}\n"
-            + "\n".join(text_lines)
+            f"{index}\n{_format_srt_time(rel_begin)} --> {_format_srt_time(rel_finish)}\n" + "\n".join(text_lines)
         )
         index += 1
     if not blocks:
@@ -225,8 +236,11 @@ def _merge_issues(results: list[tuple[int, int, dict[str, Any]]]) -> list[dict[s
             for existing in merged:
                 existing_seconds = float(existing.get("_absolute_seconds") or -9999)
                 existing_signature = _issue_signature(existing)
-                if abs(seconds - existing_seconds) <= 20 and signature and existing_signature and (
-                    signature in existing_signature or existing_signature in signature
+                if (
+                    abs(seconds - existing_seconds) <= 20
+                    and signature
+                    and existing_signature
+                    and (signature in existing_signature or existing_signature in signature)
                 ):
                     duplicate = True
                     if str(issue.get("severity")) == "major":
@@ -438,7 +452,6 @@ async def _run_long_qa(
     )
 
 
-
 async def run_long_translation_qa(
     base_runner,
     *,
@@ -487,6 +500,7 @@ def decorate_segment_report(text: str, qa: dict[str, Any]) -> str:
     lines.insert(1 if lines else 0, note)
     try:
         from converters.md_telegraph import safe_trim_caption
+
         return safe_trim_caption(chr(10).join(lines), 3900)
     except Exception:
         return chr(10).join(lines)[:3900]

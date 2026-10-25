@@ -11,6 +11,7 @@ show a clear pattern:
 The defaults are conservative and require enough recent samples to avoid
 reacting to noise.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -114,7 +115,9 @@ def adapt_text_generation_params(
     )
 
 
-def get_adaptive_text_generation_params(task: str, base_temperature: float, base_max_tokens: int) -> AdaptiveGenerationParams:
+def get_adaptive_text_generation_params(
+    task: str, base_temperature: float, base_max_tokens: int
+) -> AdaptiveGenerationParams:
     """Convenience wrapper used by async pipelines."""
     health = get_gemini_task_health(task)
     return adapt_text_generation_params(

@@ -3,22 +3,31 @@
 Shorts / Video processing — субтитры, рендер, постеры.
 Извлечено из bot.py строки 9164–10707.
 """
+
 from __future__ import annotations
 
 from core.globals import (
-    DOWNLOAD_DIR, THUMBS_DIR, HAS_PILLOW,
-    html_mod,                     # FIX shorts_video
+    DOWNLOAD_DIR,
+    THUMBS_DIR,
+    HAS_PILLOW,
+    html_mod,  # FIX shorts_video
 )
-from services.ffmpeg import _get_video_encoder, YTDLP_BASE_ARGS, _find_silence_end, _detect_black_bars, _is_static_video  # FIX shorts_video
+from services.ffmpeg import (
+    _get_video_encoder,
+    YTDLP_BASE_ARGS,
+    _find_silence_end,
+    _detect_black_bars,
+    _is_static_video,
+)  # FIX shorts_video
 from services.async_worker import await_owned_coroutine
 from services.async_process import run_cancellable_process
-from core.database import settings_get   # FIX shorts_video
+from core.database import settings_get  # FIX shorts_video
 from core.text_utils import normalize_common_typos, title_case_fragment  # FIX shorts_video
-from core.url_utils import get_youtube_video_url # FIX shorts_video
+from core.url_utils import get_youtube_video_url  # FIX shorts_video
 
 import asyncio
 import logging
-import os         # FIX shorts_video
+import os  # FIX shorts_video
 import re
 import shutil
 import subprocess
@@ -27,6 +36,7 @@ from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
 
 def _pick_video_file(media_id: str) -> Optional[Path]:
     """Возвращает первый найденный видеофайл с предпочтительным расширением."""
@@ -52,6 +62,7 @@ async def _unowned_download_video_for_shorts(url: str, media_id: str, workdir: O
     # иначе рендер шорта падал на crop-фильтре или выходил обрезанным.
     if workdir and workdir.exists():
         from services.eng_subtitles import _has_video_stream
+
         for existing in workdir.glob("original_video.*"):
             if existing.suffix.lower() in {".part", ".ytdl"}:
                 continue
@@ -64,10 +75,13 @@ async def _unowned_download_video_for_shorts(url: str, media_id: str, workdir: O
         return existing
     try:
         cmd = YTDLP_BASE_ARGS + [
-            "--format", "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
-            "--merge-output-format", "mp4",
+            "--format",
+            "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+            "--merge-output-format",
+            "mp4",
             "--no-playlist",
-            "--output", str(DOWNLOAD_DIR / f"{media_id}_video.%(ext)s"),
+            "--output",
+            str(DOWNLOAD_DIR / f"{media_id}_video.%(ext)s"),
             url,
         ]
         proc = await run_cancellable_process(cmd, timeout=900, text=True)
@@ -108,6 +122,7 @@ def get_shorts_visual_mode(format_name: str, visual_mode: str = "auto") -> str:
 # ─── GPU/CPU encoder detection ───────────────────────────────
 
 _VIDEO_ENCODER: str | None = None  # кэш результата проверки
+
 
 async def _unowned_render_short_clip(
     source_video_path: Path,
@@ -181,15 +196,12 @@ async def _unowned_render_short_clip(
             black_bars = ""
             logger.info("Short: статичный кадр (заставка) — режим full_frame_blur вместо crop, cropdetect игнорируется")
 
-        _use_filter_complex = False   # True для blur-overlay графа с лейблами
+        _use_filter_complex = False  # True для blur-overlay графа с лейблами
         if visual_mode == "crop_zoom":
             # Medium crop для одного спикера (sermon, lecture):
             # берём центральные ~56% ширины (соотношение 9:16) и масштабируем до 720×1280.
             bc = f"{black_bars}," if black_bars else ""
-            vf = (
-                f"{bc}crop=ih*9/16:ih:(iw-ih*9/16)/2:0,"
-                "scale=720:1280"
-            )
+            vf = f"{bc}crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=720:1280"
             mode_label = "crop_zoom(medium)"
         else:
             if black_bars:
@@ -224,28 +236,29 @@ async def _unowned_render_short_clip(
                 )
                 _use_filter_complex = True
             mode_label = "full_frame_blur"
-        _enc, _quality, _preset = await await_owned_coroutine(
-            asyncio.to_thread(_get_video_encoder)
-        )
+        _enc, _quality, _preset = await await_owned_coroutine(asyncio.to_thread(_get_video_encoder))
         _hwaccel = []  # hwaccel cuda убран: CPU-фильтры несовместимы с CUDA decode
-        _vf_args = (
-            ["-filter_complex", vf, "-map", "[out]", "-map", "0:a?"]
-            if _use_filter_complex else
-            ["-vf", vf]
-        )
+        _vf_args = ["-filter_complex", vf, "-map", "[out]", "-map", "0:a?"] if _use_filter_complex else ["-vf", vf]
         cmd = [
             ffmpeg,
             *_hwaccel,
-            "-ss", str(start_seconds),
-            "-i", str(source_video_path),
-            "-t", str(clip_duration),
+            "-ss",
+            str(start_seconds),
+            "-i",
+            str(source_video_path),
+            "-t",
+            str(clip_duration),
             *_vf_args,
-            "-c:v", _enc,
+            "-c:v",
+            _enc,
             *_preset,
             *_quality,
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-movflags", "+faststart",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-movflags",
+            "+faststart",
             "-y",
             str(output_path),
         ]
@@ -253,6 +266,7 @@ async def _unowned_render_short_clip(
         # AUDIT R29: сериализуем GPU-рендер — параллельные видео не дерутся за
         # одну видеокарту (иначе h264_nvenc упирался в 15-мин таймаут).
         from core.resource_scheduler import scheduler as _sched
+
         async with _sched.gpu_render:
             proc = await run_cancellable_process(cmd, timeout=600, text=True)
 
@@ -336,7 +350,7 @@ async def _unowned_short_transform(
         video_filters = []
         if use_speed:
             # setpts уменьшает PTS пропорционально скорости
-            video_filters.append(f"setpts={1.0/speed}*PTS")
+            video_filters.append(f"setpts={1.0 / speed}*PTS")
 
         vf_arg = ",".join(video_filters) if video_filters else None
         af_arg = ",".join(audio_filters) if audio_filters else None
@@ -347,9 +361,7 @@ async def _unowned_short_transform(
             shutil.copy2(input_path, output_path)
             return True
 
-        _enc, _quality, _preset = await await_owned_coroutine(
-            asyncio.to_thread(_get_video_encoder)
-        )
+        _enc, _quality, _preset = await await_owned_coroutine(asyncio.to_thread(_get_video_encoder))
         _hwaccel = []  # hwaccel cuda убран: CPU-фильтры несовместимы с CUDA decode
         cmd = [ffmpeg, *_hwaccel, "-i", str(input_path)]
         if vf_arg:
@@ -357,12 +369,16 @@ async def _unowned_short_transform(
         if af_arg:
             cmd += ["-af", af_arg]
         cmd += [
-            "-c:v", _enc,
+            "-c:v",
+            _enc,
             *_preset,
             *_quality,
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-movflags", "+faststart",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-movflags",
+            "+faststart",
             "-y",
             str(output_path),
         ]
@@ -372,6 +388,7 @@ async def _unowned_short_transform(
         # (render одного + postprocess другого + burn третьего) — ровно та
         # гонка за видеокарту, ради которой вводился R29.
         from core.resource_scheduler import scheduler as _sched
+
         async with _sched.gpu_render:
             proc = await run_cancellable_process(cmd, timeout=600, text=True)
         if proc.returncode != 0:
@@ -383,8 +400,7 @@ async def _unowned_short_transform(
 
         size_mb = output_path.stat().st_size / (1024 * 1024)
         logger.info(
-            f"postprocess_short: normalize={normalize_audio} speed={speed} → "
-            f"{output_path.name} ({size_mb:.1f}MB)"
+            f"postprocess_short: normalize={normalize_audio} speed={speed} → {output_path.name} ({size_mb:.1f}MB)"
         )
         return True
 
@@ -400,6 +416,7 @@ async def _unowned_short_transform(
 
 try:
     from faster_whisper import WhisperModel
+
     HAS_FASTER_WHISPER = True
 except ImportError:
     HAS_FASTER_WHISPER = False
@@ -439,9 +456,9 @@ def _seconds_to_ass_time(seconds: float) -> str:
     """
     if seconds < 0:
         seconds = 0.0
-    h  = int(seconds // 3600)
-    m  = int((seconds % 3600) // 60)
-    s  = int(seconds % 60)
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
     cs = int(round((seconds - int(seconds)) * 100))
     if cs >= 100:  # защита от округления 0.999 → 100
         cs = 99
@@ -455,70 +472,103 @@ def _pick_subtitle_font() -> str:
     """
     candidates = [
         # Montserrat ExtraBold — топ-1 для Shorts/Reels 2026
-        ("Montserrat ExtraBold", [
-            "/usr/share/fonts/truetype/montserrat/Montserrat-ExtraBold.ttf",
-            "/usr/local/share/fonts/Montserrat-ExtraBold.ttf",
-            "C:/Windows/Fonts/Montserrat-ExtraBold.ttf",
-        ]),
+        (
+            "Montserrat ExtraBold",
+            [
+                "/usr/share/fonts/truetype/montserrat/Montserrat-ExtraBold.ttf",
+                "/usr/local/share/fonts/Montserrat-ExtraBold.ttf",
+                "C:/Windows/Fonts/Montserrat-ExtraBold.ttf",
+            ],
+        ),
         # Montserrat Black — максимальный вес
-        ("Montserrat Black", [
-            "/usr/share/fonts/truetype/montserrat/Montserrat-Black.ttf",
-            "/usr/local/share/fonts/Montserrat-Black.ttf",
-            "C:/Windows/Fonts/Montserrat-Black.ttf",
-        ]),
+        (
+            "Montserrat Black",
+            [
+                "/usr/share/fonts/truetype/montserrat/Montserrat-Black.ttf",
+                "/usr/local/share/fonts/Montserrat-Black.ttf",
+                "C:/Windows/Fonts/Montserrat-Black.ttf",
+            ],
+        ),
         # Montserrat Bold — fallback если ExtraBold/Black не установлены
-        ("Montserrat Bold", [
-            "/usr/share/fonts/truetype/montserrat/Montserrat-Bold.ttf",
-            "/usr/local/share/fonts/Montserrat-Bold.ttf",
-            "C:/Windows/Fonts/Montserrat-Bold.ttf",
-        ]),
+        (
+            "Montserrat Bold",
+            [
+                "/usr/share/fonts/truetype/montserrat/Montserrat-Bold.ttf",
+                "/usr/local/share/fonts/Montserrat-Bold.ttf",
+                "C:/Windows/Fonts/Montserrat-Bold.ttf",
+            ],
+        ),
         # Montserrat SemiBold — последний вариант Montserrat
-        ("Montserrat SemiBold", [
-            "/usr/share/fonts/truetype/montserrat/Montserrat-SemiBold.ttf",
-            "/usr/local/share/fonts/Montserrat-SemiBold.ttf",
-            "C:/Windows/Fonts/Montserrat-SemiBold.ttf",
-        ]),
+        (
+            "Montserrat SemiBold",
+            [
+                "/usr/share/fonts/truetype/montserrat/Montserrat-SemiBold.ttf",
+                "/usr/local/share/fonts/Montserrat-SemiBold.ttf",
+                "C:/Windows/Fonts/Montserrat-SemiBold.ttf",
+            ],
+        ),
         # Nunito ExtraBold — отличная кириллица, компактная
-        ("Nunito ExtraBold", [
-            "/usr/share/fonts/truetype/nunito/Nunito-ExtraBold.ttf",
-            "/usr/local/share/fonts/Nunito-ExtraBold.ttf",
-            "C:/Windows/Fonts/Nunito-ExtraBold.ttf",
-        ]),
+        (
+            "Nunito ExtraBold",
+            [
+                "/usr/share/fonts/truetype/nunito/Nunito-ExtraBold.ttf",
+                "/usr/local/share/fonts/Nunito-ExtraBold.ttf",
+                "C:/Windows/Fonts/Nunito-ExtraBold.ttf",
+            ],
+        ),
         # PT Sans Bold — российский стандарт, превосходная кириллица
-        ("PT Sans Bold", [
-            "/usr/share/fonts/truetype/pt-sans/PTSans-Bold.ttf",
-            "/usr/share/fonts/truetype/ptfonts/PTSans-Bold.ttf",
-            "/usr/local/share/fonts/PTSans-Bold.ttf",
-            "C:/Windows/Fonts/PTSans-Bold.ttf",
-        ]),
+        (
+            "PT Sans Bold",
+            [
+                "/usr/share/fonts/truetype/pt-sans/PTSans-Bold.ttf",
+                "/usr/share/fonts/truetype/ptfonts/PTSans-Bold.ttf",
+                "/usr/local/share/fonts/PTSans-Bold.ttf",
+                "C:/Windows/Fonts/PTSans-Bold.ttf",
+            ],
+        ),
         # Inter Bold — современный, читаемый
-        ("Inter Bold", [
-            "/usr/share/fonts/truetype/inter/Inter-Bold.ttf",
-            "/usr/local/share/fonts/Inter-Bold.ttf",
-            "C:/Windows/Fonts/Inter-Bold.ttf",
-        ]),
+        (
+            "Inter Bold",
+            [
+                "/usr/share/fonts/truetype/inter/Inter-Bold.ttf",
+                "/usr/local/share/fonts/Inter-Bold.ttf",
+                "C:/Windows/Fonts/Inter-Bold.ttf",
+            ],
+        ),
         # Inter SemiBold — fallback Inter
-        ("Inter SemiBold", [
-            "/usr/share/fonts/truetype/inter/Inter-SemiBold.ttf",
-            "/usr/local/share/fonts/Inter-SemiBold.ttf",
-            "C:/Windows/Fonts/Inter-SemiBold.ttf",
-        ]),
+        (
+            "Inter SemiBold",
+            [
+                "/usr/share/fonts/truetype/inter/Inter-SemiBold.ttf",
+                "/usr/local/share/fonts/Inter-SemiBold.ttf",
+                "C:/Windows/Fonts/Inter-SemiBold.ttf",
+            ],
+        ),
         # Noto Sans Bold — широкая поддержка кириллицы
-        ("Noto Sans Bold", [
-            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
-            "/usr/share/fonts/noto/NotoSans-Bold.ttf",
-            "C:/Windows/Fonts/NotoSans-Bold.ttf",
-        ]),
+        (
+            "Noto Sans Bold",
+            [
+                "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+                "/usr/share/fonts/noto/NotoSans-Bold.ttf",
+                "C:/Windows/Fonts/NotoSans-Bold.ttf",
+            ],
+        ),
         # Roboto Bold — широко доступен
-        ("Roboto Bold", [
-            "/usr/share/fonts/truetype/roboto/Roboto-Bold.ttf",
-            "C:/Windows/Fonts/Roboto-Bold.ttf",
-        ]),
+        (
+            "Roboto Bold",
+            [
+                "/usr/share/fonts/truetype/roboto/Roboto-Bold.ttf",
+                "C:/Windows/Fonts/Roboto-Bold.ttf",
+            ],
+        ),
         # Arial Bold — системный fallback
-        ("Arial Bold", [
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-            "C:/Windows/Fonts/arialbd.ttf",
-        ]),
+        (
+            "Arial Bold",
+            [
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+                "C:/Windows/Fonts/arialbd.ttf",
+            ],
+        ),
     ]
     for font_name, paths in candidates:
         for p in paths:
@@ -540,7 +590,7 @@ def _normalize_word_timings(words: list[dict]) -> list[dict]:
     MIN_DUR = 0.08  # 80ms минимум на word
     for i, w in enumerate(words):
         start = float(w.get("start", 0))
-        end   = float(w.get("end", start + MIN_DUR))
+        end = float(w.get("end", start + MIN_DUR))
         # Минимальная длительность
         if end - start < MIN_DUR:
             end = start + MIN_DUR
@@ -587,11 +637,13 @@ def _merge_hyphenated_particles(words: list[dict]) -> list[dict]:
         elif word_text.endswith("-") and i + 1 < len(words):
             next_w = words[i + 1]
             merged_word = word_text + next_w.get("word", "").strip()
-            result.append({
-                **w,
-                "word": merged_word,
-                "end": next_w.get("end", w.get("end", 0)),
-            })
+            result.append(
+                {
+                    **w,
+                    "word": merged_word,
+                    "end": next_w.get("end", w.get("end", 0)),
+                }
+            )
             i += 2
             continue
         else:
@@ -648,9 +700,37 @@ def _chunk_words_smart(words: list[dict], max_chars: int = 36, max_pause: float 
         return []
 
     # Служебные слова — не разрывать после них
-    PREPOSITIONS = {"в", "на", "за", "из", "по", "к", "с", "о", "у", "до", "об",
-                    "от", "под", "над", "при", "про", "без", "для", "и", "а", "но",
-                    "или", "не", "ни", "же", "что", "как", "это", "то"}
+    PREPOSITIONS = {
+        "в",
+        "на",
+        "за",
+        "из",
+        "по",
+        "к",
+        "с",
+        "о",
+        "у",
+        "до",
+        "об",
+        "от",
+        "под",
+        "над",
+        "при",
+        "про",
+        "без",
+        "для",
+        "и",
+        "а",
+        "но",
+        "или",
+        "не",
+        "ни",
+        "же",
+        "что",
+        "как",
+        "это",
+        "то",
+    }
 
     chunks: list[list[dict]] = []
     current: list[dict] = []
@@ -658,7 +738,7 @@ def _chunk_words_smart(words: list[dict], max_chars: int = 36, max_pause: float 
 
     for i, w in enumerate(words):
         word_text = w.get("word", "").strip()
-        word_len  = len(word_text) + (1 if current else 0)
+        word_len = len(word_text) + (1 if current else 0)
 
         # Определяем паузу после предыдущего слова
         pause = 0.0
@@ -668,7 +748,7 @@ def _chunk_words_smart(words: list[dict], max_chars: int = 36, max_pause: float 
         # Пунктуация в конце предыдущего слова
         prev_text = current[-1].get("word", "").strip() if current else ""
         ends_sentence = prev_text.endswith((".", "!", "?"))
-        ends_clause   = prev_text.endswith(",")
+        ends_clause = prev_text.endswith(",")
 
         # Решаем — резать или нет
         should_cut = False
@@ -775,7 +855,7 @@ def _generate_ass_from_segments(segments: list[dict], karaoke: bool = True) -> s
     # ── Цвета (ASS формат &HAABBGGRR) ────────────────────────────
     # &H0000E5FF = BGR(FF,E5,00) = RGB(255,229,0) — насыщенный жёлтый
     # &H00FFFFFF = белый (чистый, никакой прозрачности/серого)
-    COLOUR_ACTIVE   = "&H0000E5FF"
+    COLOUR_ACTIVE = "&H0000E5FF"
     COLOUR_INACTIVE = "&H00FFFFFF"
 
     # Fade — плавное появление/исчезновение только для plain режима
@@ -813,26 +893,30 @@ def _generate_ass_from_segments(segments: list[dict], karaoke: bool = True) -> s
                 for w in words_raw:
                     word = str(w.get("word", "")).strip()
                     if word:
-                        result.append({
-                            "word":  word,
-                            "start": float(w.get("start", seg.get("start", 0))),
-                            "end":   float(w.get("end",   seg.get("end",   0))),
-                        })
+                        result.append(
+                            {
+                                "word": word,
+                                "start": float(w.get("start", seg.get("start", 0))),
+                                "end": float(w.get("end", seg.get("end", 0))),
+                            }
+                        )
             else:
                 text = seg.get("text", "").strip()
                 if not text:
                     continue
                 seg_start = float(seg.get("start", 0))
-                seg_end   = float(seg.get("end", seg_start + 1))
+                seg_end = float(seg.get("end", seg_start + 1))
                 words_split = text.split()
                 # 2026-06-11: Повышаем точность псевдо-слов при отсутствии word_timestamps
                 dur_per = (seg_end - seg_start) / max(len(words_split), 1)
                 for i, word in enumerate(words_split):
-                    result.append({
-                        "word":  word,
-                        "start": seg_start + i * dur_per,
-                        "end":   seg_start + (i + 0.9) * dur_per,
-                    })
+                    result.append(
+                        {
+                            "word": word,
+                            "start": seg_start + i * dur_per,
+                            "end": seg_start + (i + 0.9) * dur_per,
+                        }
+                    )
         return result
 
     # ── Plain subtitle режим (karaoke=False) ─────────────────────
@@ -845,13 +929,13 @@ def _generate_ass_from_segments(segments: list[dict], karaoke: bool = True) -> s
         all_words = _merge_hyphenated_particles(all_words)
         all_words = _merge_orphan_punctuation(all_words)
 
-        chunks    = _chunk_words_smart(all_words, max_chars=38)
+        chunks = _chunk_words_smart(all_words, max_chars=38)
         ass_lines = [header]
         for chunk in chunks:
             if not chunk:
                 continue
-            t_s  = _seconds_to_ass_time(chunk[0]["start"])
-            t_e  = _seconds_to_ass_time(chunk[-1]["end"])
+            t_s = _seconds_to_ass_time(chunk[0]["start"])
+            t_e = _seconds_to_ass_time(chunk[-1]["end"])
             text = _wrap_chunk_to_lines(chunk, max_chars=38)
             text = text.replace("{", "\\{").replace("}", "\\}")
             ass_lines.append(f"Dialogue: 0,{t_s},{t_e},Default,,0,0,0,,{FADE_PLAIN}{text}")
@@ -880,7 +964,7 @@ def _generate_ass_from_segments(segments: list[dict], karaoke: bool = True) -> s
     all_words = _merge_hyphenated_particles(all_words)
     all_words = _merge_orphan_punctuation(all_words)
 
-    chunks    = _chunk_words_smart(all_words, max_chars=38, max_pause=0.35)
+    chunks = _chunk_words_smart(all_words, max_chars=38, max_pause=0.35)
     ass_lines = [header]
 
     for chunk in chunks:
@@ -888,10 +972,7 @@ def _generate_ass_from_segments(segments: list[dict], karaoke: bool = True) -> s
             continue
 
         # Предподготовка: очищаем спецсимволы ASS в тексте слов
-        clean = [
-            w["word"].replace("{", "\\{").replace("}", "\\}")
-            for w in chunk
-        ]
+        clean = [w["word"].replace("{", "\\{").replace("}", "\\}") for w in chunk]
 
         # Для каждого слова — своя Dialogue-строка.
         #
@@ -924,9 +1005,7 @@ def _generate_ass_from_segments(segments: list[dict], karaoke: bool = True) -> s
                     parts.append(f"{{\\c{COLOUR_INACTIVE}}}{word_text}")
 
             dialogue_text = " ".join(parts)
-            ass_lines.append(
-                f"Dialogue: 0,{w_s},{w_e},Default,,0,0,0,,{dialogue_text}"
-            )
+            ass_lines.append(f"Dialogue: 0,{w_s},{w_e},Default,,0,0,0,,{dialogue_text}")
 
     return "\n".join(ass_lines)
 
@@ -949,14 +1028,14 @@ def get_subtitles_mode_settings() -> dict:
       model=medium, word_timestamps только если karaoke=True
     """
     karaoke = bool(settings_get("shorts_subtitles_karaoke"))
-    light   = bool(settings_get("shorts_subtitles_light"))
+    light = bool(settings_get("shorts_subtitles_light"))
     model_name = "medium" if light else os.getenv("WHISPER_MODEL", "large-v3")
     return {
-        "model_name":      model_name,
-        "karaoke":         karaoke,
-        "word_timestamps": karaoke,   # word-level нужен только для karaoke
-        "light":           light,
-        "gemini_hints":    bool(settings_get("shorts_subtitles_gemini_hints")),
+        "model_name": model_name,
+        "karaoke": karaoke,
+        "word_timestamps": karaoke,  # word-level нужен только для karaoke
+        "light": light,
+        "gemini_hints": bool(settings_get("shorts_subtitles_gemini_hints")),
     }
 
 
@@ -967,6 +1046,7 @@ def _reset_whisper_model(device: str | None = None, compute_type: str | None = N
         if _whisper_model is not None:
             try:
                 import torch
+
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
                     torch.cuda.synchronize()
@@ -994,12 +1074,14 @@ def _get_whisper_model(model_size: str | None = None):
                     pass
                 try:
                     import torch
+
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
                         torch.cuda.synchronize()
                 except Exception:
                     pass
             from faster_whisper import WhisperModel as _WM
+
             _force_cpu = os.getenv("WHISPER_FORCE_CPU", "0").strip().lower() in ("1", "true", "yes", "on")
             _safe_mode = os.getenv("WHISPER_GPU_SAFE_MODE", "0").strip().lower() in ("1", "true", "yes", "on")
             if _force_cpu:
@@ -1015,7 +1097,9 @@ def _get_whisper_model(model_size: str | None = None):
             try:
                 _whisper_model = _WM(model_size, device=_whisper_device, compute_type=_whisper_compute)
             except Exception as e:
-                logger.warning(f"Failed to load Whisper on {_whisper_device} with {_whisper_compute}. Fallback to CPU/int8. Error: {e}")
+                logger.warning(
+                    f"Failed to load Whisper on {_whisper_device} with {_whisper_compute}. Fallback to CPU/int8. Error: {e}"
+                )
                 _whisper_device = "cpu"
                 _whisper_compute = "int8"
                 _whisper_model = _WM(model_size, device=_whisper_device, compute_type=_whisper_compute)
@@ -1029,10 +1113,12 @@ def preload_whisper_if_needed():
     Оставлена для обратной совместимости на случай внешних вызовов.
     """
     import warnings
+
     warnings.warn(
         "preload_whisper_if_needed() устарела и не используется ботом. "
         "Whisper загружается через _preload_whisper_bg в run_bot_async().",
-        DeprecationWarning, stacklevel=2
+        DeprecationWarning,
+        stacklevel=2,
     )
     if not HAS_FASTER_WHISPER:
         return
@@ -1109,8 +1195,7 @@ async def _unowned_transcribe_short_clip(video_path: Path, ai_data: dict = None)
     # ── Backend check ──────────────────────────────────────────
     if not HAS_FASTER_WHISPER:
         logger.warning(
-            "Subtitles: faster-whisper не установлен — субтитры недоступны. "
-            "Установите: pip install faster-whisper"
+            "Subtitles: faster-whisper не установлен — субтитры недоступны. Установите: pip install faster-whisper"
         )
         return []
 
@@ -1119,14 +1204,12 @@ async def _unowned_transcribe_short_clip(video_path: Path, ai_data: dict = None)
         logger.warning(f"Subtitles: файл для транскрипции не найден: {video_path}")
         return []
     video_size_mb = video_path.stat().st_size / (1024 * 1024)
-    logger.info(
-        f"Subtitles: транскрибирую {video_path.name} "
-        f"({video_size_mb:.1f} MB) через faster-whisper"
-    )
+    logger.info(f"Subtitles: транскрибирую {video_path.name} ({video_size_mb:.1f} MB) через faster-whisper")
 
     wav_path: Path | None = None
     try:
         import tempfile
+
         ffmpeg = shutil.which("ffmpeg")
         if not ffmpeg:
             logger.warning("Subtitles: ffmpeg не найден — невозможно извлечь аудио")
@@ -1137,15 +1220,23 @@ async def _unowned_transcribe_short_clip(video_path: Path, ai_data: dict = None)
 
         # Извлекаем аудио в WAV 16kHz mono
         cmd = [
-            ffmpeg, "-i", str(video_path),
-            "-ar", "16000", "-ac", "1", "-f", "wav", "-y", str(wav_path),
+            ffmpeg,
+            "-i",
+            str(video_path),
+            "-ar",
+            "16000",
+            "-ac",
+            "1",
+            "-f",
+            "wav",
+            "-y",
+            str(wav_path),
         ]
         proc = await run_cancellable_process(cmd, timeout=120)
 
         if proc.returncode != 0:
             logger.warning(
-                f"Subtitles: ffmpeg извлечение аудио упало (code={proc.returncode}): "
-                f"{(proc.stderr or b'')[-300:]}"
+                f"Subtitles: ffmpeg извлечение аудио упало (code={proc.returncode}): {(proc.stderr or b'')[-300:]}"
             )
             wav_path.unlink(missing_ok=True)
             return []
@@ -1154,8 +1245,7 @@ async def _unowned_transcribe_short_clip(video_path: Path, ai_data: dict = None)
         wav_size = wav_path.stat().st_size if wav_path.exists() else 0
         if wav_size < 1024:
             logger.warning(
-                f"Subtitles: WAV файл слишком мал или пустой ({wav_size} байт) — "
-                "возможно видео без аудиодорожки"
+                f"Subtitles: WAV файл слишком мал или пустой ({wav_size} байт) — возможно видео без аудиодорожки"
             )
             wav_path.unlink(missing_ok=True)
             return []
@@ -1163,8 +1253,8 @@ async def _unowned_transcribe_short_clip(video_path: Path, ai_data: dict = None)
         logger.info(f"Subtitles: WAV извлечён ({wav_size / 1024:.0f} KB), запускаю Whisper...")
 
         subtitle_cfg = get_subtitles_mode_settings()
-        model_size   = subtitle_cfg["model_name"]
-        word_ts      = subtitle_cfg["word_timestamps"]
+        model_size = subtitle_cfg["model_name"]
+        word_ts = subtitle_cfg["word_timestamps"]
         logger.info(
             f"Subtitles mode: model={model_size} "
             f"karaoke={subtitle_cfg['karaoke']} "
@@ -1179,12 +1269,17 @@ async def _unowned_transcribe_short_clip(video_path: Path, ai_data: dict = None)
             ai_data,
             use_gemini_hints=bool(subtitle_cfg.get("gemini_hints", True)),
         )
-        logger.info("Subtitles: initial_prompt chars=%d gemini_hints=%s", len(_whisper_initial_prompt), subtitle_cfg.get("gemini_hints", True))
+        logger.info(
+            "Subtitles: initial_prompt chars=%d gemini_hints=%s",
+            len(_whisper_initial_prompt),
+            subtitle_cfg.get("gemini_hints", True),
+        )
         _initial_prompt_for_thread = _whisper_initial_prompt
 
         def _run_whisper():
             try:
                 import torch
+
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
                     torch.cuda.synchronize()
@@ -1204,20 +1299,25 @@ async def _unowned_transcribe_short_clip(video_path: Path, ai_data: dict = None)
             result = [
                 {
                     "start": s.start,
-                    "end":   s.end,
-                    "text":  _polish_subtitle_text(s.text),
+                    "end": s.end,
+                    "text": _polish_subtitle_text(s.text),
                     "words": [
-                        {"word": _polish_subtitle_text(w.word), "start": w.start, "end": w.end}
-                        for w in (s.words or [])
+                        {"word": _polish_subtitle_text(w.word), "start": w.start, "end": w.end} for w in (s.words or [])
                     ],
                 }
                 for s in segs
             ]
-            return result, getattr(info, "duration", 0), getattr(info, "language", "?"), getattr(info, "language_probability", 1.0)
+            return (
+                result,
+                getattr(info, "duration", 0),
+                getattr(info, "language", "?"),
+                getattr(info, "language_probability", 1.0),
+            )
 
         # AUDIT R29: сериализуем Whisper — параллельные видео не грузят CPU
         # тремя large-v3 транскрипциями разом (иначе каждая тянется 3-8 мин).
         from core.resource_scheduler import scheduler as _sched
+
         async with _sched.whisper:
             segments, audio_duration, detected_lang, lang_prob = await await_owned_coroutine(
                 asyncio.to_thread(_run_whisper)
@@ -1229,10 +1329,7 @@ async def _unowned_transcribe_short_clip(video_path: Path, ai_data: dict = None)
         # в _generate_ass_from_segments, к полному плоскому списку слов (cross-segment).
         # Применять их здесь per-segment нет смысла: cross-segment дыры не обрабатываются.
 
-        logger.info(
-            f"Subtitles: Whisper detected lang={detected_lang} "
-            f"confidence={lang_prob:.2f}, model={model_size}"
-        )
+        logger.info(f"Subtitles: Whisper detected lang={detected_lang} confidence={lang_prob:.2f}, model={model_size}")
 
         # Если уверенность низкая — скорее всего синхронный перевод или смешанный язык
         # Субтитры в таком случае будут мусором
@@ -1251,8 +1348,7 @@ async def _unowned_transcribe_short_clip(video_path: Path, ai_data: dict = None)
         )
         if not non_empty:
             logger.info(
-                "Subtitles: все сегменты пустые — возможно тишина, музыка или "
-                "неподходящий язык (выставлен 'ru')"
+                "Subtitles: все сегменты пустые — возможно тишина, музыка или неподходящий язык (выставлен 'ru')"
             )
         return non_empty
 
@@ -1278,31 +1374,41 @@ async def _unowned_burn_subtitles_into_short(
     """
     try:
         import tempfile
+
         ffmpeg = shutil.which("ffmpeg")
         if not ffmpeg or not input_path.exists() or not segments:
             return False
         subtitle_cfg = get_subtitles_mode_settings()
-        ass_content  = _generate_ass_from_segments(segments, karaoke=subtitle_cfg["karaoke"])
-        with tempfile.NamedTemporaryFile(
-            suffix=".ass", mode="w", encoding="utf-8", delete=False
-        ) as tmp:
+        ass_content = _generate_ass_from_segments(segments, karaoke=subtitle_cfg["karaoke"])
+        with tempfile.NamedTemporaryFile(suffix=".ass", mode="w", encoding="utf-8", delete=False) as tmp:
             tmp.write(ass_content)
             ass_path = Path(tmp.name)
         ass_escaped = str(ass_path).replace("\\", "/").replace(":", "\\:")
-        _enc, _quality, _preset = await await_owned_coroutine(
-            asyncio.to_thread(_get_video_encoder)
-        )
+        _enc, _quality, _preset = await await_owned_coroutine(asyncio.to_thread(_get_video_encoder))
         _hwaccel = []  # hwaccel cuda убран: CPU-фильтры несовместимы с CUDA decode
         cmd = [
-            ffmpeg, *_hwaccel, "-i", str(input_path),
-            "-vf", f"subtitles='{ass_escaped}'",
-            "-c:v", _enc, *_preset, *_quality,
-            "-c:a", "copy", "-movflags", "+faststart", "-y", str(output_path),
+            ffmpeg,
+            *_hwaccel,
+            "-i",
+            str(input_path),
+            "-vf",
+            f"subtitles='{ass_escaped}'",
+            "-c:v",
+            _enc,
+            *_preset,
+            *_quality,
+            "-c:a",
+            "copy",
+            "-movflags",
+            "+faststart",
+            "-y",
+            str(output_path),
         ]
         # AUDIT R29b: burn-in субтитров — самый длинный NVENC-проход пайплайна;
         # серилизуем через GPU-семафор, чтобы не драться за карту с рендером/
         # постобработкой параллельных видео.
         from core.resource_scheduler import scheduler as _sched
+
         async with _sched.gpu_render:
             proc = await run_cancellable_process(cmd, timeout=600, text=True)
         ass_path.unlink(missing_ok=True)
@@ -1311,10 +1417,7 @@ async def _unowned_burn_subtitles_into_short(
             return False
         if not output_path.exists() or output_path.stat().st_size == 0:
             return False
-        logger.info(
-            f"Subtitles burned: {output_path.name} "
-            f"({output_path.stat().st_size / 1024 / 1024:.1f}MB)"
-        )
+        logger.info(f"Subtitles burned: {output_path.name} ({output_path.stat().st_size / 1024 / 1024:.1f}MB)")
         return True
     except Exception as e:
         logger.warning(f"burn_subtitles_into_short error: {type(e).__name__}: {e}")
@@ -1322,6 +1425,7 @@ async def _unowned_burn_subtitles_into_short(
 
 
 # ── Постер с заголовком для Shorts ───────────────────────────
+
 
 def _wrap_poster_title(title: str, max_chars: int = 22) -> list[str]:
     """Разбивает заголовок постера на строки (макс. 3), не разрывая слова."""
@@ -1376,8 +1480,17 @@ async def _unowned_create_short_title_poster(
             frame_path = Path(tmp.name)
 
         cmd = [
-            ffmpeg, "-ss", str(seek_time), "-i", str(video_path),
-            "-vframes", "1", "-q:v", "2", "-y", str(frame_path),
+            ffmpeg,
+            "-ss",
+            str(seek_time),
+            "-i",
+            str(video_path),
+            "-vframes",
+            "1",
+            "-q:v",
+            "2",
+            "-y",
+            str(frame_path),
         ]
         proc = await run_cancellable_process(cmd, timeout=60, text=True)
         if proc.returncode != 0 or not frame_path.exists() or frame_path.stat().st_size == 0:
@@ -1436,7 +1549,7 @@ async def _unowned_create_short_title_poster(
                     font = ImageFont.load_default()
 
                 lines = _wrap_poster_title(title)
-                line_h = int(font_size * 1.30)   # чуть больший межстрочный интервал
+                line_h = int(font_size * 1.30)  # чуть больший межстрочный интервал
                 block_h = len(lines) * line_h
                 # Safe-zone: 13% от нижнего края (≈167px при H=1280) — под интерфейс Shorts
                 safe_margin = int(H * 0.13)
@@ -1445,9 +1558,9 @@ async def _unowned_create_short_title_poster(
                 # Тень: многослойная мягкая — 3 слоя с нарастающей прозрачностью
                 # Это даёт ощущение «глубины» без грубой жёсткой обводки
                 shadow_layers = [
-                    (3, 3, (0, 0, 0, 100)),   # дальний слой — очень мягкий
-                    (2, 2, (0, 0, 0, 160)),   # средний
-                    (1, 1, (0, 0, 0, 200)),   # близкий
+                    (3, 3, (0, 0, 0, 100)),  # дальний слой — очень мягкий
+                    (2, 2, (0, 0, 0, 160)),  # средний
+                    (1, 1, (0, 0, 0, 200)),  # близкий
                 ]
 
                 for li, line in enumerate(lines):
@@ -1472,9 +1585,7 @@ async def _unowned_create_short_title_poster(
                 logger.warning(f"_draw_poster error: {e}")
                 return False
 
-        result = await await_owned_coroutine(
-            asyncio.to_thread(_draw_poster)
-        )
+        result = await await_owned_coroutine(asyncio.to_thread(_draw_poster))
         frame_path.unlink(missing_ok=True)
 
         if result and poster_path.exists() and poster_path.stat().st_size > 0:
@@ -1513,10 +1624,14 @@ async def _unowned_create_short_snapshot(
         seek_time = max(1.0, clip_duration_seconds * 0.30)
         cmd = [
             ffmpeg,
-            "-ss", str(seek_time),
-            "-i", str(video_path),
-            "-vframes", "1",
-            "-q:v", "2",       # JPEG quality 2 = высокое качество
+            "-ss",
+            str(seek_time),
+            "-i",
+            str(video_path),
+            "-vframes",
+            "1",
+            "-q:v",
+            "2",  # JPEG quality 2 = высокое качество
             "-y",
             str(snapshot_path),
         ]
@@ -1587,9 +1702,9 @@ def build_short_caption(
     Строит подпись для YouTube Shorts.
     Компактный стиль: заголовок - Автор, ссылки с эмодзи, хэштеги.
     """
-    kind         = (candidate.get("kind") or "").strip()
-    hook         = (candidate.get("hook") or candidate.get("title") or "").strip()
-    tags         = candidate.get("hashtags") or []
+    kind = (candidate.get("kind") or "").strip()
+    hook = (candidate.get("hook") or candidate.get("title") or "").strip()
+    tags = candidate.get("hashtags") or []
     author_label = real_author or performer or ""
 
     prepared_hook = _prepare_short_hook(hook, author_label)
@@ -1609,7 +1724,7 @@ def build_short_caption(
     links_block = _build_links_block(yt_url, rutube_url, vk_url)
     # PATCH V2 FIX: убираем # если Gemini добавил вопреки инструкции → иначе ##тег
     if tags:
-        _clean_tags = [str(t).strip().lstrip('#') for t in tags[:4] if str(t).strip()]
+        _clean_tags = [str(t).strip().lstrip("#") for t in tags[:4] if str(t).strip()]
         tags_line = " ".join(f"#{t}" for t in _clean_tags if t)
     else:
         tags_line = ""
@@ -1618,22 +1733,19 @@ def build_short_caption(
     return "\n\n".join(parts)
 
 
-
-
 # ─── Public transaction boundary for render work ─────────────────────────────
 #
 # External processes use the shared process-tree owner and native threads use
 # await_owned_coroutine. Public wrappers retain the outer transaction boundary
 # so semaphore and temporary-file cleanup completes before cancellation returns.
 
+
 async def download_video_for_shorts(
     url: str,
     media_id: str,
     workdir: Optional[Path] = None,
 ) -> Optional[Path]:
-    return await await_owned_coroutine(
-        _unowned_download_video_for_shorts(url, media_id, workdir=workdir)
-    )
+    return await await_owned_coroutine(_unowned_download_video_for_shorts(url, media_id, workdir=workdir))
 
 
 async def render_short_clip(
@@ -1676,9 +1788,7 @@ async def transcribe_short_clip(
     video_path: Path,
     ai_data: dict = None,
 ) -> list[dict]:
-    return await await_owned_coroutine(
-        _unowned_transcribe_short_clip(video_path, ai_data=ai_data)
-    )
+    return await await_owned_coroutine(_unowned_transcribe_short_clip(video_path, ai_data=ai_data))
 
 
 async def burn_subtitles_into_short(
@@ -1724,5 +1834,5 @@ async def create_short_snapshot(
         )
     )
 
-# ─── Clips MVP (длинные фрагменты 5–15 мин) ──────────────────
 
+# ─── Clips MVP (длинные фрагменты 5–15 мин) ──────────────────

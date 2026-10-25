@@ -69,16 +69,20 @@ def test_r42_mix_rejects_truncated_ru_source():
 def test_r42_extract_fix_intervals_major_only_and_merge(monkeypatch):
     monkeypatch.setenv("LIVEDUB_DELAY_MS", "600")
     # minor is ignored; only majors become windows
-    iv = extract_fix_intervals([
-        {"time": "1:00", "severity": "minor"},
-        {"time": "2:00", "severity": "major"},
-    ])
+    iv = extract_fix_intervals(
+        [
+            {"time": "1:00", "severity": "minor"},
+            {"time": "2:00", "severity": "major"},
+        ]
+    )
     assert len(iv) == 1
     # two majors close together merge into one window (windows are ~6.6s wide)
-    iv2 = extract_fix_intervals([
-        {"time": "1:00", "severity": "major"},
-        {"time": "1:03", "severity": "major"},
-    ])
+    iv2 = extract_fix_intervals(
+        [
+            {"time": "1:00", "severity": "major"},
+            {"time": "1:03", "severity": "major"},
+        ]
+    )
     assert len(iv2) == 1
     # malformed timecode is dropped safely
     assert extract_fix_intervals([{"time": "??", "severity": "major"}]) == []
@@ -128,7 +132,7 @@ def test_r42_qa_cleans_uploaded_on_parse_failure():
     # the parse-failure branch (after last_err assignment) now clears uploaded
     anchor = 'last_err = RuntimeError("ответ модели не распарсился в QA-JSON")'
     assert anchor in src
-    after = src[src.index(anchor):src.index(anchor) + 700]
+    after = src[src.index(anchor) : src.index(anchor) + 700]
     assert "uploaded.clear()" in after
 
 
@@ -177,6 +181,6 @@ def test_r42_get_translation_subtitles_excludes_gemini_subs():
 def test_r42_outer_except_flushes_ready_dub():
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     i_except = src.rindex("except Exception as e:")
-    tail = src[i_except:i_except + 1300]
+    tail = src[i_except : i_except + 1300]
     assert "_send_livedub_result" in tail
     assert "не теряем УЖЕ ГОТОВЫЙ дубляж" in tail

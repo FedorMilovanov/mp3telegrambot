@@ -5,6 +5,7 @@ as a service, handler, pipeline, converter or tool writes a literal again, which
 is exactly how the project previously ended up editing a dozen files per model
 bump.
 """
+
 from __future__ import annotations
 
 import re
@@ -52,7 +53,7 @@ def _matches(text: str) -> list[str]:
     """Model-looking matches that are not part of a longer word."""
     hits: list[str] = []
     for match in MODEL_LITERAL.finditer(text):
-        tail = text[match.end():match.end() + 1]
+        tail = text[match.end() : match.end() + 1]
         # Reject prose such as "gemini-3.8-flash-HIGH" identifiers? No: keep it
         # strict, an identifier is an identifier. Only skip when followed by a
         # digit sequence that is clearly a version of something else.
@@ -69,8 +70,7 @@ def test_production_code_has_no_model_literals() -> None:
         if hits:
             offenders[path.relative_to(ROOT).as_posix()] = sorted(set(hits))
     assert offenders == {}, (
-        "Hardcoded Gemini model ids found; import a role from core.model_catalog "
-        f"instead: {offenders}"
+        f"Hardcoded Gemini model ids found; import a role from core.model_catalog instead: {offenders}"
     )
 
 
@@ -83,9 +83,7 @@ def test_the_renderer_derives_ids_from_the_catalog_only() -> None:
     """
     source = (ROOT / "scripts" / "render_model_catalog.py").read_text(encoding="utf-8")
     for literal in ("gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-4-argon"):
-        assert literal not in source, (
-            f"{literal} появился в генераторе литералом — берите роль из каталога"
-        )
+        assert literal not in source, f"{literal} появился в генераторе литералом — берите роль из каталога"
     assert "from core.model_catalog import" in source
     assert "paid_only_models" in source
 

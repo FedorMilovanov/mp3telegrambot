@@ -5,6 +5,7 @@ Duration controls the available ceiling, never a quota. A long recording may
 justify more sections and research layers, but it does not automatically justify
 Greek, Hebrew, translation comparisons, or practical exercises.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -78,8 +79,7 @@ def get_expanded_analysis_profile(
                 original_languages="не требуется",
                 translation_forks="не требуется",
                 reasoning_style=(
-                    "одна управляющая истина, её основание, одно ключевое исправление "
-                    "мышления и 1–3 соразмерных ответа"
+                    "одна управляющая истина, её основание, одно ключевое исправление мышления и 1–3 соразмерных ответа"
                 ),
             )
         return ExpandedAnalysisProfile(

@@ -18,9 +18,7 @@ def _chirp(start_hz: float, end_hz: float, *, duration: float = 2.0, tail: float
     fade = int(0.05 * sample_rate)
     audio[:fade] *= np.linspace(0.0, 1.0, fade)
     audio[-fade:] *= np.linspace(1.0, 0.0, fade)
-    return np.concatenate(
-        [audio.astype(np.float32), np.zeros(int(tail * sample_rate), dtype=np.float32)]
-    ), sample_rate
+    return np.concatenate([audio.astype(np.float32), np.zeros(int(tail * sample_rate), dtype=np.float32)]), sample_rate
 
 
 def _evaluate(text: str, start_hz: float, end_hz: float):
@@ -127,9 +125,7 @@ def _enveloped_chirp(start_hz: float, end_hz: float, start_amp: float, end_amp: 
     fade = int(0.015 * sample_rate)
     audio[:fade] *= np.linspace(0.0, 1.0, fade)
     audio[-fade:] *= np.linspace(1.0, 0.0, fade)
-    return np.concatenate(
-        [audio.astype(np.float32), np.zeros(int(0.12 * sample_rate), dtype=np.float32)]
-    ), sample_rate
+    return np.concatenate([audio.astype(np.float32), np.zeros(int(0.12 * sample_rate), dtype=np.float32)]), sample_rate
 
 
 def test_slight_terminal_rise_requires_an_energy_resolution():

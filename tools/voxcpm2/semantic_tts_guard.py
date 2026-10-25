@@ -7,6 +7,7 @@ adapter keeps the existing production pipeline, but routes VoxCPM2 synthesis
 through a hardened wrapper, verifies the spoken Russian with local Whisper, and
 re-renders only failed segments with new deterministic seeds.
 """
+
 from __future__ import annotations
 
 import collections
@@ -79,7 +80,9 @@ def normalize_asr_text(value: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def compare_spoken_text(target: str, heard: str, language: str = "", language_probability: float = 0.0) -> dict[str, Any]:
+def compare_spoken_text(
+    target: str, heard: str, language: str = "", language_probability: float = 0.0
+) -> dict[str, Any]:
     target_norm = normalize_asr_text(target)
     heard_norm = normalize_asr_text(heard)
     target_tokens = target_norm.split()
@@ -103,11 +106,7 @@ def compare_spoken_text(target: str, heard: str, language: str = "", language_pr
         and not foreign_language
         and latin_ratio <= 0.12
         and not excessive_extra
-        and (
-            sequence >= 0.54
-            or (recall >= 0.68 and precision >= 0.45)
-            or (recall >= 0.80 and len(target_tokens) <= 8)
-        )
+        and (sequence >= 0.54 or (recall >= 0.68 and precision >= 0.45) or (recall >= 0.80 and len(target_tokens) <= 8))
     )
     return {
         "passed": passed,
@@ -175,9 +174,7 @@ def _whisper_model(name: str) -> Any:
         try:
             from faster_whisper import WhisperModel
         except ImportError as exc:
-            raise RuntimeError(
-                "Для обязательной проверки речи установите faster-whisper из requirements.txt."
-            ) from exc
+            raise RuntimeError("Для обязательной проверки речи установите faster-whisper из requirements.txt.") from exc
         log(f"загружаю Whisper {name} для проверки произнесённого текста")
         model = WhisperModel(name, device="cpu", compute_type="int8")
         _WHISPER_MODELS[name] = model
@@ -203,9 +200,22 @@ def _transcribe(path: Path, *, language: str | None = None) -> tuple[str, str, f
 def _clean_reference(source: Path, destination: Path, *, max_seconds: float) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     command = [
-        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-        "-i", str(source), "-t", f"{max_seconds:.3f}", "-vn", "-ac", "1", "-ar", "16000",
-        "-af", "highpass=f=70,lowpass=f=7600,afftdn=nf=-28,afade=t=in:st=0:d=0.015,areverse,afade=t=in:st=0:d=0.020,areverse,loudnorm=I=-20:LRA=7:TP=-2",
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-i",
+        str(source),
+        "-t",
+        f"{max_seconds:.3f}",
+        "-vn",
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        "-af",
+        "highpass=f=70,lowpass=f=7600,afftdn=nf=-28,afade=t=in:st=0:d=0.015,areverse,afade=t=in:st=0:d=0.020,areverse,loudnorm=I=-20:LRA=7:TP=-2",
         str(destination),
     ]
     result = _REAL_SUBPROCESS.run(command, stdout=_REAL_SUBPROCESS.PIPE, stderr=_REAL_SUBPROCESS.PIPE, check=False)
@@ -235,16 +245,34 @@ def _prepare_guarded_segments(source: Path, destination: Path) -> list[dict[str,
 
 def _extract_clip(source: Path, destination: Path, start: float, duration: float) -> None:
     command = [
-        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-        "-ss", f"{max(0.0, start):.3f}", "-t", f"{max(0.30, duration):.3f}",
-        "-i", str(source), "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(destination),
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-ss",
+        f"{max(0.0, start):.3f}",
+        "-t",
+        f"{max(0.30, duration):.3f}",
+        "-i",
+        str(source),
+        "-vn",
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        "-c:a",
+        "pcm_s16le",
+        str(destination),
     ]
     result = _REAL_SUBPROCESS.run(command, stdout=_REAL_SUBPROCESS.PIPE, stderr=_REAL_SUBPROCESS.PIPE, check=False)
     if result.returncode != 0 or not destination.is_file():
         raise RuntimeError(f"Не удалось извлечь аудио реплики для QA: {destination.name}")
 
 
-def verify_timeline(timeline: Path, segments: list[dict[str, Any]], report_path: Path) -> tuple[list[int], dict[str, Any]]:
+def verify_timeline(
+    timeline: Path, segments: list[dict[str, Any]], report_path: Path
+) -> tuple[list[int], dict[str, Any]]:
     checks: list[dict[str, Any]] = []
     failed: list[int] = []
     with tempfile.TemporaryDirectory(prefix="tts-semantic-qa-") as temp_raw:
@@ -297,7 +325,9 @@ def _invalidate_legacy_checkpoints(work_dir: Path) -> None:
     marker.unlink(missing_ok=True)
 
 
-def _retarget_checkpoints(work_dir: Path, *, good_ids: Iterable[int], failed_ids: Iterable[int], new_base_seed: int) -> None:
+def _retarget_checkpoints(
+    work_dir: Path, *, good_ids: Iterable[int], failed_ids: Iterable[int], new_base_seed: int
+) -> None:
     good = {int(value) for value in good_ids}
     failed = {int(value) for value in failed_ids}
     for segment_id in good:

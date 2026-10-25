@@ -3,6 +3,7 @@
 
 Pure functions only: callers own when and where the policy is applied.
 """
+
 from __future__ import annotations
 
 import re
@@ -11,31 +12,93 @@ from typing import Any
 
 from core.person_names import normalize_person_names
 
-RU_SERVICE_WORDS = frozenset({
-    "а", "без", "бы", "в", "во", "да", "для", "до", "же", "за", "и",
-    "из", "или", "к", "ко", "ли", "между", "на", "над", "не", "ни", "но",
-    "о", "об", "от", "по", "под", "при", "про", "с", "со", "у", "через",
-})
+RU_SERVICE_WORDS = frozenset(
+    {
+        "а",
+        "без",
+        "бы",
+        "в",
+        "во",
+        "да",
+        "для",
+        "до",
+        "же",
+        "за",
+        "и",
+        "из",
+        "или",
+        "к",
+        "ко",
+        "ли",
+        "между",
+        "на",
+        "над",
+        "не",
+        "ни",
+        "но",
+        "о",
+        "об",
+        "от",
+        "по",
+        "под",
+        "при",
+        "про",
+        "с",
+        "со",
+        "у",
+        "через",
+    }
+)
 
 _PRESERVE_CASE = {
-    "esv": "ESV", "kjv": "KJV", "nasb": "NASB", "niv": "NIV",
-    "lsb": "LSB", "nlt": "NLT", "csb": "CSB", "nkjv": "NKJV",
-    "rsv": "RSV", "net": "NET", "nrsv": "NRSV", "leb": "LEB",
-    "asv": "ASV", "lbcf": "LBCF", "lbcf1689": "LBCF1689",
-    "wcf": "WCF", "tulip": "TULIP", "q&a": "Q&A", "qa": "QA",
-    "youtube": "YouTube", "rutube": "RuTube", "vk": "VK",
-    "iphone": "iPhone", "ipad": "iPad", "na28": "NA28",
-    "bhs": "BHS", "lxx": "LXX",
+    "esv": "ESV",
+    "kjv": "KJV",
+    "nasb": "NASB",
+    "niv": "NIV",
+    "lsb": "LSB",
+    "nlt": "NLT",
+    "csb": "CSB",
+    "nkjv": "NKJV",
+    "rsv": "RSV",
+    "net": "NET",
+    "nrsv": "NRSV",
+    "leb": "LEB",
+    "asv": "ASV",
+    "lbcf": "LBCF",
+    "lbcf1689": "LBCF1689",
+    "wcf": "WCF",
+    "tulip": "TULIP",
+    "q&a": "Q&A",
+    "qa": "QA",
+    "youtube": "YouTube",
+    "rutube": "RuTube",
+    "vk": "VK",
+    "iphone": "iPhone",
+    "ipad": "iPad",
+    "na28": "NA28",
+    "bhs": "BHS",
+    "lxx": "LXX",
 }
 
 _EDGE_RE = re.compile(r"^([^А-Яа-яЁёA-Za-z0-9]*)(.*?)([^А-Яа-яЁёA-Za-z0-9]*)$")
 _CYRILLIC_RE = re.compile(r"[А-Яа-яЁё]")
 _SPACED_DASH_RE = re.compile(r"\s+([—–-])\s+")
-_DELIVERY_MARKERS = tuple(sorted({
-    " — русский дубляж", " — только русский голос", " — русские субтитры",
-    " — исходные субтитры", " — точная расшифровка", " — шаблон перевода",
-    " — проверка перевода", " — перевод",
-}, key=len, reverse=True))
+_DELIVERY_MARKERS = tuple(
+    sorted(
+        {
+            " — русский дубляж",
+            " — только русский голос",
+            " — русские субтитры",
+            " — исходные субтитры",
+            " — точная расшифровка",
+            " — шаблон перевода",
+            " — проверка перевода",
+            " — перевод",
+        },
+        key=len,
+        reverse=True,
+    )
+)
 
 
 def _split_edges(token: str) -> tuple[str, str, str]:
@@ -49,7 +112,7 @@ def _split_edges(token: str) -> tuple[str, str, str]:
 def _capitalize(word: str) -> str:
     for index, char in enumerate(word):
         if char.isalpha():
-            return word[:index] + char.upper() + word[index + 1:]
+            return word[:index] + char.upper() + word[index + 1 :]
     return word
 
 
@@ -86,7 +149,7 @@ def canonical_delivery_filename(value: Any) -> str:
     if not filename:
         return filename
     suffix = Path(filename).suffix
-    stem = filename[:-len(suffix)] if suffix else filename
+    stem = filename[: -len(suffix)] if suffix else filename
     if not _CYRILLIC_RE.search(stem):
         return filename
     folded = stem.casefold()
@@ -101,14 +164,15 @@ def media_title_policy_contract() -> tuple[bool, str]:
     ok = (
         canonical_media_title("Сила И Достоинство Благочестивой Женщины - Джон Пайпер")
         == "Сила и Достоинство Благочестивой Женщины - Джон Пайпер"
-        and canonical_delivery_filename(
-            "Сила И Достоинство - Джон Пайпер — русский дубляж.mp4"
-        ) == "Сила и Достоинство - Джон Пайпер — русский дубляж.mp4"
+        and canonical_delivery_filename("Сила И Достоинство - Джон Пайпер — русский дубляж.mp4")
+        == "Сила и Достоинство - Джон Пайпер — русский дубляж.mp4"
     )
     return ok, "source-owned canonical Russian Title Case + delivery filename policy"
 
 
 __all__ = [
-    "RU_SERVICE_WORDS", "canonical_delivery_filename", "canonical_media_title",
+    "RU_SERVICE_WORDS",
+    "canonical_delivery_filename",
+    "canonical_media_title",
     "media_title_policy_contract",
 ]

@@ -47,9 +47,7 @@ def test_equal_quality_windows_choose_typical_pitch_not_lowest_pitch(monkeypatch
     )
     selected = min(candidates, key=lambda item: float(item["score"]))
 
-    assert selected["selection_policy"] == (
-        "robust-typical-f0-continuous-window-v1"
-    )
+    assert selected["selection_policy"] == ("robust-typical-f0-continuous-window-v1")
     assert selected["stats"]["f0_median"] == 170.0
     assert selected["robust_f0_median"] == 170.0
     lowest = [item for item in candidates if item["stats"]["f0_median"] == 90.0]

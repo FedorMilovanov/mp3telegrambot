@@ -4,10 +4,7 @@ from services.livedub_info_evidence import sampled_srt_to_timed_text, sanitize_c
 
 
 def _block(index: int, minute: int, text: str) -> str:
-    return (
-        f"{index}\n00:{minute:02d}:00,000 --> 00:{minute:02d}:05,000\n"
-        f"{text}\n"
-    )
+    return f"{index}\n00:{minute:02d}:00,000 --> 00:{minute:02d}:05,000\n{text}\n"
 
 
 def test_srt_sampling_covers_beginning_middle_and_end(tmp_path: Path):
@@ -32,9 +29,7 @@ def test_unsupported_scripture_and_generic_claims_are_removed():
             "Эпистемология исследует, как мы знаем то, что знаем.",
         ],
         "hashtags": ["#ABlueprintForThinkingWithР.Ч.Спроул", "#Эпистемология"],
-        "scripture_references": [
-            {"ref": "3 Царств 16:30", "text_ru": "Ахав делал злое пред очами Господа."}
-        ],
+        "scripture_references": [{"ref": "3 Царств 16:30", "text_ru": "Ахав делал злое пред очами Господа."}],
         "key_theological_terms": ["Эпистемология"],
     }
     evidence = "[00:00] Эпистемология задаёт вопрос, как мы знаем то, что знаем."

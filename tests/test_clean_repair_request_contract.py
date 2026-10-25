@@ -48,9 +48,7 @@ def _root(tmp_path: Path, request: dict, *, segment_ids=(1, 2)) -> Path:
 def _refresh_request_hash(root: Path) -> None:
     repair_path = root / "input" / "audio_repair.json"
     payload = json.loads(repair_path.read_text(encoding="utf-8"))
-    payload["segments_sha256"] = repair.legacy_repair._sha256(
-        root / "segments_ru_final.json"
-    )
+    payload["segments_sha256"] = repair.legacy_repair._sha256(root / "segments_ru_final.json")
     repair_path.write_text(
         json.dumps(payload, ensure_ascii=False),
         encoding="utf-8",
@@ -118,9 +116,9 @@ def test_stale_segment_hash_stops_before_migration(tmp_path: Path) -> None:
         {"repair_all": True, "segment_ids": [1, 2]},
     )
     segments_path = root / "segments_ru_final.json"
-    before_request_hash = json.loads(
-        (root / "input" / "audio_repair.json").read_text(encoding="utf-8")
-    )["segments_sha256"]
+    before_request_hash = json.loads((root / "input" / "audio_repair.json").read_text(encoding="utf-8"))[
+        "segments_sha256"
+    ]
     segments_path.write_text(
         segments_path.read_text(encoding="utf-8") + "\n",
         encoding="utf-8",
@@ -173,5 +171,3 @@ def test_invalid_request_stops_before_legacy_main(monkeypatch, tmp_path: Path) -
     with pytest.raises(RuntimeError, match="repair_all должен быть bool"):
         repair.main()
     assert calls == 0
-
-

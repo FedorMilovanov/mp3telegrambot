@@ -11,6 +11,7 @@ final-mix timeline.
 Evidence is passed explicitly by the Factory composition owner. There is no
 ambient timeline state and no fallback to unverified original-language timestamps.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -121,10 +122,7 @@ def _caption_cue_is_lexical_speech(text: str) -> bool:
     for left, right in wrappers:
         if candidate.startswith(left) and candidate.endswith(right):
             inner = candidate[1:-1].strip(" .!?:;-—–_\t")
-            words = [
-                "".join(char for char in token if char.isalpha())
-                for token in inner.split()
-            ]
+            words = ["".join(char for char in token if char.isalpha()) for token in inner.split()]
             words = [word for word in words if word]
             if words and all(word in _STAGE_ONLY_WORDS for word in words):
                 return False
@@ -274,10 +272,7 @@ async def _detect_exact_ru_speech(ru_audio_path: Path) -> dict[str, Any]:
     ]
     result = await run_cancellable_process(command, timeout=1200, text=True)
     if result.returncode != 0:
-        raise RuntimeError(
-            "FFmpeg could not derive exact VOT RU speech boundaries: "
-            + (result.stderr or "")[-300:]
-        )
+        raise RuntimeError("FFmpeg could not derive exact VOT RU speech boundaries: " + (result.stderr or "")[-300:])
 
     raw_intervals = speech_intervals_from_silence_log(
         result.stderr or "",
@@ -287,15 +282,10 @@ async def _detect_exact_ru_speech(ru_audio_path: Path) -> dict[str, Any]:
         raise RuntimeError("exact VOT RU track contains no proved speech intervals")
 
     delay_sec = max(0.0, float(get_mix_params().get("delay_ms", 0)) / 1000.0)
-    final_intervals = [
-        (start + delay_sec, end + delay_sec)
-        for start, end in raw_intervals
-        if end > start
-    ]
+    final_intervals = [(start + delay_sec, end + delay_sec) for start, end in raw_intervals if end > start]
     speech_seconds = sum(end - start for start, end in raw_intervals)
     logger.info(
-        "Shorts Factory RU boundary proof: source=%s duration=%.3fs "
-        "intervals=%d speech=%.1fs delay=%.3fs",
+        "Shorts Factory RU boundary proof: source=%s duration=%.3fs intervals=%d speech=%.1fs delay=%.3fs",
         ru_audio_path.name,
         exact_duration,
         len(final_intervals),
@@ -347,9 +337,7 @@ async def prepare_factory_ru_boundary_evidence(
 ) -> dict[str, Any]:
     exact_ru = read_ru_audio_provenance(workdir)
     if exact_ru is None:
-        raise RuntimeError(
-            "Exact VOT RU provenance is unavailable; translated cuts cannot be proved"
-        )
+        raise RuntimeError("Exact VOT RU provenance is unavailable; translated cuts cannot be proved")
 
     ru_task = asyncio.create_task(
         _detect_exact_ru_speech(exact_ru),
@@ -379,8 +367,7 @@ async def prepare_factory_ru_boundary_evidence(
         raise
     except Exception as exc:
         logger.warning(
-            "Shorts Factory source-speech captions unavailable; "
-            "using RU-only gap evidence: %s",
+            "Shorts Factory source-speech captions unavailable; using RU-only gap evidence: %s",
             str(exc)[:220],
         )
 
@@ -506,10 +493,14 @@ def _reclaim_public_limit(*, render_start, render_end, target_start, target_end,
 
 
 def align_candidates_to_ru_speech(
-    candidates: list[dict[str, Any]], *, source_duration: int | float,
-    speech_intervals: list[tuple[float, float]], delay_seconds: float,
+    candidates: list[dict[str, Any]],
+    *,
+    source_duration: int | float,
+    speech_intervals: list[tuple[float, float]],
+    delay_seconds: float,
     source_speech_intervals: list[tuple[float, float]] | None = None,
-    source_speech_proof: str = "", proof: str | None = None,
+    source_speech_proof: str = "",
+    proof: str | None = None,
     candidate_kind: CandidateKind = "short",
 ) -> list[dict[str, Any]]:
     if not candidates:
@@ -531,17 +522,44 @@ def align_candidates_to_ru_speech(
     end_pad = _env_float("SHORTS_FACTORY_RU_END_PAD_SEC", 0.08, 0.0, 0.30)
     source_cover_grace = _env_quality_max("SHORTS_FACTORY_SOURCE_RU_COVERAGE_GRACE_SEC", 0.20, 0.0, 0.75)
     edge_window = _env_quality_min("SHORTS_FACTORY_SOURCE_EDGE_WINDOW_SEC", 2.0, 0.5, 5.0)
-    no_source_max_gap = _env_quality_max("SHORTS_FACTORY_RU_MAX_INTERNAL_GAP_NO_SOURCE_LONG_SEC" if is_long else "SHORTS_FACTORY_RU_MAX_INTERNAL_GAP_NO_SOURCE_SEC", 12.0 if is_long else 4.5, 1.0, 30.0)
-    minimum_coverage = _env_quality_min("SHORTS_FACTORY_RU_MIN_COVERAGE_LONG" if is_long else "SHORTS_FACTORY_RU_MIN_COVERAGE", 0.30 if is_long else 0.45, 0.15, 0.98)
-    max_source_without_ru = _env_quality_max("SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_BURST_LONG_SEC" if is_long else "SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_BURST_SEC", 8.0 if is_long else 4.0, 1.0, 20.0)
-    configured_edge_limit = _env_quality_max("SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_EDGE_LONG_SEC" if is_long else "SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_EDGE_SEC", 1.50 if is_long else 1.25, 0.50, 4.0)
+    no_source_max_gap = _env_quality_max(
+        "SHORTS_FACTORY_RU_MAX_INTERNAL_GAP_NO_SOURCE_LONG_SEC"
+        if is_long
+        else "SHORTS_FACTORY_RU_MAX_INTERNAL_GAP_NO_SOURCE_SEC",
+        12.0 if is_long else 4.5,
+        1.0,
+        30.0,
+    )
+    minimum_coverage = _env_quality_min(
+        "SHORTS_FACTORY_RU_MIN_COVERAGE_LONG" if is_long else "SHORTS_FACTORY_RU_MIN_COVERAGE",
+        0.30 if is_long else 0.45,
+        0.15,
+        0.98,
+    )
+    max_source_without_ru = _env_quality_max(
+        "SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_BURST_LONG_SEC"
+        if is_long
+        else "SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_BURST_SEC",
+        8.0 if is_long else 4.0,
+        1.0,
+        20.0,
+    )
+    configured_edge_limit = _env_quality_max(
+        "SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_EDGE_LONG_SEC"
+        if is_long
+        else "SHORTS_FACTORY_MAX_UNTRANSLATED_SOURCE_EDGE_SEC",
+        1.50 if is_long else 1.25,
+        0.50,
+        4.0,
+    )
     edge_source_without_ru = max(configured_edge_limit, delay + source_cover_grace + 0.15)
     aligned, rejected = [], []
     for item in copy.deepcopy(candidates):
         semantic_start, semantic_end = _candidate_seconds(item)
         semantic_duration = semantic_end - semantic_start
         if semantic_duration <= 0 or semantic_duration > public_max + 1e-6:
-            rejected.append(str(item.get("title") or "invalid-or-overlong")); continue
+            rejected.append(str(item.get("title") or "invalid-or-overlong"))
+            continue
         target_start, target_end = semantic_start + delay, semantic_end + delay
         start_interval = _find_interval_containing(intervals, target_start)
         if start_interval:
@@ -549,7 +567,8 @@ def align_candidates_to_ru_speech(
         else:
             next_interval = _next_interval(intervals, target_start)
             if next_interval is None or next_interval[0] - target_start > max_start_forward:
-                rejected.append(str(item.get("title") or "start-no-ru-speech")); continue
+                rejected.append(str(item.get("title") or "start-no-ru-speech"))
+                continue
             render_start = next_interval[0]
         end_interval = _find_interval_containing(intervals, target_end)
         if end_interval:
@@ -557,47 +576,78 @@ def align_candidates_to_ru_speech(
         else:
             previous_interval = _previous_interval(intervals, target_end)
             if previous_interval is None or target_end - previous_interval[1] > max_end_back:
-                rejected.append(str(item.get("title") or "end-no-ru-speech")); continue
+                rejected.append(str(item.get("title") or "end-no-ru-speech"))
+                continue
             render_end = previous_interval[1] + end_pad
         render_start, render_end = max(0.0, min(source_limit, render_start)), max(0.0, min(source_limit, render_end))
-        reclaimed = _reclaim_public_limit(render_start=render_start, render_end=render_end, target_start=target_start, target_end=target_end, public_max=public_max)
+        reclaimed = _reclaim_public_limit(
+            render_start=render_start,
+            render_end=render_end,
+            target_start=target_start,
+            target_end=target_end,
+            public_max=public_max,
+        )
         if reclaimed is None:
-            rejected.append(str(item.get("title") or "too-long-after-ru-align")); continue
+            rejected.append(str(item.get("title") or "too-long-after-ru-align"))
+            continue
         render_start, render_end = reclaimed
         rendered_duration = render_end - render_start
         if rendered_duration < minimum - 1e-6:
-            rejected.append(str(item.get("title") or "too-short-after-ru-align")); continue
+            rejected.append(str(item.get("title") or "too-short-after-ru-align"))
+            continue
         coverage, largest_gap = _clip_speech_stats(intervals, render_start, render_end)
         if coverage + 1e-6 < minimum_coverage:
-            rejected.append(str(item.get("title") or "low-ru-speech-coverage")); continue
+            rejected.append(str(item.get("title") or "low-ru-speech-coverage"))
+            continue
         source_uncovered_total = source_uncovered_largest = source_uncovered_edge = 0.0
         if source_intervals:
-            source_uncovered_total, source_uncovered_largest, uncovered_spans = _source_without_ru_stats(source_intervals, intervals, start=render_start, end=render_end, cover_grace=source_cover_grace)
-            source_uncovered_edge = _edge_uncovered_max(uncovered_spans, start=render_start, end=render_end, edge_window=edge_window)
+            source_uncovered_total, source_uncovered_largest, uncovered_spans = _source_without_ru_stats(
+                source_intervals, intervals, start=render_start, end=render_end, cover_grace=source_cover_grace
+            )
+            source_uncovered_edge = _edge_uncovered_max(
+                uncovered_spans, start=render_start, end=render_end, edge_window=edge_window
+            )
             if source_uncovered_edge > edge_source_without_ru + 1e-6:
-                rejected.append(str(item.get("title") or "source-edge-without-ru")); continue
+                rejected.append(str(item.get("title") or "source-edge-without-ru"))
+                continue
             if source_uncovered_largest > max_source_without_ru + 1e-6:
-                rejected.append(str(item.get("title") or "source-speech-without-ru")); continue
+                rejected.append(str(item.get("title") or "source-speech-without-ru"))
+                continue
         elif largest_gap > no_source_max_gap + 1e-6:
-            rejected.append(str(item.get("title") or "untranslated-ru-gap")); continue
-        item.update({
-            "start_seconds": render_start, "end_seconds": render_end,
-            "duration_seconds": rendered_duration, "start": _format_seconds(render_start),
-            "end": _format_seconds(render_end), "livedub_semantic_start_seconds": semantic_start,
-            "livedub_semantic_end_seconds": semantic_end, "livedub_ru_target_start_seconds": target_start,
-            "livedub_ru_target_end_seconds": target_end, "livedub_ru_boundary_proof": effective_proof,
-            "livedub_ru_start_shift_seconds": render_start - semantic_start,
-            "livedub_ru_end_shift_seconds": render_end - semantic_end,
-            "livedub_ru_speech_coverage": coverage, "livedub_ru_max_internal_gap_seconds": largest_gap,
-            "livedub_source_speech_proof": source_speech_proof or "unavailable",
-            "livedub_source_without_ru_seconds": source_uncovered_total,
-            "livedub_source_without_ru_max_burst_seconds": source_uncovered_largest,
-            "livedub_source_without_ru_edge_seconds": source_uncovered_edge,
-            "livedub_candidate_kind": candidate_kind,
-        })
+            rejected.append(str(item.get("title") or "untranslated-ru-gap"))
+            continue
+        item.update(
+            {
+                "start_seconds": render_start,
+                "end_seconds": render_end,
+                "duration_seconds": rendered_duration,
+                "start": _format_seconds(render_start),
+                "end": _format_seconds(render_end),
+                "livedub_semantic_start_seconds": semantic_start,
+                "livedub_semantic_end_seconds": semantic_end,
+                "livedub_ru_target_start_seconds": target_start,
+                "livedub_ru_target_end_seconds": target_end,
+                "livedub_ru_boundary_proof": effective_proof,
+                "livedub_ru_start_shift_seconds": render_start - semantic_start,
+                "livedub_ru_end_shift_seconds": render_end - semantic_end,
+                "livedub_ru_speech_coverage": coverage,
+                "livedub_ru_max_internal_gap_seconds": largest_gap,
+                "livedub_source_speech_proof": source_speech_proof or "unavailable",
+                "livedub_source_without_ru_seconds": source_uncovered_total,
+                "livedub_source_without_ru_max_burst_seconds": source_uncovered_largest,
+                "livedub_source_without_ru_edge_seconds": source_uncovered_edge,
+                "livedub_candidate_kind": candidate_kind,
+            }
+        )
         aligned.append(item)
     if rejected:
-        logger.warning("Shorts Factory RU boundary alignment rejected %d/%d %s candidates: %s", len(rejected), len(candidates), candidate_kind, ", ".join(rejected[:8]))
+        logger.warning(
+            "Shorts Factory RU boundary alignment rejected %d/%d %s candidates: %s",
+            len(rejected),
+            len(candidates),
+            candidate_kind,
+            ", ".join(rejected[:8]),
+        )
     return aligned
 
 
@@ -612,10 +662,7 @@ def align_factory_livedub_candidates(
         return []
     timeline = dict(evidence or {})
     if not timeline:
-        raise RuntimeError(
-            "Exact VOT RU boundary proof is unavailable; "
-            "refusing unverified original-timeline cuts"
-        )
+        raise RuntimeError("Exact VOT RU boundary proof is unavailable; refusing unverified original-timeline cuts")
     return align_candidates_to_ru_speech(
         candidates,
         source_duration=source_duration,
@@ -629,8 +676,12 @@ def align_factory_livedub_candidates(
 
 
 __all__ = [
-    "PUBLIC_LONG_MAX_SEC", "PUBLIC_SHORT_MAX_SEC", "RU_BOUNDARY_PROOF",
-    "RU_ONLY_BOUNDARY_PROOF", "align_candidates_to_ru_speech",
+    "PUBLIC_LONG_MAX_SEC",
+    "PUBLIC_SHORT_MAX_SEC",
+    "RU_BOUNDARY_PROOF",
+    "RU_ONLY_BOUNDARY_PROOF",
+    "align_candidates_to_ru_speech",
     "align_factory_livedub_candidates",
-    "prepare_factory_ru_boundary_evidence", "speech_intervals_from_silence_log",
+    "prepare_factory_ru_boundary_evidence",
+    "speech_intervals_from_silence_log",
 ]

@@ -5,6 +5,7 @@ deleted by montage/shorts, orphaned livedub subtasks, lost ENG delivery on
 too-big early return, playlist unguarded edit_text, cache-hit re-download,
 progress dedup cross-chat bleed, ENG Quick fake success.
 """
+
 import asyncio
 from pathlib import Path
 
@@ -50,8 +51,7 @@ def test_montage_does_not_own_borrowed_livedub_video():
             continue
         livedub_branch = chunk.split("livedub_video_path).exists()", 1)[1]
         before_else = livedub_branch.split("else:", 1)[0]
-        assert "owned_video = True" not in before_else, \
-            "owned_video нельзя ставить в LiveDub-ветке"
+        assert "owned_video = True" not in before_else, "owned_video нельзя ставить в LiveDub-ветке"
 
 
 def test_shorts_keeps_video_for_clips_and_never_deletes_borrowed():
@@ -90,7 +90,7 @@ def test_playlist_status_edits_are_guarded():
     # оставшиеся raw edit_text обязаны быть внутри try с reply_text-fallback
     for i, line in enumerate(src.splitlines(), 1):
         if "await status_msg.edit_text(" in line:
-            context = "\n".join(src.splitlines()[max(0, i - 4):i + 4])
+            context = "\n".join(src.splitlines()[max(0, i - 4) : i + 4])
             assert "except" in context, f"строка {i}: незащищённый edit_text"
 
 
@@ -138,7 +138,7 @@ def test_livedub_qa_cached_analysis_must_pass_normal_cache_validity():
     assert "cached = await get_cached(media_id)" in block
     assert "validate_cache(cached)" in block
     assert "if cache_ok:" in block
-    assert "qa_ai_data = (cached or {}).get(\"ai_data\")" in block
+    assert 'qa_ai_data = (cached or {}).get("ai_data")' in block
     assert "stale cached analysis ignored" in block
 
 

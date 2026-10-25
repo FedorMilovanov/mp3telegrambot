@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Highest-quality two-pass fit for oversized Factory long clips."""
+
 from __future__ import annotations
 
 import logging
@@ -47,8 +48,7 @@ def factory_long_target_video_kbps(
     video_kbps = int(math.floor(total_kbps - float(audio_kbps) - 24.0))
     if video_kbps < _FACTORY_LONG_MIN_VIDEO_KBPS:
         raise RuntimeError(
-            "Factory long clip cannot fit the Telegram limit without an "
-            f"unacceptable video bitrate ({video_kbps} kbps)"
+            f"Factory long clip cannot fit the Telegram limit without an unacceptable video bitrate ({video_kbps} kbps)"
         )
     return video_kbps
 
@@ -174,9 +174,7 @@ async def fit_factory_long_clip_to_limit(
     """Two-pass encode the exact audited interval at the highest bitrate that fits."""
     duration = float(end_seconds) - float(start_seconds)
     if duration <= 0 or duration > _FACTORY_LONG_MAX_SEC:
-        raise RuntimeError(
-            f"Factory long fit received invalid duration {duration:.3f}s"
-        )
+        raise RuntimeError(f"Factory long fit received invalid duration {duration:.3f}s")
 
     ensure_factory_long_fit_space(output_path.parent, max_file_size_mb)
     limit_bytes = int(float(max_file_size_mb) * 1024 * 1024)

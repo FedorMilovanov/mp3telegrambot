@@ -7,6 +7,7 @@ voice/render contract change advances the release so an idle stale process is
 replaced before it can claim another production job. Shared backend constants
 are imported from the active contract rather than copied here.
 """
+
 from __future__ import annotations
 
 from services.speech_backends.base import (

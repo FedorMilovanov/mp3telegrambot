@@ -10,6 +10,7 @@ R28 переключал статичную заставку с crop на full_f
 резкий передний план вписывается целиком (decrease), setsar=1 — квадратный
 пиксель, чтобы ничто не растягивалось при показе.
 """
+
 from pathlib import Path
 
 SHORTS = Path("services/shorts_video_impl.py").read_text(encoding="utf-8")

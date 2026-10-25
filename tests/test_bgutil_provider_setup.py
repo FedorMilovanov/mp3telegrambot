@@ -43,9 +43,7 @@ def _write_ready_runtime(provider: Path) -> tuple[Path, Path, Path, Path]:
     )
     commander = node_modules / "commander"
     commander.mkdir()
-    (commander / "package.json").write_text(
-        json.dumps({"name": "commander", "version": "15.0.0"}), encoding="utf-8"
-    )
+    (commander / "package.json").write_text(json.dumps({"name": "commander", "version": "15.0.0"}), encoding="utf-8")
     (node_modules / ".package-lock.json").write_text(
         json.dumps(
             {
@@ -57,9 +55,7 @@ def _write_ready_runtime(provider: Path) -> tuple[Path, Path, Path, Path]:
     )
     plugin = provider / "plugin" / "yt_dlp_plugins" / "extractor" / "getpot_bgutil.py"
     plugin.parent.mkdir(parents=True)
-    plugin.write_text(
-        f"__version__ = '{setup.BGUTIL_VERSION}'\n", encoding="utf-8"
-    )
+    plugin.write_text(f"__version__ = '{setup.BGUTIL_VERSION}'\n", encoding="utf-8")
     marker = provider / ".mp3bot-bgutil-version"
     marker.write_text(
         f"{setup.BGUTIL_VERSION}@{setup.BGUTIL_COMMIT}\n",
@@ -167,9 +163,7 @@ def test_node_version_floor(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         setup,
         "_owned_run",
-        lambda *_args, **_kwargs: SimpleNamespace(
-            stdout="v21.7.0\n", stderr="", returncode=0
-        ),
+        lambda *_args, **_kwargs: SimpleNamespace(stdout="v21.7.0\n", stderr="", returncode=0),
     )
 
     with pytest.raises(setup.ProvisionError, match="< 22"):
@@ -185,22 +179,15 @@ def test_compiled_script_offline_smoke_requires_exact_version(
     monkeypatch.setattr(
         setup,
         "_owned_run",
-        lambda *_args, **_kwargs: SimpleNamespace(
-            stdout=f"{setup.BGUTIL_VERSION}\n", stderr="", returncode=0
-        ),
+        lambda *_args, **_kwargs: SimpleNamespace(stdout=f"{setup.BGUTIL_VERSION}\n", stderr="", returncode=0),
     )
 
-    assert (
-        setup._require_script_version("node", script=script, cwd=tmp_path)
-        == setup.BGUTIL_VERSION
-    )
+    assert setup._require_script_version("node", script=script, cwd=tmp_path) == setup.BGUTIL_VERSION
 
     monkeypatch.setattr(
         setup,
         "_owned_run",
-        lambda *_args, **_kwargs: SimpleNamespace(
-            stdout="", stderr="syntax error", returncode=1
-        ),
+        lambda *_args, **_kwargs: SimpleNamespace(stdout="", stderr="syntax error", returncode=1),
     )
     with pytest.raises(setup.ProvisionError, match="offline syntax check"):
         setup._require_script_version("node", script=script, cwd=tmp_path)
@@ -369,9 +356,7 @@ def test_provisioner_is_exact_source_and_browserless_by_contract() -> None:
 
 def test_launcher_reconciles_legacy_providers_before_shared_provisioner() -> None:
     launcher = Path("Start Bot.bat").read_text(encoding="utf-8")
-    cleanup = launcher.index(
-        "pip uninstall -y yt-dlp-getpot-wpc nodriver bgutil-ytdlp-pot-provider"
-    )
+    cleanup = launcher.index("pip uninstall -y yt-dlp-getpot-wpc nodriver bgutil-ytdlp-pot-provider")
     provision = launcher.index("tools\\ensure_bgutil_provider.py")
     start = launcher.index('"%VENV_PYTHON%" bot_new.py')
 

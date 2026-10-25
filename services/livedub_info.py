@@ -6,6 +6,7 @@ meaning summaries, theological terms and Scripture references. The module owns
 the exact Gemini 3.8/HIGH semantic route but delegates transport/retry/capacity
 to core.globals.gemini_generate, so it cannot start an independent retry storm.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -40,14 +41,15 @@ DEFAULT_LIGHT_MODEL = DEFAULT_INFO_MODEL
 
 def livedub_info_enabled() -> bool:
     return os.getenv("LIVEDUB_INFO_CARD", "1").strip().lower() not in {
-        "0", "false", "no", "off",
+        "0",
+        "false",
+        "no",
+        "off",
     }
 
 
 def get_light_model() -> str:
-    configured = (
-        os.getenv("LIVEDUB_INFO_MODEL", DEFAULT_INFO_MODEL) or DEFAULT_INFO_MODEL
-    ).strip()
+    configured = (os.getenv("LIVEDUB_INFO_MODEL", DEFAULT_INFO_MODEL) or DEFAULT_INFO_MODEL).strip()
     if configured != DEFAULT_INFO_MODEL:
         logger.warning(
             "[LiveDubInfo] refusing semantic model override %r; using %s",
@@ -78,7 +80,8 @@ def livedub_info_response_schema() -> dict:
             "compact_subtitles": {"type": "array", "items": {"type": "string"}},
             "hashtags": {"type": "array", "items": {"type": "string"}},
             "key_theological_terms": {
-                "type": "array", "items": {"type": "string"},
+                "type": "array",
+                "items": {"type": "string"},
             },
             "scripture_references": {
                 "type": "array",
@@ -93,8 +96,12 @@ def livedub_info_response_schema() -> dict:
             },
         },
         "required": [
-            "telegram_description", "youtube_title", "youtube_description",
-            "compact_subtitles", "hashtags", "key_theological_terms",
+            "telegram_description",
+            "youtube_title",
+            "youtube_description",
+            "compact_subtitles",
+            "hashtags",
+            "key_theological_terms",
             "scripture_references",
         ],
     }
@@ -145,22 +152,12 @@ def _normalize_card(data: dict, fallback_title: str, source_url: str = "") -> di
         terms = []
 
     out = {
-        "telegram_description": _safe_text(
-            data.get("telegram_description") or fb["telegram_description"], 520
-        ),
-        "youtube_title": title_case_fragment(
-            _safe_text(data.get("youtube_title") or fb["youtube_title"], 100)
-        ),
-        "youtube_description": _safe_text(
-            data.get("youtube_description") or fb["youtube_description"], 1200
-        ),
-        "compact_subtitles": [
-            _safe_text(x, 140) for x in compact[:6] if _safe_text(x, 140)
-        ],
+        "telegram_description": _safe_text(data.get("telegram_description") or fb["telegram_description"], 520),
+        "youtube_title": title_case_fragment(_safe_text(data.get("youtube_title") or fb["youtube_title"], 100)),
+        "youtube_description": _safe_text(data.get("youtube_description") or fb["youtube_description"], 1200),
+        "compact_subtitles": [_safe_text(x, 140) for x in compact[:6] if _safe_text(x, 140)],
         "hashtags": [],
-        "key_theological_terms": [
-            _safe_text(x, 60) for x in terms[:5] if _safe_text(x, 60)
-        ],
+        "key_theological_terms": [_safe_text(x, 60) for x in terms[:5] if _safe_text(x, 60)],
         "scripture_references": scripture[:5],
         "source_url": _safe_text(source_url or fb.get("source_url"), 500),
         "source": "gemini_quality",
@@ -219,9 +216,7 @@ async def build_livedub_info_card(
 
     clients = _gemini_clients_snapshot()
     if not clients:
-        return await _finalize_info_card(
-            fallback, title_line=title_line, source_url=source_url, evidence=evidence
-        )
+        return await _finalize_info_card(fallback, title_line=title_line, source_url=source_url, evidence=evidence)
 
     prompt = f"""
 Ты готовишь короткие текстовые материалы для русскоязычной публикации переведённого видео.
@@ -276,18 +271,14 @@ Paul Washer=Пол Вошер, Abner Chou=Абнер Чау, Costi Hinn=Кост
         data = json.loads(raw)
         card = _normalize_card(data, title_line, source_url)
         card["model"] = model
-        return await _finalize_info_card(
-            card, title_line=title_line, source_url=source_url, evidence=evidence
-        )
+        return await _finalize_info_card(card, title_line=title_line, source_url=source_url, evidence=evidence)
     except Exception as exc:
         logger.info(
             "[LiveDubInfo] shared Gemini route failed (%s: %s) — deterministic fallback",
             type(exc).__name__,
             str(exc)[:160],
         )
-        return await _finalize_info_card(
-            fallback, title_line=title_line, source_url=source_url, evidence=evidence
-        )
+        return await _finalize_info_card(fallback, title_line=title_line, source_url=source_url, evidence=evidence)
 
 
 def _h(text: Any) -> str:

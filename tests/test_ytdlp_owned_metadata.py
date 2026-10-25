@@ -13,11 +13,7 @@ def _module() -> tuple[str, ast.Module]:
 
 
 def _function_source(source: str, tree: ast.Module, name: str) -> str:
-    node = next(
-        item
-        for item in tree.body
-        if isinstance(item, ast.AsyncFunctionDef) and item.name == name
-    )
+    node = next(item for item in tree.body if isinstance(item, ast.AsyncFunctionDef) and item.name == name)
     return ast.get_source_segment(source, node) or ""
 
 

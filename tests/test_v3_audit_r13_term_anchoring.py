@@ -10,6 +10,7 @@
 Фикс: явный анти-дефолт сразу после образца + разнообразие illustративных
 примеров, чтобы ни одна пара терминов не доминировала в промте.
 """
+
 from core.prompts import STUDY_ANALYSIS_PROMPT, REFLECTION_APPLICATION_PROMPT
 
 

@@ -6,6 +6,7 @@ The low-level model call is owned by the selected backend session; the legacy
 ``_generate`` and ``_generation_profile`` helpers remain only as compatibility
 seams for older facades.
 """
+
 from __future__ import annotations
 
 import inspect
@@ -43,9 +44,7 @@ def build_timeline(
     filters: list[str] = []
     labels: list[str] = []
     for index, (segment, _) in enumerate(fitted_segments):
-        delay_ms = int(round(float(segment["start"]) * 1000.0)) + int(
-            segment.get("start_delay_ms", 0)
-        )
+        delay_ms = int(round(float(segment["start"]) * 1000.0)) + int(segment.get("start_delay_ms", 0))
         label = f"s{index}"
         filters.append(f"[{index}:a]adelay={delay_ms}:all=1[{label}]")
         labels.append(f"[{label}]")
@@ -99,9 +98,7 @@ def _generation_profile(
         cfg = float(plan.backend_options["cfg"])
         steps = int(plan.backend_options["steps"])
     except (KeyError, TypeError, ValueError, OverflowError) as exc:
-        raise RuntimeError(
-            "Backend generation profile не содержит совместимые cfg/steps."
-        ) from exc
+        raise RuntimeError("Backend generation profile не содержит совместимые cfg/steps.") from exc
     return cfg, steps
 
 
@@ -123,10 +120,7 @@ def _generate(
     continuation_text: str = "",
 ) -> Any:
     parameters = inspect.signature(model.generate).parameters
-    accepts_keyword_options = any(
-        parameter.kind is inspect.Parameter.VAR_KEYWORD
-        for parameter in parameters.values()
-    )
+    accepts_keyword_options = any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters.values())
     generation_max_len = min(
         512,
         max(int(max_len), int(math.ceil(max_len * 1.45))),
@@ -150,9 +144,7 @@ def _generate(
     if continuation_reference is not None and continuation_reference.is_file():
         if accepts_keyword_options or "prompt_wav_path" in parameters:
             kwargs["prompt_wav_path"] = str(continuation_reference)
-        if (
-            accepts_keyword_options or "prompt_text" in parameters
-        ) and str(continuation_text or "").strip():
+        if (accepts_keyword_options or "prompt_text" in parameters) and str(continuation_text or "").strip():
             kwargs["prompt_text"] = str(continuation_text).strip()
         elif "reference_text" in parameters and str(continuation_text or "").strip():
             kwargs["reference_text"] = str(continuation_text).strip()
@@ -161,9 +153,8 @@ def _generate(
             kwargs[name] = value
     return model.generate(**kwargs)
 
-_BASE_ALL = tuple(globals().get('__all__', ()))
 
-
+_BASE_ALL = tuple(globals().get("__all__", ()))
 
 
 from tools.voxcpm2 import direct_monolith_contract
@@ -183,6 +174,7 @@ FADE_POLICY = "cadence-aware-short-boundary-envelope-v1"
 
 _legacy_build_timeline = build_timeline
 
+
 def _generation_profile(attempt: int, base_cfg: float, base_steps: int) -> tuple[float, int]:
     """Compatibility wrapper around the selected backend's typed planner."""
     plan = default_backend().plan_generation_profile(
@@ -196,10 +188,9 @@ def _generation_profile(attempt: int, base_cfg: float, base_steps: int) -> tuple
         cfg = float(plan.backend_options["cfg"])
         steps = int(plan.backend_options["steps"])
     except (KeyError, TypeError, ValueError, OverflowError) as exc:
-        raise RuntimeError(
-            "Backend generation profile не содержит совместимые cfg/steps."
-        ) from exc
+        raise RuntimeError("Backend generation profile не содержит совместимые cfg/steps.") from exc
     return cfg, steps
+
 
 def _fade_contract(rendered_speech_duration: float) -> tuple[float, float]:
     segment = direct_monolith_contract.current_segment() or {}
@@ -215,6 +206,7 @@ def _fade_contract(rendered_speech_duration: float) -> tuple[float, float]:
         fade_in = min(0.022, max(0.009, duration * 0.035))
         fade_out = min(0.036, max(0.012, duration * 0.060))
     return fade_in, fade_out
+
 
 def fit_without_slowdown(
     clean_path: Path,
@@ -283,6 +275,7 @@ def fit_without_slowdown(
         "fade_out_seconds": fade_out,
         "fitted_duration": probe_duration(Path(fitted_path)),
     }
+
 
 def build_timeline(
     fitted_segments: list[tuple[dict[str, Any], Path]],

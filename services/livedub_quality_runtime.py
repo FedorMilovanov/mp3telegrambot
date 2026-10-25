@@ -5,6 +5,7 @@ This module owns configuration only.  It deliberately does not wrap or replace
 already-imported service/Telegram functions; LiveDub delivery is explicit in the
 pipeline/coordinator and media probing is source-owned by ``livedub_mix``.
 """
+
 from __future__ import annotations
 
 import os
@@ -101,10 +102,7 @@ def _clear_dead_proxy(value: str) -> None:
 
 def configure_gemini_network() -> str:
     """Use an explicit reachable mixed proxy, otherwise rely on system TUN."""
-    explicit = (
-        os.getenv("GEMINI_PROXY_URL", "").strip()
-        or os.getenv("TELEGRAM_PROXY_URL", "").strip()
-    )
+    explicit = os.getenv("GEMINI_PROXY_URL", "").strip() or os.getenv("TELEGRAM_PROXY_URL", "").strip()
     if not explicit:
         return "system route/TUN"
 
@@ -118,9 +116,7 @@ def configure_gemini_network() -> str:
     no_proxy = [
         item.strip()
         for item in os.environ.get("NO_PROXY", "").split(",")
-        if item.strip()
-        and "googleapis.com" not in item.casefold()
-        and "generativelanguage" not in item.casefold()
+        if item.strip() and "googleapis.com" not in item.casefold() and "generativelanguage" not in item.casefold()
     ]
     for host in ("127.0.0.1", "localhost", "::1"):
         if host not in no_proxy:
@@ -136,10 +132,7 @@ def _validate_quality_models() -> None:
     model = info.get_light_model()
     fallbacks = info.get_light_model_fallbacks()
     if model != _PRIMARY_MODEL or fallbacks:
-        raise RuntimeError(
-            "LiveDub info owner violated semantic route: "
-            f"model={model!r} fallbacks={fallbacks!r}"
-        )
+        raise RuntimeError(f"LiveDub info owner violated semantic route: model={model!r} fallbacks={fallbacks!r}")
 
 
 __all__ = [

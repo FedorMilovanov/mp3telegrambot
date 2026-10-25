@@ -8,16 +8,17 @@ Covers:
 - gemini_analyze exposes a GC-safe background-delete helper (_spawn_safe_delete)
   that retains strong task references in _BG_DELETE_TASKS.
 """
+
 from converters.md_telegraph import _final_telegraph_polish
 
 
 def test_polish_drops_empty_paragraph_keeps_hr_and_img():
     nodes = [
         {"tag": "p", "children": ["настоящий текст"]},
-        {"tag": "p", "children": []},                 # empty -> dropped
-        {"tag": "hr"},                                  # self-closing -> kept
+        {"tag": "p", "children": []},  # empty -> dropped
+        {"tag": "hr"},  # self-closing -> kept
         {"tag": "img", "attrs": {"src": "https://x"}},  # img -> kept
-        {"tag": "p", "children": ["**"]},               # orphan-only -> empty -> dropped
+        {"tag": "p", "children": ["**"]},  # orphan-only -> empty -> dropped
     ]
     out = _final_telegraph_polish(nodes)
     assert {"tag": "p", "children": []} not in out
@@ -35,6 +36,7 @@ def test_polish_keeps_self_closing_br():
 
 def test_gemini_background_delete_helper_is_gc_safe():
     import services.gemini_analyze as g
+
     assert hasattr(g, "_spawn_safe_delete")
     assert hasattr(g, "_BG_DELETE_TASKS")
     assert isinstance(g._BG_DELETE_TASKS, set)

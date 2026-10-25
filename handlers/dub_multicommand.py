@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Reliable multiline Dub command dispatch."""
+
 from __future__ import annotations
 
 import re
@@ -118,9 +119,7 @@ def register_dub_multicommand_handler(application: Any) -> None:
         return
     application.add_handler(
         MessageHandler(
-            filters.UpdateType.MESSAGE
-            & filters.TEXT
-            & filters.Regex(_MULTI_DUB_PATTERN),
+            filters.UpdateType.MESSAGE & filters.TEXT & filters.Regex(_MULTI_DUB_PATTERN),
             handle_dub_multicommand,
             block=True,
         ),

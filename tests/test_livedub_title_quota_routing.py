@@ -11,11 +11,7 @@ FUNCTION = "_translate_livedub_title_for_caption"
 
 def _title_function() -> ast.AsyncFunctionDef:
     tree = ast.parse(SOURCE.read_text(encoding="utf-8"))
-    matches = [
-        node
-        for node in tree.body
-        if isinstance(node, ast.AsyncFunctionDef) and node.name == FUNCTION
-    ]
+    matches = [node for node in tree.body if isinstance(node, ast.AsyncFunctionDef) and node.name == FUNCTION]
     assert len(matches) == 1, f"expected exactly one {FUNCTION}, found {len(matches)}"
     return matches[0]
 
@@ -26,9 +22,7 @@ def test_livedub_title_fallback_uses_common_project_aware_router() -> None:
     router_calls = [
         node
         for node in ast.walk(func)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "gemini_generate"
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "gemini_generate"
     ]
     assert len(router_calls) == 1
     router = router_calls[0]
@@ -77,16 +71,12 @@ def test_livedub_title_router_keeps_sdk_callback_and_total_timeout() -> None:
     sdk_calls = [
         node
         for node in ast.walk(callback)
-        if isinstance(node, ast.Call)
-        and ast.unparse(node.func) == "client.aio.models.generate_content"
+        if isinstance(node, ast.Call) and ast.unparse(node.func) == "client.aio.models.generate_content"
     ]
     assert len(sdk_calls) == 1
 
     wait_calls = [
-        node
-        for node in ast.walk(func)
-        if isinstance(node, ast.Call)
-        and ast.unparse(node.func) == "asyncio.wait_for"
+        node for node in ast.walk(func) if isinstance(node, ast.Call) and ast.unparse(node.func) == "asyncio.wait_for"
     ]
     assert len(wait_calls) == 1
     timeout_kw = next((kw for kw in wait_calls[0].keywords if kw.arg == "timeout"), None)

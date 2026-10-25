@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Автопочинка после публикации: изоляция страниц, цепочка частей, отчёт."""
+
 from __future__ import annotations
 
 import logging
@@ -54,9 +55,7 @@ class Service:
         self.sleeps.append(delay)
 
     async def run(self, urls, **kwargs):
-        return await repair_pages(
-            urls, expand=self.expand, repair=self.repair, sleep=self.sleep, **kwargs
-        )
+        return await repair_pages(urls, expand=self.expand, repair=self.repair, sleep=self.sleep, **kwargs)
 
 
 # ── Настройка и нормализация ─────────────────────────────────────────────

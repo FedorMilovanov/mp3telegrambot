@@ -46,9 +46,7 @@ def _write_timeline(path: Path, *, rising: bool, growing: bool) -> None:
     fade = int(0.015 * sample_rate)
     audio[:fade] *= np.linspace(0.0, 1.0, fade)
     audio[-fade:] *= np.linspace(1.0, 0.0, fade)
-    timeline = np.concatenate(
-        [audio.astype(np.float32), np.zeros(int(0.25 * sample_rate), dtype=np.float32)]
-    )
+    timeline = np.concatenate([audio.astype(np.float32), np.zeros(int(0.25 * sample_rate), dtype=np.float32)])
     sf.write(path, timeline, sample_rate, subtype="PCM_24")
     _install_identity_reference(path)
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Unified /mode navigation for analysis, Yandex LiveDub and Shorts Factory."""
+
 from __future__ import annotations
 
 import asyncio
@@ -47,14 +48,8 @@ _AUDIO_SET = "видео с переводом, чистый русский MP3 
 
 MODE_DESCRIPTIONS = {
     "rus": "Конспект, цитаты, вопросы и Shorts. Перевода нет.",
-    "eng": (
-        "Полный анализ и комплект LiveDub: " + _AUDIO_SET + ". "
-        "Gemini сверяет дубляж с оригиналом."
-    ),
-    "eng_fast": (
-        "Только комплект LiveDub: " + _AUDIO_SET + ". "
-        "Без конспекта и смысловой проверки."
-    ),
+    "eng": ("Полный анализ и комплект LiveDub: " + _AUDIO_SET + ". Gemini сверяет дубляж с оригиналом."),
+    "eng_fast": ("Только комплект LiveDub: " + _AUDIO_SET + ". Без конспекта и смысловой проверки."),
     "eng_fast_qa": (
         "Комплект LiveDub и лёгкая проверка коротких роликов. "
         "Подтверждённые major-ошибки приглушаются в финальном миксе."
@@ -65,10 +60,7 @@ MODE_DESCRIPTIONS = {
         "субтитрами и законченные фрагменты 5–15 минут. Английская озвучка — только "
         "Яндекс «Живые голоса», без собственного нейроперевода."
     ),
-    EDITORIAL_MODE: (
-        "Без Gemini-нарезки: Yandex LiveDub → original SRT → "
-        "Russian Whisper large-v3 → ZIP для ChatGPT."
-    ),
+    EDITORIAL_MODE: ("Без Gemini-нарезки: Yandex LiveDub → original SRT → Russian Whisper large-v3 → ZIP для ChatGPT."),
 }
 
 
@@ -88,12 +80,14 @@ def _selected_label(mode: str, current: str) -> str:
 
 def _mode_home_keyboard(current: str, *, is_admin: bool) -> InlineKeyboardMarkup:
     del current
-    rows: list[list[InlineKeyboardButton]] = [[
-        InlineKeyboardButton(
-            "📚 Анализ, LiveDub и нарезка",
-            callback_data="mode_menu:analysis",
-        )
-    ]]
+    rows: list[list[InlineKeyboardButton]] = [
+        [
+            InlineKeyboardButton(
+                "📚 Анализ, LiveDub и нарезка",
+                callback_data="mode_menu:analysis",
+            )
+        ]
+    ]
     if is_admin:
         rows.extend(
             [
@@ -127,19 +121,15 @@ def _analysis_keyboard(current: str, *, full_video: bool = False) -> InlineKeybo
         ],
     ]
     if current == "shorts_max":
-        rows.append([
-            InlineKeyboardButton(
-                (
-                    "☑️ Полный видео-перевод + нарезки"
-                    if full_video
-                    else "⬜ Только нарезки (без полного видео)"
-                ),
-                callback_data="mode_menu:factory_full_video_toggle",
-            )
-        ])
-    rows.append([
-        InlineKeyboardButton("↩️ Все режимы", callback_data="mode_menu:home")
-    ])
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    ("☑️ Полный видео-перевод + нарезки" if full_video else "⬜ Только нарезки (без полного видео)"),
+                    callback_data="mode_menu:factory_full_video_toggle",
+                )
+            ]
+        )
+    rows.append([InlineKeyboardButton("↩️ Все режимы", callback_data="mode_menu:home")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -172,33 +162,37 @@ def _analysis_text(
 ) -> str:
     lines = ["📚 <b>Анализ, LiveDub и нарезка</b>", ""]
     if saved:
-        lines.extend([
-            f"✅ Установлен: <b>{MODE_LABELS.get(current, current)}</b>",
-            "",
-        ])
+        lines.extend(
+            [
+                f"✅ Установлен: <b>{MODE_LABELS.get(current, current)}</b>",
+                "",
+            ]
+        )
     else:
-        lines.extend([
-            f"Текущий режим: <b>{MODE_LABELS.get(current, MODE_LABELS['rus'])}</b>",
-            "",
-        ])
+        lines.extend(
+            [
+                f"Текущий режим: <b>{MODE_LABELS.get(current, MODE_LABELS['rus'])}</b>",
+                "",
+            ]
+        )
     for mode in VALID_MODES:
         lines.append(f"{MODE_BUTTON_LABELS[mode]} — <i>{MODE_DESCRIPTIONS[mode]}</i>")
     if current == "shorts_max":
-        full_video_label = (
-            "☑️ полный русский видео-перевод + нарезки"
-            if full_video
-            else "⬜ только нарезки"
+        full_video_label = "☑️ полный русский видео-перевод + нарезки" if full_video else "⬜ только нарезки"
+        lines.extend(
+            [
+                "",
+                f"📺 <b>Полная проповедь:</b> {full_video_label}.",
+                "<i>Для иностранного источника используется тот же готовый Yandex LiveDub-файл; "
+                "повторный перевод не запускается.</i>",
+            ]
         )
-        lines.extend([
+    lines.extend(
+        [
             "",
-            f"📺 <b>Полная проповедь:</b> {full_video_label}.",
-            "<i>Для иностранного источника используется тот же готовый Yandex LiveDub-файл; "
-            "повторный перевод не запускается.</i>",
-        ])
-    lines.extend([
-        "",
-        "Этот выбор действует для обычной ссылки и для элементов плейлиста.",
-    ])
+            "Этот выбор действует для обычной ссылки и для элементов плейлиста.",
+        ]
+    )
     return "\n".join(lines)
 
 

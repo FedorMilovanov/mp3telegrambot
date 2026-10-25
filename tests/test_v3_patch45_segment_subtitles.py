@@ -26,7 +26,7 @@ def test_cutseg_wires_subtitle_pipeline_with_fallback():
 
 def test_segments_subtitles_do_not_block_segment_render_setting():
     src = Path("handlers/commands.py").read_text(encoding="utf-8")
-    cutseg = src[src.find("async def cutseg_command"):]
+    cutseg = src[src.find("async def cutseg_command") :]
     assert 'await asettings_get("segments_render")' in cutseg
     # segments_subtitles check is now inside render_and_send_segment
     render_src = Path("services/segment_render.py").read_text(encoding="utf-8")

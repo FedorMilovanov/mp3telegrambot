@@ -4,6 +4,7 @@ Covers: git-word scrub eating English Scripture quotes, fake source cards
 from English prose, Keller denylist wiping prose fields, bounded Gemini retry /
 upload reuse, verse refs counted as inline anchors, timestamp cap dropping tail.
 """
+
 from pathlib import Path
 
 from core.source_titles import is_disallowed_source_author, normalize_source_card_line
@@ -11,8 +12,7 @@ from core.text_utils import _scrub_inline
 
 
 def test_git_scrub_keeps_english_scripture_quotes():
-    assert _scrub_inline("Commit your way to the LORD; trust in him") == \
-        "Commit your way to the LORD; trust in him"
+    assert _scrub_inline("Commit your way to the LORD; trust in him") == "Commit your way to the LORD; trust in him"
     assert "Branch" in _scrub_inline("I will raise up for David a righteous Branch")
     assert "commit" in _scrub_inline("You shall not commit adultery")
 
@@ -68,14 +68,20 @@ def test_gemini_timeout_rotates_to_next_key():
 def test_verse_refs_not_counted_as_inline_anchors():
     from core.synopsis_quality import _section_inline_timestamp_count
 
-    section = {"title": "S", "time": "0:00",
-               "content": "Ин 3:16 говорит о любви. Рим 8:28 напоминает о промысле." * 3}
+    section = {"title": "S", "time": "0:00", "content": "Ин 3:16 говорит о любви. Рим 8:28 напоминает о промысле." * 3}
     assert _section_inline_timestamp_count(section) == 0
-    real = {"title": "S", "time": "0:00",
-            "content": "Когда жизнь рухнула, всё изменилось ⏱ **7:30**. И дальше ⏱ **12:45**."}
+    real = {
+        "title": "S",
+        "time": "0:00",
+        "content": "Когда жизнь рухнула, всё изменилось ⏱ **7:30**. И дальше ⏱ **12:45**.",
+    }
     assert _section_inline_timestamp_count(real) == 2
-    blk = {"title": "S", "time": "0:00", "content": "",
-           "blocks": [{"type": "pull_quote", "quote": "…", "anchor_timestamp": "5:10"}]}
+    blk = {
+        "title": "S",
+        "time": "0:00",
+        "content": "",
+        "blocks": [{"type": "pull_quote", "quote": "…", "anchor_timestamp": "5:10"}],
+    }
     assert _section_inline_timestamp_count(blk) == 1
 
 

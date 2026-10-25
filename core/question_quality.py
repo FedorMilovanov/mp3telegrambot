@@ -6,6 +6,7 @@ shells, but leaves substantive theological questions alone.  Prompt guidance
 creates depth; this module prevents the most common banal scaffolds from being
 published when a model ignores that guidance.
 """
+
 from __future__ import annotations
 
 import re
@@ -85,11 +86,7 @@ def is_generic_question(text: str) -> bool:
     text = re.sub(r"\s+", " ", str(text or "")).strip()
     if not text:
         return True
-    return bool(
-        _GENERIC_QUESTION_RE.match(text)
-        or _THIN_SPIRITUAL_RE.match(text)
-        or _EMPTY_REFLECTION_RE.match(text)
-    )
+    return bool(_GENERIC_QUESTION_RE.match(text) or _THIN_SPIRITUAL_RE.match(text) or _EMPTY_REFLECTION_RE.match(text))
 
 
 def normalize_question_text(value: Any, *, max_len: int = 255) -> str:

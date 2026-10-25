@@ -20,6 +20,7 @@ Gemini приклеил «:» сразу после «?» в конце вопр
 формат жирного вопроса с form-меткой «Заголовок:\n\nТекст», которая
 используется в других разделах. После «?» двоеточие всегда лишнее.
 """
+
 from converters.md_telegraph import _postprocess_telegraph_nodes, _section_to_nodes_v2
 
 GLUED_CONTENT = (
@@ -78,13 +79,13 @@ def test_theme_cross_replacement_pattern_untouched():
 
 def test_fix_present_in_source():
     from pathlib import Path
-    src = Path(__file__).resolve().parents[1].joinpath("converters/md_telegraph.py").read_text(
-        encoding="utf-8"
-    )
+
+    src = Path(__file__).resolve().parents[1].joinpath("converters/md_telegraph.py").read_text(encoding="utf-8")
     assert r"(?<=[.!?])[ \t]+(?=[❌✅]\s*\*\*)" in src
 
 
 # ── «?:» приклеенное двоеточие после вопроса-триггера ────────────
+
 
 def test_question_mark_colon_glue_stripped():
     """Живой баг из дампа Reflection: приклеенное «?:» не только лишний
@@ -100,8 +101,7 @@ def test_question_mark_colon_glue_stripped():
     assert fixed.endswith("репутацию?"), f"двоеточие после «?» не убрано: {fixed!r}"
     assert "?:" not in fixed
     assert node["children"][0].get("tag") == "b", (
-        "после чистки «?:» вопрос должен снова стать жирным (эвристика "
-        f"standalone-question paragraph): {node!r}"
+        f"после чистки «?:» вопрос должен снова стать жирным (эвристика standalone-question paragraph): {node!r}"
     )
 
 

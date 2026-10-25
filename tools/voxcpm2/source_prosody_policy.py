@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Model-independent role policy for source-language prosody evidence."""
+
 from __future__ import annotations
 
 from typing import Any

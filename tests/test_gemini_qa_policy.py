@@ -165,7 +165,7 @@ def test_manifest_runs_qa_policy_through_explicit_pre_main_owner():
     assert "sys.meta_path.remove" not in package_source
     assert '"pre-main-quality-policy"' in manifest_source
     assert '"services.pre_main_policy"' in manifest_source
-    assert 'RuntimePhase.PRE_MAIN' in manifest_source
+    assert "RuntimePhase.PRE_MAIN" in manifest_source
 
     qa_call = policy_source.index("configure_gemini_qa_policy()")
     max_call = policy_source.index("configure_max_quality_env()")

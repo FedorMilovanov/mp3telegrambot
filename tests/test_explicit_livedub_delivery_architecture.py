@@ -76,10 +76,10 @@ def test_companion_cache_and_clean_track_are_source_owned():
 
 def test_livedub_mix_probe_is_utf8_and_major_fix_does_not_truncate():
     src = _source("services/livedub_mix.py")
-    probe = src[src.index("def probe_video_meta"):src.index("def make_video_thumbnail")]
+    probe = src[src.index("def probe_video_meta") : src.index("def make_video_thumbnail")]
     assert 'encoding="utf-8"' in probe
     assert 'errors="replace"' in probe
-    fix = src[src.index("def extract_fix_intervals"):src.index("async def apply_qa_audio_fixes")]
+    fix = src[src.index("def extract_fix_intervals") : src.index("async def apply_qa_audio_fixes")]
     assert "break" not in fix
     assert "refusing a partial auto-fix" in fix
 

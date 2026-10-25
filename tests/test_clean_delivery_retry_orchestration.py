@@ -18,8 +18,7 @@ def test_delivery_failure_retries_and_returns_success_without_reraising(
         calls.append(len(calls) + 1)
         if len(calls) == 1:
             core._LAST_CHILD_STDERR = (
-                "Сегмент #19: нет ни одного hard-quality кандидата. "
-                "Следующий повтор использует seed epoch 1."
+                "Сегмент #19: нет ни одного hard-quality кандидата. Следующий повтор использует seed epoch 1."
             )
             raise RuntimeError("Прямой VoxCPM2 renderer завершился с кодом 1.")
         return "ready"
@@ -57,8 +56,7 @@ def test_checkpointed_delivery_retry_is_bounded_and_reports_deepest_cause(
     def fake_render(*_args: Any, **_kwargs: Any) -> None:
         calls.append(1)
         core._LAST_CHILD_STDERR = (
-            "Финальная AAC-дорожка не прошла ending/tail QA; "
-            "последняя реплика переведена на новый seed epoch."
+            "Финальная AAC-дорожка не прошла ending/tail QA; последняя реплика переведена на новый seed epoch."
         )
         raise RuntimeError("Прямой master завершился с кодом 1.")
 
@@ -120,9 +118,7 @@ def test_previous_quality_detail_cannot_retry_a_later_infrastructure_failure(
     def fake_render(*_args: Any, **_kwargs: Any) -> None:
         calls.append(len(calls) + 1)
         if len(calls) == 1:
-            core._LAST_CHILD_STDERR = (
-                "Сегмент #7: нет hard-quality кандидата; seed epochs"
-            )
+            core._LAST_CHILD_STDERR = "Сегмент #7: нет hard-quality кандидата; seed epochs"
             raise RuntimeError("Прямой VoxCPM2 renderer завершился с кодом 1.")
         core._LAST_CHILD_STDERR = "ModuleNotFoundError: No module named 'voxcpm'"
         raise RuntimeError("Прямой VoxCPM2 renderer завершился с кодом 1.")

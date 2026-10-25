@@ -8,8 +8,6 @@ from types import SimpleNamespace
 from tools.voxcpm2 import direct_surgical_io as io
 
 
-
-
 def digest(path: Path) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
@@ -90,9 +88,12 @@ def test_reference_cache_requires_full_evidence(tmp_path: Path) -> None:
     assert cached["reference_cache_hit"] is True
     assert cached["reference_cache_schema_version"] == 2
     output.write_bytes(b"tampered")
-    assert io.cached_reference(
-        source=source,
-        output=output,
-        hash_file=digest,
-        expected_sample_rate=16000,
-    ) is None
+    assert (
+        io.cached_reference(
+            source=source,
+            output=output,
+            hash_file=digest,
+            expected_sample_rate=16000,
+        )
+        is None
+    )

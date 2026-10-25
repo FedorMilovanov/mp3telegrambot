@@ -8,6 +8,7 @@ fixed calm reference, the previously accepted segment, duration fill, start
 artifact evidence and explicit Russian stress evidence.  It never accepts a
 best-of-bad candidate.
 """
+
 from __future__ import annotations
 
 import json
@@ -110,10 +111,7 @@ def _identity_from_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
         "active_ratio": _finite(activity.get("active_ratio")),
         "rms_dbfs": _finite(activity.get("rms_dbfs"), -120.0),
         "spectral_centroid_hz": _finite(timbre.get("spectral_centroid_hz")),
-        "spectral_bands": [
-            _finite(value)
-            for value in (timbre.get("bands") or [])
-        ],
+        "spectral_bands": [_finite(value) for value in (timbre.get("bands") or [])],
         "anchor_spectral_similarity": _finite(voice.get("spectral_similarity")),
         "anchor_f0_median_ratio": _finite(voice.get("f0_median_ratio")),
         "anchor_f0_p90_ratio": _finite(voice.get("f0_p90_ratio")),
@@ -185,11 +183,7 @@ def _start_artifact(samples: Any, sample_rate: int) -> dict[str, Any]:
     for start in starts:
         chunk = audio[start : start + frame]
         rms.append(math.sqrt(float(np.mean(chunk.astype(np.float64) ** 2)) + 1e-12))
-        zcr.append(
-            float(np.mean(np.signbit(chunk[1:]) != np.signbit(chunk[:-1])))
-            if len(chunk) > 1
-            else 0.0
-        )
+        zcr.append(float(np.mean(np.signbit(chunk[1:]) != np.signbit(chunk[:-1]))) if len(chunk) > 1 else 0.0)
         step.append(float(np.max(np.abs(np.diff(chunk)))) if len(chunk) > 1 else 0.0)
     levels = 20.0 * np.log10(np.maximum(np.asarray(rms), 1e-9))
     zcr_array = np.asarray(zcr, dtype=np.float64)
@@ -224,11 +218,7 @@ def _start_artifact(samples: Any, sample_rate: int) -> dict[str, Any]:
         0.008 <= duration <= 0.120
         and 0.012 <= gap <= 0.220
         and burst_level >= speech_level - 18.0
-        and (
-            median_zcr >= 0.20
-            or max_step >= 0.075
-            or burst_level >= speech_level - 5.0
-        )
+        and (median_zcr >= 0.20 or max_step >= 0.075 or burst_level >= speech_level - 5.0)
     )
     return {
         "policy": START_ARTIFACT_POLICY,
@@ -319,11 +309,7 @@ def evaluate_candidate(candidate: dict[str, Any], segment: dict[str, Any]) -> di
             failures.append("adjacent_f0_p90_jump")
         if neighbour_similarity < NEIGHBOUR_HARD_SIMILARITY:
             failures.append("adjacent_timbre_jump")
-        if (
-            neighbour_similarity < 0.72
-            and centroid_ratio
-            and not 0.70 <= centroid_ratio <= 1.43
-        ):
+        if neighbour_similarity < 0.72 and centroid_ratio and not 0.70 <= centroid_ratio <= 1.43:
             failures.append("adjacent_spectral_posture_jump")
         penalty += max(0.0, NEIGHBOUR_SOFT_SIMILARITY - neighbour_similarity) * 165.0
         if median_ratio:
@@ -338,9 +324,7 @@ def evaluate_candidate(candidate: dict[str, Any], segment: dict[str, Any]) -> di
     duration_ratio = duration / max(0.1, slot)
     cadence = str(segment.get("cadence_type") or "")
     minimum_duration = (
-        MIN_LINKED_DURATION_RATIO
-        if cadence in {"linked", "continuation"}
-        else MIN_TERMINAL_DURATION_RATIO
+        MIN_LINKED_DURATION_RATIO if cadence in {"linked", "continuation"} else MIN_TERMINAL_DURATION_RATIO
     )
     if duration_ratio < minimum_duration:
         failures.append("monolithic_phrase_too_short")
@@ -404,11 +388,7 @@ def candidate_penalty(candidate: dict[str, Any]) -> float:
 
 def record_acceptable(candidates: Iterable[dict[str, Any]]) -> None:
     global _CURRENT_BEST_IDENTITY
-    usable = [
-        item
-        for item in candidates
-        if isinstance(item, dict) and candidate_hard_ok(item)
-    ]
+    usable = [item for item in candidates if isinstance(item, dict) and candidate_hard_ok(item)]
     if not usable:
         return
     best = min(usable, key=lambda item: _finite(item.get("score"), 1e9))
@@ -438,12 +418,10 @@ __all__ = [
     "set_current_segment_id",
 ]
 
-_BASE_ALL = tuple(globals().get('__all__', ()))
-
+_BASE_ALL = tuple(globals().get("__all__", ()))
 
 
 import types
-
 
 
 from tools.voxcpm2 import direct_source_relative_continuity
@@ -458,11 +436,13 @@ SOURCE_RELATIVE_POLICY = direct_source_relative_continuity.POLICY
 
 _legacy_evaluate_candidate = evaluate_candidate
 
+
 def _mono(samples: Any) -> np.ndarray:
     audio = np.asarray(samples, dtype=np.float32)
     if audio.ndim > 1:
         audio = audio.mean(axis=1)
     return audio.reshape(-1)
+
 
 def _runs(mask: np.ndarray) -> list[tuple[int, int]]:
     result: list[tuple[int, int]] = []
@@ -476,6 +456,7 @@ def _runs(mask: np.ndarray) -> list[tuple[int, int]]:
                 result.append((left, right))
             left = None
     return result
+
 
 def _start_artifact(samples: Any, sample_rate: int) -> dict[str, Any]:
     """Reject a short noisy island detached from the first sustained voice run."""
@@ -510,20 +491,16 @@ def _start_artifact(samples: Any, sample_rate: int) -> dict[str, Any]:
     lag_lo = max(2, int(rate / 340))
     lag_hi = min(frame - 3, int(rate / 65))
     for start in starts:
-        chunk = audio[start:start + frame].astype(np.float64)
+        chunk = audio[start : start + frame].astype(np.float64)
         rms.append(math.sqrt(float(np.mean(chunk**2)) + 1e-12))
-        zcr.append(
-            float(np.mean(np.signbit(chunk[1:]) != np.signbit(chunk[:-1])))
-            if len(chunk) > 1
-            else 0.0
-        )
+        zcr.append(float(np.mean(np.signbit(chunk[1:]) != np.signbit(chunk[:-1]))) if len(chunk) > 1 else 0.0)
         step.append(float(np.max(np.abs(np.diff(chunk)))) if len(chunk) > 1 else 0.0)
         work = (chunk - float(np.mean(chunk))) * window
-        correlation = np.correlate(work, work, "full")[frame - 1:]
+        correlation = np.correlate(work, work, "full")[frame - 1 :]
         if correlation[0] <= 1e-10 or lag_hi <= lag_lo:
             periodicity.append(0.0)
         else:
-            search = correlation[lag_lo:lag_hi + 1]
+            search = correlation[lag_lo : lag_hi + 1]
             periodicity.append(float(np.max(search) / correlation[0]))
 
     levels = 20.0 * np.log10(np.maximum(np.asarray(rms), 1e-9))
@@ -557,11 +534,7 @@ def _start_artifact(samples: Any, sample_rate: int) -> dict[str, Any]:
         }
 
     voice_left, voice_right = sustained
-    candidates = [
-        (left, right)
-        for left, right in active_runs
-        if right <= voice_left and right > left
-    ]
+    candidates = [(left, right) for left, right in active_runs if right <= voice_left and right > left]
     if not candidates:
         return {
             "policy": START_ARTIFACT_POLICY,
@@ -571,7 +544,7 @@ def _start_artifact(samples: Any, sample_rate: int) -> dict[str, Any]:
             "reason": "no_detached_active_island",
         }
 
-    speech_level = float(np.median(levels[voice_left:min(len(levels), voice_left + 30)]))
+    speech_level = float(np.median(levels[voice_left : min(len(levels), voice_left + 30)]))
     evidence: list[dict[str, Any]] = []
     for left, right in candidates:
         duration = (right - left) * 0.005
@@ -584,11 +557,7 @@ def _start_artifact(samples: Any, sample_rate: int) -> dict[str, Any]:
             0.008 <= duration <= 0.130
             and 0.010 <= gap <= 0.240
             and burst_level >= speech_level - 20.0
-            and (
-                median_zcr >= 0.20
-                or median_periodicity < 0.14
-                or max_step >= 0.075
-            )
+            and (median_zcr >= 0.20 or median_periodicity < 0.14 or max_step >= 0.075)
         )
         item = {
             "burst_start_seconds": left * 0.005,
@@ -625,9 +594,11 @@ def _start_artifact(samples: Any, sample_rate: int) -> dict[str, Any]:
         "candidate_islands": evidence,
     }
 
+
 def _work_dir(candidate: dict[str, Any]) -> Path:
     path = Path(str(candidate.get("path") or "."))
     return path.parent.parent if path.parent.name == "attempts" else path.parent
+
 
 def _previous_segment(segment_id: int) -> dict[str, Any] | None:
     for previous_id in range(int(segment_id) - 1, 0, -1):
@@ -635,6 +606,7 @@ def _previous_segment(segment_id: int) -> dict[str, Any] | None:
         if isinstance(value, dict):
             return dict(value)
     return None
+
 
 def _apply_source_relative_transition(
     result: dict[str, Any],
@@ -645,9 +617,7 @@ def _apply_source_relative_transition(
     identity = result.get("identity")
     evidence = direct_source_relative_continuity.evaluate_transition(
         current_identity=identity if isinstance(identity, dict) else {},
-        previous_identity=(
-            previous_identity if isinstance(previous_identity, dict) else None
-        ),
+        previous_identity=(previous_identity if isinstance(previous_identity, dict) else None),
         current_segment=segment,
         previous_segment=_previous_segment(int(segment.get("id") or 0)),
     )
@@ -657,11 +627,7 @@ def _apply_source_relative_transition(
     # windows explicitly support the generated movement, source-relative limits
     # replace those two blind adjacent-F0 failures; timbre and anchor gates stay.
     if evidence.get("source_available") and evidence.get("hard_ok") is True:
-        failures = [
-            value
-            for value in failures
-            if value not in {"adjacent_f0_median_jump", "adjacent_f0_p90_jump"}
-        ]
+        failures = [value for value in failures if value not in {"adjacent_f0_median_jump", "adjacent_f0_p90_jump"}]
     for failure in evidence.get("failures") or []:
         value = str(failure)
         if value not in failures:
@@ -678,20 +644,18 @@ def _apply_source_relative_transition(
     candidate["monolith_identity"] = result
     return result
 
+
 def evaluate_candidate(candidate: dict[str, Any], segment: dict[str, Any]) -> dict[str, Any]:
     segment_id = int(segment.get("id") or 0)
     set_current_segment_id(segment_id)
-    _PREVIOUS_IDENTITY = (
-        _load_previous_checkpoint(_work_dir(candidate), segment_id)
-        if segment_id > 1
-        else None
-    )
+    _PREVIOUS_IDENTITY = _load_previous_checkpoint(_work_dir(candidate), segment_id) if segment_id > 1 else None
     result = dict(_legacy_evaluate_candidate(candidate, segment))
     result = _apply_source_relative_transition(result, candidate, segment)
     result["resume_policy"] = RESUME_POLICY
     result["start_voice_policy"] = START_VOICE_POLICY
     result["start_voice_implementation_policy"] = START_VOICE_IMPLEMENTATION_POLICY
     return result
+
 
 _start_artifact = _start_artifact
 

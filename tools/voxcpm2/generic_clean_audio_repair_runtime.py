@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Clean direct audio repair without translation or renderer wrappers."""
+
 from __future__ import annotations
 
 import json
@@ -173,15 +174,10 @@ def _existing_references(root: Path) -> tuple[Path, Path]:
     composite = root / "references" / "composite_reference.wav"
     for path in (extended, composite):
         if not path.is_file() or path.stat().st_size <= 0:
-            raise RuntimeError(
-                "Не найдены чистые voice references. Выполните /dubfix PROJECT_ID all."
-            )
+            raise RuntimeError("Не найдены чистые voice references. Выполните /dubfix PROJECT_ID all.")
         report = path.with_suffix(".selection.json")
         if not report.is_file() or report.stat().st_size <= 0:
-            raise RuntimeError(
-                "У voice reference нет отчёта чистого отбора. "
-                "Выполните полный ремонт all."
-            )
+            raise RuntimeError("У voice reference нет отчёта чистого отбора. Выполните полный ремонт all.")
     return extended, composite
 
 
@@ -238,9 +234,7 @@ def _reload_repair_and_segments(
     repair = legacy_repair._load_object(repair_path, "audio_repair.json")
     segments = _load_segments(segments_path)
     if str(repair.get("segments_sha256") or "") != legacy_repair._sha256(segments_path):
-        raise RuntimeError(
-            "Реплики проекта изменились после команды /dubfix; создайте запрос заново."
-        )
+        raise RuntimeError("Реплики проекта изменились после команды /dubfix; создайте запрос заново.")
     return repair, segments
 
 
@@ -298,8 +292,7 @@ def main() -> None:
         )
     else:
         expression_ready = bool(segments) and all(
-            str(item.get("expression_policy") or "") == expressive_continuity.POLICY
-            for item in segments
+            str(item.get("expression_policy") or "") == expressive_continuity.POLICY for item in segments
         )
         fingerprints = _current_fingerprints(request)
         fingerprint_ready, fingerprint_detail = _fingerprinted_baseline_ready(
@@ -322,9 +315,7 @@ def main() -> None:
             new_base_seed=seed,
         )
         legacy_repair._delete_segment_files(segment_work, selected_set)
-        production.log(
-            f"=== CLEAN AUDIO REPAIR: ONLY {selected_ids}; DIRECT NEW SEED {seed} ==="
-        )
+        production.log(f"=== CLEAN AUDIO REPAIR: ONLY {selected_ids}; DIRECT NEW SEED {seed} ===")
 
     planned = expressive_continuity.plan_json(
         source=source,
@@ -341,10 +332,7 @@ def main() -> None:
             output=composite,
             identity_reference=extended,
         )
-    production.log(
-        "source-guided emotional arc prepared; translation reused verbatim; "
-        + reference_detail
-    )
+    production.log("source-guided emotional arc prepared; translation reused verbatim; " + reference_detail)
 
     runtime_request = dict(request)
     runtime_request["base_seed"] = seed
@@ -432,9 +420,7 @@ if __name__ == "__main__":
 
 _source_main = main
 
-_BASE_ALL = tuple(globals().get('__all__', ()))
-
-
+_BASE_ALL = tuple(globals().get("__all__", ()))
 
 
 from tools.voxcpm2 import clean_production_core as strict_core
@@ -446,6 +432,7 @@ _legacy_update_manifest = _update_manifest
 
 _legacy_checkpoint_ready = _checkpoint_ready
 
+
 def _load_json_object(path: Path, label: str) -> dict[str, Any]:
     if not path.is_file():
         raise RuntimeError(f"Не найден {label}: {path}")
@@ -456,6 +443,7 @@ def _load_json_object(path: Path, label: str) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise RuntimeError(f"{label} должен быть JSON-объектом.")
     return payload
+
 
 def _strict_ids(values: Any, *, field: str) -> list[int]:
     if not isinstance(values, list) or not values:
@@ -475,6 +463,7 @@ def _strict_ids(values: Any, *, field: str) -> list[int]:
         result.append(item_id)
     return result
 
+
 def _load_segments(path: Path) -> list[dict[str, Any]]:
     if not path.is_file():
         raise RuntimeError(f"Не найден segments_ru_final.json: {path}")
@@ -489,10 +478,7 @@ def _load_segments(path: Path) -> list[dict[str, Any]]:
     raw_ids: list[Any] = []
     for position, item in enumerate(payload, start=1):
         if not isinstance(item, dict):
-            raise RuntimeError(
-                f"segment[{position}] должен быть JSON-объектом, "
-                f"получено {type(item).__name__}."
-            )
+            raise RuntimeError(f"segment[{position}] должен быть JSON-объектом, получено {type(item).__name__}.")
         copied = dict(item)
         raw_ids.append(copied.get("id"))
         for field in ("start", "end"):
@@ -520,8 +506,10 @@ def _load_segments(path: Path) -> list[dict[str, Any]]:
         item["id"] = segment_id
     return sorted(result, key=lambda item: int(item["id"]))
 
+
 def _segment_ids(path: Path) -> list[int]:
     return [int(item["id"]) for item in _load_segments(path)]
+
 
 def _validated_sha256(value: Any, *, field: str) -> str:
     digest = str(value or "").strip().lower()
@@ -532,6 +520,7 @@ def _validated_sha256(value: Any, *, field: str) -> str:
     except ValueError as exc:
         raise RuntimeError(f"{field} содержит не-hex символы.") from exc
     return digest
+
 
 def _validate_repair_request(root: Path, project_id: str) -> dict[str, Any]:
     repair = _load_json_object(root / "input" / "audio_repair.json", "audio_repair.json")
@@ -556,10 +545,7 @@ def _validate_repair_request(root: Path, project_id: str) -> dict[str, Any]:
     )
     actual_sha = legacy_repair._sha256(segments_path)
     if actual_sha != expected_sha:
-        raise RuntimeError(
-            "segments_ru_final.json изменился после создания repair request; "
-            "создайте /dubfix заново."
-        )
+        raise RuntimeError("segments_ru_final.json изменился после создания repair request; создайте /dubfix заново.")
 
     selected = _strict_ids(repair.get("segment_ids"), field="audio_repair.segment_ids")
     segments = _load_segments(segments_path)
@@ -581,6 +567,7 @@ def _validate_repair_request(root: Path, project_id: str) -> dict[str, Any]:
             duration,
         )
     return repair
+
 
 def _next_seed(
     request: dict[str, Any],
@@ -613,6 +600,7 @@ def _next_seed(
         raise RuntimeError("Следующий repair seed выходит за безопасный диапазон.")
     return candidate
 
+
 def _checkpoint_ready(
     work_dir: Path,
     segment_id: int,
@@ -639,6 +627,7 @@ def _checkpoint_ready(
     if report_id != expected_id:
         return False, "checkpoint report id не совпадает"
     return _legacy_checkpoint_ready(work_dir, expected_id)
+
 
 def _delay_evidence(path: Path) -> list[int]:
     """Read only the fields needed to prove the rendered global delay.
@@ -673,6 +662,7 @@ def _delay_evidence(path: Path) -> list[int]:
     _strict_ids(raw_ids, field="segments.id")
     return delays
 
+
 def _dominant_segment_delay(root: Path) -> int:
     """Return the global delay proven by rendered segment data.
 
@@ -682,10 +672,8 @@ def _dominant_segment_delay(root: Path) -> int:
     contract.
     """
     delays = _delay_evidence(Path(root) / "segments_ru_final.json")
-    return max(
-        clean_request_settings.russian_delay_ms({"russian_delay_ms": value})
-        for value in delays
-    )
+    return max(clean_request_settings.russian_delay_ms({"russian_delay_ms": value}) for value in delays)
+
 
 def _update_manifest(
     path: Path,
@@ -714,11 +702,13 @@ def _update_manifest(
         actual_delay_ms=_dominant_segment_delay(root),
     )
 
+
 def main() -> None:
     project_id = production.current_project_id()
     root = production.project_root(project_id)
     _validate_repair_request(root, project_id)
     _source_main()
+
 
 _next_seed = _next_seed
 
@@ -727,7 +717,14 @@ _checkpoint_ready = _checkpoint_ready
 _update_manifest = _update_manifest
 
 __all__ = [
-    "_checkpoint_ready", "_delay_evidence", "_dominant_segment_delay",
-    "_load_segments", "_next_seed", "_strict_ids", "_validate_repair_request",
-    "_validated_sha256", "_update_manifest", "main",
+    "_checkpoint_ready",
+    "_delay_evidence",
+    "_dominant_segment_delay",
+    "_load_segments",
+    "_next_seed",
+    "_strict_ids",
+    "_validate_repair_request",
+    "_validated_sha256",
+    "_update_manifest",
+    "main",
 ]

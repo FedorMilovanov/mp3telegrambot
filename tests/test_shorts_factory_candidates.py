@@ -64,12 +64,8 @@ def test_factory_plan_enforces_duration_ranges_and_overlap():
 
     plan = validate_factory_plan(raw, duration=1800)
 
-    assert [item["title"] for item in plan["shorts_candidates"]] == [
-        "Сильный Первый Фрагмент"
-    ]
-    assert [item["title"] for item in plan["long_candidates"]] == [
-        "Законченный Длинный Фрагмент"
-    ]
+    assert [item["title"] for item in plan["shorts_candidates"]] == ["Сильный Первый Фрагмент"]
+    assert [item["title"] for item in plan["long_candidates"]] == ["Законченный Длинный Фрагмент"]
     assert plan["shorts_candidates"][0]["duration_seconds"] == 90
     assert plan["long_candidates"][0]["duration_seconds"] == 600
 

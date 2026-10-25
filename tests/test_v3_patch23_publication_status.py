@@ -13,16 +13,22 @@ from core.publication_status import build_publication_status, missing_to_json
 
 def test_publication_status_complete_partial_failed():
     complete = build_publication_status(
-        synopsis_url="s", study_url="st", reflection_url="r",
-        expect_study=True, expect_reflection=True,
+        synopsis_url="s",
+        study_url="st",
+        reflection_url="r",
+        expect_study=True,
+        expect_reflection=True,
     )
     assert complete.status == "complete"
     assert complete.missing == ()
     assert complete.warning == ""
 
     partial = build_publication_status(
-        synopsis_url="s", study_url="st", reflection_url="",
-        expect_study=True, expect_reflection=True,
+        synopsis_url="s",
+        study_url="st",
+        reflection_url="",
+        expect_study=True,
+        expect_reflection=True,
     )
     assert partial.status == "partial"
     assert partial.missing == ("reflection",)
@@ -30,8 +36,11 @@ def test_publication_status_complete_partial_failed():
     assert missing_to_json(partial.missing) == '["reflection"]'
 
     failed = build_publication_status(
-        synopsis_url="", study_url="", reflection_url="",
-        expect_study=True, expect_reflection=True,
+        synopsis_url="",
+        study_url="",
+        reflection_url="",
+        expect_study=True,
+        expect_reflection=True,
     )
     assert failed.status == "failed"
     assert failed.missing == ("synopsis", "study", "reflection")
@@ -40,11 +49,17 @@ def test_publication_status_complete_partial_failed():
 
 def test_partial_status_warning_is_rendered_by_caption():
     status = build_publication_status(
-        synopsis_url="", study_url="https://telegra.ph/study", reflection_url="",
-        expect_study=True, expect_reflection=True,
+        synopsis_url="",
+        study_url="https://telegra.ph/study",
+        reflection_url="",
+        expect_study=True,
+        expect_reflection=True,
     )
     cap = build_caption(
-        "A", "T", 100, 1.0,
+        "A",
+        "T",
+        100,
+        1.0,
         ai_data={
             "real_title": "T",
             "real_author": "A",
@@ -59,11 +74,13 @@ def test_partial_status_warning_is_rendered_by_caption():
 
 
 def test_content_audit_mode_defaults_warn_and_strict_aborts(monkeypatch):
-    issues = [ContentAuditIssue(
-        code="mixed_greek_cyrillic_warning",
-        location="Study.sections[0].content",
-        message="mixed",
-    )]
+    issues = [
+        ContentAuditIssue(
+            code="mixed_greek_cyrillic_warning",
+            location="Study.sections[0].content",
+            message="mixed",
+        )
+    ]
 
     monkeypatch.delenv("CONTENT_AUDIT_MODE", raising=False)
     assert get_content_audit_mode() == "warn"
@@ -87,7 +104,7 @@ def test_database_schema_and_pipeline_wire_publication_status():
     assert "publication_status" in db
     assert "publication_missing" in db
     assert "publication_warning" in db
-    assert "publication_status: str = \"unknown\"" in db
+    assert 'publication_status: str = "unknown"' in db
 
     # Статус собирается в caption_inputs; fresh caption stage передаёт его в
     # кэш, а main сохраняет warning и соединяет обе стадии.

@@ -6,6 +6,7 @@ are safe to dedupe because structured output and audit layers now enforce shape.
 The goal is to reduce prompt bloat without deleting accumulated guardrails from
 source constants.
 """
+
 from __future__ import annotations
 
 import re

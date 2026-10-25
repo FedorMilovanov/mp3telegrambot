@@ -4,6 +4,7 @@ Study policy is source-owned by ``study_synthesis_policy``, ``structured_blocks`
 ``content_audit`` and ``telegraph_pages``.  This module performs no mutation and
 contains no import hook.
 """
+
 from __future__ import annotations
 
 from core.study_quality import render_word_study_as_prose

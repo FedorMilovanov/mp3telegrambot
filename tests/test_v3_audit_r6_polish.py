@@ -4,6 +4,7 @@ Covers: content_audit больше не создаёт запрещённые о
 таймкодов (единый источник в prompt_rules); схема квиза требует ровно 4
 варианта; content = краткий дайджест при blocks (экономия output-токенов).
 """
+
 from core import prompts as P
 from core.prompt_rules import INLINE_TIMESTAMP_RULES, QA_TIMESTAMP_RULE
 

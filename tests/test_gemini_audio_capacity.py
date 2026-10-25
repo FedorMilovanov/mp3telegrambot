@@ -77,15 +77,10 @@ def test_audio_inference_503_is_capped_at_three_calls_across_four_keys(monkeypat
             model_calls.append(self.name)
             raise _ServiceError("503 UNAVAILABLE: high demand")
 
-    clients = [
-        SimpleNamespace(aio=SimpleNamespace(files=Files(f"k{i}"), models=Models(f"k{i}")))
-        for i in range(1, 5)
-    ]
+    clients = [SimpleNamespace(aio=SimpleNamespace(files=Files(f"k{i}"), models=Models(f"k{i}"))) for i in range(1, 5)]
     monkeypatch.setattr(analyze, "GEMINI_CLIENTS", clients)
 
-    result = asyncio.run(
-        analyze.gemini_analyze_audio(audio, "Title", "Author", 120, None)
-    )
+    result = asyncio.run(analyze.gemini_analyze_audio(audio, "Title", "Author", 120, None))
 
     assert result == (None, None, None)
     assert model_calls == ["k1", "k1", "k2"]
@@ -116,15 +111,10 @@ def test_audio_files_503_is_capped_at_three_uploads_and_never_reaches_inference(
             model_calls.append(self.name)
             return SimpleNamespace(text="{}", candidates=[])
 
-    clients = [
-        SimpleNamespace(aio=SimpleNamespace(files=Files(f"k{i}"), models=Models(f"k{i}")))
-        for i in range(1, 5)
-    ]
+    clients = [SimpleNamespace(aio=SimpleNamespace(files=Files(f"k{i}"), models=Models(f"k{i}"))) for i in range(1, 5)]
     monkeypatch.setattr(analyze, "GEMINI_CLIENTS", clients)
 
-    result = asyncio.run(
-        analyze.gemini_analyze_audio(audio, "Title", "Author", 120, None)
-    )
+    result = asyncio.run(analyze.gemini_analyze_audio(audio, "Title", "Author", 120, None))
 
     assert result == (None, None, None)
     assert upload_calls == ["k1", "k2", "k3"]
@@ -159,9 +149,7 @@ def test_audio_poll_503_cleans_remote_handle(monkeypatch, tmp_path):
         [SimpleNamespace(aio=SimpleNamespace(files=Files(), models=Models()))],
     )
 
-    result = asyncio.run(
-        analyze.gemini_analyze_audio(audio, "Title", "Author", 120, None)
-    )
+    result = asyncio.run(analyze.gemini_analyze_audio(audio, "Title", "Author", 120, None))
 
     assert result == (None, None, None)
     assert deleted == ["files/created"]

@@ -30,19 +30,13 @@ CLIP_FUNCTIONS = (
 def _function_source(path: Path, name: str) -> str:
     source = path.read_text(encoding="utf-8")
     tree = ast.parse(source)
-    node = next(
-        item
-        for item in tree.body
-        if isinstance(item, ast.AsyncFunctionDef) and item.name == name
-    )
+    node = next(item for item in tree.body if isinstance(item, ast.AsyncFunctionDef) and item.name == name)
     return ast.get_source_segment(source, node) or ""
 
 
 def test_shorts_render_surface_uses_owned_processes_and_threads() -> None:
     source = SHORTS_PATH.read_text(encoding="utf-8")
-    selected = "\n".join(
-        _function_source(SHORTS_PATH, name) for name in SHORTS_FUNCTIONS
-    )
+    selected = "\n".join(_function_source(SHORTS_PATH, name) for name in SHORTS_FUNCTIONS)
 
     assert "from services.async_process import run_cancellable_process" in source
     assert selected.count("await run_cancellable_process(") == 7
@@ -57,9 +51,7 @@ def test_shorts_render_surface_uses_owned_processes_and_threads() -> None:
 
 def test_clips_and_montage_use_owned_processes() -> None:
     source = CLIPS_PATH.read_text(encoding="utf-8")
-    selected = "\n".join(
-        _function_source(CLIPS_PATH, name) for name in CLIP_FUNCTIONS
-    )
+    selected = "\n".join(_function_source(CLIPS_PATH, name) for name in CLIP_FUNCTIONS)
 
     assert "from services.async_process import run_cancellable_process" in source
     assert selected.count("await run_cancellable_process(") == 4
@@ -82,9 +74,7 @@ def test_gpu_semaphores_still_wrap_long_render_owners() -> None:
         montage,
     ):
         assert "async with _sched.gpu_render:" in function
-        assert function.index("async with _sched.gpu_render:") < function.index(
-            "await run_cancellable_process("
-        )
+        assert function.index("async with _sched.gpu_render:") < function.index("await run_cancellable_process(")
 
 
 @pytest.mark.asyncio

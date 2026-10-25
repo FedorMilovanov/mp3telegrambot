@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Standalone maximum-quality Shorts/Highlights extraction mode."""
+
 from __future__ import annotations
 
 import asyncio
@@ -119,9 +120,7 @@ def _translation_backend() -> str:
 
 
 def _cleanup_expired_factory_sources() -> None:
-    retention_hours = float(
-        os.getenv("SHORTS_FACTORY_SOURCE_RETENTION_HOURS", "24") or "24"
-    )
+    retention_hours = float(os.getenv("SHORTS_FACTORY_SOURCE_RETENTION_HOURS", "24") or "24")
     cutoff = time.time() - max(1.0, retention_hours) * 3600.0
     for path in DOWNLOAD_DIR.glob("*_factory_source.*"):
         try:
@@ -227,9 +226,7 @@ async def process_shorts_factory(
         enforce_factory_preflight()
         _cleanup_expired_factory_sources()
         if status_msg is None:
-            status_msg = await update.message.reply_text(
-                "🧠 SHORTS FACTORY MAX: получаю метаданные…"
-            )
+            status_msg = await update.message.reply_text("🧠 SHORTS FACTORY MAX: получаю метаданные…")
         else:
             await _safe_status(status_msg, "🧠 SHORTS FACTORY MAX: получаю метаданные…")
 
@@ -239,9 +236,7 @@ async def process_shorts_factory(
             "is_upcoming",
             "post_live",
         }:
-            raise RuntimeError(
-                "Live-трансляцию можно нарезать только после завершения обработки записи"
-            )
+            raise RuntimeError("Live-трансляцию можно нарезать только после завершения обработки записи")
 
         try:
             duration = int(float(info.get("duration") or 0))
@@ -251,9 +246,7 @@ async def process_shorts_factory(
             raise RuntimeError("Не удалось определить длительность видео")
         max_duration = int(os.getenv("SHORTS_FACTORY_MAX_SOURCE_SEC", "10800") or "10800")
         if duration > max_duration:
-            raise RuntimeError(
-                f"Источник {duration // 60} мин превышает лимит режима {max_duration // 60} мин"
-            )
+            raise RuntimeError(f"Источник {duration // 60} мин превышает лимит режима {max_duration // 60} мин")
 
         media_id = _media_id(info, url)
         full_title = str(info.get("title") or "Видео").strip()
@@ -323,9 +316,7 @@ async def process_shorts_factory(
                     f"Яндекс LiveDub не завершился за {source_timeout // 60} мин. "
                     "Нейроперевод намеренно не используется."
                 ) from exc
-            raise RuntimeError(
-                f"Исходное видео не скачалось за {source_timeout // 60} мин."
-            ) from exc
+            raise RuntimeError(f"Исходное видео не скачалось за {source_timeout // 60} мин.") from exc
         except Exception as exc:
             if translation_required:
                 raise RuntimeError(
@@ -414,9 +405,7 @@ async def process_shorts_factory(
                 update=update,
             )
             if shorts_sent <= 0:
-                raise RuntimeError(
-                    "SHORTS FACTORY не доставил ни одного Short с обязательными субтитрами"
-                )
+                raise RuntimeError("SHORTS FACTORY не доставил ни одного Short с обязательными субтитрами")
 
         if render_longs:
             enriched_longs = await enrich_factory_candidates(
@@ -501,8 +490,7 @@ async def process_shorts_factory(
 
         await _safe_status(
             status_msg,
-            f"✅ SHORTS FACTORY MAX завершён: {shorts_sent} Shorts, "
-            f"{longs_sent} длинных фрагмента.",
+            f"✅ SHORTS FACTORY MAX завершён: {shorts_sent} Shorts, {longs_sent} длинных фрагмента.",
         )
         logger.info(
             "Shorts Factory MAX done media_id=%s original=%ss source=%ss "

@@ -54,9 +54,7 @@ def _shaped_chirp(
     fade = int(0.03 * sample_rate)
     audio[:fade] *= np.linspace(0.0, 1.0, fade)
     audio[-fade:] *= np.linspace(1.0, 0.0, fade)
-    return np.concatenate(
-        [audio.astype(np.float32), np.zeros(int(0.18 * sample_rate), dtype=np.float32)]
-    ), sample_rate
+    return np.concatenate([audio.astype(np.float32), np.zeros(int(0.18 * sample_rate), dtype=np.float32)]), sample_rate
 
 
 def _cadence(

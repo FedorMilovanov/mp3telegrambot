@@ -42,10 +42,7 @@ def test_publication_attempts_are_capped_at_three_even_if_env_is_higher(monkeypa
             calls.append(self.name)
             raise RuntimeError("503 UNAVAILABLE: high demand")
 
-    clients = [
-        SimpleNamespace(aio=SimpleNamespace(models=Models(f"c{i}")))
-        for i in range(1, 5)
-    ]
+    clients = [SimpleNamespace(aio=SimpleNamespace(models=Models(f"c{i}"))) for i in range(1, 5)]
     monkeypatch.setattr(core_globals, "GEMINI_CLIENTS", clients)
     monkeypatch.setenv("LIVEDUB_PUBLICATION_MAX_ATTEMPTS", "8")
     monkeypatch.setattr(publication, "_quality_config", lambda _model: object())

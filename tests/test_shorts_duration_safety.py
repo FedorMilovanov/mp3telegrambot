@@ -61,16 +61,22 @@ def test_full_budget_candidate_never_grows_for_optional_padding():
 
 
 def test_candidate_over_public_speed_budget_fails_closed():
-    assert safety.plan_short_source_window(
-        _candidate(100.0, 370.1),
-        speed=1.5,
-        boundary_padding=False,
-    ) is None
-    assert safety.plan_short_source_window(
-        _candidate(0.0, 181.0),
-        speed=1.0,
-        boundary_padding=False,
-    ) is None
+    assert (
+        safety.plan_short_source_window(
+            _candidate(100.0, 370.1),
+            speed=1.5,
+            boundary_padding=False,
+        )
+        is None
+    )
+    assert (
+        safety.plan_short_source_window(
+            _candidate(0.0, 181.0),
+            speed=1.0,
+            boundary_padding=False,
+        )
+        is None
+    )
 
 
 def test_source_duration_clamps_optional_tail_without_cutting_valid_semantics():
