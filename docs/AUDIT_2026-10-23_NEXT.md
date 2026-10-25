@@ -900,8 +900,29 @@ invalidation и user notice вынесены в
 67,18 % → **68,14 %**, проект 58,25 % → **58,29 %**. Полный прогон:
 **3 821 passed, 3 skipped**.
 
-До приёмки P0-3 остался сам оркестратор — цель ≤ 1 200 строк (сейчас 1 353
-строки из 3 120 исходных); цель ≥ 50 % statement coverage уже выполнена.
+**Шаг 35 (сделано) — ENG Quick QA preparation.** Duration gate, выбор latest
+SRT/original, clean-RU input, Gemini QA, major-issue autofix и skip/report
+тексты вынесены в `pipelines/livedub_quick_qa_stage.py`. Main сохраняет вызов
+до primary video send и прежнее добавление report/note в caption.
+
+* двенадцать прямых тестов дают стадии 100 % statement/branch coverage:
+  duration/default, отсутствующие workdir/original, latest inputs, clean-RU
+  fallback, пустой Gemini response, successful/missing/failed autofix,
+  внутренняя QA ошибка и cancellation;
+* свежий ENG Quick QA integration действительно выполняет main wrapper и
+  стадию до existing video-send-failure notice; доказаны original/model
+  arguments и порядок QA → video;
+* strict typing использует реальный `duration: int` сервиса и сужает
+  `workdir` на границе autofix, без `type: ignore`;
+* R10/R42/source ownership и generated env reference обновлены;
+  `tests/livedub_qa_cases.py` остаётся byte-stable.
+
+Измерено: `main_pipeline.py` 1 353 → **1 286 строк**, line-ratchet main
+68,14 % → **74,00 %**, проект 58,29 % → **58,45 %**. Полный прогон:
+**3 834 passed, 3 skipped**.
+
+До приёмки P0-3 остался сам оркестратор — цель ≤ 1 200 строк (сейчас 1 286
+строк из 3 120 исходных); цель ≥ 50 % statement coverage уже выполнена.
 
 ### P0-4. Сканирование секретов и SAST
 

@@ -69,23 +69,23 @@ def test_qa_text_fallback_respects_thinking_level_param():
 # ── 4. Quick QA не требует SRT и честно сообщает о пропуске ──────
 
 def test_quick_qa_gate_no_longer_requires_srt():
-    src = _read("pipelines/main_pipeline.py")
-    block = src.split("ENG Quick QA: лёгкая проверка", 1)[1][:4000]
-    assert "if _orig_for_quick:" in block
-    assert "_quick_srt and _orig_for_quick" not in block, (
+    src = _read("pipelines/livedub_quick_qa_stage.py")
+    assert "if original and workdir is not None:" in src
+    assert "quick_srt and original" not in src, (
         "гейт «srt AND orig» молча выключал QA на установках без старого vot-cli"
     )
 
 
 def test_quick_qa_skip_note_reaches_caption():
     src = _read("pipelines/main_pipeline.py")
+    stage = _read("pipelines/livedub_quick_qa_stage.py")
     assert "_quick_qa_skip_note" in src
     assert 'caption += f"\\n🔍 {_quick_qa_skip_note}"' in src, (
         "если проверка не запускалась, юзер должен видеть это в caption"
     )
     # заметки на все три причины пропуска
-    assert "ролик длиннее" in src
-    assert "оригинальная дорожка не сохранилась" in src
+    assert "ролик длиннее" in stage
+    assert "оригинальная дорожка не сохранилась" in stage
 
 
 # ── 5. _find_latest_file не выдаёт оригинал за перевод ───────────

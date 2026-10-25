@@ -54,6 +54,7 @@ from pipelines.livedub_failure_stage import (
     send_livedub_timeout_notice,
 )
 from pipelines.livedub_publication_stage import prepare_livedub_publication
+from pipelines.livedub_quick_qa_stage import run_livedub_quick_qa
 from pipelines.livedub_quick_stage import finish_livedub_quick
 from pipelines.livedub_video_assets_stage import (
     get_livedub_technical_warnings,
@@ -529,87 +530,19 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 _quick_qa_skip_note = ""
                 # ── ENG Quick QA: лёгкая проверка коротких роликов до отправки ──
                 if user_mode == "eng_fast_qa" and not is_fallback:
-                    try:
-                        _max_q = int(os.getenv("LIVEDUB_QUICK_QA_MAX_DURATION", "120") or "120")
-                    except ValueError:
-                        _max_q = 120
-                    if duration and duration <= _max_q:
-                        try:
-                            from services.livedub_qa import run_translation_qa, format_qa_report
-                            from services.livedub_info import get_light_model
-                            _quick_srt = None
-                            _orig_for_quick = None
-                            _clean_ru_quick = None  # AUDIT R42: чистая RU-дорожка
-                            if "ld_work" in locals() and ld_work.exists():
-                                _srt_candidates = sorted(
-                                    (f for f in ld_work.glob("*.srt") if f.name != "gemini_subs.srt"),
-                                    key=lambda f: f.stat().st_mtime, reverse=True,
-                                )
-                                _quick_srt = _srt_candidates[0] if _srt_candidates else None
-                                _orig_candidates = sorted(
-                                    ld_work.glob("original_video.*"),
-                                    key=lambda f: f.stat().st_mtime,
-                                    reverse=True,
-                                )
-                                _orig_for_quick = _orig_candidates[0] if _orig_candidates else None
-                                # AUDIT R42: чистая RU-дорожка (без EN-фона микса) —
-                                # точнее для аудио-сравнения, чем звук из готового видео.
-                                try:
-                                    from services.livedub_mix import find_pro_tracks
-                                    _clean_ru_quick = find_pro_tracks(ld_work)[1]
-                                except Exception:
-                                    _clean_ru_quick = None
-                            # AUDIT ENG (2026-07-05): SRT больше НЕ обязателен.
-                            # На установках без старого vot-cli субтитры перевода
-                            # не скачиваются никогда — старый гейт «srt AND orig»
-                            # молча выключал ВСЮ проверку режима Quick QA.
-                            # Без SRT run_translation_qa сам извлечёт звук дубляжа
-                            # из готового видео и сравнит аудио-с-аудио.
-                            if _orig_for_quick:
-                                _quick_qa = await run_translation_qa(
-                                    dub_video_path=livedub_path,
-                                    original_audio_path=_orig_for_quick,
-                                    ai_data=None,
-                                    duration=duration,
-                                    model_name=os.getenv("LIVEDUB_QUICK_QA_MODEL", "").strip() or get_light_model(),
-                                    dub_srt_path=_quick_srt,
-                                    dub_audio_path=_clean_ru_quick,
-                                    thinking_level=os.getenv("LIVEDUB_QUICK_QA_THINKING", "minimal").strip() or "minimal",
-                                )
-                                _quick_majors = [i for i in ((_quick_qa or {}).get("issues") or [])
-                                                 if str(i.get("severity")) == "major"]
-                                if _quick_majors:
-                                    logger.warning(
-                                        "[LiveDubQuickQA] major issues=%d — пробую автофикс до отправки",
-                                        len(_quick_majors),
-                                    )
-                                    try:
-                                        from services.livedub_mix import apply_qa_audio_fixes
-                                        fixed = await apply_qa_audio_fixes(ld_work, (_quick_qa or {}).get("issues") or [])
-                                        if fixed and fixed.exists():
-                                            livedub_path = fixed
-                                            await context.bot.send_message(
-                                                chat_id=update.effective_chat.id,
-                                                text=("⚠️ Быстрая проверка нашла серьёзное искажение перевода. "
-                                                      "Отправляю версию, где проблемный русский фрагмент вырезан, "
-                                                      "а оригинал поднят."),
-                                                reply_to_message_id=update.message.message_id,
-                                            )
-                                    except Exception as _qfix_err:
-                                        logger.warning("[LiveDubQuickQA] автофикс не удался: %s", str(_qfix_err)[:160])
-                                if _quick_qa:
-                                    _quick_qa_report_html = format_qa_report(_quick_qa, video_url=url)
-                                else:
-                                    _quick_qa_skip_note = "Проверка перевода не удалась (Gemini не дал ответ)"
-                            else:
-                                logger.warning("[LiveDubQuickQA] skipped: оригинальная дорожка не сохранилась в workdir")
-                                _quick_qa_skip_note = "Проверка перевода пропущена: оригинальная дорожка не сохранилась"
-                        except Exception as _quick_qa_err:
-                            logger.info("[LiveDubQuickQA] skip: %s", str(_quick_qa_err)[:160])
-                            _quick_qa_skip_note = "Проверка перевода не удалась (внутренняя ошибка)"
-                    else:
-                        logger.info("[LiveDubQuickQA] skipped: duration=%s > max=%s", duration, _max_q)
-                        _quick_qa_skip_note = f"Проверка перевода пропущена: ролик длиннее {_max_q} сек"
+                    (
+                        livedub_path,
+                        _quick_qa_report_html,
+                        _quick_qa_skip_note,
+                    ) = await run_livedub_quick_qa(
+                        video_path=livedub_path,
+                        workdir=ld_work if "ld_work" in locals() else None,
+                        duration=duration,
+                        video_url=url,
+                        bot=context.bot,
+                        chat_id=update.effective_chat.id,
+                        reply_to=update.message.message_id,
+                    )
 
                 # Telegram/локальный Bot API берёт basename файла. Без этого
                 # пользователь скачивает десятки одинаковых pro_dub.mp4.

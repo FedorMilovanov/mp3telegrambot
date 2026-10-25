@@ -383,6 +383,102 @@ def test_eng_quick_empty_background_result_is_an_honest_failure(
     assert "Перевод «Живые голоса» не получился" in update.message.replies[0]
 
 
+def test_eng_quick_qa_executes_stage_before_video_send_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """The main wrapper executes real Quick QA before the existing send guard."""
+    cleaned = _eng_environment(monkeypatch, "eng_fast_qa")
+
+    import tempfile
+    import services.livedub_mix as mix
+    import services.livedub_qa as qa
+    import services.yandex_live_dub as live_dub
+
+    events = []
+    video = tmp_path / "quick.mp4"
+    video.write_bytes(b"video")
+    workdir = tmp_path / "livedub_media1"
+    workdir.mkdir()
+    original = workdir / "original_video.mp3"
+    original.write_bytes(b"original")
+
+    async def no_optional_setting(_name):
+        return False
+
+    async def prepared(**_kwargs):
+        return {}, "", ""
+
+    def completed_livedub_task(coroutine):
+        assert coroutine.cr_code.co_name == "_run_livedub_bg"
+        coroutine.close()
+        task = asyncio.get_running_loop().create_future()
+        task.set_result((video, False, False))
+        return task
+
+    async def run_qa(**kwargs):
+        events.append(("qa", kwargs))
+        return {"issues": []}
+
+    def format_report(_result, *, video_url):
+        events.append(("format", video_url))
+        return "quick QA report"
+
+    class Bot:
+        def __init__(self):
+            self.messages = []
+            self.videos = []
+
+        async def send_chat_action(self, **_kwargs):
+            return None
+
+        async def send_video(self, **kwargs):
+            self.videos.append(kwargs)
+            events.append(("video", kwargs))
+            raise RuntimeError("quick send failed")
+
+        async def send_message(self, **kwargs):
+            self.messages.append(kwargs)
+            events.append(("notice", kwargs))
+            return SimpleNamespace(message_id=999)
+
+    monkeypatch.setattr(live_dub, "_ensure_vot_helper", lambda: True)
+    monkeypatch.setattr(main_pipeline, "asettings_get", no_optional_setting)
+    monkeypatch.setattr(main_pipeline, "prepare_livedub_publication", prepared)
+    monkeypatch.setattr(main_pipeline, "get_max_file_size_mb", lambda: 50)
+    monkeypatch.setattr(main_pipeline.asyncio, "create_task", completed_livedub_task)
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(qa, "run_translation_qa", run_qa)
+    monkeypatch.setattr(qa, "format_qa_report", format_report)
+    monkeypatch.setattr(qa, "technical_check", lambda *_args: [])
+    monkeypatch.setattr(mix, "find_pro_tracks", lambda *_args: (None, None))
+    monkeypatch.setattr(
+        mix,
+        "probe_video_meta",
+        lambda _path: {"width": 640, "height": 360, "duration": 12},
+    )
+    monkeypatch.setattr(mix, "make_video_thumbnail", lambda _path: None)
+    monkeypatch.setenv("LIVEDUB_QUICK_QA_MAX_DURATION", "600")
+    monkeypatch.setenv("LIVEDUB_QUICK_QA_MODEL", "quick-model")
+    update = _FakeUpdate()
+    update.effective_chat = SimpleNamespace(id=31337)
+    update.message.message_id = 777
+    bot = Bot()
+
+    assert _run(update, context=SimpleNamespace(bot=bot)) is False
+    assert cleaned == ["media1"]
+    assert len(update.message.replies) == 1
+    assert "Перевод «Живые голоса» не получился" in update.message.replies[0]
+    assert len(bot.videos) == 1
+    assert len(bot.messages) == 1
+    assert "quick send failed" in bot.messages[0]["text"]
+    qa_event = next(event for event in events if event[0] == "qa")
+    assert qa_event[1]["original_audio_path"] == original
+    assert qa_event[1]["model_name"] == "quick-model"
+    assert [event[0] for event in events].index("qa") < [
+        event[0] for event in events
+    ].index("video")
+
+
 def test_eng_quick_cached_file_id_delivers_publication_and_companions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

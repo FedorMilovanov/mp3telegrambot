@@ -102,11 +102,13 @@ def test_eng_fast_qa_mode_registered_and_wired_for_gemini_38() -> None:
     assert "eng_fast_qa" in mode
     assert "⚡🔍 ENG Quick QA" in mode
     pipe = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    assert "LIVEDUB_QUICK_QA_MAX_DURATION" in pipe
-    assert "LIVEDUB_QUICK_QA_MODEL" in pipe
-    assert "LIVEDUB_QUICK_QA_THINKING" in pipe
-    assert "LiveDubQuickQA" in pipe
-    assert "apply_qa_audio_fixes" in pipe
+    stage = Path("pipelines/livedub_quick_qa_stage.py").read_text(encoding="utf-8")
+    assert "run_livedub_quick_qa(" in pipe
+    assert "LIVEDUB_QUICK_QA_MAX_DURATION" in stage
+    assert "LIVEDUB_QUICK_QA_MODEL" in stage
+    assert "LIVEDUB_QUICK_QA_THINKING" in stage
+    assert "LiveDubQuickQA" in stage
+    assert "apply_qa_audio_fixes" in stage
     env = Path(".env.example").read_text(encoding="utf-8")
     assert "LIVEDUB_QUICK_QA_MAX_DURATION=120" in env
     from core.model_catalog import MODEL_PRIMARY
@@ -413,8 +415,10 @@ def test_livedub_cover_wired_with_fallback() -> None:
 def test_quick_qa_report_sent_after_video_not_before() -> None:
     main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     stage = Path("pipelines/livedub_video_delivery_stage.py").read_text(encoding="utf-8")
+    quick_stage = Path("pipelines/livedub_quick_qa_stage.py").read_text(encoding="utf-8")
     helper = main[main.index("async def _send_livedub_result"):main.index("performer, title = parse_title")]
-    assert "_quick_qa_report_html = format_qa_report" in helper
+    assert "report_html = format_qa_report" in quick_stage
+    assert "run_livedub_quick_qa(" in helper
     assert "главный результат режима" in helper
     assert helper.index("_sent_msg = await send_livedub_video_with_cover") < helper.index(
         "if _quick_qa_report_html:"
