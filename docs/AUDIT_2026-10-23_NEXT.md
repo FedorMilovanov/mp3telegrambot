@@ -956,6 +956,20 @@ HTML escaping/ограничение ошибки и idempotent registration. Mu
 Измерено: проект 58,63 % → **58,79 %**. Полный прогон:
 **3 862 passed, 3 skipped**.
 
+**Шаг 38 (сделано) — Dub delivery coverage.** Семнадцать прямых
+behavior-тестов без изменения production-кода покрывают admin/token gates,
+безопасный project root, dynamic manifest и recipe fallback, filtering по
+типу/primary/default, deduplication/sorting, video/document отправку,
+продолжение после частичной ошибки, status edit fallback и idempotent
+registration.
+
+* `handlers/dub_delivery.py`: **156/156 statements, 54/54 branches**;
+* handlers в целом: 908/2 802 (32,41 %) → **1 005/2 802 (35,87 %)**;
+  `main_pipeline.py` остаётся 1 195 строк и 85,12 % statement coverage.
+
+Измерено: проект 58,79 % → **59,06 %**. Полный прогон:
+**3 879 passed, 3 skipped**.
+
 **Цели main для P0-3 достигнуты:** 1 195 ≤ 1 200 строк и 85,12 % ≥ 50 %
 statement coverage. Открытыми остаются handlers ≥ 55 % и Telegraph ≥ 60 %.
 
