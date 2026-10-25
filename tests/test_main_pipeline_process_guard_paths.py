@@ -322,3 +322,158 @@ def test_eng_quick_refusal_is_silent_in_playlist_mode(
     assert _run(update, silent_errors=True) is False
     assert update.message.replies == []
 
+
+def _stop_at_delivery_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
+    import services.livedub_delivery_coordinator as coordinator
+
+    def stop(**_kwargs):
+        raise RuntimeError("stop at delivery boundary")
+
+    monkeypatch.setattr(coordinator, "create_source_audio_deferral", stop)
+
+
+def test_missing_status_message_is_created_before_live_refusal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def live_info(_url, _timeout):
+        return {"id": "x", "is_live": True}
+
+    monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", live_info)
+    update = _FakeUpdate()
+    result = asyncio.run(main_pipeline.process_single_video(VIDEO_URL, update))
+
+    assert result is False
+    assert update.message.replies[0] == "⏳ Обрабатываю..."
+    assert "Live-трансляции не поддерживаются" in update.message.replies[1]
+
+
+def test_mode_database_and_error_cleanup_failures_stay_contained(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def info(_url, _timeout):
+        return {"id": "media1", "title": "Sermon", "duration": 600}
+
+    def broken_db():
+        raise RuntimeError("mode database unavailable")
+
+    def broken_cleanup(_media_id):
+        raise OSError("cleanup unavailable")
+
+    monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", info)
+    monkeypatch.setattr(main_pipeline, "_db_conn", broken_db)
+    monkeypatch.setattr(main_pipeline, "lowest_free_gb", lambda *_paths: 50.0)
+    monkeypatch.setattr(main_pipeline, "cleanup_files", broken_cleanup)
+    _stop_at_delivery_boundary(monkeypatch)
+    update = _FakeUpdate()
+
+    assert _run(update) is False
+    assert "stop at delivery boundary" in update.message.replies[-1]
+
+
+def test_current_livedub_file_id_skips_vot_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _eng_environment(monkeypatch, "eng")
+
+    async def cached(_media_id):
+        return {"livedub_file_id_version": "v1", "livedub_file_id": "file-id"}
+
+    monkeypatch.setattr(main_pipeline, "adb_get", cached)
+    import services.yandex_live_dub as live_dub
+
+    helper_calls = []
+
+    def unexpected_helper():
+        helper_calls.append(True)
+        return True
+
+    monkeypatch.setattr(live_dub, "_ensure_vot_helper", unexpected_helper)
+    _stop_at_delivery_boundary(monkeypatch)
+    update = _FakeUpdate()
+
+    assert _run(update) is False
+    assert helper_calls == []
+    assert "stop at delivery boundary" in update.message.replies[-1]
+
+
+def test_stale_livedub_file_id_is_not_reused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _eng_environment(monkeypatch, "eng_fast")
+
+    async def stale(_media_id):
+        return {"livedub_file_id_version": "old", "livedub_file_id": "stale-id"}
+
+    monkeypatch.setattr(main_pipeline, "adb_get", stale)
+    update = _FakeUpdate()
+
+    assert _run(update) is False
+    assert "нет клиента для Яндекс LiveDub" in update.message.replies[0]
+
+
+def test_livedub_cache_read_failure_uses_normal_vot_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _eng_environment(monkeypatch, "eng_fast")
+
+    async def broken_cache(_media_id):
+        raise RuntimeError("cache unavailable")
+
+    monkeypatch.setattr(main_pipeline, "adb_get", broken_cache)
+    update = _FakeUpdate()
+
+    assert _run(update) is False
+    assert "нет клиента для Яндекс LiveDub" in update.message.replies[0]
+
+
+def test_eng_full_helper_and_notice_failures_degrade_to_rus(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _eng_environment(monkeypatch, "eng")
+    import services.yandex_live_dub as live_dub
+
+    def broken_helper():
+        raise RuntimeError("helper unavailable")
+
+    async def broken_reply(_text, **_kwargs):
+        raise RuntimeError("Telegram unavailable")
+
+    monkeypatch.setattr(live_dub, "_ensure_vot_helper", broken_helper)
+    _stop_at_delivery_boundary(monkeypatch)
+    update = _FakeUpdate()
+    monkeypatch.setattr(update.message, "reply_text", broken_reply)
+
+    # Both user-facing failures are logged and contained; ENG Full degrades to
+    # the ordinary RUS path instead of aborting before the delivery boundary.
+    assert _run(update) is False
+
+
+def test_eng_quick_workdir_is_removed_when_settings_fail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _eng_environment(monkeypatch, "eng_fast")
+    import services.yandex_live_dub as live_dub
+
+    async def info(_url, _timeout):
+        return {"id": "media-cleanup", "title": "Sermon", "duration": 600}
+
+    monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", info)
+    monkeypatch.setattr(live_dub, "_ensure_vot_helper", lambda: True)
+    settings_calls = []
+
+    async def broken_setting(name):
+        settings_calls.append(name)
+        raise RuntimeError("stop after workdir")
+
+    monkeypatch.setattr(main_pipeline, "asettings_get", broken_setting)
+    update = _FakeUpdate()
+
+    assert _run(update) is False
+    assert settings_calls == ["livedub_pro_mix"]
+    assert "stop after workdir" in update.message.replies[-1]
+
+    import tempfile
+    from pathlib import Path
+
+    assert not (Path(tempfile.gettempdir()) / "livedub_media-cleanup").exists()
+

@@ -32,6 +32,9 @@ _REPLACED_CASES = {
     "test_livedub_info_message_uses_safe_html_trim",
     "test_vot_token_is_documented_in_readme_help_and_status",
     "test_ytdlp_js_runtime_version_filter",
+    # P0-3: title implementation and HTML delivery now have separate source
+    # owners; the two-module replacement lives in test_livedub_title.py.
+    "test_livedub_send_video_caption_includes_title_and_html_parse_mode",
     # P0-3: свежая отправка MP3/PDF вынесена в отдельную стадию.
     "test_upload_retry_honors_retry_after",
     "test_mp3_chapters_wired_both_branches",

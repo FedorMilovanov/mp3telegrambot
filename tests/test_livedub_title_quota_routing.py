@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "pipelines" / "main_pipeline.py"
+SOURCE = ROOT / "pipelines" / "livedub_title.py"
 FUNCTION = "_translate_livedub_title_for_caption"
 
 
@@ -34,7 +34,7 @@ def test_livedub_title_fallback_uses_common_project_aware_router() -> None:
     router = router_calls[0]
     assert len(router.args) >= 2
     assert isinstance(router.args[0], ast.Name)
-    assert router.args[0].id == "GEMINI_CLIENTS"
+    assert router.args[0].id == "clients"
     assert isinstance(router.args[1], ast.Name)
     assert router.args[1].id == "_generate_title"
 
