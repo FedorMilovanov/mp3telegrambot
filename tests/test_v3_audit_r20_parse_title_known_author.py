@@ -87,10 +87,10 @@ def test_known_author_from_text_finds_surname_embedded_in_longer_phrase():
 
 
 def test_known_registries_shared_between_parse_title_and_livedub_caption():
-    """Реестр должен жить в одном месте (core/person_names.py) — main_pipeline
-    импортирует его, а не держит вторую независимую копию."""
+    """Реестр должен жить в одном месте (core/person_names.py) — LiveDub title
+    helpers импортируют его, а не держат вторую независимую копию."""
     from pathlib import Path
-    src = Path(__file__).resolve().parents[1].joinpath("pipelines/main_pipeline.py").read_text(
+    src = Path(__file__).resolve().parents[1].joinpath("pipelines/livedub_title.py").read_text(
         encoding="utf-8"
     )
     assert "from core.person_names import" in src

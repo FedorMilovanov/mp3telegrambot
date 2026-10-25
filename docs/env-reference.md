@@ -94,8 +94,8 @@
 | `LIVEDUB_SEND_DUAL_AUDIO` | `services/livedub_audio_companion.py` | `1` | — | — |
 | `LIVEDUB_TAIL_FREEZE_MAX_SEC` | `core/database.py` | `180` | да | — |
 | `LIVEDUB_TAIL_MARGIN_MS` | `core/database.py` | `1000` | да | — |
-| `LIVEDUB_TITLE_CACHE_MAX` | `pipelines/main_pipeline.py` | `256` | — | — |
-| `LIVEDUB_TITLE_TRANSLATE` | `pipelines/main_pipeline.py` | `1` | да | — |
+| `LIVEDUB_TITLE_CACHE_MAX` | `pipelines/livedub_title.py` | `256` | — | — |
+| `LIVEDUB_TITLE_TRANSLATE` | `pipelines/livedub_title.py` | `1` | да | — |
 | `LIVEDUB_TRANS_VOLUME` | `core/database.py` | `1.3` | да | — |
 | `LIVEDUB_TTS_FALLBACK` | `services/livedub_mix.py` | `0` | да | да |
 | `LIVEDUB_VOICE_EQ` | `core/database.py` | `1` | — | — |

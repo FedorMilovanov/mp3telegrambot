@@ -118,6 +118,13 @@
   собирается общей `caption_stage`. Стадия покрыта 15 тестами со 100 %
   statement/branch coverage; порядок чтения Telegraph-ссылок до thumbnail/audio
   и критичность ошибок внешнего поиска сохранены.
+- LiveDub title/author helpers вынесены в `pipelines/livedub_title.py`:
+  нормализация, bounded cache, light-info перевод и основной Gemini fallback
+  с прежними env-флагами и timeout 30 секунд покрыты 100 % statement/branch
+  тестами. Совместимый wrapper в `main_pipeline` передаёт текущий
+  `main_pipeline.GEMINI_CLIENTS`, поэтому исторические monkeypatch-контракты
+  продолжают выполняться без переписывания. Дополнительные поведенческие тесты
+  закрепили in-process yt-dlp и ранние failure/cleanup ветки оркестратора.
 - Ратчет покрытия по файлам (`tools/check_coverage_ratchet.py`,
   `docs/coverage_baseline.json`): покрытие объявленных файлов может только
   расти. Компенсирует `diff-cover` там, где изменения — проводка в

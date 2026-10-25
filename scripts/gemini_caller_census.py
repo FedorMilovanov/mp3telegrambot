@@ -53,7 +53,7 @@ DIRECT_SUFFIXES = {
 # Keys are (path, function, kind) and values are (category, max_call_sites).
 DIRECT_CLASSIFICATIONS: dict[tuple[str, str, str], tuple[str, int]] = {
     ("core/globals.py", "_make_gemini_client", "client_create"): ("B", 2),
-    ("pipelines/main_pipeline.py", "_generate_title", "inference_async"): ("A", 1),
+    ("pipelines/livedub_title.py", "_generate_title", "inference_async"): ("A", 1),
     ("services/eng_subtitles.py", "_generate_chunk", "inference_async"): ("A", 1),
     ("services/gemini_analyze.py", "_repair_timestamp_coverage_if_needed", "inference_async"): ("C", 1),
     ("services/gemini_analyze.py", "upload_to_client", "files_upload_async"): ("B", 1),
