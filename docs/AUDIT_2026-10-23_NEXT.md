@@ -755,7 +755,28 @@ integration выполняет настоящий background task до запи�
 50,42 % → **52,05 %**, проект 57,72 % → **57,78 %**. Полный прогон:
 **3 761 passed, 3 skipped**.
 
-До приёмки P0-3 остался сам оркестратор — цель ≤ 1 200 строк (сейчас 1 509
+**Шаг 28 (сделано) — ENG Full failure notification.** Flush deferred source
+audio → default reason → HTML notice вынесен в
+`pipelines/livedub_failure_stage.py`; one-shot flags остаются на исторической
+границе nested sender. Шесть прямых тестов дают стадии 100 % statement/branch
+coverage. Существующий fresh integration параметризован: RUS-сценарий сохранён,
+ENG Full дополнительно выполняет настоящий main wrapper и extracted notice.
+
+* порядок flush до normalization/send, default reason, HTML escaping,
+  `parse_mode`/reply metadata и полный текст сообщения сохранены; успех по-
+  прежнему выставляет `_livedub_result_sent`, а ошибка отправки некритична и
+  логируется с truncation до 160 символов;
+* ошибка source-audio flush и cancellation не поглощаются; повторный вызов
+  блокируется прежним `_livedub_failure_notice_sent` в main;
+* source-owner QA указывает на отдельную notification-стадию через уже
+  существующий replacement mechanism, `tests/livedub_qa_cases.py` остаётся
+  byte-stable; coverage ratchet поднят по результату полного прогона.
+
+Измерено: `main_pipeline.py` 1 509 → **1 500 строк**, line-ratchet main
+52,05 % → **54,28 %**, проект 57,78 % → **57,91 %**. Полный прогон:
+**3 768 passed, 3 skipped**.
+
+До приёмки P0-3 остался сам оркестратор — цель ≤ 1 200 строк (сейчас 1 500
 строк из 3 120 исходных); цель ≥ 50 % statement coverage уже выполнена.
 
 ### P0-4. Сканирование секретов и SAST
