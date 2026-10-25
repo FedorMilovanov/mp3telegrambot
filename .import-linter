@@ -1,0 +1,49 @@
+[importlinter]
+root_packages =
+    core
+    services
+    converters
+    pipelines
+    handlers
+# Imports used only for annotations do not create runtime coupling.
+exclude_type_checking_imports = True
+
+[importlinter:contract:production-layers]
+name = Production dependencies flow toward core
+type = layers
+layers =
+    handlers
+    pipelines
+    services
+    converters
+    core
+# Burn-down list for the legacy edges documented in ARCHITECTURE.md.
+# Every entry is an exact module pair: wildcards could hide a new violation.
+# An entry that no longer matches a real import is an error, so cleanup must
+# remove its entry in the same PR. The target is an empty ignore_imports list.
+ignore_imports =
+    pipelines.video_dispatch -> handlers.mode_command
+    core.globals -> services.gemini_quota_domains
+    core.globals -> services.health_report
+    core.globals -> services.gemini_capacity_control
+    core.prompt_health -> services.quiz_generator
+    core.utils -> services.ffmpeg
+    services.dub_studio_runtime -> handlers.dub_wizard
+    services.dub_studio_runtime -> handlers.dub_delivery
+    services.dub_studio_runtime -> handlers.dub_quickstart
+    services.dub_studio_runtime -> handlers.dub_health
+    services.dub_studio_runtime -> handlers.dub_audio_repair
+    services.dub_studio_runtime -> handlers.dub_commands
+    services.dub_studio_runtime -> handlers.dub_multicommand
+    services.shorts_factory_full_video -> handlers.mode_command
+    services.shorts_factory_execution_guard -> pipelines.shorts_factory
+    services.shorts_factory_source -> pipelines.shorts_factory
+    services.translation_editorial_runner -> pipelines.shorts_factory
+    converters.caption -> services.search
+    converters.md_telegraph -> services.telegraph
+    converters.md_telegraph -> services.pdf_generator
+unmatched_ignore_imports_alerting = error
+broken_contract_guidance =
+    Keep the direction handlers -> pipelines -> services -> converters -> core.
+    Do not add new ignore_imports entries. Remove a legacy edge and its exact
+    entry together; unmatched legacy entries intentionally fail the contract.

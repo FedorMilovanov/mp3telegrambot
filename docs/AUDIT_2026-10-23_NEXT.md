@@ -1284,7 +1284,7 @@ Release run 40240577021 выполнил полный pytest на Python 3.12, �
 и успешно опубликовал GitHub Release с wheel, sdist и `SHA256SUMS`. Более поздний
 `Unreleased` в release notes `4.0.0` не включался.
 
-### P1-6. Границы слоёв как исполняемый контракт
+### P1-6. Границы слоёв как исполняемый контракт — 🟡 гейт включён, legacy burn-down
 
 **Сейчас:** `services/telegraph_pages.py` импортирует **приватную** `_telegraph_post` из
 `services/telegraph.py`; слои держатся на дисциплине.
@@ -1295,6 +1295,14 @@ Release run 40240577021 выполнил полный pytest на Python 3.12, �
 
 **Объём:** 2–3 часа.
 **Приёмка:** `lint-imports` в CI; `core → services` невозможен без падения.
+
+**Перепроверка 2026-10-26:** `import-linter 2.15` добавлен в dev-lock,
+`tools/check_import_layers.py` исполняет layers-контракт на реальном графе и
+включён в `verify_repo.py`. Направление: `handlers → pipelines → services →
+converters → core`. Пока остаётся 20 точных legacy-рёбер: они временно
+перечислены без wildcards, новые нарушения
+и устаревшие исключения падают. Пункт будет закрыт только при нулевом списке;
+одновременно нужно сделать `_telegraph_post` публичным API.
 
 ### P1-7. Мелкое, но заметное
 

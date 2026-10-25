@@ -40,6 +40,9 @@
   `tests/test_typecheck_gate.py`, который ловит ослабление настроек и сверяет
   срез с `docs/typechecking.md`. Срез: `core/` и `pipelines/` (кроме
   `main_pipeline.py`, см. P0-3).
+- Исполняемый контракт production-слоёв через `import-linter`: новые обратные
+  импорты блокируются, а известные legacy-рёбра сокращаются по точному
+  burn-down без wildcard-исключений (`tools/check_import_layers.py`).
 
 ### Changed
 
