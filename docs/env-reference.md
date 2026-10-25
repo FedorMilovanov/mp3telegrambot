@@ -4,7 +4,7 @@
 Курируемая инструкция «что стоит трогать» — `.env.example`; здесь полный перечень,
 включая внутренние и диагностические переменные.
 
-Всего переменных: **177**; описано в `.env.example`: **103**; не описано: **74**; управляется стартовой политикой: **15**.
+Всего переменных: **179**; описано в `.env.example`: **103**; не описано: **76**; управляется стартовой политикой: **15**.
 
 | Переменная | Где читается | Дефолт в коде | В `.env.example` | Политика |
 |---|---|---|---|---|
@@ -50,6 +50,7 @@
 | `DUB_VOX_ARCHIVE` | `handlers/dub_health.py` | — | — | — |
 | `DUB_VOX_MODEL_REVISION` | `services/speech_backends/builtin_profiles.py` | `` | — | — |
 | `DUB_WHISPER_MODEL` | `handlers/dub_wizard.py` | `large-v3` | — | — |
+| `DUB_WORKER_MAX_QUALITY_RESTARTS` | `services/dub_worker.py` | — | — | — |
 | `ENV` | `main.py`, `services/bot_lifecycle.py` | — | — | — |
 | `EXPANDED_CONTENT_AUDIT_RETRY` | `services/telegraph_pages.py` | `1` | да | — |
 | `EXPANDED_PAGES_STRUCTURED` | `services/telegraph_pages.py` | `1` | да | — |
@@ -102,7 +103,7 @@
 | `LOCAL_BOT_API_AUTOSTART` | `main.py` | `1` | да | — |
 | `LOCAL_BOT_API_CLOUD_FALLBACK` | `main.py`, `services/local_botapi_required.py` | `1` | да | — |
 | `LOCAL_BOT_API_DATA_DIR` | `core/utils.py`, `main.py`, `services/local_botapi_bootstrap.py` и ещё 1 | `` | да | — |
-| `LOCAL_BOT_API_EXE` | `main.py` | — | да | — |
+| `LOCAL_BOT_API_EXE` | `main.py`, `services/local_botapi_bootstrap.py`, `services/local_botapi_runtime.py` | — | да | — |
 | `LOCAL_BOT_API_GETME_TIMEOUT_SEC` | `main.py` | `60` | — | — |
 | `LOCAL_BOT_API_PROXY_LOGIN` | `main.py` | `` | да | — |
 | `LOCAL_BOT_API_PROXY_PASSWORD` | `main.py`, `services/local_botapi_runtime.py` | `` | да | — |
@@ -136,6 +137,7 @@
 | `PROMPT_EXPERIMENT_TAG` | `core/generated_pages.py`, `pipelines/fresh_caption_stage.py` | `` | — | — |
 | `PROMPT_SCHEMA_VERSION` | `core/database.py` | `analysis-deep-v7` | — | — |
 | `PYTHONUTF8` | `handlers/dub_health.py`, `tools/voxcpm2/quality_sweep.py`, `tools/voxcpm2/segmented_cpu_dub.py` | `` | — | — |
+| `PYTORCH_NO_CUDA_MEMORY_CACHING` | `tools/voxcpm2/cuda_probation_probe.py` | — | — | — |
 | `RENDER_GIT_COMMIT` | `services/runtime_build_identity.py` | — | — | — |
 | `RUTUBE_LISTING_CACHE_TTL` | `services/search.py` | `900` | — | — |
 | `SHORTS_FACTORY_EDITORIAL_GEMINI_MAX_ATTEMPTS` | `services/translation_editorial_factory.py` | `1` | — | — |

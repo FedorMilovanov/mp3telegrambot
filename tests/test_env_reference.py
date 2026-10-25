@@ -14,6 +14,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import scripts.render_env_reference as env_reference
 from scripts.render_env_reference import SYSTEM_VARS, collect
 
 REFERENCE = Path("docs/env-reference.md")
@@ -31,6 +32,28 @@ def test_reference_is_in_sync_with_the_code() -> None:
         "docs/env-reference.md устарел: выполните "
         f"python {SCRIPT.as_posix()}\n{result.stdout}{result.stderr}"
     )
+
+
+def test_collection_is_invariant_to_multiline_formatting(tmp_path, monkeypatch) -> None:
+    services = tmp_path / "services"
+    services.mkdir()
+    source = services / "example.py"
+    monkeypatch.setattr(env_reference, "ROOT", tmp_path)
+
+    source.write_text(
+        'import os\nvalue = os.getenv(\n    "MULTILINE_ENV", "fallback"\n)\n',
+        encoding="utf-8",
+    )
+    multiline = collect()
+    source.write_text(
+        'import os\nvalue = os.getenv("MULTILINE_ENV", "fallback")\n',
+        encoding="utf-8",
+    )
+    joined = collect()
+
+    assert multiline == joined
+    assert joined["MULTILINE_ENV"].defaults == {"fallback"}
+    assert joined["MULTILINE_ENV"].files == {"services/example.py"}
 
 
 def test_every_collected_variable_has_a_row() -> None:

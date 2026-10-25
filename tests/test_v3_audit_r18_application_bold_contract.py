@@ -110,4 +110,4 @@ def test_fix_present_in_source():
         encoding="utf-8"
     )
     assert "_dedup_adjacent_timestamp_link" in src
-    assert "startswith('Шаг:')" in src
+    assert 'startswith("Шаг:")' in src or "startswith('Шаг:')" in src

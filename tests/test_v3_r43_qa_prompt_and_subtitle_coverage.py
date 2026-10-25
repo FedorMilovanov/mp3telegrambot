@@ -35,9 +35,10 @@ def test_r43_qa_prompt_no_longer_contains_splice_example():
 def test_r43_reference_block_considers_existing_audio_part():
     src = Path("services/livedub_qa.py").read_text(encoding="utf-8")
     assert "_will_attach_original" in src
-    assert "existing_audio_part is not None and existing_client is not None" in src
+    compact_src = "".join(src.split())
+    assert "existing_audio_partisnotNoneandexisting_clientisnotNone" in compact_src
     # the old bug: branch keyed ONLY on original_audio_path
-    assert "if original_audio_path and Path(original_audio_path).exists():\n            reference_block" not in src
+    assert "iforiginal_audio_pathandPath(original_audio_path).exists():reference_block" not in compact_src
 
 
 # ── 3. Low-confidence caveat surfaces in the report ──────────────────────────

@@ -107,7 +107,8 @@ def test_main_routes_mode_callbacks_before_global_callback() -> None:
     global_route = "CallbackQueryHandler(handle_callback)"
     assert mode_route in source
     assert source.index(mode_route) < source.index(global_route)
-    assert 'BotCommand("dub",        "🎙 Дубляж: Gemini MAX / готовый SRT")' in source
+    compact_source = " ".join(source.split())
+    assert 'BotCommand("dub", "🎙 Дубляж: Gemini MAX / готовый SRT")' in compact_source
 
 
 def test_dub_command_has_one_owner_and_start_cancels_wizard() -> None:

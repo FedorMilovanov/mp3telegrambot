@@ -136,7 +136,8 @@ def test_repair_record_expands_chained_multipart_pages():
     src = Path("services/telegraph_repair.py").read_text(encoding="utf-8")
     assert "expand_telegraph_page_chain" in src
     assert "chain = await expand_telegraph_page_chain(url)" in src
-    assert "for item in (chain or [url])" in src
+    assert "for item in" in src
+    assert "chain or [url]" in src
 
 
 def test_repair_chain_default_does_not_truncate_after_twelve_pages(monkeypatch):

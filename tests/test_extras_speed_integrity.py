@@ -164,13 +164,15 @@ def test_montage_encodes_parts_but_packet_copies_final_video_concat():
     before_concat = render[:concat_start]
     concat = render[concat_start:]
 
-    assert '"-c:v", _enc, *_preset, *_quality' in before_concat
-    assert '"-c:v", "copy"' in concat
-    assert '"-c:a", "aac", "-b:a", "128k"' in concat
-    assert '"-af", "aresample=async=1"' in concat
-    assert '"-c:v", _enc' not in concat
-    assert "async with _sched.gpu_render" not in concat
-    assert '"-vsync", "vfr"' not in concat
+    before_concat_compact = " ".join(before_concat.split())
+    concat_compact = " ".join(concat.split())
+    assert '"-c:v", _enc, *_preset, *_quality' in before_concat_compact
+    assert '"-c:v", "copy"' in concat_compact
+    assert '"-c:a", "aac", "-b:a", "128k"' in concat_compact
+    assert '"-af", "aresample=async=1"' in concat_compact
+    assert '"-c:v", _enc' not in concat_compact
+    assert "async with _sched.gpu_render" not in concat_compact
+    assert '"-vsync", "vfr"' not in concat_compact
 
 
 def test_factory_and_verified_highlights_keep_their_existing_quality_owners():

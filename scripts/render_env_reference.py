@@ -81,22 +81,26 @@ def collect() -> dict[str, Entry]:
     entries: dict[str, Entry] = {}
     for path in _sources():
         relative = path.relative_to(ROOT).as_posix()
-        for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
-            if line.lstrip().startswith("#"):
-                continue
-            for pattern, name_group, default_group in PATTERNS:
-                for match in pattern.finditer(line):
-                    name = match.group(name_group)
-                    if name in SYSTEM_VARS or name.startswith(("GITHUB_", "RUNNER_")):
-                        continue
-                    entry = entries.setdefault(name, Entry(name=name))
-                    entry.files.add(relative)
-                    if default_group:
-                        value = match.group(default_group)
-                        if value:
-                            entry.defaults.add(value.strip("\"'"))
-                    if "os.environ[" in line or "setdefault" in line:
-                        entry.written = True
+        source = path.read_text(encoding="utf-8", errors="ignore")
+        for pattern, name_group, default_group in PATTERNS:
+            # Match across line breaks so Ruff joining or splitting a call cannot
+            # add or remove an environment variable from the generated contract.
+            for match in pattern.finditer(source):
+                line_start = source.rfind("\n", 0, match.start()) + 1
+                if source[line_start:match.start()].lstrip().startswith("#"):
+                    continue
+                name = match.group(name_group)
+                if name in SYSTEM_VARS or name.startswith(("GITHUB_", "RUNNER_")):
+                    continue
+                entry = entries.setdefault(name, Entry(name=name))
+                entry.files.add(relative)
+                if default_group:
+                    value = match.group(default_group)
+                    if value:
+                        entry.defaults.add(value.strip("\"'"))
+                matched_source = source[line_start:match.end()]
+                if "os.environ[" in matched_source or "setdefault" in matched_source:
+                    entry.written = True
     return entries
 
 

@@ -99,6 +99,10 @@ exclude = [
   "__pycache__",
   "downloads",
   "node_modules",
+  # Markdown examples are documentation, not rewritable production source.
+  "docs",
+  # This historical module is byte-stable; replacements live in its collector.
+  "tests/livedub_qa_cases.py",
 ]
 
 [tool.ruff.lint]
