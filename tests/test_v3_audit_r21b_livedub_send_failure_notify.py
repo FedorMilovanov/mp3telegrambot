@@ -19,6 +19,9 @@ from pathlib import Path
 
 SRC = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
 FAILURE_STAGE_SRC = Path("pipelines/livedub_failure_stage.py").read_text(encoding="utf-8")
+DELIVERY_STAGE_SRC = Path("pipelines/livedub_video_delivery_stage.py").read_text(
+    encoding="utf-8"
+)
 
 
 def _send_livedub_result_body() -> str:
@@ -32,13 +35,15 @@ def _send_livedub_result_body() -> str:
 
 def test_cover_retry_does_not_blindly_swallow_size_errors():
     body = _send_livedub_result_body()
-    idx = body.find("except Exception as _cov_err:")
+    assert "send_livedub_video_with_cover(" in body
+    idx = DELIVERY_STAGE_SRC.find("except Exception as cover_error:")
     assert idx != -1
-    window = body[idx:idx + 700]
+    window = DELIVERY_STAGE_SRC[idx:idx + 900]
     assert "entity too large" in window.lower(), (
         "ретрай без cover должен пропускать (raise) ошибки размера payload, "
         "а не слепо повторять отправку — cover тут ни при чём"
     )
+    assert 'if cover is None:\n            raise' in window
 
 
 def test_send_failure_notifies_user_instead_of_silent_false():

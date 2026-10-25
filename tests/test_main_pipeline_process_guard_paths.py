@@ -958,6 +958,7 @@ def test_cache_hit_delivery_reaches_real_stage_and_returns_success(
         "eng_timeout",
         "eng_send_failure",
         "eng_video_send_failure",
+        "eng_video_cover_retry_failure",
         "eng_video_too_large",
     ],
 )
@@ -1109,7 +1110,11 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
                 task.set_exception(asyncio.TimeoutError())
             elif mode == "eng_send_failure":
                 task.set_exception(RuntimeError("Request Entity Too Large <bad>"))
-            elif mode in ("eng_video_send_failure", "eng_video_too_large"):
+            elif mode in (
+                "eng_video_send_failure",
+                "eng_video_cover_retry_failure",
+                "eng_video_too_large",
+            ):
                 translated = tmp_path / "translated.mp4"
                 translated.write_bytes(b"video")
                 task.set_result((translated, False, False))
@@ -1131,27 +1136,41 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
 
             async def send_video(self, **kwargs):
                 self.video_calls.append(kwargs)
+                if mode == "eng_video_cover_retry_failure":
+                    if "cover" in kwargs:
+                        raise RuntimeError("unknown cover field")
+                    raise RuntimeError("fallback send failed")
                 raise RuntimeError("Request Entity Too Large <bad>")
 
         monkeypatch.setattr(main_pipeline, "adb_get", no_cache)
         monkeypatch.setattr(main_pipeline, "asettings_get", no_optional_setting)
         monkeypatch.setattr(main_pipeline.asyncio, "create_task", completed_livedub_task)
         monkeypatch.setattr(live_dub, "_ensure_vot_helper", lambda: True)
-        if mode in ("eng_send_failure", "eng_video_send_failure"):
+        if mode in (
+            "eng_send_failure",
+            "eng_video_send_failure",
+            "eng_video_cover_retry_failure",
+        ):
             monkeypatch.setattr(main_pipeline, "get_max_file_size_mb", lambda: 50)
         elif mode == "eng_video_too_large":
             monkeypatch.setattr(main_pipeline, "get_max_file_size_mb", lambda: 0)
-        if mode in ("eng_video_send_failure", "eng_video_too_large"):
+        if mode in (
+            "eng_video_send_failure",
+            "eng_video_cover_retry_failure",
+            "eng_video_too_large",
+        ):
             import services.livedub_qa as qa
 
             monkeypatch.setattr(
                 qa, "technical_check", lambda *_args: ["tech warning"]
             )
-        if mode == "eng_video_send_failure":
+        if mode in ("eng_video_send_failure", "eng_video_cover_retry_failure"):
             import services.livedub_mix as mix
 
             thumbs_dir = tmp_path / "thumbs"
             thumbs_dir.mkdir()
+            if mode == "eng_video_cover_retry_failure":
+                (thumbs_dir / "media1_thumb.jpg").write_bytes(b"x" * 2048)
             monkeypatch.setattr(main_pipeline, "THUMBS_DIR", thumbs_dir)
             monkeypatch.setattr(
                 mix,
@@ -1207,22 +1226,31 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
             assert "Текущий лимит отправки — 0 МБ." in notice["text"]
             assert "LOCAL_BOT_API_URL" in notice["text"]
             assert "parse_mode" not in notice
+        elif mode == "eng_video_cover_retry_failure":
+            assert "Не удалось отправить видео с переводом" in notice["text"]
+            assert "fallback send failed" in notice["text"]
+            assert "LOCAL_BOT_API_URL" not in notice["text"]
         else:
             assert "Не удалось отправить видео с переводом" in notice["text"]
             assert "Request Entity Too Large &lt;bad&gt;" in notice["text"]
             assert "LOCAL_BOT_API_URL" in notice["text"]
-        if mode == "eng_video_send_failure":
+        if mode in ("eng_video_send_failure", "eng_video_cover_retry_failure"):
             assert notice_bot.actions == [
                 {"chat_id": 987, "action": "upload_video"}
             ]
-            assert len(notice_bot.video_calls) == 1
+            expected_calls = 2 if mode == "eng_video_cover_retry_failure" else 1
+            assert len(notice_bot.video_calls) == expected_calls
             video_call = notice_bot.video_calls[0]
             assert video_call["width"] == 640
             assert video_call["height"] == 360
             assert video_call["duration"] == 12.5
             assert video_call["supports_streaming"] is True
             assert "⚠️ tech warning" in video_call["caption"]
-            assert "cover" not in video_call
+            if mode == "eng_video_cover_retry_failure":
+                assert video_call["cover"].name == "media1_thumb.jpg"
+                assert "cover" not in notice_bot.video_calls[1]
+            else:
+                assert "cover" not in video_call
         else:
             assert notice_bot.video_calls == []
     else:

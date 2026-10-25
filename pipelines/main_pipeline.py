@@ -57,6 +57,7 @@ from pipelines.livedub_video_assets_stage import (
     get_livedub_technical_warnings,
     prepare_livedub_video_assets,
 )
+from pipelines.livedub_video_delivery_stage import send_livedub_video_with_cover
 from pipelines.publication_context_stage import prepare_publication_context
 from services.telegraph_pages import combined_study_reflection_enabled
 from pipelines.telegraph_nav import add_navigation
@@ -906,30 +907,12 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     supports_streaming=True,
                     write_timeout=600, read_timeout=600, connect_timeout=60,
                 )
-                try:
-                    await context.bot.send_chat_action(
-                        chat_id=update.effective_chat.id, action="upload_video")
-                except Exception:
-                    pass
-                try:
-                    if _v_cover is not None:
-                        _sent_msg = await context.bot.send_video(cover=_v_cover, **_send_kwargs)
-                    else:
-                        _sent_msg = await context.bot.send_video(**_send_kwargs)
-                except Exception as _cov_err:
-                    if _v_cover is None:
-                        raise
-                    # AUDIT R21 (живой лог: "Request Entity Too Large"): размер
-                    # payload не зависит от cover — повтор без него гарантированно
-                    # провалится ещё раз тем же способом и просто тратит время
-                    # на повторную загрузку тяжёлого видео. Повторяем только когда
-                    # ошибка НЕ похожа на превышение размера.
-                    _cov_err_text = str(_cov_err).lower()
-                    if "entity too large" in _cov_err_text or "too large" in _cov_err_text:
-                        raise
-                    # Старый Bot API сервер/прокси может не знать cover — повтор без него
-                    logger.info(f"[LiveDub] cover не принят ({str(_cov_err)[:100]}) — отправка без cover")
-                    _sent_msg = await context.bot.send_video(**_send_kwargs)
+                _sent_msg = await send_livedub_video_with_cover(
+                    bot=context.bot,
+                    chat_id=update.effective_chat.id,
+                    cover=_v_cover,
+                    send_kwargs=_send_kwargs,
+                )
                 # Companion delivery is an explicit transaction. Only a complete
                 # video+MP3 result enters the fast-resend video cache.
                 _video_file_id = str(
