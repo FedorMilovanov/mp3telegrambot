@@ -126,11 +126,13 @@ def test_progress_dedup_key_includes_chat_id():
 
 
 def test_eng_quick_returns_delivery_status_and_respects_silent_errors():
-    src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    block = src.split("ENG Quick done:", 1)[0]
-    tail = block[-3500:]
-    assert "return _delivered" in src.split("ENG Quick done:", 1)[1][:300]
-    assert "if silent_errors:" in tail
+    main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    stage = Path("pipelines/livedub_quick_stage.py").read_text(encoding="utf-8")
+    assert "return await finish_livedub_quick(" in main
+    assert "send_result=_send_livedub_result" in main
+    assert "cleanup=cleanup_files" in main
+    assert "return delivered" in stage
+    assert "if silent_errors:" in stage
 
 
 def test_livedub_qa_cached_analysis_must_pass_normal_cache_validity():

@@ -47,6 +47,7 @@ from pipelines.cached_presentation_stage import (
 )
 from pipelines.delivery_stage import DeliveryRequest, deliver_cached_result, deliver_result
 from pipelines.extras_stage import ExtrasRequest, run_extras
+from pipelines.livedub_quick_stage import finish_livedub_quick
 from services.telegraph_pages import combined_study_reflection_enabled
 from pipelines.telegraph_nav import add_navigation
 from pipelines.telegraph_repair_stage import repair_enabled, repair_pages
@@ -1164,60 +1165,16 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
 
         # ── ENG Quick: только перевод, весь анализ пропускаем ────────────
         if user_mode in ("eng_fast", "eng_fast_qa"):
-            if status_msg:
-                try:
-                    await status_msg.edit_text(
-                        f"⚡ Режим ENG Quick: жду перевод «Живые голоса»...\n📝 {title}"
-                    )
-                except Exception:
-                    pass
-            _delivered = await _send_livedub_result()
-            if status_msg:
-                try:
-                    await status_msg.delete()
-                except Exception:
-                    pass
-            if not _delivered:
-                # FIX 2026-06-10: раньше при сбое перевода ENG Quick юзер
-                # оставался ВООБЩЕ без ответа (статус удалён, видео нет).
-                # ROUND 39: если отказ из-за отсутствия OAuth-токена — говорим
-                # прямо, как починить (это и была причина «Translation not
-                # available» на Shorts и новых видео).
-                _auth_required = False
-                try:
-                    _auth_required = ("ld_work" in locals()
-                                      and (ld_work / ".auth_required").exists())
-                except OSError:
-                    pass
-                # FIX AUDIT R4: в плейлисте (silent_errors=True) не шумим
-                # отдельным сообщением на каждый неудачный entry — итоговую
-                # сводку даёт handle_playlist (AUDIT M3).
-                try:
-                    if silent_errors:
-                        pass
-                    elif _auth_required:
-                        await update.message.reply_text(
-                            "❌ Яндекс теперь требует авторизацию для «Живых голосов».\n"
-                            "🔑 Добавь VOT_API_TOKEN в .env (инструкция в .env.example):\n"
-                            "1) открой https://rust-server-531j.onrender.com/v1/auth/handle\n"
-                            "2) войди в аккаунт Яндекса\n"
-                            "3) скопируй access_token из адресной строки после редиректа\n"
-                            "4) VOT_API_TOKEN=<токен> (или YANDEX_OAUTH_TOKEN=<токен>) в .env и перезапусти бота."
-                        )
-                    else:
-                        await update.message.reply_text(
-                            "❌ Перевод «Живые голоса» не получился для этого видео.\n"
-                            "Возможные причины: перевод недоступен у Яндекса, vot-cli-live "
-                            "не установлен, или видео слишком длинное.\n"
-                            "Попробуйте режим 🇬🇧 ENG Full (/mode) — там будет хотя бы анализ."
-                        )
-                except Exception:
-                    pass
-            cleanup_files(media_id)
-            logger.info(f"ENG Quick done: {media_id} delivered={_delivered}")
-            # FIX AUDIT R4: return _delivered — иначе handle_playlist считал
-            # недоставленный entry успешным (✅) при уже списанном слоте лимита.
-            return _delivered
+            return await finish_livedub_quick(
+                update=update,
+                status_msg=status_msg,
+                title=title,
+                send_result=_send_livedub_result,
+                silent_errors=silent_errors,
+                workdir=ld_work if "ld_work" in locals() else None,
+                media_id=media_id,
+                cleanup=cleanup_files,
+            )
 
         # Стадия кэша объединяет TTL/версии из БД и защиту от dirty/corrupt
         # метаданных. Любой miss идёт по обычному fresh-пути ниже.
