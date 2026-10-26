@@ -14,6 +14,26 @@ def test_verify_repo_tool_exists_and_documents_all_checks():
     assert "Repository verification passed" in src
 
 
+def test_verify_repo_executes_ruff_format_gate(monkeypatch, tmp_path):
+    from tools import verify_repo
+
+    calls = []
+
+    def fake_run(name, command, cwd):
+        calls.append((name, command, cwd))
+        return verify_repo.CheckResult(name=name, command=tuple(command), returncode=0)
+
+    monkeypatch.setattr(verify_repo, "_run", fake_run)
+    results = verify_repo.run_checks(tmp_path, skip_pytest=True, skip_typecheck=True)
+
+    assert all(result.ok for result in results)
+    assert (
+        "ruff format",
+        [sys.executable, "-m", "ruff", "format", "--check", "."],
+        tmp_path,
+    ) in calls
+
+
 def test_verify_repo_tool_help_runs():
     proc = subprocess.run(
         [sys.executable, "tools/verify_repo.py", "--help"],
