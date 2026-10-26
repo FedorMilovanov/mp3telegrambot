@@ -37,6 +37,7 @@ from services.media_delivery_probe import (
 )
 from telegram import InputFile  # AUDIT R25: thumbnail без BufferedReader.name (py3.13)
 
+import asyncio
 import json
 import contextlib
 import logging
@@ -373,7 +374,7 @@ async def process_and_send_montage(
         livedub_source: Path | None = None
         if livedub_video_path:
             candidate_source = Path(livedub_video_path)
-            if candidate_source.exists():
+            if await asyncio.to_thread(candidate_source.exists):
                 livedub_source = candidate_source
                 duration = int(
                     round(
@@ -482,7 +483,7 @@ async def process_and_send_highlights(
         livedub_source: Path | None = None
         if livedub_video_path:
             candidate_source = Path(livedub_video_path)
-            if candidate_source.exists():
+            if await asyncio.to_thread(candidate_source.exists):
                 livedub_source = candidate_source
                 duration = int(
                     round(
