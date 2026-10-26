@@ -1154,8 +1154,9 @@ Shorts/Clips candidate audio input (`services/shorts_candidates.py` очищен
 двадцать седьмой — Shorts subtitle burn file I/O
 (`services/shorts_subtitle_burn.py` очищен), двадцать восьмой — LiveDub mix
 output validation, двадцать девятый — LiveDub QA-autofix file I/O
-(`services/livedub_mix.py` очищен). Остаются 124, другие extended-правила и
-дальнейший ручной async review.
+(`services/livedub_mix.py` очищен), тридцатый — LiveDub QA temporary-original
+cleanup (синхронный cancellation-safe unlink с точечным `noqa`). Остаются 123,
+другие extended-правила и дальнейший ручной async review.
 
 **Решение:**
 

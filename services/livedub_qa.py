@@ -694,11 +694,12 @@ async def _run_translation_qa_base(
                     await client_used.aio.files.delete(name=uploaded_file.name)
             except Exception:
                 pass
+        # This finally also runs during cancellation; keep cleanup synchronous.
         with contextlib.suppress(Exception):
             qa_audio.unlink(missing_ok=True)
         if _temp_original_audio is not None:
             with contextlib.suppress(Exception):
-                _temp_original_audio.unlink(missing_ok=True)
+                _temp_original_audio.unlink(missing_ok=True)  # noqa: ASYNC240
 
 
 async def run_translation_qa(
