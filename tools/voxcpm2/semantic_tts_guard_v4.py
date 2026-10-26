@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Semantic and timing QA without prompt-continuation or nested VoxCPM retries."""
 
 from __future__ import annotations

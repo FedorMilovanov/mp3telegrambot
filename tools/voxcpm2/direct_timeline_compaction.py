@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Compact repairable continuation gaps before assembled-timeline QA."""
 
 from __future__ import annotations

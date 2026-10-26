@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Quality v4.2 entrypoint around the proven reference-only NoChew renderer.
 
 It deliberately does not patch VoxCPM.generate. The underlying renderer keeps

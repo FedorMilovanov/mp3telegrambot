@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Audio diagnostics and candidate scoring for direct VoxCPM2 production."""
 
 from __future__ import annotations

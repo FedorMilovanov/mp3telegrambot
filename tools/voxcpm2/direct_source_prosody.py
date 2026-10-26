@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Source-prosody and Russian-cadence ranking for direct VoxCPM2 candidates.
 
 Speaker identity and artifact checks remain hard gates elsewhere. This module

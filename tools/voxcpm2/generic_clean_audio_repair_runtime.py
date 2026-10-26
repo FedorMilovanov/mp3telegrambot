@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Clean direct audio repair without translation or renderer wrappers."""
 
 from __future__ import annotations

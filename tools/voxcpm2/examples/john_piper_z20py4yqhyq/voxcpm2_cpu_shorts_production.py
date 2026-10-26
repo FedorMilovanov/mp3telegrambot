@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Stable PowerShell/bot CLI for the direct VoxCPM2 max-quality renderer.
 
 ``direct_cli_runtime.marker.json`` proves checkpoint compatibility and is written

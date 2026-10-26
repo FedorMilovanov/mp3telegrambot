@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Fail-closed QA for the final upload-ready Dub Studio MP4 files."""
 
 from __future__ import annotations

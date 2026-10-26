@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Run one privacy-safe real-weight TTS smoke on a trusted self-hosted runner."""
 
 from __future__ import annotations

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Fail-closed source cache for clean Dub Studio projects."""
 
 from __future__ import annotations

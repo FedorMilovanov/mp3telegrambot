@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Lazy backend session and evidence-gated reference reuse."""
 
 from __future__ import annotations

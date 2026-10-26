@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Fail-closed contracts between TTS adapters and concrete model profiles."""
 
 from __future__ import annotations

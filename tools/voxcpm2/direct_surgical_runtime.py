@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Post-install surgical runtime for universal direct VoxCPM2 jobs."""
 
 from __future__ import annotations

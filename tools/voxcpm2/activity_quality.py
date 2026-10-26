@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Shared activity-density helpers for VoxCPM2 edge and timing QA."""
 
 from __future__ import annotations

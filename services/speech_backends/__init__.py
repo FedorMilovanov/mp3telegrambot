@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Public model-independent speech backend and model-profile API."""
 
 from __future__ import annotations

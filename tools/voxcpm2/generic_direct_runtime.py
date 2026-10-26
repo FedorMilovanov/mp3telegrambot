@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Direct ready-SRT -> Russian speech-backend production runtime.
 
 This mode treats the uploaded Russian SRT as final editorial copy. Gemini is

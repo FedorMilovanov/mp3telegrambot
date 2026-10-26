@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Backend-neutral weighted TTS smoke with privacy-safe durable evidence."""
 
 from __future__ import annotations

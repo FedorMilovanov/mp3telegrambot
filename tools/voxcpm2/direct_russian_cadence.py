@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Russian phrase-cadence and within-phrase contour diagnostics.
 
 The renderer cannot ask VoxCPM2 for an abstract style label reliably.  Instead,

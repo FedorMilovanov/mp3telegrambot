@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Cheap timeline repair for valid speech placed too late inside an SRT window.
 
 Independent QA measures the final assembled WAV. A model may produce a clean,

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Pure universal helpers and generic timing preflight for VoxCPM2 production.
 
 Direct CLI state and candidate/retry wrappers are owned by the canonical CLI.

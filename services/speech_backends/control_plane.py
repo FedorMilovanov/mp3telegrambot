@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Model-independent backend and concrete TTS model selection."""
 
 from __future__ import annotations

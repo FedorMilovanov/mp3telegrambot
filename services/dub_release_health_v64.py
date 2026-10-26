@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Canonical Dub release health for the source-owned runtime architecture."""
 
 from __future__ import annotations

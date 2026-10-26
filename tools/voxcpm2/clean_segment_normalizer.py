@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Data-only normalization of historical Dub Studio speech windows.
 
 No translation or TTS is performed here. Long windows are split and tiny or

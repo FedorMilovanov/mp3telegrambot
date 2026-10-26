@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Source-guided expressive continuity for clean Dub Studio production.
 
 Short synthesis windows remain for timing stability.  This module analyses the

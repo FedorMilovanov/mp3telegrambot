@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8
 """Semantic block planning for direct ready-SRT monologue rendering.
 
 The input SRT remains the subtitle authority, while synthesis is planned in

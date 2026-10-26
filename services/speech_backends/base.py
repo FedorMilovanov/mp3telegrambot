@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Model-independent contracts for speech synthesis engines."""
 
 from __future__ import annotations

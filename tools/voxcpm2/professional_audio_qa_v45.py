@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Independent semantic, timing, continuity and voice-evidence release gate."""
 
 from __future__ import annotations

@@ -574,7 +574,7 @@ async def get_translation_subtitles(video_url: str, output_dir: Path) -> Optiona
     return None
 
 
-async def is_live_available(video_url: str) -> Tuple[bool, Optional[str]]:
+async def is_live_available(video_url: str) -> tuple[bool, Optional[str]]:
     """Проверяет, доступны ли для видео Живые голоса."""
     try:
         info = await get_live_dub_info(video_url)

@@ -270,15 +270,15 @@ async def _safe_progress(
 #  7. Section metadata
 # ══════════════════════════════════════════════════════════════
 
-_SECTION_KEYS: Tuple[str, ...] = (
+_SECTION_KEYS: tuple[str, ...] = (
     "synopsis",
     "study",
     "reflection",
     "terms",
 )
-_SECTION_ORDER: Dict[str, int] = {k: i for i, k in enumerate(_SECTION_KEYS)}
+_SECTION_ORDER: dict[str, int] = {k: i for i, k in enumerate(_SECTION_KEYS)}
 
-SECTIONS: Dict[str, Dict[str, str]] = {
+SECTIONS: dict[str, dict[str, str]] = {
     "synopsis": {
         "roman": "I",
         "color": "#345E53",
@@ -310,7 +310,7 @@ SECTIONS: Dict[str, Dict[str, str]] = {
 #  8. Font helpers
 # ══════════════════════════════════════════════════════════════
 
-_WEIGHT_MAP: Dict[str, int] = {
+_WEIGHT_MAP: dict[str, int] = {
     "thin": 100,
     "hairline": 100,
     "extralight": 200,
@@ -339,7 +339,7 @@ def _path_to_file_uri(p: Path) -> str:
     return "file://" + quote(path_str, safe="/:")
 
 
-def _parse_font_filename(filename: str) -> Tuple[str, int, str]:
+def _parse_font_filename(filename: str) -> tuple[str, int, str]:
     """Извлекает (family, weight, style) из имени файла шрифта."""
     stem = Path(filename).stem
     parts = re.split(r"[-_]", stem)
@@ -357,7 +357,7 @@ def _parse_font_filename(filename: str) -> Tuple[str, int, str]:
     return family, weight, style
 
 
-_font_face_cache: Dict[str, str] = {}
+_font_face_cache: dict[str, str] = {}
 _font_face_lock = threading.Lock()  # FIXED #108: защита от double-compute при параллельных PDF
 
 
@@ -374,7 +374,7 @@ def _build_font_face_css(fonts_dir: Optional[str] = None) -> str:
     if not d.exists():
         logger.warning("PDF fonts: директория не найдена: %s", d)
         return ""
-    css_parts: List[str] = []
+    css_parts: list[str] = []
     for f in sorted(d.iterdir()):
         # AUDIT R39: пропускаем каталоги/не-файлы с «шрифтовым» суффиксом —
         # иначе @font-face указывал бы на директорию и wkhtmltopdf ронял грань.
@@ -737,7 +737,7 @@ def _is_bible_ref_before(text_before: str) -> bool:
     return bool(_BIBLE_REF_BEFORE_TC_RE.search(text_before.strip()))
 
 
-def _find_all_hrefs(html_str: str) -> List[str]:
+def _find_all_hrefs(html_str: str) -> list[str]:
     """Извлекает все href из HTML, поддерживая оба типа кавычек."""
     return _HREF_DOUBLE_RE.findall(html_str or "") + _HREF_SINGLE_RE.findall(html_str or "")
 
@@ -869,7 +869,7 @@ def _enrich_url_with_time(url: str, time_str: str) -> str:
     return _video_ts_url(url, secs) if secs > 0 else url
 
 
-def _primary_video_url(source_links: Dict[str, str]) -> str:
+def _primary_video_url(source_links: dict[str, str]) -> str:
     """Возвращает приоритетную ссылку: YouTube → RuTube → VK."""
     return source_links.get("youtube") or source_links.get("rutube") or source_links.get("vk") or ""
 
@@ -881,7 +881,7 @@ def _linkify_timecodes(html_str: str, video_url: str) -> str:
 
     parts = _RE_TAG_SPLIT.split(html_str)
     depth_a = 0
-    result: List[str] = []
+    result: list[str] = []
     # V3-P0: раньше здесь накапливался весь plain-text документа
     # (cumulative_text), что давало лишнюю память на больших Telegraph/PDF.
     # Для проверки Bible-ref перед таймкодом достаточно короткого хвоста.
@@ -964,7 +964,7 @@ def _fetch_url(
 # ══════════════════════════════════════════════════════════════
 
 
-def _extract_h3_parts(text: str) -> Tuple[str, str, str]:
+def _extract_h3_parts(text: str) -> tuple[str, str, str]:
     """
     Из raw-содержимого <h3> извлекает:
       - title: чистый текст без платформ и таймкодов
@@ -982,7 +982,7 @@ def _extract_h3_parts(text: str) -> Tuple[str, str, str]:
             time_str = m.group(1)
             break
 
-    platforms: List[str] = []
+    platforms: list[str] = []
     if _RE_PLATFORM_YT.search(raw):
         platforms.append("YouTube")
     if _RE_PLATFORM_RT.search(raw):
@@ -1090,7 +1090,7 @@ def _enrich_h3_headings(html_str: str) -> str:
         rt = _enrich_url_with_time(rt, time_str)
         vk = _enrich_url_with_time(vk, time_str)
 
-        pp: List[str] = []
+        pp: list[str] = []
         if yt and time_str:
             pp.append(f'<a class="pl" href="{_esc(yt)}">YouTube\u00a0{_esc_safe(time_str)}</a>')
         if rt and time_str:
@@ -1213,9 +1213,9 @@ def _fetch_telegraph(url: str) -> str:
 # ══════════════════════════════════════════════════════════════
 
 
-def _find_video_links(html_str: str) -> Dict[str, str]:
+def _find_video_links(html_str: str) -> dict[str, str]:
     """Ищет первые ссылки YouTube / RuTube / VK в HTML."""
-    out: Dict[str, str] = {"youtube": "", "rutube": "", "vk": ""}
+    out: dict[str, str] = {"youtube": "", "rutube": "", "vk": ""}
     for href in _find_all_hrefs(html_str):
         href = _safe_url(href)
         if not href:
@@ -1229,9 +1229,9 @@ def _find_video_links(html_str: str) -> Dict[str, str]:
     return out
 
 
-def _collect_sources(sections: List[Dict]) -> Dict[str, str]:
+def _collect_sources(sections: list[dict]) -> dict[str, str]:
     """Собирает ссылки на видео из всех секций (первые найденные)."""
-    out: Dict[str, str] = {"youtube": "", "rutube": "", "vk": ""}
+    out: dict[str, str] = {"youtube": "", "rutube": "", "vk": ""}
     for sec in sections:
         found = _find_video_links(sec.get("content_html") or "")
         for k in out:
@@ -1249,7 +1249,7 @@ def _enrich_section(
     content_html: str,
     key: str,
     video_url: str,
-) -> Tuple[str, List[Dict[str, str]]]:
+) -> tuple[str, list[dict[str, str]]]:
     """
     Единый проход по секции:
       1. Каждый <h3> получает уникальный id (якорь)
@@ -1263,7 +1263,7 @@ def _enrich_section(
         (enriched_html, toc_items)
         toc_items: [{"title": str, "id": str}, ...]
     """
-    toc_items: List[Dict[str, str]] = []
+    toc_items: list[dict[str, str]] = []
     counter = 0
 
     def _repl(m: re.Match) -> str:
@@ -1302,7 +1302,7 @@ def _build_cover(
     title: str,
     performer: str,
     dur: str,
-    available: List[Dict],
+    available: list[dict],
 ) -> str:
     """Генерирует HTML обложки PDF-документа."""
     rows = "".join(f'<li class="cover-includes-item">{_esc_safe(SECTIONS[s["key"]]["label"])}</li>' for s in available)
@@ -1327,15 +1327,15 @@ def _build_cover(
 
 
 def _build_toc(
-    available: List[Dict],
-    src: Dict[str, str],
+    available: list[dict],
+    src: dict[str, str],
 ) -> str:
     """Генерирует HTML глобального оглавления. Использует it['id']."""
-    parts_html: List[str] = []
+    parts_html: list[str] = []
     for sec in available:
         key = sec["key"]
         meta = SECTIONS[key]
-        items: List[str] = []
+        items: list[str] = []
         for it in sec.get("toc_items", []):
             t = it.get("title", "")
             aid = it.get("id", "")
@@ -1356,7 +1356,7 @@ def _build_toc(
             f'<ol class="toc-list">{"".join(items)}</ol></div>'
         )
 
-    sl: List[str] = []
+    sl: list[str] = []
     for k, lb in [
         ("youtube", "YouTube"),
         ("rutube", "RuTube"),
@@ -1379,9 +1379,9 @@ def _build_toc(
     )
 
 
-def _build_local_toc(sec: Dict) -> str:
+def _build_local_toc(sec: dict) -> str:
     """Генерирует HTML локального оглавления внутри части."""
-    rows: List[str] = []
+    rows: list[str] = []
     for it in sec.get("toc_items", []):
         t = it.get("title", "")
         aid = it.get("id", "")
@@ -1392,7 +1392,7 @@ def _build_local_toc(sec: Dict) -> str:
     return f'<ol class="local-toc">{"".join(rows)}</ol>'
 
 
-def _build_part(sec: Dict, performer: str, title: str) -> str:
+def _build_part(sec: dict, performer: str, title: str) -> str:
     """Рендерит одну «Часть» из уже обогащённой секции."""
     key = sec["key"]
     meta = SECTIONS[key]
@@ -1424,7 +1424,7 @@ def _build_html(
     title: str,
     performer: str,
     dur: str,
-    sections: List[Dict],
+    sections: list[dict],
 ) -> str:
     """
     Главная сборка HTML-документа.
@@ -1440,7 +1440,7 @@ def _build_html(
     vid = _primary_video_url(src)
 
     # Single-pass enrichment — создаём новые dict, не мутируя входные
-    enriched: List[Dict] = []
+    enriched: list[dict] = []
     for sec in raw_available:
         html_out, toc = _enrich_section(
             sec["content_html"],
@@ -1492,7 +1492,7 @@ _ASYNC_FETCH_TIMEOUT: int = 90
 # FIX AUDIT R4: _POPEN_PATCH_LOCK удалён вместе с monkeypatch subprocess.Popen.
 
 
-def _wkhtmltopdf_options(title: str, performer: str) -> Dict[str, str]:
+def _wkhtmltopdf_options(title: str, performer: str) -> dict[str, str]:
     """Формирует опции командной строки wkhtmltopdf."""
     hdr = _sanitize_cli(
         f"{performer} \u2014 {title}" if performer else title,
@@ -1665,7 +1665,7 @@ def generate_sermon_pdf(
     title: str,
     performer: str,
     duration_str: str,
-    urls: Dict[str, str],
+    urls: dict[str, str],
     wkhtmltopdf_path: Optional[str] = None,
 ) -> Optional[str]:
     """
@@ -1687,7 +1687,7 @@ def generate_sermon_pdf(
         return None
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
-    sections: List[Dict] = []
+    sections: list[dict] = []
     for key in _SECTION_KEYS:
         url = urls.get(key)
         if not url:
@@ -1729,7 +1729,7 @@ async def generate_sermon_pdf_async(
     title: str,
     performer: str,
     duration_str: str,
-    urls: Dict[str, str],
+    urls: dict[str, str],
     wkhtmltopdf_path: Optional[str] = None,
     progress_callback: ProgressCallback = None,
 ) -> Optional[str]:
@@ -1768,7 +1768,7 @@ async def generate_sermon_pdf_async(
     await _safe_progress(progress_callback, "Загрузка страниц", 10)
 
     # ── Параллельная загрузка с общим таймаутом ──
-    async def _fetch_one(k: str) -> Tuple[str, str]:
+    async def _fetch_one(k: str) -> tuple[str, str]:
         content = await loop.run_in_executor(
             None,
             _fetch_telegraph,
@@ -1777,7 +1777,7 @@ async def generate_sermon_pdf_async(
         return k, content
 
     tasks = [asyncio.create_task(_fetch_one(k)) for k in keys]
-    sections: List[Dict] = []
+    sections: list[dict] = []
     completed = 0
     total = len(keys)
 

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Fail-closed Russian pronunciation overrides for direct speech synthesis.
 
 The display/ASR text is never changed. A bounded set of synthesis strings may

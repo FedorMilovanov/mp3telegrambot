@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Typed catalog separating TTS adapters from concrete model deployments."""
 
 from __future__ import annotations

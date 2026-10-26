@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Continuous-first clean reference selection for direct VoxCPM2 cloning.
 
 A single natural 5–10 second source span is preferred over a montage. The old

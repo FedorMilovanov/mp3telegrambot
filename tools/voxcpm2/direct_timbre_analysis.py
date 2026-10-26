@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Conservative timbre proxy for direct VoxCPM2 candidate ranking.
 
 This is deliberately not a speaker-recognition model. It compares the long-term

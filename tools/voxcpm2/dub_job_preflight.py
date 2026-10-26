@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Source-owned fail-closed Dub production preflight.
 
 Canonical project/request identity, implementation/model/runtime-aware cache

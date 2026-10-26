@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Privacy-safe runtime and production-TTS diagnostics for the admin /status.
 
 The runtime manifest retains installer details for local debugging, but those

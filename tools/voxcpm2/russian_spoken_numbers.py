@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Deterministic Russian spoken forms and exact anchors for numeric semantic QA."""
 
 from __future__ import annotations

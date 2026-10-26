@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Deterministic detection of detached or embedded broadband synthesis tails.
 
 VoxCPM artifacts do not always occur strictly after the last voice frame. Some

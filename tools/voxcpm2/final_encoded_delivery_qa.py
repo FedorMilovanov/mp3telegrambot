@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Post-AAC cadence and synthesis-tail QA for the final Russian-only MP4.
 
 The renderer already checks raw candidates and the assembled PCM timeline. This

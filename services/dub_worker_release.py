@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Single source of truth for the active Dub worker release identity.
 
 The Telegram supervisor and detached worker must agree on this marker. A major

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Quality v4 master: normalize Russian once, then mix the source at exact gain.
 
 Unlike the legacy master, the completed mixed bus is not loudness-normalized a

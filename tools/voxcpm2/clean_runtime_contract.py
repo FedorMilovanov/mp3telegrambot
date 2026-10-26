@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Fail-closed runtime contract and implementation fingerprints for Dub Studio."""
 
 from __future__ import annotations

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """CLI entry for the direct max-quality speech-backend renderer."""
 
 from __future__ import annotations

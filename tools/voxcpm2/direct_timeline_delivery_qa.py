@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Fail-closed cadence and late-tail QA for the assembled Russian timeline.
 
 Candidate QA runs before timing filters. This module checks the actual timeline

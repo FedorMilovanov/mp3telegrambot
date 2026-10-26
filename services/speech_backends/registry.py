@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Small explicit registry for replaceable speech engines."""
 
 from __future__ import annotations

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Source-owned custom-translation Dub Studio entrypoint."""
 
 from __future__ import annotations

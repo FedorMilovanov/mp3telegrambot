@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Shared short-segment and real-reference preparation policy.
 
 The historical module name is retained because clean production imports this API

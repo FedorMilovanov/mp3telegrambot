@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Segmented, CPU-only VoxCPM2 dubbing.
 
 Loads VoxCPM2 once, synthesizes each source-aligned segment independently,

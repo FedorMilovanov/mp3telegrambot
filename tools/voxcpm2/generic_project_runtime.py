@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Universal Dub Studio project runtime for arbitrary YouTube videos.
 
 The Telegram wizard writes a trusted request.json under the project's private

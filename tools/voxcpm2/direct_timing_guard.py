@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Universal fail-fast timing, retry-scope and candidate-budget contracts."""
 
 from __future__ import annotations
