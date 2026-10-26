@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 import handlers.dub_delivery as delivery
+from services import dub_delivery as delivery_service
 
 
 class Status:
@@ -100,7 +101,7 @@ def test_project_resolution_rejects_missing_and_foreign_projects():
 
 
 def test_dynamic_project_root_cannot_escape_projects_directory(tmp_path, monkeypatch):
-    monkeypatch.setattr(delivery, "studio_root", lambda: tmp_path)
+    monkeypatch.setattr(delivery_service, "studio_root", lambda: tmp_path)
     assert delivery._dynamic_project_root({"id": "project"}) == (tmp_path / "projects" / "project")
     with pytest.raises(ValueError):
         delivery._dynamic_project_root({"id": "../outside"})
@@ -108,7 +109,7 @@ def test_dynamic_project_root_cannot_escape_projects_directory(tmp_path, monkeyp
 
 @pytest.mark.parametrize("content", ["{", "[]", "{}"])
 def test_invalid_or_unusable_dynamic_manifest_has_no_outputs(tmp_path, monkeypatch, content):
-    monkeypatch.setattr(delivery, "studio_root", lambda: tmp_path)
+    monkeypatch.setattr(delivery_service, "studio_root", lambda: tmp_path)
     root = tmp_path / "projects" / "project"
     root.mkdir(parents=True)
     (root / "output").mkdir()
@@ -169,13 +170,13 @@ def _dynamic_manifest(tmp_path: Path):
 
 
 def test_dynamic_outputs_filter_deduplicate_sort_and_prefer_manifest(tmp_path, monkeypatch):
-    monkeypatch.setattr(delivery, "studio_root", lambda: tmp_path)
-    monkeypatch.setattr(delivery, "canonical_delivery_filename", lambda value: f"canonical:{value}")
+    monkeypatch.setattr(delivery_service, "studio_root", lambda: tmp_path)
+    monkeypatch.setattr(delivery_service, "canonical_delivery_filename", lambda value: f"canonical:{value}")
 
     def recipe_fallback_must_not_run(*args, **kwargs):
         raise AssertionError("a non-empty dynamic manifest owns delivery")
 
-    monkeypatch.setattr(delivery, "_recipe_outputs", recipe_fallback_must_not_run)
+    monkeypatch.setattr(delivery_service, "_recipe_outputs", recipe_fallback_must_not_run)
     _root, _files = _dynamic_manifest(tmp_path)
     project = {"id": "project"}
 
@@ -218,9 +219,9 @@ def test_recipe_outputs_skip_empty_duplicate_and_unsupported_paths(tmp_path, mon
             "unsupported": {"path": str(unsupported)},
         }
     )
-    monkeypatch.setattr(delivery, "load_recipe", lambda _recipe_id: recipe)
+    monkeypatch.setattr(delivery_service, "load_recipe", lambda _recipe_id: recipe)
     monkeypatch.setattr(
-        delivery,
+        delivery_service,
         "resolve_recipe_path",
         lambda raw_path, *, work_root: Path(raw_path),
     )
@@ -238,7 +239,7 @@ def test_recipe_outputs_skip_empty_duplicate_and_unsupported_paths(tmp_path, mon
 
 
 def test_send_project_outputs_reports_when_nothing_is_ready(monkeypatch):
-    monkeypatch.setattr(delivery, "available_outputs", lambda *args, **kwargs: [])
+    monkeypatch.setattr(delivery_service, "available_outputs", lambda *args, **kwargs: [])
     sent, failures = asyncio.run(delivery.send_project_outputs(object(), 777, {"id": "p"}))
     assert sent == 0
     assert failures == ["Готовые файлы ещё не найдены."]
@@ -270,7 +271,7 @@ def test_send_project_outputs_sends_both_media_types_and_continues_after_failure
             "label": "x" * 900,
         },
     ]
-    monkeypatch.setattr(delivery, "available_outputs", lambda *args, **kwargs: outputs)
+    monkeypatch.setattr(delivery_service, "available_outputs", lambda *args, **kwargs: outputs)
 
     class Bot:
         def __init__(self):

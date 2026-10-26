@@ -1306,7 +1306,7 @@ Release run 40240577021 выполнил полный pytest на Python 3.12, �
 **Перепроверка 2026-10-26:** `import-linter 2.15` добавлен в dev-lock,
 `tools/check_import_layers.py` исполняет layers-контракт на реальном графе и
 включён в `verify_repo.py`. Направление: `handlers → pipelines → services →
-converters → core`. После пятого burn-down остаётся 11 точных legacy-рёбер:
+converters → core`. После шестого burn-down остаётся 4 точных legacy-ребра:
 неиспользуемый `core.utils → ffmpeg` удалён, `QUIZ_PROMPT` перенесён в
 `core.prompts`, caption-link builders — в `converters.caption`, а чистые
 `health_report` и `gemini_quota_domains` — в `core` с compatibility-экспортами
@@ -1315,7 +1315,8 @@ converters → core`. После пятого burn-down остаётся 11 то
 Markdown→nodes и cleaning перенесены в `converters.telegraph_nodes`, что убрало
 обратный импорт converter → publisher. Telegraph HTML cache принадлежит
 `core.telegraph_cache`, поэтому converter → PDF service также устранён.
-Исключения
+Dub Studio registration перенесён в handlers, а reusable delivery — в services;
+все семь обратных runtime → handler импортов удалены. Исключения
 перечислены без wildcards, новые нарушения
 и устаревшие исключения падают. Пункт будет закрыт только при нулевом списке;
 одновременно нужно сделать `_telegraph_post` публичным API.

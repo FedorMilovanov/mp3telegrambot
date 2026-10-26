@@ -852,7 +852,8 @@ async def run_bot_async():
 
     app = builder.build()
 
-    from services.dub_studio_runtime import register_dub_studio, start_dub_studio_services
+    from handlers.dub_studio_registration import register_dub_studio
+    from services.dub_studio_runtime import start_dub_studio_services
 
     register_dub_studio(app)
 

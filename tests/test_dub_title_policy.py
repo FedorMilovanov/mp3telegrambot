@@ -56,7 +56,7 @@ def test_title_policy_is_source_owned_across_public_surfaces() -> None:
         "core/text_utils.py": "canonical_media_title",
         "services/dub_studio.py": "canonical_media_title",
         "services/dub_studio_runtime.py": "canonical_media_title",
-        "handlers/dub_delivery.py": "canonical_delivery_filename",
+        "services/dub_delivery.py": "canonical_delivery_filename",
         "services/livedub_output_policy.py": "canonical_media_title",
         "tools/voxcpm2/generic_short_production.py": "canonical_media_title",
     }
