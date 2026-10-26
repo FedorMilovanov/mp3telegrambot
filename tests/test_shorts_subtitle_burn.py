@@ -137,6 +137,42 @@ async def test_cancellation_cleans_artifacts_and_is_not_swallowed(
     assert not observed_temp.exists()
 
 
+@pytest.mark.parametrize("write_output", [True, False], ids=["empty", "missing"])
+@pytest.mark.asyncio
+async def test_invalid_output_is_rejected_and_removed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    write_output: bool,
+) -> None:
+    input_path = tmp_path / "input.mp4"
+    output_path = tmp_path / "output.mp4"
+    observed_temp = tmp_path / "observed-ass-temp"
+    input_path.write_bytes(b"source")
+    _patch_runtime(monkeypatch)
+    monkeypatch.setattr(
+        subtitle_burn.tempfile,
+        "TemporaryDirectory",
+        lambda **kwargs: _ObservedTemporaryDirectory(observed_temp),
+    )
+
+    async def _success(command: list[str]):
+        if write_output:
+            output_path.write_bytes(b"")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(subtitle_burn, "_run_burn_command", _success)
+
+    accepted = await subtitle_burn.burn_subtitles_into_short(
+        input_path,
+        output_path,
+        [{"start": 0.0, "end": 1.0, "text": "Тест"}],
+    )
+
+    assert accepted is False
+    assert not output_path.exists()
+    assert not observed_temp.exists()
+
+
 @pytest.mark.asyncio
 async def test_success_commits_nonempty_output_and_cleans_ass_directory(
     tmp_path: Path,

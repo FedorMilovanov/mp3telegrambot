@@ -156,6 +156,9 @@
 - Async I/O, двадцать шестой `ASYNC240` slice: Shorts/Clips candidate audio input
   переведён в worker threads; `services/shorts_candidates.py` очищен,
   остаются 132 findings.
+- Async I/O, двадцать седьмой `ASYNC240` slice: Shorts subtitle burn file I/O
+  переведён в worker threads; `services/shorts_subtitle_burn.py` очищен,
+  остаются 128 findings.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

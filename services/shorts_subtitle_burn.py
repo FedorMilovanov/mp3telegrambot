@@ -47,6 +47,12 @@ def _remove_partial_output(path: Path) -> None:
         )
 
 
+def _output_file_size(path: Path) -> int:
+    if not path.is_file():
+        return 0
+    return path.stat().st_size
+
+
 async def burn_subtitles_into_short(
     input_path: Path,
     output_path: Path,
@@ -56,10 +62,10 @@ async def burn_subtitles_into_short(
 ) -> bool:
     """Validate, burn and commit one subtitle output with explicit style support."""
     ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg or not input_path.is_file() or not segments:
+    if not ffmpeg or not await asyncio.to_thread(input_path.is_file) or not segments:
         return False
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    await asyncio.to_thread(output_path.parent.mkdir, parents=True, exist_ok=True)
     _remove_partial_output(output_path)
 
     try:
@@ -93,7 +99,7 @@ async def burn_subtitles_into_short(
 
         with tempfile.TemporaryDirectory(prefix="short-subtitles-") as temp_dir:
             ass_path = Path(temp_dir) / "subtitles.ass"
-            ass_path.write_text(ass_content, encoding="utf-8")
+            await asyncio.to_thread(ass_path.write_text, ass_content, encoding="utf-8")
             ass_escaped = str(ass_path).replace("\\", "/").replace(":", "\\:")
 
             encoder, quality, preset = await await_owned_coroutine(asyncio.to_thread(_get_video_encoder))
@@ -123,7 +129,8 @@ async def burn_subtitles_into_short(
             )
             _remove_partial_output(output_path)
             return False
-        if not output_path.is_file() or output_path.stat().st_size <= 0:
+        output_size = await asyncio.to_thread(_output_file_size, output_path)
+        if output_size <= 0:
             logger.warning("Subtitle burn produced no non-empty output")
             _remove_partial_output(output_path)
             return False
@@ -131,7 +138,7 @@ async def burn_subtitles_into_short(
         logger.info(
             "Subtitles burned transactionally after ASS validation: %s (%.1fMB, karaoke=%s)",
             output_path.name,
-            output_path.stat().st_size / 1024 / 1024,
+            output_size / 1024 / 1024,
             karaoke_enabled,
         )
         return True

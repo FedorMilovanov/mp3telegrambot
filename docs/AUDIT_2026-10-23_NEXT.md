@@ -1150,8 +1150,10 @@ DB/backup и PDF cleanup (`handlers/commands.py` очищен), двадцать
 LiveDub download discovery (`services/yandex_live_dub.py` очищен), двадцать
 пятый — Shorts Factory audio preflight/input
 (`services/shorts_factory_candidates.py` очищен), двадцать шестой —
-Shorts/Clips candidate audio input (`services/shorts_candidates.py` очищен).
-Остаются 132, другие extended-правила и дальнейший ручной async review.
+Shorts/Clips candidate audio input (`services/shorts_candidates.py` очищен),
+двадцать седьмой — Shorts subtitle burn file I/O
+(`services/shorts_subtitle_burn.py` очищен). Остаются 128, другие
+extended-правила и дальнейший ручной async review.
 
 **Решение:**
 
