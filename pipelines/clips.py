@@ -50,6 +50,30 @@ def _candidate_label(candidate: dict[str, Any], key: str, fallback_key: str) -> 
     return str(candidate.get(fallback_key, ""))
 
 
+def _existing_input_file(path: Path) -> InputFile | None:
+    if not path.exists():
+        return None
+    return InputFile(path.read_bytes(), filename=path.name)
+
+
+def _cleanup_clip_files(
+    clip_paths: list[Path],
+    snap_paths: list[Path],
+    video_path: Path | None,
+    borrowed_video: bool,
+) -> None:
+    for path in (*clip_paths, *snap_paths):
+        with contextlib.suppress(Exception):
+            path.unlink(missing_ok=True)
+    if video_path:
+        try:
+            keep = settings_get("shorts_montage") or settings_get("shorts_highlights")
+            if not keep and not borrowed_video:
+                video_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
 async def process_and_send_clips(
     url: str,
     media_id: str,
@@ -81,7 +105,7 @@ async def process_and_send_clips(
         livedub_source: Path | None = None
         if livedub_video_path:
             candidate_source = Path(livedub_video_path)
-            if candidate_source.exists():
+            if await asyncio.to_thread(candidate_source.exists):
                 livedub_source = candidate_source
                 if not factory_publication:
                     duration = await probe_livedub_source_duration(
@@ -229,7 +253,8 @@ async def process_and_send_clips(
                 continue
 
             max_upload_mb = float(get_max_file_size_mb())
-            clip_size_mb = clip_path.stat().st_size / (1024 * 1024)
+            clip_stat = await asyncio.to_thread(clip_path.stat)
+            clip_size_mb = clip_stat.st_size / (1024 * 1024)
             if clip_size_mb > max_upload_mb:
                 if not factory_publication:
                     logger.warning(
@@ -286,7 +311,8 @@ async def process_and_send_clips(
                         float(public_max_seconds),
                     )
                     continue
-                if clip_path.stat().st_size > int(max_upload_mb * 1024 * 1024):
+                fitted_size = await asyncio.to_thread(clip_path.stat)
+                if fitted_size.st_size > int(max_upload_mb * 1024 * 1024):
                     logger.warning(
                         "Factory Clip %d/%d fitted file still exceeds upload limit",
                         i,
@@ -302,11 +328,8 @@ async def process_and_send_clips(
                         snap_path,
                         delivery_duration,
                     )
-                    if snap_ok and snap_path.exists():
-                        thumb_buf = InputFile(
-                            snap_path.read_bytes(),
-                            filename=snap_path.name,
-                        )
+                    if snap_ok:
+                        thumb_buf = await asyncio.to_thread(_existing_input_file, snap_path)
                 except Exception as snap_err:
                     logger.warning("Clips %d/%d snapshot error: %s", i, total, snap_err)
 
@@ -362,16 +385,7 @@ async def process_and_send_clips(
             await update.message.reply_text(f"🎬 Ошибка при подготовке Clips: {str(exc)[:150]}")
         return sent
     finally:
-        for path in (*clip_paths, *snap_paths):
-            with contextlib.suppress(Exception):
-                path.unlink(missing_ok=True)
-        if video_path:
-            try:
-                keep = settings_get("shorts_montage") or settings_get("shorts_highlights")
-                if not keep and not borrowed_video:
-                    video_path.unlink(missing_ok=True)
-            except Exception:
-                pass
+        await asyncio.to_thread(_cleanup_clip_files, clip_paths, snap_paths, video_path, borrowed_video)
 
 
 __all__ = ["PUBLIC_CLIP_DURATION_EPSILON_SEC", "process_and_send_clips"]

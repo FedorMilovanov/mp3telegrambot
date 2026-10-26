@@ -6,6 +6,10 @@
 
 import pathlib
 
+from telegram import InputFile
+
+from pipelines.shorts import _existing_input_file
+
 
 # ─── commands.py ──────────────────────────────────────────────────────────
 
@@ -32,18 +36,22 @@ def test_commands_access_denied_uses_html():
 # ─── shorts.py thumbnails ─────────────────────────────────────────────────
 
 
-def test_shorts_poster_thumbnail_uses_inputfile():
+def _assert_thumbnail_bytes(path: pathlib.Path) -> None:
     # AUDIT R25: open()+`.name=` падал на py3.13 -> InputFile(read_bytes()).
-    src = pathlib.Path("pipelines/shorts.py").read_text(encoding="utf-8")
-    assert "poster_path.read_bytes()" in src
-    assert "filename=poster_path.name" in src
-    assert "thumb_buf.name =" not in src
+    assert _existing_input_file(path) is None
+    path.write_bytes(b"thumbnail")
+    thumbnail = _existing_input_file(path)
+    assert isinstance(thumbnail, InputFile)
+    assert thumbnail.input_file_content == b"thumbnail"
+    assert thumbnail.filename == path.name
 
 
-def test_shorts_snapshot_thumbnail_uses_inputfile():
-    src = pathlib.Path("pipelines/shorts.py").read_text(encoding="utf-8")
-    assert "snapshot_path.read_bytes()" in src
-    assert "filename=snapshot_path.name" in src
+def test_shorts_poster_thumbnail_uses_inputfile(tmp_path):
+    _assert_thumbnail_bytes(tmp_path / "poster.png")
+
+
+def test_shorts_snapshot_thumbnail_uses_inputfile(tmp_path):
+    _assert_thumbnail_bytes(tmp_path / "snapshot.png")
 
 
 # ─── database.py busy_timeout ─────────────────────────────────────────────

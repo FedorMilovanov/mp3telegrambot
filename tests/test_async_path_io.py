@@ -7,6 +7,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from pipelines import clips as clips_pipeline
+from pipelines import shorts as shorts_pipeline
 from pipelines import shorts_factory
 from services import livedub_delivery_coordinator as coordinator
 from services import shorts_static_policy
@@ -100,3 +102,78 @@ async def test_static_policy_missing_file_fails_safe_without_probe(monkeypatch, 
 
     assert await shorts_static_policy._is_static_video_confident(tmp_path / "missing.mp4") is False
     run.assert_not_awaited()
+
+
+def test_clips_cleanup_removes_outputs_and_owned_source(monkeypatch, tmp_path: Path) -> None:
+    clip = _write_file(tmp_path / "clip.mp4")
+    snapshot = _write_file(tmp_path / "snapshot.png")
+    source = _write_file(tmp_path / "source.mp4")
+    monkeypatch.setattr(clips_pipeline, "settings_get", lambda key: False)
+
+    clips_pipeline._cleanup_clip_files([clip], [snapshot], source, borrowed_video=False)
+
+    assert not clip.exists()
+    assert not snapshot.exists()
+    assert not source.exists()
+
+
+def test_clips_cleanup_preserves_borrowed_source(tmp_path: Path) -> None:
+    source = _write_file(tmp_path / "borrowed.mp4")
+
+    clips_pipeline._cleanup_clip_files([], [], source, borrowed_video=True)
+
+    assert source.exists()
+
+
+def test_shorts_cleanup_removes_outputs_and_owned_source(tmp_path: Path) -> None:
+    short = _write_file(tmp_path / "short.mp4")
+    poster = _write_file(tmp_path / "poster.jpg")
+    source = _write_file(tmp_path / "source.mp4")
+    livedub_source = _write_file(tmp_path / "livedub.mp4")
+
+    shorts_pipeline._cleanup_short_files(
+        [short],
+        [poster],
+        source,
+        livedub_source,
+        keep_for_montage=False,
+    )
+
+    assert not short.exists()
+    assert not poster.exists()
+    assert not source.exists()
+    assert livedub_source.exists()
+
+
+def test_shorts_cleanup_preserves_borrowed_livedub_source(tmp_path: Path) -> None:
+    source = _write_file(tmp_path / "livedub.mp4")
+
+    shorts_pipeline._cleanup_short_files([], [], source, source, keep_for_montage=False)
+
+    assert source.exists()
+
+
+def test_clips_cleanup_suppresses_settings_failure(monkeypatch, tmp_path: Path) -> None:
+    source = _write_file(tmp_path / "source.mp4")
+
+    def _fail_settings(key: str) -> bool:
+        raise RuntimeError(key)
+
+    monkeypatch.setattr(clips_pipeline, "settings_get", _fail_settings)
+
+    clips_pipeline._cleanup_clip_files([], [], source, borrowed_video=False)
+
+    assert source.exists()
+
+
+def test_shorts_cleanup_suppresses_source_unlink_oserror(monkeypatch, tmp_path: Path) -> None:
+    source = _write_file(tmp_path / "source.mp4")
+
+    def _fail_unlink(self: Path, *, missing_ok: bool = False) -> None:
+        raise OSError("locked")
+
+    monkeypatch.setattr(Path, "unlink", _fail_unlink)
+
+    shorts_pipeline._cleanup_short_files([], [], source, None, keep_for_montage=False)
+
+    assert source.exists()
