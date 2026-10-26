@@ -113,8 +113,7 @@ def _fix_ts_period_order(text: str) -> str:
     # «слово.** ⏱ 0:15» в конце строки/абзаца → точка после таймкода
     text = re.sub(r"\." + _B + r"(\s*" + _TS_TOKEN_RE + r")(?=\s*$)", r"\1\2.", text, flags=re.MULTILINE)
     # «слово.** ⏱ 0:15 Дальше…» перед новым предложением
-    text = re.sub(r"\." + _B + r"(\s*" + _TS_TOKEN_RE + r")(?=\s+[А-ЯЁA-Z«])", r"\1\2.", text)
-    return text
+    return re.sub(r"\." + _B + r"(\s*" + _TS_TOKEN_RE + r")(?=\s+[А-ЯЁA-Z«])", r"\1\2.", text)
 
 
 def _strip_card_bullets(content: str, *, long_bold: bool = True) -> str:
@@ -436,8 +435,7 @@ def _ensure_all_paragraphs_period(text: str) -> str:
         parts.append("\n".join(_ensure_trailing_period(line) if line.strip() else line for line in sub_lines))
     result = "".join(parts)
     # Убираем ровно две точки подряд (не трогаем многоточие ...)
-    result = re.sub(r"(?<!\.)\.\.(?!\.)", ".", result)
-    return result
+    return re.sub(r"(?<!\.)\.\.(?!\.)", ".", result)
 
 
 _INQUOTE_TS_RE = re.compile(r"\s*⏱\s*\*{0,2}\d{1,2}:\d{2}(?::\d{2})?\*{0,2}")
@@ -732,10 +730,7 @@ def _linkify_inline_timestamps(nodes: list, yt_url: str, duration: int = 0) -> l
 
         # A06 FIX: удалить stray-символы (* / \* / _. / '') которые остаются
         # после извлечения ссылок-таймкодов из rebuilt_ic
-        new_children = [
-            c for c in new_children if not (isinstance(c, str) and c.strip() in ("*", r"\*", "_.", "", "**", "_"))
-        ]
-        return new_children
+        return [c for c in new_children if not (isinstance(c, str) and c.strip() in ("*", r"\*", "_.", "", "**", "_"))]
 
     result = []
     for node in nodes:
@@ -1930,12 +1925,11 @@ def _final_telegraph_polish(nodes: list) -> list:
             node = _STRAY_EN_RE.sub(lambda m: _STRAY_EN.get(m.group(0).lower(), m.group(0)), node)
             # AUDIT R12: «Имя (Имя)» — дубль в скобках (карточки источников:
             # «Джон МакАртур (Джон МакАртур)») схлопывается до одного имени.
-            node = re.sub(
+            return re.sub(
                 r"([A-ZА-ЯЁ][\w.Ѐ-ӿ-]*(?:\s+[A-ZА-ЯЁ][\w.Ѐ-ӿ-]*){0,3})\s*\(\s*\1\s*\)",
                 r"\1",
                 node,
             )
-            return node
         if isinstance(node, dict):
             tag = node.get("tag", "").lower()
             if tag in ("h1", "h2", "h5", "h6"):
@@ -2466,8 +2460,7 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         text = re.sub(r"\bДанная\s+книга\b", "Эта книга", text, flags=re.IGNORECASE)
         text = re.sub(r"Историко\s+[—-]\s+грамматическ", "Историко-грамматическ", text)
         text = re.sub(r"Лексико\s+[—-]\s+семантическ", "Лексико-семантическ", text)
-        text = scrub_third_person_phrases(text)
-        return text
+        return scrub_third_person_phrases(text)
 
     def _ends_no_space(n):
         if isinstance(n, str):
@@ -2774,8 +2767,7 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
             if not has_italic:
                 return ch
             # Unwrap: replace <b>...</b> with its children
-            out = [ch[0]] + list(second.get("children", [])) + list(ch[2:])
-            return out
+            return [ch[0]] + list(second.get("children", [])) + list(ch[2:])
 
         children = _debold_source_card(children)
         children = _trim_inline_spacing(children)

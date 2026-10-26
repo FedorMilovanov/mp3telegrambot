@@ -743,8 +743,7 @@ def _clean_text_node(text: str) -> str:
     text = _STRIP_INVISIBLE_RE.sub("", text)
     text = _BOX_DRAWING_RE.sub("", text)
     text = _ARROWS_RE.sub("", text)
-    text = _SPECIAL_SPACES_RE.sub(" ", text)
-    return text
+    return _SPECIAL_SPACES_RE.sub(" ", text)
 
 
 def _strip_decorations_from_text_nodes(html_str: str) -> str:
@@ -1001,8 +1000,7 @@ def _extract_h3_parts(text: str) -> tuple[str, str, str]:
 def _strip_dangerous_tags(html_str: str) -> str:
     """Удаляет <script> и <style> теги с содержимым."""
     html_str = _RE_SCRIPT.sub("", html_str)
-    html_str = _RE_STYLE.sub("", html_str)
-    return html_str
+    return _RE_STYLE.sub("", html_str)
 
 
 def _strip_soft_hyphens(html_str: str) -> str:
@@ -1010,8 +1008,7 @@ def _strip_soft_hyphens(html_str: str) -> str:
     html_str = html_str.replace("&shy;", "").replace("\u00ad", "")
     html_str = _RE_TIMECODE_STAR_PREFIX.sub(r" \1", html_str)
     html_str = _RE_TIMECODE_STAR_SUFFIX.sub(r"\1", html_str)
-    html_str = _RE_TIMECODE_STAR_AFTER.sub(r"\1", html_str)
-    return html_str
+    return _RE_TIMECODE_STAR_AFTER.sub(r"\1", html_str)
 
 
 def _strip_navigation_links(html_str: str) -> str:
@@ -1019,8 +1016,7 @@ def _strip_navigation_links(html_str: str) -> str:
     html_str = _RE_EMPTY_P.sub("", html_str)
     html_str = _RE_BACK_TO_TOC_CLASS.sub("", html_str)
     html_str = _RE_BACK_TO_TOC_TEXT.sub("", html_str)
-    html_str = _RE_BACK_TO_TOC_BARE.sub("><", html_str)
-    return html_str
+    return _RE_BACK_TO_TOC_BARE.sub("><", html_str)
 
 
 def _strip_leading_ol(html_str: str) -> str:
@@ -1051,8 +1047,7 @@ def _fix_inline_spacing(html_str: str) -> str:
     """Добавляет пробелы между закрывающими/открывающими тегами и текстом."""
     html_str = _strip_decorations_from_text_nodes(html_str)
     html_str = _RE_CLOSE_TAG_GLUE.sub(r"\1 \2", html_str)
-    html_str = _RE_OPEN_TAG_GLUE.sub(r"\1 \2", html_str)
-    return html_str
+    return _RE_OPEN_TAG_GLUE.sub(r"\1 \2", html_str)
 
 
 def _enrich_h3_headings(html_str: str) -> str:

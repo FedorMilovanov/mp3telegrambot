@@ -69,13 +69,12 @@ def _correct_label(label: str, *, level: float, delay_ms: int) -> str:
         flags=re.IGNORECASE,
     )
     delay_text = "без задержки" if delay_ms == 0 else f"с задержкой {delay_ms} мс"
-    text = re.sub(
+    return re.sub(
         r"с\s+задержкой\s+\d+\s*мс",
         delay_text,
         text,
         flags=re.IGNORECASE,
     )
-    return text
 
 
 def repair_manifest(

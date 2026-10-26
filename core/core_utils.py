@@ -75,12 +75,11 @@ def _fix_rtl_in_text(text: str) -> str:
     )
     # LTR Mark после RTL-слова перед пробелом/пунктуацией —
     # предотвращает «улёт» следующего символа вправо
-    text = re.sub(
+    return re.sub(
         r'([֐-׿؀-ۿ][^\s,;(.!?:]*?)([\s,;.!?:»"\)\]])',
         r"\1" + _LTR + r"\2",
         text,
     )
-    return text
 
 
 def _fix_unclosed_bold(text: str) -> str:
@@ -238,7 +237,6 @@ def _polish_timestamps_in_text(text: str) -> str:
     text = re.sub(r"([а-яА-ЯёЁa-zA-Z0-9\)\]\»\"])([⏱📌🎯🔔])", r"\1 \2", text)
     # FIX 2026-05-24: пробел между закрывающим ** и ⏱
     text = text.replace("**⏱", "** ⏱")
-    text = text.replace("**\u00a0⏱", "** \u00a0⏱")
 
     # FIX 3 (v10 REWRITE): таймкод должен стоять ПЕРЕД завершающей пунктуацией.
     # Правило: «текст ⏱ 49:00.» — ПРАВИЛЬНО (TS часть предложения, точка после него).
@@ -253,7 +251,7 @@ def _polish_timestamps_in_text(text: str) -> str:
     # и ⏱ единственный элемент в конце строки — оставляем как есть.
     # (убран агрессивный regex который ломал правильные случаи)
 
-    return text
+    return text.replace("**\u00a0⏱", "** \u00a0⏱")
 
 
 def _md_parse_inline(text: str) -> list[str | dict[str, Any]]:

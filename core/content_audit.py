@@ -153,8 +153,7 @@ def normalize_generated_markdown_separators(text: str) -> str:
     for pattern, repl in _GLUE_FIXES:
         out = pattern.sub(repl, out)
     out = re.sub(r"[ \t]+\n", "\n", out)
-    out = re.sub(r"\n{3,}", "\n\n", out)
-    return out
+    return re.sub(r"\n{3,}", "\n\n", out)
 
 
 # FIX: триггеры сужены до однозначно "канальных" маркеров утечки промпта.

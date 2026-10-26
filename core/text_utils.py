@@ -204,8 +204,7 @@ def scrub_third_person_phrases(text: str) -> str:
     text = _THIRD_PERSON_PREFIX_RE.sub(repl_that, text)
     text = _THIRD_PERSON_HOW_RE.sub(repl_that, text)
     text = _THIRD_PERSON_THIS_LAYER_RE.sub(lambda m: m.group(1) + "Этот смысловой пласт ", text)
-    text = _THIRD_PERSON_WHEN_RE.sub(lambda m: m.group(1) + "Речь идёт о ", text)
-    return text
+    return _THIRD_PERSON_WHEN_RE.sub(lambda m: m.group(1) + "Речь идёт о ", text)
 
 
 def normalize_source_map_text(line: str) -> str:
@@ -287,8 +286,7 @@ def _scrub_inline(text: str) -> str:
     text = normalize_common_typos(text)
     text = scrub_third_person_phrases(text)
     # Схлопываем только множественные пробелы/табы внутри строки
-    text = re.sub(r"[ \t]{2,}", " ", text)
-    return text
+    return re.sub(r"[ \t]{2,}", " ", text)
 
 
 def _clean_meta_line(s: str) -> str:
@@ -365,8 +363,7 @@ def normalize_author_name(s: str) -> str:
     s = re.sub(r"[—–]", "-", s)
     s = re.sub(r"\s{2,}", " ", s).strip()
     s = s.strip("-").strip()
-    s = normalize_common_typos(s)
-    return s
+    return normalize_common_typos(s)
 
 
 def join_title_author(title: str, author: str) -> str:
@@ -474,9 +471,7 @@ def normalize_title_text(s: str) -> str:
     s = re.sub(r"[\s|]+$", "", s).strip()
     s = re.sub(r"\s{2,}", " ", s).strip()
     s = re.sub(r"(?<!\.)\.(?!\.)$", "", s).strip()
-    s = normalize_common_typos(s)
-
-    return s
+    return normalize_common_typos(s)
 
 
 # Слова/акронимы которые нельзя трогать при title case

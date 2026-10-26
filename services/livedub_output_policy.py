@@ -162,8 +162,7 @@ def _clean_video_caption(value: Any) -> str:
         lines.append(line.rstrip())
     # Collapse the blank line that can remain after deleting the service label.
     out = "\n".join(lines)
-    out = re.sub(r"\n{3,}", "\n\n", out).strip()
-    return out
+    return re.sub(r"\n{3,}", "\n\n", out).strip()
 
 
 def _clean_audio_caption(value: Any) -> str:

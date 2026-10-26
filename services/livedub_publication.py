@@ -108,12 +108,11 @@ def _split_title_author(line: str) -> tuple[str, str]:
 def _clean_description(value: Any) -> str:
     text = _plain(value, 650)
     text = re.sub(r"^[🎙️🎧📖💬✨🔥]+\s*", "", text).strip()
-    text = re.sub(
+    return re.sub(
         r"(?i)\b(?:живые голоса яндекса|русская аудиоверсия|перевод яндекса)\b[.:—–-]*\s*",
         "",
         text,
     ).strip()
-    return text
 
 
 def _fallback_description(title: str, author: str) -> str:

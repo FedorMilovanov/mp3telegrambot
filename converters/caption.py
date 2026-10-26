@@ -227,8 +227,7 @@ def build_caption(
                         out.append(f"<b>{html_mod.escape(p)}</b>")
                 result = "".join(out)
                 # zero-width space после двоеточия + цифра (чтобы Telegram не сделал ссылку)
-                result = re.sub(r":(\d)", r":​\1", result)
-                return result
+                return re.sub(r":(\d)", r":​\1", result)
 
             topic_escaped = _topic_bold_to_html(topic_str)
             # Делаем таймкод кликабельной ссылкой на YouTube если передан url
@@ -284,8 +283,7 @@ def build_caption(
 
     result = "\n".join(parts)
     # Финальная чистка — только строки-мусор, без редактирования пунктуации
-    result = _strip_meta_lines(result)
-    return result
+    return _strip_meta_lines(result)
 
 
 # ─── Markdown → Telegraph nodes ─────────────────────────────

@@ -276,13 +276,12 @@ def _quality_config(model_name: str):
 def clean_description(value: Any) -> str:
     text = plain(value, 420)
     text = re.sub(r"^[🎙️🎧📖💬✨🔥]+\s*", "", text).strip()
-    text = re.sub(
+    return re.sub(
         r"(?i)\b(?:живые голоса яндекса|русская аудиоверсия|перевод яндекса|"
         r"искусственный интеллект|ии)\b[.:—–-]*\s*",
         "",
         text,
     ).strip()
-    return text
 
 
 def fallback_description(title: str, author: str) -> str:

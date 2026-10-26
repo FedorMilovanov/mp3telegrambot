@@ -502,8 +502,7 @@ async def _find_silence_end(
         if not silences:
             return target_end
         # Берём паузу ближайшую к исходному target_end
-        best = min(silences, key=lambda t: abs(t - target_end))
-        return best
+        return min(silences, key=lambda t: abs(t - target_end))
     except Exception as e:
         logger.warning(f"_find_silence_end error: {e}")
         return target_end
