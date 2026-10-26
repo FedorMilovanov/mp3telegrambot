@@ -23,13 +23,6 @@ layers =
 # remove its entry in the same PR. The target is an empty ignore_imports list.
 ignore_imports =
     core.globals -> services.gemini_capacity_control
-    services.dub_studio_runtime -> handlers.dub_wizard
-    services.dub_studio_runtime -> handlers.dub_delivery
-    services.dub_studio_runtime -> handlers.dub_quickstart
-    services.dub_studio_runtime -> handlers.dub_health
-    services.dub_studio_runtime -> handlers.dub_audio_repair
-    services.dub_studio_runtime -> handlers.dub_commands
-    services.dub_studio_runtime -> handlers.dub_multicommand
     services.shorts_factory_execution_guard -> pipelines.shorts_factory
     services.shorts_factory_source -> pipelines.shorts_factory
     services.translation_editorial_runner -> pipelines.shorts_factory

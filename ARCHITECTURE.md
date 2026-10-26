@@ -65,7 +65,6 @@ grep'ом.
 | Нарушение | Где | Почему существует |
 |---|---|---|
 | `core → services` | `core/globals.py` (`gemini_capacity_control`) | процесс-wide конфиг исторически знает о capacity-контроллере; чистые health/quota-контракты уже перенесены в `core/` |
-| `services → handlers` | `services/dub_studio_runtime.py` (7 handler-модулей) | Dub Studio поднимает хендлеры, чтобы переиспользовать меню и регистрацию команд |
 | `services → pipelines` | `services/shorts_factory_execution_guard.py:275`, `services/shorts_factory_source.py:489`, `services/translation_editorial_runner.py:38` | циклическая зависимость Shorts: сервис запускает пайплайн |
 
 Исполняемый контракт (`import-linter`) уже подключён через

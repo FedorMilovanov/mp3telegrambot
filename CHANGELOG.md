@@ -68,6 +68,9 @@
 - Пятый import-layer burn-down: 12 → 11 legacy-рёбер. Общий Telegraph HTML
   cache перенесён в `core.telegraph_cache`; PDF сохраняет прежние exports, а
   converter больше не импортирует PDF service ради invalidation.
+- Шестой import-layer burn-down: 11 → 4 legacy-рёбра. Dub Studio registration
+  принадлежит `handlers.dub_studio_registration`, а output discovery/delivery —
+  `services.dub_delivery`; runtime больше не импортирует UI handlers.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

@@ -318,7 +318,7 @@ async def _notify_generic_success(
     event: dict[str, Any],
     project: dict[str, Any],
 ) -> bool:
-    from handlers.dub_delivery import send_project_outputs
+    from services.dub_delivery import send_project_outputs
 
     job = store.get_job(int(event["job_id"])) if event.get("job_id") else None
     action = str((job or {}).get("action") or "")
@@ -498,30 +498,6 @@ async def _notification_loop(application: Any) -> None:
         await asyncio.sleep(5)
 
 
-def register_dub_studio(application: Any) -> bool:
-    """Register Dub Studio handlers on this concrete Application instance."""
-    if not enabled():
-        return False
-    from handlers.dub_audio_repair import register_dub_audio_repair_handlers
-    from handlers.dub_commands import register_dub_handlers
-    from handlers.dub_delivery import register_dub_delivery_handlers
-    from handlers.dub_health import register_dub_health_handler
-    from handlers.dub_quickstart import register_dub_quickstart_handler
-    from handlers.dub_wizard import register_dub_wizard_handlers
-    from handlers.dub_multicommand import register_dub_multicommand_handler
-
-    register_dub_wizard_handlers(application)
-    register_dub_health_handler(application)
-    register_dub_handlers(application)
-    register_dub_audio_repair_handlers(application)
-    register_dub_delivery_handlers(application)
-    register_dub_quickstart_handler(application)
-    register_dub_multicommand_handler(application)
-    ensure_worker_running()
-    logger.info("🎙 Dub Studio handlers registered on Application")
-    return True
-
-
 def start_dub_studio_services(application: Any) -> bool:
     """Start the request-independent notifier after Application.start()."""
     if not enabled():
@@ -540,6 +516,5 @@ def start_dub_studio_services(application: Any) -> bool:
 __all__ = [
     "enabled",
     "ensure_worker_running",
-    "register_dub_studio",
     "start_dub_studio_services",
 ]
