@@ -469,7 +469,7 @@ async def _find_silence_end(
       search_window — ширина окна поиска (5s → ищем в ±2.5s от target_end)
     """
     ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg or not video_path.exists():
+    if not ffmpeg or not await asyncio.to_thread(video_path.exists):
         return target_end
 
     scan_start = max(0.0, target_end - search_window * 0.4)  # смещение: -2s от target
@@ -552,7 +552,7 @@ async def _detect_black_bars(video_path: Path, sample_start: float = 0.0) -> str
     """
     try:
         ffmpeg = shutil.which("ffmpeg")
-        if not ffmpeg or not video_path.exists():
+        if not ffmpeg or not await asyncio.to_thread(video_path.exists):
             return ""
         # AUDIT L4: ограничиваем точки длительностью видео — для коротких клипов
         # +20 секунд может уйти за EOF, ffmpeg впустую тратит 30 c CPU.
