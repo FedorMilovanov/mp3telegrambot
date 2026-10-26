@@ -30,6 +30,38 @@ async def test_atomic_mp3_conversion_publishes_only_after_probe(monkeypatch, tmp
 
 
 @pytest.mark.asyncio
+async def test_atomic_mp3_conversion_reuses_probed_current_output(monkeypatch, tmp_path: Path) -> None:
+    source = tmp_path / "source.mp3"
+    output = tmp_path / "out.mp3"
+    source.write_bytes(b"source" * 4096)
+    output.write_bytes(b"encoded" * 4096)
+    monkeypatch.setattr(mp3_conversion.shutil, "which", lambda name: f"/{name}")
+    probes = []
+
+    async def fake_probe(path):
+        probes.append(Path(path))
+        return True
+
+    async def unexpected_run(_command, **_kwargs):
+        pytest.fail("current proved output must not be encoded again")
+
+    monkeypatch.setattr(mp3_conversion, "_probe_audio_file", fake_probe)
+    monkeypatch.setattr(mp3_conversion, "run_cancellable_process", unexpected_run)
+
+    assert await mp3_conversion.reencode_mp3_64k_atomic(source, output) is True
+    assert probes == [output]
+
+
+@pytest.mark.asyncio
+async def test_atomic_mp3_conversion_rejects_same_path(tmp_path: Path) -> None:
+    source = tmp_path / "source.mp3"
+    source.write_bytes(b"source")
+
+    with pytest.raises(ValueError, match="paths must differ"):
+        await mp3_conversion.reencode_mp3_atomic(source, source)
+
+
+@pytest.mark.asyncio
 async def test_atomic_mp3_conversion_chains_resolve_failure_for_same_path(monkeypatch, tmp_path: Path) -> None:
     source = tmp_path / "source.mp3"
     source.write_bytes(b"source")
