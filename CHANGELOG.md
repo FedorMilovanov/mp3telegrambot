@@ -148,6 +148,8 @@
   переведены в worker threads; остаются 145 findings.
 - Async I/O, двадцать третий `ASYNC240` slice: status DB/backup и PDF cleanup
   переведены в worker threads; `handlers/commands.py` очищен, остаются 143 findings.
+- Async I/O, двадцать четвёртый `ASYNC240` slice: LiveDub download discovery
+  переведён в worker threads; `services/yandex_live_dub.py` очищен, остаются 140 findings.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

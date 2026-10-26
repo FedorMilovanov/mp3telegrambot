@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from handlers import commands
-from services import eng_subtitles, pdf_generator, render_clips_montage, shorts_video
+from services import eng_subtitles, pdf_generator, render_clips_montage, shorts_video, yandex_live_dub
 from services import translation_editorial_factory as editorial_factory
 
 
@@ -224,6 +224,76 @@ async def test_disk_command_reports_file_count_and_database_size(monkeypatch, tm
     text = update.message.reply_text.await_args.args[0]
     assert "<b>Файлов в downloads:</b> 2" in text
     assert "<b>Размер БД:</b> 2 КБ" in text
+
+
+@pytest.mark.parametrize("stdout_path_exists", [True, False], ids=["stdout", "fallback"])
+@pytest.mark.asyncio
+async def test_new_protocol_audio_returns_discovered_path(
+    monkeypatch, tmp_path: Path, stdout_path_exists: bool
+) -> None:
+    downloaded = _write_file(tmp_path / "translation.mp3", b"audio")
+    reported = downloaded if stdout_path_exists else tmp_path / "missing.mp3"
+    monkeypatch.setattr(
+        yandex_live_dub,
+        "_run_subprocess",
+        lambda *_args, **_kwargs: (str(reported), "", 0),
+    )
+
+    result = await yandex_live_dub._get_audio_new_protocol(
+        ["vot"],
+        "https://example.invalid/video",
+        tmp_path,
+        timeout=1,
+        voice_style="live",
+    )
+
+    assert result == downloaded
+
+
+@pytest.mark.parametrize("stdout_path_exists", [True, False], ids=["stdout", "fallback"])
+@pytest.mark.asyncio
+async def test_legacy_audio_returns_discovered_path(monkeypatch, tmp_path: Path, stdout_path_exists: bool) -> None:
+    downloaded = _write_file(tmp_path / "translation.mp3", b"audio")
+    reported = downloaded if stdout_path_exists else tmp_path / "missing.mp3"
+    monkeypatch.setattr(yandex_live_dub, "_ensure_vot_helper", lambda: None)
+    monkeypatch.setattr(yandex_live_dub, "_check_vot_cli", lambda: "vot")
+    monkeypatch.setattr(
+        yandex_live_dub,
+        "_run_subprocess",
+        lambda *_args, **_kwargs: (str(reported), "", 0),
+    )
+    monkeypatch.setattr("services.livedub_ru_provenance.snapshot_ru_audio_candidates", lambda _workdir: None)
+    monkeypatch.setattr("services.livedub_ru_provenance.record_returned_ru_audio", lambda *_args, **_kwargs: None)
+
+    result = await yandex_live_dub.get_live_dub_audio(
+        "https://example.invalid/video",
+        tmp_path,
+        retries=0,
+    )
+
+    assert result == downloaded
+
+
+@pytest.mark.parametrize("stdout_path_exists", [True, False], ids=["stdout", "fallback"])
+@pytest.mark.asyncio
+async def test_legacy_video_returns_discovered_path(monkeypatch, tmp_path: Path, stdout_path_exists: bool) -> None:
+    downloaded = _write_file(tmp_path / "translation.mp4", b"video")
+    reported = downloaded if stdout_path_exists else tmp_path / "missing.mp4"
+    monkeypatch.setattr(
+        yandex_live_dub,
+        "get_live_dub_audio",
+        AsyncMock(side_effect=RuntimeError("force legacy merge")),
+    )
+    monkeypatch.setattr(yandex_live_dub, "_check_vot_cli", lambda: "vot")
+    monkeypatch.setattr(
+        yandex_live_dub,
+        "_run_subprocess",
+        lambda *_args, **_kwargs: (str(reported), "", 0),
+    )
+
+    result = await yandex_live_dub.get_live_dub_video("https://example.invalid/video", tmp_path)
+
+    assert result == downloaded
 
 
 @pytest.mark.asyncio

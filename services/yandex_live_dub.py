@@ -208,6 +208,10 @@ def _ensure_vot_helper() -> list | None:
     return [node, str(script)]
 
 
+def _path_exists(path: Path) -> bool:
+    return path.exists()
+
+
 async def _get_audio_new_protocol(
     helper: list,
     video_url: str,
@@ -254,11 +258,11 @@ async def _get_audio_new_protocol(
         lines = [l.strip() for l in stdout.splitlines() if l.strip()]
         if lines:
             p = Path(lines[-1])
-            if p.exists():
+            if await asyncio.to_thread(_path_exists, p):
                 logger.info(f"[LiveDub] Готово аудио (новый протокол): {p}")
                 return p
-        p = _find_latest_file(output_dir, "*.mp3")
-        if p and p.exists():
+        p = await asyncio.to_thread(_find_latest_file, output_dir, "*.mp3")
+        if p is not None and await asyncio.to_thread(_path_exists, p):
             return p
         raise RuntimeError(f"vot_live.mjs не сохранил MP3. stdout: {stdout[:300]}")
     if rc == 3 or "LIVEDUB_AUTH_REQUIRED" in stderr:
@@ -380,13 +384,13 @@ async def get_live_dub_audio(
     downloaded_path = None
     if lines:
         try_path = Path(lines[-1])
-        if try_path.exists():
+        if await asyncio.to_thread(_path_exists, try_path):
             downloaded_path = try_path
 
-    if not downloaded_path or not downloaded_path.exists():
-        downloaded_path = _find_latest_file(output_dir, "*.mp3")
+    if downloaded_path is None or not await asyncio.to_thread(_path_exists, downloaded_path):
+        downloaded_path = await asyncio.to_thread(_find_latest_file, output_dir, "*.mp3")
 
-    if not downloaded_path or not downloaded_path.exists():
+    if downloaded_path is None or not await asyncio.to_thread(_path_exists, downloaded_path):
         raise RuntimeError(f"vot-cli-live не сохранил MP3. stdout: {stdout[:500]}")
 
     record_returned_ru_audio(
@@ -488,13 +492,13 @@ async def get_live_dub_video(
     downloaded_path = None
     if lines:
         try_path = Path(lines[-1])
-        if try_path.exists():
+        if await asyncio.to_thread(_path_exists, try_path):
             downloaded_path = try_path
 
-    if not downloaded_path or not downloaded_path.exists():
-        downloaded_path = _find_latest_file(output_dir, "*.mp4")
+    if downloaded_path is None or not await asyncio.to_thread(_path_exists, downloaded_path):
+        downloaded_path = await asyncio.to_thread(_find_latest_file, output_dir, "*.mp4")
 
-    if not downloaded_path or not downloaded_path.exists():
+    if downloaded_path is None or not await asyncio.to_thread(_path_exists, downloaded_path):
         raise RuntimeError(f"vot-cli-live не сохранил MP4. stdout: {stdout[:500]}")
 
     # Добавить русские субтитры (Whisper на переведенном аудио)

@@ -1146,8 +1146,9 @@ discovery, семнадцатый — MP3 source/path/cache preflight, восе�
 no-sub callback file check, девятнадцатый — retrim source/no-sub checks,
 двадцатый — archive/segment export file checks, двадцать первый — PDF output
 preflight, двадцать второй — disk diagnostics, двадцать третий — status
-DB/backup и PDF cleanup (`handlers/commands.py` очищен). Остаются 143, другие
-extended-правила и дальнейший ручной async review.
+DB/backup и PDF cleanup (`handlers/commands.py` очищен), двадцать четвёртый —
+LiveDub download discovery (`services/yandex_live_dub.py` очищен). Остаются 140,
+другие extended-правила и дальнейший ручной async review.
 
 **Решение:**
 
