@@ -62,6 +62,10 @@ logger = logging.getLogger(__name__)
 _BTN_ICON_PREFIX_RE = re.compile(r"^[✅☑⚡🚫⬅➡⏪⏭✂️\s\u2611\u2705\uFE0F]+")
 
 
+def _path_exists(path: Path) -> bool:
+    return path.exists()
+
+
 def _strip_btn_icon(label: str) -> str:
     """Убирает иконку (любую комбинацию emoji + selector) в начале метки кнопки."""
     return _BTN_ICON_PREFIX_RE.sub("", label).strip()
@@ -476,7 +480,7 @@ async def _handle_strim_nosub(query, rec: dict, start_s: int, end_s: int) -> Non
         )
         return
     nosub_path = Path(nosub_path_str)
-    if not nosub_path.exists():
+    if not await asyncio.to_thread(_path_exists, nosub_path):
         await query.answer("⏳ Файл без субтитров истёк — пришлите видео заново.", show_alert=True)
         return
 
