@@ -136,6 +136,29 @@ def _persist_factory_source(source_path: Path, media_id: str) -> Path:
     return destination
 
 
+def _persist_validated_factory_source(source_video_path: Path | str, media_id: str) -> Path:
+    source = Path(source_video_path)
+    if not source.is_file():
+        raise RuntimeError("Не удалось получить общий видеоисточник для Factory")
+    return _persist_factory_source(source, media_id)
+
+
+def _cleanup_factory_files(
+    *,
+    mp3_path: Path | None,
+    persistent_source_path: Path | None,
+    keep_source: bool,
+    workdir: Path,
+) -> None:
+    if mp3_path is not None:
+        with contextlib.suppress(OSError):
+            mp3_path.unlink(missing_ok=True)
+    if persistent_source_path is not None and not keep_source:
+        with contextlib.suppress(OSError):
+            persistent_source_path.unlink(missing_ok=True)
+    shutil.rmtree(workdir, ignore_errors=True)
+
+
 def _plan_message(plan: dict[str, Any], *, translation_required: bool) -> str:
     meta = plan.get("metadata") or {}
     shorts = plan.get("shorts_candidates") or []
@@ -309,9 +332,13 @@ async def process_shorts_factory(
                 ) from exc
             raise
 
-        if not source_video_path or not Path(source_video_path).is_file():
+        if not source_video_path:
             raise RuntimeError("Не удалось получить общий видеоисточник для Factory")
-        persistent_source_path = _persist_factory_source(Path(source_video_path), media_id)
+        persistent_source_path = await asyncio.to_thread(
+            _persist_validated_factory_source,
+            source_video_path,
+            media_id,
+        )
         render_source_duration = await _validated_source_duration(
             persistent_source_path,
             expected_duration=duration,
@@ -510,13 +537,14 @@ async def process_shorts_factory(
             source_task.cancel()
             with contextlib.suppress(BaseException):
                 await source_task
-        if mp3_path is not None:
-            with contextlib.suppress(OSError):
-                mp3_path.unlink(missing_ok=True)
-        if persistent_source_path is not None and not keep_source:
-            with contextlib.suppress(OSError):
-                persistent_source_path.unlink(missing_ok=True)
-        shutil.rmtree(workdir, ignore_errors=True)
+
+        await asyncio.to_thread(
+            _cleanup_factory_files,
+            mp3_path=mp3_path,
+            persistent_source_path=persistent_source_path,
+            keep_source=keep_source,
+            workdir=workdir,
+        )
 
 
 __all__ = ["FACTORY_LONG_PUBLIC_MAX_SEC", "process_shorts_factory"]

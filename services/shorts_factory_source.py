@@ -524,9 +524,9 @@ async def prepare_factory_translation_video(
         raise RuntimeError("Maximum-quality original for Factory LiveDub failed media probe")
 
     output_path = workdir / "factory_max_livedub.mp4"
-    output_path.unlink(missing_ok=True)
+    await asyncio.to_thread(output_path.unlink, missing_ok=True)
     mixed = await mix_tracks(original_video, ru_audio, output_path)
-    if not mixed or not Path(mixed).is_file():
+    if not mixed or not (await asyncio.to_thread(Path(mixed).is_file)):
         raise RuntimeError("Factory could not mix Yandex live audio over the maximum-quality original")
 
     final_probe = await probe_media_async(Path(mixed))

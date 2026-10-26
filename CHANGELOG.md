@@ -104,6 +104,8 @@
   в worker threads без изменения Telegram API contract, правило включено в gate.
 - Async I/O, первый `ASYNC240` slice: 7 локализованных path-I/O sites перенесены
   в worker threads; остаются 202 findings для следующих модульных slices.
+- Async I/O, второй `ASYNC240` slice: Factory source/deferral/static probes и
+  cleanup переведены на worker threads; остаются 198 findings.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):
