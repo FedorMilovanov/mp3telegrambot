@@ -1,6 +1,8 @@
 """Regression coverage for RU-speech-proven Factory cut boundaries."""
 
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -264,6 +266,55 @@ def test_intentional_mix_delay_alone_does_not_fail_edge_purity():
         candidate_kind="short",
     )
     assert len(aligned) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("content", [None, b""])
+async def test_exact_ru_speech_rejects_missing_or_empty_audio(monkeypatch, tmp_path, content):
+    source = tmp_path / "ru.mp3"
+    if content is not None:
+        source.write_bytes(content)
+    probe = AsyncMock(return_value=20.0)
+    monkeypatch.setattr(timing.shutil, "which", lambda _name: "ffmpeg")
+    monkeypatch.setattr(timing, "_probe_audio_duration", probe)
+
+    with pytest.raises(RuntimeError, match="exact VOT RU audio is missing or empty"):
+        await timing._detect_exact_ru_speech(source)
+
+    probe.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_exact_ru_speech_reads_valid_audio_and_applies_mix_delay(monkeypatch, tmp_path):
+    source = tmp_path / "ru.mp3"
+    source.write_bytes(b"x" * 2048)
+    probe = AsyncMock(return_value=20.0)
+    process = AsyncMock(
+        return_value=SimpleNamespace(
+            returncode=0,
+            stderr=(
+                "silence_start: 0\n"
+                "silence_end: 1.000 | silence_duration: 1.000\n"
+                "silence_start: 19.000\n"
+                "silence_end: 20.000 | silence_duration: 1.000\n"
+            ),
+        )
+    )
+    monkeypatch.setattr(timing.shutil, "which", lambda _name: "ffmpeg")
+    monkeypatch.setattr(timing, "_probe_audio_duration", probe)
+    monkeypatch.setattr(timing, "run_cancellable_process", process)
+    monkeypatch.setattr(timing, "get_mix_params", lambda: {"delay_ms": 600})
+
+    evidence = await timing._detect_exact_ru_speech(source)
+
+    probe.assert_awaited_once_with(source)
+    process.assert_awaited_once()
+    assert evidence == {
+        "audio_name": source.name,
+        "audio_duration_seconds": 20.0,
+        "delay_seconds": 0.6,
+        "intervals": [(1.6, 19.6)],
+    }
 
 
 @pytest.mark.asyncio
