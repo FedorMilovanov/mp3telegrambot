@@ -46,6 +46,7 @@ from core.progress import safe_edit_text
 from services.shorts_video import build_short_caption, render_short_clip
 
 import asyncio
+import contextlib
 import json
 import logging
 import re  # AUDIT L9
@@ -331,10 +332,8 @@ async def handle_callback(update, context) -> None:
             )
         except Exception as exc:
             logger.warning("segcut callback failed: %s", exc, exc_info=True)
-            try:
+            with contextlib.suppress(Exception):
                 await query.message.reply_text(f"❌ Ошибка сегмента: {_mask(str(exc))[:160]}")
-            except Exception:
-                pass
         finally:
             if _render_token is not None:
                 try:
@@ -446,10 +445,8 @@ async def handle_callback(update, context) -> None:
                 return r
 
         rows = await loop.run_in_executor(None, _delete_all_cache)
-        try:
+        with contextlib.suppress(Exception):
             await query.edit_message_text(f"🗑 Весь кэш удалён: {rows} записей.")
-        except Exception:
-            pass
         return
 
     # ── Неизвестный action ─────────────────────────────────────
@@ -487,10 +484,8 @@ async def _handle_strim_nosub(query, rec: dict, start_s: int, end_s: int) -> Non
 
     try:
         candidate = {}
-        try:
+        with contextlib.suppress(Exception):
             candidate = json.loads(rec.get("candidate_json", "{}"))
-        except Exception:
-            pass
 
         caption = build_short_caption(
             candidate=candidate,
@@ -538,10 +533,8 @@ async def _handle_strim_retrim(
 ) -> None:
     """Перерезать short по новым start_s/end_s и отправить."""
     candidate = {}
-    try:
+    with contextlib.suppress(Exception):
         candidate = json.loads(rec["candidate_json"])
-    except Exception:
-        pass
     candidate["start_seconds"] = start_s
     candidate["end_seconds"] = end_s
     candidate["duration_seconds"] = end_s - start_s
@@ -633,14 +626,10 @@ async def _handle_strim_retrim(
         )
     except Exception as trim_err:
         logger.warning(f"strim retrim error: {trim_err}")
-        try:
+        with contextlib.suppress(Exception):
             await query.message.reply_text(f"❌ Ошибка при перерезке: {str(trim_err)[:150]}")
-        except Exception:
-            pass
     finally:
         # Trim-файл удаляем только после успешной отправки —
         # повторные ретрим-кнопки будут пересоздавать новый файл.
-        try:
+        with contextlib.suppress(Exception):
             out_path.unlink(missing_ok=True)
-        except Exception:
-            pass

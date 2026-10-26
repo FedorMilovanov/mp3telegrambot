@@ -21,6 +21,7 @@ from core.globals import (
 from core.model_catalog import ROLE_PRIMARY, configured_model
 
 import asyncio
+import contextlib
 import hashlib
 from pathlib import Path  # round 31: db_backup  # FIX #6: был не импортирован — нужен для get_prompt_fingerprint
 import json
@@ -167,10 +168,8 @@ def db_init() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_gemini_runs_ts ON gemini_runs(ts)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_gemini_runs_task_ts ON gemini_runs(task, ts)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_gemini_runs_video_id ON gemini_runs(video_id)")
-        try:
+        with contextlib.suppress(sqlite3.OperationalError):
             conn.execute("ALTER TABLE gemini_runs ADD COLUMN validation_summary TEXT DEFAULT ''")
-        except sqlite3.OperationalError:
-            pass
         # Миграция video_cache: добавляем колонки если их нет (для старых баз данных)
         migrated = []
         for col, default in [
@@ -218,20 +217,14 @@ def db_init() -> None:
             except sqlite3.OperationalError:
                 pass  # Колонка уже существует
         # Миграция short_trims: добавляем колонку для файла без субтитров
-        try:
+        with contextlib.suppress(sqlite3.OperationalError):  # Колонка уже есть
             conn.execute("ALTER TABLE short_trims ADD COLUMN video_path_nosub TEXT DEFAULT ''")
-        except sqlite3.OperationalError:
-            pass  # Колонка уже есть
         # #31: миграция — добавляем метку истечения срока nosub-файла (через 24ч)
-        try:
+        with contextlib.suppress(sqlite3.OperationalError):  # Колонка уже есть
             conn.execute("ALTER TABLE short_trims ADD COLUMN nosub_expiry INTEGER DEFAULT 0")
-        except sqlite3.OperationalError:
-            pass  # Колонка уже есть
         # AUDIT M5: добавляем длительность исходного видео — для ограничения end_s при ретриме
-        try:
+        with contextlib.suppress(sqlite3.OperationalError):  # Колонка уже есть
             conn.execute("ALTER TABLE short_trims ADD COLUMN source_duration INTEGER DEFAULT 0")
-        except sqlite3.OperationalError:
-            pass  # Колонка уже есть
         conn.commit()
         if migrated:
             pass
@@ -438,10 +431,8 @@ def db_backup(max_keep: int = 7) -> str:
         # ротация
         baks = sorted(Path(str(DB_PATH)).parent.glob(Path(str(DB_PATH)).name + ".bak.*"))
         for old in baks[:-max_keep]:
-            try:
+            with contextlib.suppress(OSError):
                 old.unlink()
-            except OSError:
-                pass
         logger.info("DB backup: %s (%d KB)", dst.name, dst.stat().st_size // 1024)
         return str(dst)
     except Exception as e:

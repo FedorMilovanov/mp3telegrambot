@@ -8,6 +8,7 @@ negative bans as the bot evolves.
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass, field
 import re
 from typing import Iterable
@@ -170,10 +171,8 @@ def collect_prompt_health() -> list[PromptHealthItem]:
         analyze_prompt_text("STUDY_ANALYSIS_PROMPT", getattr(prompts, "STUDY_ANALYSIS_PROMPT", "")),
         analyze_prompt_text("REFLECTION_APPLICATION_PROMPT", getattr(prompts, "REFLECTION_APPLICATION_PROMPT", "")),
     ]
-    try:
+    with contextlib.suppress(Exception):
         items.append(analyze_prompt_text("QUIZ_PROMPT", prompts.QUIZ_PROMPT))
-    except Exception:
-        pass
     # Audio prompt is dynamic; use representative long sermon profile.
     try:
         audio = prompts.build_audio_analysis_prompt("T", "A", "55:00", 3300, mode="deep")

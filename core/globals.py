@@ -2,6 +2,7 @@
 """Globals — imports, clients, configuration and process-wide utilities."""
 
 import asyncio
+import contextlib
 import html as html_mod
 import json
 import logging
@@ -249,10 +250,8 @@ if HAS_GEMINI:
             retry_options=types.HttpRetryOptions(attempts=1),
         )
     except (AttributeError, TypeError):
-        try:
+        with contextlib.suppress(Exception):
             _gemini_http_options = types.HttpOptions(timeout=900_000)
-        except Exception:
-            pass
 
 
 def _make_gemini_client(api_key: str) -> Any:

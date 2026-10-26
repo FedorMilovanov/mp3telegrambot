@@ -9,6 +9,7 @@ open a folder, copy links, and share them without using the bot UI.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import logging
@@ -234,10 +235,8 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
         ("last_repair_changed_pages", "INTEGER DEFAULT 0"),
         ("last_repair_errors", "TEXT DEFAULT ''"),
     ]:
-        try:
+        with contextlib.suppress(sqlite3.OperationalError):
             conn.execute(f"ALTER TABLE generated_pages ADD COLUMN {_trusted_ident(col)} {ddl}")
-        except sqlite3.OperationalError:
-            pass
     conn.execute("CREATE INDEX IF NOT EXISTS idx_generated_pages_updated ON generated_pages(updated_at)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_generated_pages_author ON generated_pages(author)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_generated_pages_status ON generated_pages(publication_status)")

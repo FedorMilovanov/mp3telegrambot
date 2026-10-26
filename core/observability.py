@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from core.database import _db_conn
 import asyncio
+import contextlib
 import html
 import json
 import logging
@@ -127,10 +128,8 @@ def _ensure_gemini_runs_table(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_gemini_runs_ts ON gemini_runs(ts)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_gemini_runs_task_ts ON gemini_runs(task, ts)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_gemini_runs_video_id ON gemini_runs(video_id)")
-    try:
+    with contextlib.suppress(sqlite3.OperationalError):
         conn.execute("ALTER TABLE gemini_runs ADD COLUMN validation_summary TEXT DEFAULT ''")
-    except sqlite3.OperationalError:
-        pass
 
 
 def log_gemini_run(

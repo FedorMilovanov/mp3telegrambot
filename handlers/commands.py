@@ -86,6 +86,7 @@ from pipelines.playlist import handle_playlist
 from core.progress import safe_edit_text
 
 import asyncio
+import contextlib
 import logging
 import os  # FIX #9
 import re  # FIX #9
@@ -610,10 +611,8 @@ async def pdf_command(update, context):
         await safe_edit_text(status, f"❌ Ошибка PDF: {html_mod.escape(str(exc)[:160])}")
     finally:
         if pdf_path:
-            try:
+            with contextlib.suppress(Exception):
                 Path(pdf_path).unlink(missing_ok=True)
-            except Exception:
-                pass
 
 
 async def disk_command(update, context):
@@ -741,10 +740,8 @@ async def handle_message(update, context):
             # началась — возвращаем, иначе повторные попытки занятого видео
             # выжигали дневной лимит впустую.
             if not is_vip:
-                try:
+                with contextlib.suppress(Exception):
                     await arefund_rate_limit(user_id)
-                except Exception:
-                    pass
             try:
                 await msg.edit_text("⚠️ Это видео уже обрабатывается слишком долго. Попробуйте позже.")
             except Exception:
@@ -761,10 +758,8 @@ async def handle_message(update, context):
                     logger.warning("Video lock %s release вызвал RuntimeError", _vid_id_hint)
             _release_video_lock(_vid_id_hint, _vlock)
         # PART5: rate-limit уже зарезервирован до обработки через areserve_rate_limit().
-        try:
+        with contextlib.suppress(Exception):
             await msg.delete()
-        except Exception:
-            pass
 
 
 # ─── Запуск ──────────────────────────────────────────────────
