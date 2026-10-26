@@ -142,6 +142,8 @@
   переведены в worker threads; остаются 151 findings.
 - Async I/O, двадцатый `ASYNC240` slice: archive/segment export file checks
   переведены в worker threads; остаются 148 findings.
+- Async I/O, двадцать первый `ASYNC240` slice: PDF output preflight
+  переведён в worker threads; остаются 146 findings.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):
