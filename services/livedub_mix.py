@@ -881,6 +881,25 @@ def extract_fix_intervals(
     return merged
 
 
+def _find_existing_pro_tracks(workdir: Path) -> tuple[Path | None, Path | None]:
+    original, translated = find_pro_tracks(workdir)
+    if not (original and translated and original.exists() and translated.exists()):
+        return None, None
+    return original, translated
+
+
+def _path_exists(path: Path) -> bool:
+    return path.exists()
+
+
+def _subtitle_file_is_ready(path: Path) -> bool:
+    return path.exists() and path.stat().st_size > 50
+
+
+def _unlink_missing(path: Path) -> None:
+    path.unlink(missing_ok=True)
+
+
 async def apply_qa_audio_fixes(workdir: Path, issues: list[dict]) -> Path | None:
     """Пересобирает микс с точечными правками: в местах major-искажений
     RU-дубляж по умолчанию полностью вырезается, оригинал выводится в полный голос.
@@ -891,8 +910,8 @@ async def apply_qa_audio_fixes(workdir: Path, issues: list[dict]) -> Path | None
     intervals = extract_fix_intervals(issues)
     if not intervals:
         return None
-    orig_video, ru_audio = find_pro_tracks(workdir)
-    if not (orig_video and ru_audio and orig_video.exists() and ru_audio.exists()):
+    orig_video, ru_audio = await asyncio.to_thread(_find_existing_pro_tracks, workdir)
+    if not (orig_video and ru_audio):
         logger.info("[LiveDubMix] авто-правка пропущена: чистые дорожки не сохранились")
         return None
 
@@ -905,25 +924,25 @@ async def apply_qa_audio_fixes(workdir: Path, issues: list[dict]) -> Path | None
         actual_duration = await asyncio.to_thread(probe_media_duration, Path(result))
         tolerance = max(3.0, float(expected_duration or 0) * 0.015)
         if (
-            not has_video_stream(Path(result))
+            not await asyncio.to_thread(has_video_stream, Path(result))
             or not expected_duration
             or not actual_duration
             or abs(float(expected_duration) - float(actual_duration)) > tolerance
         ):
             with contextlib.suppress(OSError):
-                Path(result).unlink(missing_ok=True)
+                await asyncio.to_thread(_unlink_missing, Path(result))
             raise RuntimeError(f"QA auto-fix postcondition failed: source={expected_duration}, fixed={actual_duration}")
         logger.info("[LiveDubMix] авто-правка: %d интервал(ов) приглушено", len(intervals))
         # FIX 2026-06-10: короткие ролики (<3 мин) шлются с ВШИТЫМИ
         # русскими субтитрами (gemini_subs.srt); пересборка из чистых
         # дорожек их теряла — фикс-версия выходила хуже оригинальной.
         srt = Path(workdir) / "gemini_subs.srt"
-        if srt.exists() and srt.stat().st_size > 50:
+        if await asyncio.to_thread(_subtitle_file_is_ready, srt):
             try:
                 from services.eng_subtitles import merge_subtitles
 
                 with_subs = await merge_subtitles(result, srt, is_fallback=False)
-                if with_subs and Path(with_subs).exists():
+                if with_subs and await asyncio.to_thread(_path_exists, Path(with_subs)):
                     logger.info("[LiveDubMix] авто-правка: субтитры возвращены в фикс-версию")
                     return Path(with_subs)
             except Exception as _sub_err:

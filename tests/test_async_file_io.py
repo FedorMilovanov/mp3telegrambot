@@ -305,6 +305,81 @@ async def test_legacy_video_returns_discovered_path(monkeypatch, tmp_path: Path,
     assert result == downloaded
 
 
+def _patch_qa_audio_fix_runtime(
+    monkeypatch,
+    original: Path,
+    translated: Path,
+    fixed: Path,
+    *,
+    actual_duration: float = 10.0,
+) -> None:
+    monkeypatch.setattr(livedub_mix, "extract_fix_intervals", lambda _issues: [(1.0, 2.0)])
+    monkeypatch.setattr(livedub_mix, "find_pro_tracks", lambda _workdir: (original, translated))
+    monkeypatch.setattr(livedub_mix, "mix_tracks", AsyncMock(return_value=fixed))
+    monkeypatch.setattr(livedub_mix, "has_video_stream", lambda _path: True)
+    monkeypatch.setattr(
+        livedub_mix,
+        "probe_media_duration",
+        lambda path: actual_duration if Path(path) == fixed else 10.0,
+    )
+
+
+@pytest.mark.asyncio
+async def test_qa_audio_fix_skips_when_clean_tracks_are_missing(monkeypatch, tmp_path: Path) -> None:
+    mix = AsyncMock()
+    monkeypatch.setattr(livedub_mix, "extract_fix_intervals", lambda _issues: [(1.0, 2.0)])
+    monkeypatch.setattr(livedub_mix, "find_pro_tracks", lambda _workdir: (None, None))
+    monkeypatch.setattr(livedub_mix, "mix_tracks", mix)
+
+    result = await livedub_mix.apply_qa_audio_fixes(tmp_path, [{"time": "1:00", "severity": "major"}])
+
+    assert result is None
+    mix.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_qa_audio_fix_deletes_output_that_fails_duration_postcondition(monkeypatch, tmp_path: Path) -> None:
+    original = _write_file(tmp_path / "original.mp4", b"video")
+    translated = _write_file(tmp_path / "translation.mp3", b"audio")
+    fixed = _write_file(tmp_path / "pro_dub_fixed.mp4", b"broken")
+    _patch_qa_audio_fix_runtime(monkeypatch, original, translated, fixed, actual_duration=20.0)
+
+    with pytest.raises(RuntimeError, match="QA auto-fix postcondition failed"):
+        await livedub_mix.apply_qa_audio_fixes(tmp_path, [{"time": "1:00", "severity": "major"}])
+
+    assert not fixed.exists()
+
+
+@pytest.mark.asyncio
+async def test_qa_audio_fix_returns_fixed_video_without_subtitles(monkeypatch, tmp_path: Path) -> None:
+    original = _write_file(tmp_path / "original.mp4", b"video")
+    translated = _write_file(tmp_path / "translation.mp3", b"audio")
+    fixed = _write_file(tmp_path / "pro_dub_fixed.mp4", b"fixed")
+    _patch_qa_audio_fix_runtime(monkeypatch, original, translated, fixed)
+
+    result = await livedub_mix.apply_qa_audio_fixes(tmp_path, [{"time": "1:00", "severity": "major"}])
+
+    assert result == fixed
+
+
+@pytest.mark.asyncio
+async def test_qa_audio_fix_restores_valid_subtitles(monkeypatch, tmp_path: Path) -> None:
+    original = _write_file(tmp_path / "original.mp4", b"video")
+    translated = _write_file(tmp_path / "translation.mp3", b"audio")
+    fixed = _write_file(tmp_path / "pro_dub_fixed.mp4", b"fixed")
+    subtitles = _write_file(tmp_path / "gemini_subs.srt", b"x" * 60)
+    with_subtitles = _write_file(tmp_path / "pro_dub_fixed_subs.mp4", b"fixed-subtitles")
+    merge = AsyncMock(return_value=with_subtitles)
+    _patch_qa_audio_fix_runtime(monkeypatch, original, translated, fixed)
+    monkeypatch.setattr(eng_subtitles, "merge_subtitles", merge)
+
+    result = await livedub_mix.apply_qa_audio_fixes(tmp_path, [{"time": "1:00", "severity": "major"}])
+
+    assert result == with_subtitles
+    assert merge.await_args.args == (fixed, subtitles)
+    assert merge.await_args.kwargs == {"is_fallback": False}
+
+
 @pytest.mark.asyncio
 async def test_mix_tracks_rejects_audio_only_original(monkeypatch, tmp_path: Path) -> None:
     run_ffmpeg = Mock()
