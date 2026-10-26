@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -54,7 +55,7 @@ async def deliver_cached_livedub(
         except Exception:
             pass
         await flush_source_audio("cached LiveDub pair unavailable")
-        try:
+        with contextlib.suppress(Exception):
             await bot.send_message(
                 chat_id=chat_id,
                 text=(
@@ -63,8 +64,6 @@ async def deliver_cached_livedub(
                 ),
                 reply_to_message_id=reply_to,
             )
-        except Exception:
-            pass
         return
 
     discard_source_audio("cached LiveDub pair delivered")

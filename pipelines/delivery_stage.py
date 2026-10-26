@@ -19,6 +19,7 @@ Cache-hit сначала пытается отдать сохранённый Te
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import html
 import logging
 import re
@@ -220,10 +221,8 @@ async def embed_audio_chapters(request: DeliveryRequest, deps: DeliveryDeps) -> 
 async def send_audio(request: DeliveryRequest, deps: DeliveryDeps) -> Any:
     """Отправить MP3 с тремя попытками и сохранить file_id после первого успеха."""
     if request.announce_upload and not request.cache_hit:
-        try:
+        with contextlib.suppress(Exception):
             await request.update.message.chat.send_action("upload_voice")
-        except Exception:
-            pass
 
     audio_title = title_case_fragment((request.ai_data or {}).get("real_title") or request.title)
     audio_performer = normalize_author_name((request.ai_data or {}).get("real_author") or request.performer)
@@ -325,10 +324,8 @@ async def send_pdf(request: DeliveryRequest, deps: DeliveryDeps) -> str:
             status_message = await request.update.message.reply_text("📄 Генерирую PDF…")
 
             async def pdf_progress(stage: str, pct: int) -> None:
-                try:
+                with contextlib.suppress(Exception):
                     await status_message.edit_text(f"📄 PDF: {stage} ({pct}%)")
-                except Exception:
-                    pass
 
             generated = await deps.generate_pdf(
                 output_path=pdf_path,
@@ -378,15 +375,11 @@ async def send_pdf(request: DeliveryRequest, deps: DeliveryDeps) -> str:
             outcome = "error"
     finally:
         if pdf_path:
-            try:
+            with contextlib.suppress(Exception):
                 Path(pdf_path).unlink(missing_ok=True)
-            except Exception:
-                pass
         if status_message:
-            try:
+            with contextlib.suppress(Exception):
                 await status_message.delete()
-            except Exception:
-                pass
     return outcome
 
 
@@ -437,10 +430,8 @@ async def _send_cached_file_id(request: DeliveryRequest, deps: DeliveryDeps) -> 
         return True, sent
     except Exception as err:
         logger.warning("Кэш mp3 file_id протух: %s", err)
-        try:
+        with contextlib.suppress(Exception):
             await deps.save_file_id(request.media_id, "")
-        except Exception:
-            pass
         return False, None
 
 

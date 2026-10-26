@@ -94,6 +94,8 @@
   `contextlib.suppress`; оставшиеся 134 production findings разбираются по слоям.
 - Extended Ruff, волна 2f (entry/core/handlers): ещё 27 `SIM105` заменены;
   после двух slices остаются 107 findings в pipelines/services.
+- Extended Ruff, волна 2f (pipelines): ещё 40 `SIM105` заменены, включая
+  cancellation-safe teardown; после трёх slices остаются 67 service findings.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

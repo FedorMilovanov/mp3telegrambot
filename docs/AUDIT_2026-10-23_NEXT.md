@@ -1128,8 +1128,8 @@ pytest и coverage ratchet прошли. Волна 2a закрыта: 142 бе�
 Ruff gate. Волны 2b–2d закрыли 73 `UP045`, 35 `PLW1510` и 28 `RET504`;
 subprocess semantics и возвращаемые выражения сохранены. Волна 2e закрыла
 все 24 `B904`: runtime causes сохранены, обработанные CLI exits не дублируют
-context. Волна 2f закрыла 11 `SIM105` в tools/tests и 27 в entry/core/handlers;
-остаются 107 в pipelines/services, другие extended-правила, волна 3 и `ASYNC240`.
+context. Волна 2f закрыла 11 `SIM105` в tools/tests, 27 в entry/core/handlers
+и 40 в pipelines; остаются 67 в services, другие extended-правила и `ASYNC240`.
 
 **Решение:**
 

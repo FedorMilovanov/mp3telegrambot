@@ -8,6 +8,7 @@ and returning the real delivery status to playlist accounting.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -35,28 +36,22 @@ async def finish_livedub_quick(
     where no LiveDub working directory was created.
     """
     if status_msg:
-        try:
+        with contextlib.suppress(Exception):
             await status_msg.edit_text(f"⚡ Режим ENG Quick: жду перевод «Живые голоса»...\n📝 {title}")
-        except Exception:
-            pass
 
     delivered = await send_result()
 
     if status_msg:
-        try:
+        with contextlib.suppress(Exception):
             await status_msg.delete()
-        except Exception:
-            pass
 
     if not delivered:
         # A missing OAuth token gets an actionable hint instead of the generic
         # "translation unavailable" message.  Marker inspection remains
         # best-effort, exactly as it was in the nested pipeline block.
         auth_required = False
-        try:
+        with contextlib.suppress(OSError):
             auth_required = workdir is not None and (workdir / ".auth_required").exists()
-        except OSError:
-            pass
 
         # Playlists emit one aggregate failure summary instead of one message
         # per failed entry (silent_errors=True).

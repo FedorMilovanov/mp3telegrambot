@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import copy
 import logging
 import os
@@ -357,17 +358,13 @@ async def process_and_send_clips(
         raise
     except Exception as exc:
         logger.warning("Clips process_and_send error: %s", exc)
-        try:
+        with contextlib.suppress(Exception):
             await update.message.reply_text(f"🎬 Ошибка при подготовке Clips: {str(exc)[:150]}")
-        except Exception:
-            pass
         return sent
     finally:
         for path in (*clip_paths, *snap_paths):
-            try:
+            with contextlib.suppress(Exception):
                 path.unlink(missing_ok=True)
-            except Exception:
-                pass
         if video_path:
             try:
                 keep = settings_get("shorts_montage") or settings_get("shorts_highlights")
