@@ -56,6 +56,9 @@
 - Первый import-layer burn-down: 20 → 17 legacy-рёбер. `QUIZ_PROMPT` живёт в
   `core.prompts`, caption-link builders — в `converters.caption`; неиспользуемый
   `core.utils → services.ffmpeg` удалён. Тексты и результаты builders не изменились.
+- Второй import-layer burn-down: 17 → 15 legacy-рёбер. Чистые `health_report` и
+  `gemini_quota_domains` перенесены в `core`; прежние `services`-пути сохранены
+  compatibility-экспортами, поэтому вызывающий код и контракты не изменились.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

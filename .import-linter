@@ -23,8 +23,6 @@ layers =
 # remove its entry in the same PR. The target is an empty ignore_imports list.
 ignore_imports =
     pipelines.video_dispatch -> handlers.mode_command
-    core.globals -> services.gemini_quota_domains
-    core.globals -> services.health_report
     core.globals -> services.gemini_capacity_control
     services.dub_studio_runtime -> handlers.dub_wizard
     services.dub_studio_runtime -> handlers.dub_delivery

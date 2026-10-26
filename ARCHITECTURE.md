@@ -64,7 +64,7 @@ grep'ом.
 
 | Нарушение | Где | Почему существует |
 |---|---|---|
-| `core → services` | `core/globals.py` (`gemini_quota_domains`, `health_report`, `gemini_capacity_control`) | процесс-wide конфиг исторически знает о сервисах; кандидат на перенос чистых контрактов в `core/` |
+| `core → services` | `core/globals.py` (`gemini_capacity_control`) | процесс-wide конфиг исторически знает о capacity-контроллере; чистые health/quota-контракты уже перенесены в `core/` |
 | `converters → services` | `converters/md_telegraph.py` (4× `telegraph`), `md_telegraph.py` (`pdf_generator`) | рендеринг вызывает сетевые публикаторы напрямую |
 | `services → handlers` | `services/dub_studio_runtime.py:325,519–525`, `services/shorts_factory_full_video.py:20` | Dub Studio и Shorts поднимают хендлеры, чтобы переиспользовать меню |
 | `services → pipelines` | `services/shorts_factory_execution_guard.py:275`, `services/shorts_factory_source.py:489`, `services/translation_editorial_runner.py:38` | циклическая зависимость Shorts: сервис запускает пайплайн |

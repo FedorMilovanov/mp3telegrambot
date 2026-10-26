@@ -177,6 +177,14 @@ def test_error_text_is_truncated() -> None:
 # ── проверка БД ─────────────────────────────────────────────────────────────
 
 
+def test_health_report_compatibility_exports_core_owner() -> None:
+    from core import health_report as core_owner
+    from services import health_report as compatibility
+
+    assert compatibility.build_health is core_owner.build_health
+    assert compatibility.render_prometheus is core_owner.render_prometheus
+
+
 def test_database_probe_reads_an_existing_db(tmp_path) -> None:
     """Имя с пробелом и «#» обязано открываться: путь попадает в URI."""
     import sqlite3

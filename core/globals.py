@@ -27,7 +27,7 @@ from core.model_catalog import (
     thinking_level_for,
     uses_thinking_config,
 )
-from services import gemini_quota_domains as quota_domains
+from core import gemini_quota_domains as quota_domains
 
 flask_app = Flask(__name__)
 
@@ -71,7 +71,7 @@ def healthz() -> Any:
     """
     from core.resource_scheduler import scheduler
     from core.version import __version__
-    from services.health_report import (
+    from core.health_report import (
         build_health,
         database_ok,
         disk_free_gb,
@@ -97,7 +97,7 @@ def healthz() -> Any:
 def metrics() -> Any:
     """Метрики в формате Prometheus text exposition."""
     from core.resource_scheduler import scheduler
-    from services.health_report import (
+    from core.health_report import (
         database_ok,
         disk_free_gb,
         gemini_keys_configured,
