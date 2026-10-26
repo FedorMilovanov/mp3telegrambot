@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -118,10 +119,8 @@ async def reencode_mp3_atomic(
         logger.warning("MP3 %dk conversion transaction failed: %s", bitrate, exc)
         return False
     finally:
-        try:
+        with contextlib.suppress(OSError):
             temp.unlink(missing_ok=True)
-        except OSError:
-            pass
 
 
 async def reencode_mp3_64k_atomic(source_path: Path, output_path: Path) -> bool:

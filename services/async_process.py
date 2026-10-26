@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import math
 import os
 import signal
@@ -103,10 +104,8 @@ async def _taskkill_windows_tree(pid: int, *, timeout: float) -> bool:
     try:
         await asyncio.wait_for(killer.communicate(), timeout=timeout)
     except asyncio.TimeoutError:
-        try:
+        with contextlib.suppress(ProcessLookupError):
             killer.kill()
-        except ProcessLookupError:
-            pass
         try:
             await asyncio.wait_for(killer.wait(), timeout=timeout)
         except asyncio.TimeoutError:
@@ -123,10 +122,8 @@ async def _stop_direct_process_fallback(
     """Preserve terminate→grace→kill semantics when tree tooling fails."""
     if process.returncode is not None:
         return
-    try:
+    with contextlib.suppress(ProcessLookupError):
         process.terminate()
-    except ProcessLookupError:
-        pass
 
     try:
         await asyncio.wait_for(process.wait(), timeout=grace_seconds)
@@ -135,10 +132,8 @@ async def _stop_direct_process_fallback(
         pass
 
     if process.returncode is None:
-        try:
+        with contextlib.suppress(ProcessLookupError):
             process.kill()
-        except ProcessLookupError:
-            pass
 
     try:
         await asyncio.wait_for(process.wait(), timeout=grace_seconds)
@@ -179,10 +174,8 @@ async def _stop_posix_tree(
     """Gracefully stop, then force-sweep the complete isolated POSIX group."""
     if process.returncode is None:
         _signal_posix_tree(process, signal.SIGTERM)
-        try:
+        with contextlib.suppress(asyncio.TimeoutError):
             await asyncio.wait_for(process.wait(), timeout=grace_seconds)
-        except asyncio.TimeoutError:
-            pass
 
     # Always sweep the group with SIGKILL. The leader may have exited after
     # SIGTERM while a grandchild ignored it and kept stdout/stderr pipes open.

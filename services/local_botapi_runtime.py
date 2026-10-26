@@ -14,6 +14,7 @@ No imported bootstrap function is replaced at runtime and no proxy state is ambi
 
 from __future__ import annotations
 
+import contextlib
 import csv
 import os
 import re
@@ -94,10 +95,8 @@ def _write_pid(path: Path, pid: int) -> None:
 
 
 def _remove_pid(path: Path) -> None:
-    try:
+    with contextlib.suppress(OSError):
         path.unlink(missing_ok=True)
-    except OSError:
-        pass
 
 
 def _windows_listener_pids(port: int) -> set[int]:

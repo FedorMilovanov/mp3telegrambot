@@ -9,6 +9,7 @@ post-import mutation.
 from __future__ import annotations
 
 import atexit
+import contextlib
 import logging
 import os
 import time
@@ -124,10 +125,8 @@ def acquire_early_singleton() -> bool:
                     handle.flush()
                     os.fsync(handle.fileno())
             except Exception:
-                try:
+                with contextlib.suppress(OSError):
                     path.unlink(missing_ok=True)
-                except OSError:
-                    pass
                 raise
             _EARLY_LOCK_ACQUIRED = True
             atexit.register(release_early_singleton)

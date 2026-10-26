@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import queue
@@ -242,10 +243,8 @@ def _reader(pipe: Any, output: queue.Queue[str]) -> None:
         for line in iter(pipe.readline, ""):
             output.put(line)
     finally:
-        try:
+        with contextlib.suppress(Exception):
             pipe.close()
-        except Exception:
-            pass
 
 
 def _basic_terminate_process(proc: subprocess.Popen[str]) -> None:
@@ -257,17 +256,13 @@ def _basic_terminate_process(proc: subprocess.Popen[str]) -> None:
         else:
             os.killpg(proc.pid, signal.SIGTERM)
     except Exception:
-        try:
+        with contextlib.suppress(Exception):
             proc.kill()
-        except Exception:
-            pass
     try:
         proc.wait(timeout=15)
     except subprocess.TimeoutExpired:
-        try:
+        with contextlib.suppress(Exception):
             proc.kill()
-        except Exception:
-            pass
 
 
 def _finish_lease_safely(
@@ -755,25 +750,19 @@ def _terminate_process(proc: subprocess.Popen[str]) -> None:
                 creationflags=creationflags,
             )
         except Exception:
-            try:
+            with contextlib.suppress(Exception):
                 proc.terminate()
-            except Exception:
-                pass
     else:
         try:
             os.killpg(proc.pid, signal.SIGTERM)
         except Exception:
-            try:
+            with contextlib.suppress(Exception):
                 proc.terminate()
-            except Exception:
-                pass
     try:
         proc.wait(timeout=15)
     except subprocess.TimeoutExpired:
-        try:
+        with contextlib.suppress(Exception):
             proc.kill()
-        except Exception:
-            pass
 
 
 def _progress_from_line(line: str, current: int) -> tuple[int, str]:
@@ -869,10 +858,8 @@ def _archive_quality_retry_log(store: Any, job_id: int, retry_index: int) -> Non
     if not source.is_file():
         return
     target = source.with_name(f"job-{int(job_id):06d}.quality-retry-{int(retry_index):02d}.log")
-    try:
+    with contextlib.suppress(OSError):
         shutil.copy2(source, target)
-    except OSError:
-        pass
 
 
 def _stop_reason(store: Any, job_id: int) -> str:
@@ -1039,10 +1026,8 @@ def run_worker(
         _STOP.set()
 
     for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
+        with contextlib.suppress(ValueError, OSError):
             signal.signal(sig, stop_handler)
-        except (ValueError, OSError):
-            pass
 
     log(f"Dub Studio worker: {worker_id}")
     log(f"Root: {actual_root}")
@@ -1078,14 +1063,12 @@ def run_worker(
                 return 0
         return 0
     finally:
-        try:
+        with contextlib.suppress(Exception):
             store.worker_heartbeat(
                 worker_id,
                 status="stopped",
                 current_job_id=None,
             )
-        except Exception:
-            pass
         lock.release()
 
 

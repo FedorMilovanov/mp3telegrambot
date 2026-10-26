@@ -25,6 +25,7 @@ across a stack of runtime monkey-patches:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import shutil
@@ -401,10 +402,8 @@ class SourceAudioDeferral:
         self._audio_path = None
         self._send_kwargs = None
         if path is not None:
-            try:
+            with contextlib.suppress(OSError):
                 path.unlink(missing_ok=True)
-            except OSError:
-                pass
 
     async def send_or_defer(
         self,

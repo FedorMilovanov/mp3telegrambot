@@ -8,6 +8,7 @@ fail while the real server would connect.  The source of truth is a real local
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import socket
@@ -357,10 +358,8 @@ def prepare_local_bot_api() -> None:
 
     log_tail = _read_log_tail(log_path)
     reason = _diagnose_failure(detail, log_tail, route_hint)
-    try:
+    with contextlib.suppress(Exception):
         _terminate_stale_server()
-    except Exception:
-        pass
     if log_tail:
         compact_tail = " | ".join(line.strip() for line in log_tail.splitlines()[-5:] if line.strip())
         if compact_tail:

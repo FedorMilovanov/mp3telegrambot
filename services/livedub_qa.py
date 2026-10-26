@@ -14,6 +14,7 @@ domain. API-key count therefore cannot multiply one 503 event.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import html as html_mod
 import json
 import logging
@@ -303,10 +304,8 @@ async def _upload_and_wait(
                 domain="files",
             )
         if uf is not None and getattr(uf, "name", ""):
-            try:
+            with contextlib.suppress(Exception):
                 await client.aio.files.delete(name=uf.name)
-            except Exception:
-                pass
         raise
 
 
@@ -666,10 +665,8 @@ async def _run_translation_qa_base(
                 )
             finally:
                 for uploaded_file in uploaded:
-                    try:
+                    with contextlib.suppress(Exception):
                         await client.aio.files.delete(name=uploaded_file.name)
-                    except Exception:
-                        pass
                 uploaded.clear()
 
             if last_err is not None and is_overload_error(last_err):
@@ -690,15 +687,11 @@ async def _run_translation_qa_base(
                     await client_used.aio.files.delete(name=uploaded_file.name)
             except Exception:
                 pass
-        try:
+        with contextlib.suppress(Exception):
             qa_audio.unlink(missing_ok=True)
-        except Exception:
-            pass
         if _temp_original_audio is not None:
-            try:
+            with contextlib.suppress(Exception):
                 _temp_original_audio.unlink(missing_ok=True)
-            except Exception:
-                pass
 
 
 async def run_translation_qa(

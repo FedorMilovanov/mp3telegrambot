@@ -7,6 +7,7 @@ The process lifecycle calls :func:`reset_cross_loop_state` directly before
 
 from __future__ import annotations
 
+import contextlib
 import tempfile
 import time
 from pathlib import Path
@@ -39,10 +40,8 @@ def cleanup_orphaned_deferred_files(
                     deleted += 1
             except OSError:
                 continue
-        try:
+        with contextlib.suppress(OSError):
             directory.rmdir()
-        except OSError:
-            pass
     except OSError:
         return deleted
     return deleted

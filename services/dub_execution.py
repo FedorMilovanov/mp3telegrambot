@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -151,10 +152,8 @@ def terminate_process_tree(pid: int, *, timeout: float = 20.0) -> None:
         try:
             os.killpg(pid, signal.SIGKILL)
         except OSError:
-            try:
+            with contextlib.suppress(OSError):
                 os.kill(pid, signal.SIGKILL)
-            except OSError:
-                pass
 
 
 @dataclass(frozen=True)
