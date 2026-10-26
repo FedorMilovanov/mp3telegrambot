@@ -1129,8 +1129,9 @@ Ruff gate. Волны 2b–2d закрыли 73 `UP045`, 35 `PLW1510` и 28 `RET
 subprocess semantics и возвращаемые выражения сохранены. Волна 2e закрыла
 все 24 `B904`: runtime causes сохранены, обработанные CLI exits не дублируют
 context. Волна 2f закрыла 11 `SIM105` в tools/tests, 27 в entry/core/handlers
-и 40 в pipelines; Shorts/PDF/transcript services добавили ещё 25. Остаются 42
-LiveDub/process service findings, другие extended-правила и `ASYNC240`.
+и 40 в pipelines; Shorts/PDF/transcript services добавили ещё 25, а финальный
+LiveDub/process slice — 42. `SIM105` = 0 и включён в gate; остаются другие
+extended-правила и `ASYNC240`.
 
 **Решение:**
 
@@ -1139,7 +1140,7 @@ LiveDub/process service findings, другие extended-правила и `ASYNC
    структурными проверками; CI получил AST-классификатор formatting-only diff,
    а исторический LiveDub fixture и Markdown-примеры исключены из перезаписи.
    Пять проявленных CodeQL annotations вынесены в отдельный security PR #273.
-2. **Волна 2 (автофиксы):** `UP009` (93), `UP006` (49), `UP045` (73), `W293` (47),
+2. ✅ **Волна 2 (автофиксы):** `UP009` (93), `UP006` (49), `UP045` (73), `W293` (47),
    `SIM105` (146 → `contextlib.suppress`), `RET504` (28), `B904` (24 → `raise ... from e`),
    `PLW1510` (34 → `check=`), затем включить эти правила в гейт.
 3. **Волна 3 (ручное):** `F401` (184 — осторожно с lazy-import циклами), `S110` (143 — каждый

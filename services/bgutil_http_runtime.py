@@ -17,6 +17,7 @@ this Python process is never trusted merely because it reports the same version.
 from __future__ import annotations
 
 import atexit
+import contextlib
 import json
 import os
 import signal
@@ -189,19 +190,15 @@ def _force_stop_tree(process: subprocess.Popen[Any]) -> None:
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000),
             )
         except (OSError, subprocess.SubprocessError):
-            try:
+            with contextlib.suppress(OSError):
                 process.kill()
-            except OSError:
-                pass
         return
 
     try:
         os.killpg(process.pid, signal.SIGKILL)
     except (ProcessLookupError, PermissionError, OSError):
-        try:
+        with contextlib.suppress(OSError):
             process.kill()
-        except OSError:
-            pass
 
 
 def stop_owned_bgutil_http_runtime() -> None:
@@ -221,10 +218,8 @@ def stop_owned_bgutil_http_runtime() -> None:
     except (OSError, ProcessLookupError, subprocess.TimeoutExpired):
         pass
     _force_stop_tree(process)
-    try:
+    with contextlib.suppress(OSError, subprocess.TimeoutExpired):
         process.wait(timeout=_STOP_GRACE_SEC)
-    except (OSError, subprocess.TimeoutExpired):
-        pass
 
 
 def _register_cleanup_once() -> None:

@@ -37,6 +37,7 @@ from services import gemini_capacity_control as capacity_control
 from services.gemini_quota_domains import ProjectQuotaDomainTracker
 
 import asyncio
+import contextlib
 import logging
 import re
 import time
@@ -588,10 +589,8 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
 
         def _extract_raw_text(resp) -> str | None:
             _txt = None
-            try:
+            with contextlib.suppress(ValueError):
                 _txt = resp.text
-            except ValueError:
-                pass
             if not _txt and getattr(resp, "candidates", None):
                 for part in resp.candidates[0].content.parts:
                     if hasattr(part, "thought") and part.thought:

@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager, nullcontext, suppress
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import gc
@@ -611,10 +611,8 @@ def run_weighted_tts_smoke(
             else:
                 threads = int(resolution.options.get("threads", 1))
                 torch.set_num_threads(max(1, threads))
-                try:
+                with suppress(RuntimeError):
                     torch.set_num_interop_threads(1)
-                except RuntimeError:
-                    pass
                 inference_context = torch.inference_mode()
             synthesis_started = time.perf_counter()
             with inference_context:

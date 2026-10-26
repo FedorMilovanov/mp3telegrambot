@@ -38,6 +38,7 @@ LiveDub Pro Mix — профессиональный микс перевода �
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import re
@@ -635,10 +636,8 @@ async def build_pro_dub(video_url: str, workdir: Path, duration: float = 0.0, la
     async def _drain(task):
         """Гасим отменённую задачу, чтобы не было 'exception was never retrieved'."""
         task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError, Exception):
             await task
-        except (asyncio.CancelledError, Exception):
-            pass
 
     try:
         ru_audio = await ru_task
@@ -647,10 +646,8 @@ async def build_pro_dub(video_url: str, workdir: Path, duration: float = 0.0, la
         # для живых голосов (SESSION_REQUIRED). Маркер .auth_required
         # позволяет пайплайну подсказать юзеру про VOT_API_TOKEN.
         if "LIVEDUB_AUTH_REQUIRED" in str(_live_err):
-            try:
+            with contextlib.suppress(OSError):
                 (workdir / ".auth_required").write_text("1", encoding="utf-8")
-            except OSError:
-                pass
 
         # Принципиально: режим ENG — это ТОЛЬКО «Живые голоса».
         # Обычные TTS-голоса больше НЕ включаются по умолчанию: иначе бот
@@ -665,10 +662,8 @@ async def build_pro_dub(video_url: str, workdir: Path, duration: float = 0.0, la
                 ru_audio = await get_live_dub_audio(video_url, workdir, voice_style="tts", duration=duration, lang=lang)
                 logger.info("[LiveDubMix] Перевод получен обычными голосами (tts)")
                 # маркер для caption: перевод не «Живые голоса», а обычные
-                try:
+                with contextlib.suppress(OSError):
                     (workdir / ".voice_style_tts").write_text("1", encoding="utf-8")
-                except OSError:
-                    pass
             except Exception as _tts_err:
                 logger.info("[LiveDubMix] tts тоже недоступен: %s", str(_tts_err)[:120])
                 await _drain(orig_task)
@@ -911,10 +906,8 @@ async def apply_qa_audio_fixes(workdir: Path, issues: list[dict]) -> Path | None
             or not actual_duration
             or abs(float(expected_duration) - float(actual_duration)) > tolerance
         ):
-            try:
+            with contextlib.suppress(OSError):
                 Path(result).unlink(missing_ok=True)
-            except OSError:
-                pass
             raise RuntimeError(f"QA auto-fix postcondition failed: source={expected_duration}, fixed={actual_duration}")
         logger.info("[LiveDubMix] авто-правка: %d интервал(ов) приглушено", len(intervals))
         # FIX 2026-06-10: короткие ролики (<3 мин) шлются с ВШИТЫМИ

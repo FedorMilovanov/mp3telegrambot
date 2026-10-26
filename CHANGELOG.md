@@ -98,6 +98,8 @@
   cancellation-safe teardown; после трёх slices остаются 67 service findings.
 - Extended Ruff, волна 2f (Shorts/PDF/transcript services): ещё 25 `SIM105`
   заменены; остаются 42 LiveDub/process service findings до включения gate.
+- Extended Ruff, волна 2f (LiveDub/process services): последние 42 `SIM105`
+  заменены; findings = 0, правило включено в обязательный Ruff gate.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

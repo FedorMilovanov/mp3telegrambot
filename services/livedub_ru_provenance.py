@@ -16,6 +16,7 @@ If provenance is missing or invalid, the existing selector remains the fallback.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -120,10 +121,8 @@ def write_ru_audio_provenance(path: Path | str, *, voice_style: str = "") -> boo
         return False
     finally:
         if temp is not None:
-            try:
+            with contextlib.suppress(OSError):
                 temp.unlink(missing_ok=True)
-            except OSError:
-                pass
 
 
 def read_ru_audio_provenance(workdir: Path | str) -> Path | None:

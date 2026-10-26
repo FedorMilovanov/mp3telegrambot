@@ -7,6 +7,7 @@ duplication between cutseg_command and segcut callback.
 
 from __future__ import annotations
 
+import contextlib
 import html as html_mod
 import logging
 import uuid
@@ -49,21 +50,17 @@ async def render_and_send_segment(
     sub_path = DOWNLOAD_DIR / f"{safe_id}_segment_{segment.index}_{uuid.uuid4().hex[:6]}_sub.mp4"
 
     try:
-        try:
+        with contextlib.suppress(Exception):
             await status_msg.edit_text(
                 f"🎬 Рендерю {segment.index}/{total_segments}: "
                 f"{html_mod.escape(segment.title[:120])}\n"
                 f"{seconds_to_timestamp(segment.start)}–{seconds_to_timestamp(segment.end)}"
             )
-        except Exception:
-            pass
 
         video_path = await download_video_for_shorts(source_url, video_id)
         if not video_path:
-            try:
+            with contextlib.suppress(Exception):
                 await status_msg.edit_text("❌ Не удалось скачать видео для сегмента.")
-            except Exception:
-                pass
             return False
 
         ok = await render_clip(video_path, clip_path, segment.start, segment.end)
@@ -191,21 +188,15 @@ async def render_and_send_segment(
             connect_timeout=60,
         )
         if subtitle_requested and not subtitles_applied:
-            try:
+            with contextlib.suppress(Exception):
                 await reply_target.reply_text(
                     "⚠️ Сегмент отправлен без субтитров: версия с ними не прошла "
                     "транскрипцию, размер или финальную проверку файла."
                 )
-            except Exception:
-                pass
         return True
 
     finally:
-        try:
+        with contextlib.suppress(Exception):
             clip_path.unlink(missing_ok=True)
-        except Exception:
-            pass
-        try:
+        with contextlib.suppress(Exception):
             sub_path.unlink(missing_ok=True)
-        except Exception:
-            pass

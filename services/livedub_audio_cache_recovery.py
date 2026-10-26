@@ -8,6 +8,7 @@ not depend on import order or monkey-patching private functions.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -83,10 +84,8 @@ def _atomic_copy(source: Path, target: Path) -> bool:
         )
         return False
     finally:
-        try:
+        with contextlib.suppress(OSError):
             temp.unlink(missing_ok=True)
-        except OSError:
-            pass
 
 
 def _atomic_write(path: Path, data: dict[str, Any]) -> None:
@@ -100,10 +99,8 @@ def _atomic_write(path: Path, data: dict[str, Any]) -> None:
             os.fsync(dst.fileno())
         os.replace(temp, path)
     finally:
-        try:
+        with contextlib.suppress(OSError):
             temp.unlink(missing_ok=True)
-        except OSError:
-            pass
 
 
 def _recover_primary(path: Path, backup: Path) -> dict[str, Any] | None:
@@ -147,10 +144,8 @@ def save_recoverable_cache(path: Path, data: dict[str, Any]) -> None:
     except BaseException:
         recovered = _recover_primary(path, backup)
         if recovered is None:
-            try:
+            with contextlib.suppress(OSError):
                 path.unlink(missing_ok=True)
-            except OSError:
-                pass
         raise
 
 
