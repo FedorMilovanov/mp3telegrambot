@@ -108,6 +108,21 @@ def test_missing_workdir_has_the_same_explicit_skip_note(tmp_path, monkeypatch):
     assert calls == []
 
 
+def test_nonexistent_workdir_skips_clean_track_discovery(tmp_path, monkeypatch):
+    calls = []
+    _patch_qa(monkeypatch, {"issues": []}, calls)
+    monkeypatch.setattr(
+        "services.livedub_mix.find_pro_tracks",
+        lambda _workdir: pytest.fail("missing workdir must not be scanned"),
+    )
+    video = _video(tmp_path)
+
+    result = _run(video, tmp_path / "missing")
+
+    assert "оригинальная дорожка не сохранилась" in result[2]
+    assert calls == []
+
+
 def test_latest_inputs_clean_ru_and_env_reach_qa(tmp_path, monkeypatch):
     video = _video(tmp_path)
     workdir = _workdir(tmp_path, original=False)

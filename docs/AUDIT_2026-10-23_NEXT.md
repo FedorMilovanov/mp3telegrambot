@@ -1137,8 +1137,9 @@ LiveDub/process slice — 42. `SIM105` = 0 и включён в gate. Затем
 FFmpeg silence/crop probes, шестой — Montage/Highlights LiveDub sources,
 седьмой — Factory full-video file validation, восьмой — Factory RU speech
 proof, девятый — Factory long-fit stat/cleanup, десятый — Factory editorial
-optional documents, одиннадцатый — Full LiveDub QA workdir/SRT discovery.
-Остаются 177, другие extended-правила и дальнейший ручной async review.
+optional documents, одиннадцатый — Full LiveDub QA workdir/SRT discovery,
+двенадцатый — Quick LiveDub QA workdir/SRT/original discovery. Остаются 174,
+другие extended-правила и дальнейший ручной async review.
 
 **Решение:**
 

@@ -124,6 +124,8 @@
   проверяются в worker threads; остаются 179 findings.
 - Async I/O, одиннадцатый `ASYNC240` slice: Full LiveDub QA workdir/SRT
   discovery переведено в worker threads; остаются 177 findings.
+- Async I/O, двенадцатый `ASYNC240` slice: Quick LiveDub QA workdir/SRT/original
+  discovery переведено в worker threads; остаются 174 findings.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):
