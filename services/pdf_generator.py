@@ -140,10 +140,10 @@ _HREF_SINGLE_RE = re.compile(r"href='([^']+)'", re.IGNORECASE)
 _RE_TAG_SPLIT = re.compile(r"(<[^>]+>)")
 _RE_A_OPEN = re.compile(r"<a[\s>]")
 _RE_SCRIPT = re.compile(
-    r"<script[^>]*>.*?</script>", re.DOTALL | re.IGNORECASE,
+    r"<script[^>]*>.*?</script[^>]*>", re.DOTALL | re.IGNORECASE,
 )
 _RE_STYLE = re.compile(
-    r"<style[^>]*>.*?</style>", re.DOTALL | re.IGNORECASE,
+    r"<style[^>]*>.*?</style[^>]*>", re.DOTALL | re.IGNORECASE,
 )
 _RE_EMPTY_P = re.compile(r"<p[^>]*>\s*</p>", re.IGNORECASE)
 _RE_BACK_TO_TOC_CLASS = re.compile(
@@ -803,6 +803,15 @@ def _safe_url(url: str) -> str:
     return ""
 
 
+def _url_host_is(url: str, *domains: str) -> bool:
+    """Match a URL hostname exactly or as a real subdomain, never as a substring."""
+    try:
+        host = (urlsplit(url).hostname or "").lower().rstrip(".")
+    except ValueError:
+        return False
+    return any(host == domain or host.endswith(f".{domain}") for domain in domains)
+
+
 def _is_bible_ref_before(text_before: str) -> bool:
     """Проверяет, заканчивается ли текст ссылкой на библейскую книгу."""
     return bool(_BIBLE_REF_BEFORE_TC_RE.search(text_before.strip()))
@@ -930,11 +939,11 @@ def _video_ts_url(base: str, seconds: int) -> str:
     base = _safe_url(base)
     if not base:
         return ""
-    if "youtube.com" in base or "youtu.be" in base:
+    if _url_host_is(base, "youtube.com", "youtu.be"):
         return _replace_query_param(base, "t", f"{seconds}s")
-    if "rutube.ru" in base:
+    if _url_host_is(base, "rutube.ru"):
         return _replace_query_param(base, "t", str(seconds))
-    if "vk.com/" in base or "vkvideo.ru/" in base:
+    if _url_host_is(base, "vk.com", "vkvideo.ru"):
         return _replace_query_param(base, "t", f"{seconds}s")
     return base
 
@@ -1151,11 +1160,11 @@ def _enrich_h3_headings(html_str: str) -> str:
             href_safe = _safe_url(href)
             if not href_safe:
                 continue
-            if not yt and ("youtube.com" in href or "youtu.be" in href):
+            if not yt and _url_host_is(href_safe, "youtube.com", "youtu.be"):
                 yt = href_safe
-            elif not rt and "rutube.ru" in href:
+            elif not rt and _url_host_is(href_safe, "rutube.ru"):
                 rt = href_safe
-            elif not vk and ("vk.com/" in href or "vkvideo.ru/" in href):
+            elif not vk and _url_host_is(href_safe, "vk.com", "vkvideo.ru"):
                 vk = href_safe
 
         title, time_str, _ = _extract_h3_parts(inner)
@@ -1306,15 +1315,11 @@ def _find_video_links(html_str: str) -> Dict[str, str]:
         href = _safe_url(href)
         if not href:
             continue
-        if not out["youtube"] and (
-            "youtube.com" in href or "youtu.be" in href
-        ):
+        if not out["youtube"] and _url_host_is(href, "youtube.com", "youtu.be"):
             out["youtube"] = href
-        elif not out["rutube"] and "rutube.ru" in href:
+        elif not out["rutube"] and _url_host_is(href, "rutube.ru"):
             out["rutube"] = href
-        elif not out["vk"] and (
-            "vk.com/" in href or "vkvideo.ru/" in href
-        ):
+        elif not out["vk"] and _url_host_is(href, "vk.com", "vkvideo.ru"):
             out["vk"] = href
     return out
 

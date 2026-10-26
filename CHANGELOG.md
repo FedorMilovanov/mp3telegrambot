@@ -231,6 +231,10 @@
 
 ### Security
 
+- `services/pdf_generator.py`: классификация видеоссылок использует parsed hostname
+  вместо substring-проверки; look-alike domains и userinfo больше не принимаются за
+  YouTube/RuTube/VK. Очистка `script`/`style` учитывает пробелы и атрибуты в closing tag;
+  оба контракта закреплены регрессиями, CodeQL-suppression не использовался.
 - `gitleaks` + `.gitleaks.toml` с узким allowlist (пути целиком не разрешены).
 - `filelock 3.32.2 → 4.2.4` (CVE-2026-112940).
 - `setuptools 84.0.0 → 84.2.0` (GHSA-xmj3-9gf7-h52w).

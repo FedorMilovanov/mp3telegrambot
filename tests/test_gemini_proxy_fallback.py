@@ -1,4 +1,5 @@
 """Regression test: Gemini proxy auto-fallback from TELEGRAM_PROXY_URL."""
+import ast
 from pathlib import Path
 
 
@@ -35,10 +36,15 @@ def test_auto_proxy_excludes_russian_services():
     proxy since commit a064309 — Telegraph can be blocked locally, so it must
     NOT be in the auto NO_PROXY list."""
     src = Path("core/globals.py").read_text(encoding="utf-8")
-    assert "rutube.ru" in src, "NO_PROXY must include rutube.ru"
-    assert "api.vk.com" in src, "NO_PROXY must include api.vk.com"
-    assert "telegra.ph" not in src, (
-        "telegra.ph must stay OUT of auto NO_PROXY — Telegraph goes through proxy (a064309)"
+    tree = ast.parse(src)
+    assignment = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "_auto_no_proxy" for target in node.targets)
     )
-    assert "api.telegram.org" in src, "NO_PROXY must include api.telegram.org"
+    hosts = set(ast.literal_eval(assignment.value).split(","))
+    assert {"rutube.ru", "api.vk.com", "api.telegram.org"} <= hosts
+    assert "telegra.ph" not in hosts
+    assert "api.telegra.ph" not in hosts
     assert "_proxy_was_auto" in src, "must track whether proxy was auto-set"
