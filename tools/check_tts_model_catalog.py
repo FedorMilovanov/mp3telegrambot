@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 from pathlib import Path
 import sys
@@ -13,10 +14,8 @@ from typing import Any
 def _configure_stdio() -> None:
     """Make service import diagnostics safe on Windows legacy consoles."""
     for stream in (sys.stdout, sys.stderr):
-        try:
+        with contextlib.suppress(AttributeError, OSError):
             stream.reconfigure(encoding="utf-8", errors="backslashreplace")
-        except (AttributeError, OSError):
-            pass
 
 
 _configure_stdio()

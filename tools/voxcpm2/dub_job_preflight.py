@@ -8,7 +8,7 @@ heartbeat are implemented directly here; no shadow package is involved.
 
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 import hashlib
 import json
 import os
@@ -460,7 +460,7 @@ def _preflight_heartbeat(project_id: str, action: str) -> Iterator[None]:
 
     def pulse() -> None:
         while not stopped.is_set():
-            try:
+            with suppress(Exception):
                 store.worker_heartbeat(
                     worker_id,
                     status="busy",
@@ -473,8 +473,6 @@ def _preflight_heartbeat(project_id: str, action: str) -> Iterator[None]:
                         "stage": "preflight",
                     },
                 )
-            except Exception:
-                pass
             stopped.wait(max(1.0, float(PREFLIGHT_HEARTBEAT_SECONDS)))
 
     thread = threading.Thread(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import ctypes
 import os
 import signal
@@ -110,10 +111,8 @@ def _force_cleanup(pid: int) -> None:
             timeout=5,
         )
         return
-    try:
+    with contextlib.suppress(ProcessLookupError):
         os.kill(pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
 
 
 @pytest.mark.asyncio

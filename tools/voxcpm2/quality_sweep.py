@@ -12,6 +12,7 @@ only passing optional arguments such as ``seed`` when they are supported.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import gc
 import inspect
 import json
@@ -243,10 +244,8 @@ def main() -> int:
     from voxcpm import VoxCPM
 
     torch.set_num_threads(max(1, args.threads))
-    try:
+    with contextlib.suppress(RuntimeError):
         torch.set_num_interop_threads(2)
-    except RuntimeError:
-        pass
 
     reference = Path(args.reference_wav).expanduser().resolve()
     if not reference.is_file():

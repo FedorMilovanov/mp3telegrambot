@@ -10,6 +10,7 @@ therefore visible but does not block unrelated work.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import sys
@@ -31,10 +32,8 @@ from core.code_health import (  # noqa: E402
 
 def _configure_stdout() -> None:
     """Keep Cyrillic/emoji diagnostics safe on Windows legacy consoles."""
-    try:
+    with contextlib.suppress(Exception):
         sys.stdout.reconfigure(errors="backslashreplace")
-    except Exception:
-        pass
 
 
 def _safe_print(value: object = "") -> None:
