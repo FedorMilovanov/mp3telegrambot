@@ -6,6 +6,7 @@ import json
 import pytest
 import requests
 
+from converters import telegraph_nodes
 from services import telegraph
 from services.telegraph_edit import TelegraphEditResult
 
@@ -113,7 +114,7 @@ def test_demote_paragraph_bold_preserves_markup_and_demotes_only_long_blocks():
 
 
 def test_markdown_conversion_handles_headings_spacing_and_rules(monkeypatch):
-    monkeypatch.setattr(telegraph, "_scrub_inline", lambda text: "" if text == "SCRUB" else text)
+    monkeypatch.setattr(telegraph_nodes, "_scrub_inline", lambda text: "" if text == "SCRUB" else text)
     markdown = "\n".join(
         [
             "Cocoon AI Summary",
@@ -213,7 +214,7 @@ def test_text_and_recursive_node_cleanup_preserve_real_content():
 
 
 def test_clean_telegraph_nodes_drops_meta_and_leading_dates(monkeypatch):
-    monkeypatch.setattr(telegraph, "is_meta_garbage", lambda text: text in {"", "META"})
+    monkeypatch.setattr(telegraph_nodes, "is_meta_garbage", lambda text: text in {"", "META"})
     nodes = [
         None,
         {"tag": "p", "children": ["META"]},

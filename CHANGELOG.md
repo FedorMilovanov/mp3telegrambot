@@ -62,6 +62,9 @@
 - Третий import-layer burn-down: 15 → 13 legacy-рёбер. Режимы пользователя и
   флаг полного Shorts-видео вынесены в `core.user_modes`; handler сохраняет
   прежние имена, а pipeline и Shorts service не зависят от Telegram UI.
+- Четвёртый import-layer burn-down: 13 → 12 legacy-рёбер. Markdown→Telegraph и
+  node-cleaning принадлежат `converters.telegraph_nodes`; цикл publisher ↔
+  converter разорван, а прежние `services.telegraph` имена сохранены.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):
