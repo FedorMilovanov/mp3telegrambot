@@ -5,6 +5,7 @@ No installer and no module mutation lives here.  Structured-block normalization
 and content audit call these helpers directly, making Study behavior independent
 of import order.
 """
+
 from __future__ import annotations
 
 import re
@@ -78,14 +79,11 @@ def render_word_study_as_prose(raw: dict[str, Any]) -> dict[str, Any] | None:
     if any(not values[name] for name in required):
         return None
 
-    sentences: list[str] = [
-        f"**{values['scripture_ref']} — «{values['russian_focus']}».**"
-    ]
+    sentences: list[str] = [f"**{values['scripture_ref']} — «{values['russian_focus']}».**"]
     if values["russian_quote"]:
         sentences.append(
             _sentence(
-                f"В русской фразе «{values['russian_quote']}» внимание падает на "
-                f"слово «{values['russian_focus']}»"
+                f"В русской фразе «{values['russian_quote']}» внимание падает на слово «{values['russian_focus']}»"
             )
         )
 
@@ -104,8 +102,7 @@ def render_word_study_as_prose(raw: dict[str, Any]) -> dict[str, Any] | None:
     if values["basic_meaning"]:
         sentences.append(
             _sentence(
-                f"Обычный смысл слова — {values['basic_meaning']}; в данном контексте "
-                f"{values['meaning_in_context']}"
+                f"Обычный смысл слова — {values['basic_meaning']}; в данном контексте {values['meaning_in_context']}"
             )
         )
     else:
@@ -153,59 +150,62 @@ def collect_teacherly_study_warnings(sections: list[dict[str, Any]]) -> list[dic
 
         labels = len(_FIELD_LABEL_RE.findall(content))
         if labels >= 3:
-            findings.append({
-                "code": "study_checklist_prose_warning",
-                "location": f"{location}.content",
-                "message": (
-                    "visible Study prose answers an internal field checklist; rewrite as "
-                    "one coherent teacherly paragraph without field labels"
-                ),
-                "before": content[:180],
-            })
+            findings.append(
+                {
+                    "code": "study_checklist_prose_warning",
+                    "location": f"{location}.content",
+                    "message": (
+                        "visible Study prose answers an internal field checklist; rewrite as "
+                        "one coherent teacherly paragraph without field labels"
+                    ),
+                    "before": content[:180],
+                }
+            )
 
         cards = len(_CARD_LINE_RE.findall(content))
         paragraphs = [part.strip() for part in re.split(r"\n\s*\n", content) if part.strip()]
         short_bold_cards = sum(
-            1
-            for paragraph in paragraphs
-            if len(paragraph) < 320 and re.match(r"^\s*(?:[•\-]\s*)?\*\*", paragraph)
+            1 for paragraph in paragraphs if len(paragraph) < 320 and re.match(r"^\s*(?:[•\-]\s*)?\*\*", paragraph)
         )
-        if cards >= 4 or (
-            short_bold_cards >= 4
-            and short_bold_cards * 2 >= max(1, len(paragraphs))
-        ):
-            findings.append({
-                "code": "study_fragmented_cards_warning",
-                "location": f"{location}.content",
-                "message": (
-                    "Study section is fragmented into definition cards; combine them into "
-                    "connected explanatory paragraphs with an argument arc"
-                ),
-                "before": content[:180],
-            })
+        if cards >= 4 or (short_bold_cards >= 4 and short_bold_cards * 2 >= max(1, len(paragraphs))):
+            findings.append(
+                {
+                    "code": "study_fragmented_cards_warning",
+                    "location": f"{location}.content",
+                    "message": (
+                        "Study section is fragmented into definition cards; combine them into "
+                        "connected explanatory paragraphs with an argument arc"
+                    ),
+                    "before": content[:180],
+                }
+            )
 
         visible = re.sub(r"\s+", " ", content).strip()
         if len(visible) >= 700 and len(_BOLD_RE.findall(content)) < 2:
-            findings.append({
-                "code": "study_bold_anchor_missing_warning",
-                "location": f"{location}.content",
-                "message": (
-                    "long Study section lacks semantic bold anchors; emphasize two or more "
-                    "real theses or contrasts inside the prose"
-                ),
-                "before": content[:180],
-            })
+            findings.append(
+                {
+                    "code": "study_bold_anchor_missing_warning",
+                    "location": f"{location}.content",
+                    "message": (
+                        "long Study section lacks semantic bold anchors; emphasize two or more "
+                        "real theses or contrasts inside the prose"
+                    ),
+                    "before": content[:180],
+                }
+            )
 
     if generic_titles >= 3:
-        findings.append({
-            "code": "study_template_architecture_warning",
-            "location": "StudyAnalysis.outline",
-            "message": (
-                "three or more generic rubric headings survived; choose material-specific "
-                "teaching headings and a natural composition"
-            ),
-            "before": "",
-        })
+        findings.append(
+            {
+                "code": "study_template_architecture_warning",
+                "location": "StudyAnalysis.outline",
+                "message": (
+                    "three or more generic rubric headings survived; choose material-specific "
+                    "teaching headings and a natural composition"
+                ),
+                "before": "",
+            }
+        )
     return findings
 
 

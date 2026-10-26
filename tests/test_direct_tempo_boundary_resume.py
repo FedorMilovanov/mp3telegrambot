@@ -113,9 +113,7 @@ def test_checkpoint_prefix_rejects_old_over_limit_segment(tmp_path: Path) -> Non
             "text": "Вторая реплика.",
         },
     ]
-    (root / "segments_ru_final.json").write_text(
-        json.dumps(segments, ensure_ascii=False), encoding="utf-8"
-    )
+    (root / "segments_ru_final.json").write_text(json.dumps(segments, ensure_ascii=False), encoding="utf-8")
     signature = {
         "policy": direct_io.POLICY,
         "model_config_sha256": "model-sha",

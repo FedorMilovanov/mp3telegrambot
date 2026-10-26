@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Require machine-readable evidence for every code-health baseline change."""
+
 from __future__ import annotations
 
 import argparse
@@ -26,9 +27,7 @@ def _git(*args: str) -> str:
         check=False,
     )
     if process.returncode != 0:
-        raise RuntimeError(
-            f"git {' '.join(args)} failed: {(process.stderr or process.stdout).strip()}"
-        )
+        raise RuntimeError(f"git {' '.join(args)} failed: {(process.stderr or process.stdout).strip()}")
     return process.stdout
 
 
@@ -79,15 +78,10 @@ def validate_update(changed: tuple[str, ...]) -> dict[str, Any]:
             "reports": [],
         }
 
-    report_paths = sorted(
-        Path(path)
-        for path in changed
-        if path.startswith(REPORT_PREFIX) and path.endswith(".json")
-    )
+    report_paths = sorted(Path(path) for path in changed if path.startswith(REPORT_PREFIX) and path.endswith(".json"))
     if not report_paths:
         raise RuntimeError(
-            "docs/code_health_baseline.json changed without a JSON report under "
-            "docs/code_health_reports/."
+            "docs/code_health_baseline.json changed without a JSON report under docs/code_health_reports/."
         )
 
     baseline = _snapshot(_load(BASELINE))
@@ -106,16 +100,17 @@ def validate_update(changed: tuple[str, ...]) -> dict[str, Any]:
         if not isinstance(evidence, dict):
             continue
         focused = evidence.get("focused_tests")
-        if not isinstance(focused, list) or not focused or not all(
-            isinstance(item, str) and item.startswith("tests/") for item in focused
+        if (
+            not isinstance(focused, list)
+            or not focused
+            or not all(isinstance(item, str) and item.startswith("tests/") for item in focused)
         ):
             continue
         matching.append(report_path.as_posix())
 
     if not matching:
         raise RuntimeError(
-            "No changed code-health report exactly matches the new baseline and "
-            "documents focused regression tests."
+            "No changed code-health report exactly matches the new baseline and documents focused regression tests."
         )
     return {
         "policy": POLICY,

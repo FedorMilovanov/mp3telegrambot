@@ -3,6 +3,7 @@
 JSON Parser — парсинг и восстановление обрезанного JSON от Gemini.
 Извлечено из bot.py строки 1846–2260.
 """
+
 import json
 from typing import Any
 import logging
@@ -11,14 +12,20 @@ import re
 from core.core_utils import time_to_seconds
 from core.timestamp_quality import audit_timestamp_coverage
 from core.title_topic_audit import audit_title_topic_consistency
-from core.text_utils import (   # FIX json_parser
-    _clean_field, _clean_meta_line, _filter_times_str,
-    _scrub_inline, _strip_meta_lines, is_meta_garbage,
-    normalize_author_name, normalize_title_text,
+from core.text_utils import (  # FIX json_parser
+    _clean_field,
+    _clean_meta_line,
+    _filter_times_str,
+    _scrub_inline,
+    _strip_meta_lines,
+    is_meta_garbage,
+    normalize_author_name,
+    normalize_title_text,
     normalize_hashtag,
 )
 
 logger = logging.getLogger(__name__)
+
 
 def _recover_truncated_json(chunk: str) -> dict[str, Any] | None:
     """Восстанавливает обрезанный JSON-объект верхнего уровня (MAX_TOKENS hit от Gemini).
@@ -73,7 +80,6 @@ def _recover_truncated_json(chunk: str) -> dict[str, Any] | None:
     return None
 
 
-
 def _strip_json_code_fence(text: str) -> str:
     """Remove one outer markdown code fence and common Gemini preamble text."""
     t = str(text or "").strip()
@@ -115,8 +121,9 @@ def _extract_json_object_chunk(text: str) -> tuple[str, bool] | None:
         elif ch == "}":
             depth -= 1
             if depth == 0:
-                return t[start:idx + 1], True
+                return t[start : idx + 1], True
     return t[start:], False
+
 
 def _parse_gemini_response(text: str, duration: int = 0) -> dict[str, Any] | None:
     """v3.2 — парсит плоский JSON от Gemini + terms_data. При ошибке возвращает None.
@@ -124,6 +131,7 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict[str, Any] | Non
     FIX 2026-05-21 #11 P2: убираем code-fence ```json / ``` перед поиском JSON,
     иначе s.find('{') не учитывает текст fence и логи замусориваются 'JSON не найден'.
     """
+
     def _valid_time(t: str) -> bool:
         if not t or not t.strip():
             return False
@@ -143,7 +151,7 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict[str, Any] | Non
             if t and _valid_time(t):
                 out.append(t)
         out = list(dict.fromkeys(out))
-        out.sort(key=lambda x: (time_to_seconds(x) or 0))
+        out.sort(key=lambda x: time_to_seconds(x) or 0)
         return out
 
     try:
@@ -157,10 +165,7 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict[str, Any] | Non
             if _recovered is None:
                 logger.warning("_parse_gemini_response: truncated JSON recovery failed — returning None")
                 return None
-            logger.info(
-                f"_parse_gemini_response: восстановлен обрезанный JSON "
-                f"(ключей в ответе: {len(_recovered)})"
-            )
+            logger.info(f"_parse_gemini_response: восстановлен обрезанный JSON (ключей в ответе: {len(_recovered)})")
             data = _recovered
         else:
             data = json.loads(clean)
@@ -172,42 +177,39 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict[str, Any] | Non
         _chunk, _complete = extracted
         _recovered = _recover_truncated_json(_chunk)
         if _recovered is not None:
-            logger.info(
-                f"_parse_gemini_response: восстановлен обрезанный JSON "
-                f"(ключей в ответе: {len(_recovered)})"
-            )
+            logger.info(f"_parse_gemini_response: восстановлен обрезанный JSON (ключей в ответе: {len(_recovered)})")
             data = _recovered
         else:
             logger.warning("_parse_gemini_response: восстановление не удалось — возвращаю None")
             return None
 
     result: dict[str, Any] = {
-        "real_author":      "",
-        "real_title":       "",
-        "real_event":       "",
-        "format":           "other",
-        "main_topic":       "",
-        "timestamps":       "",
-        "hashtags":         "",
+        "real_author": "",
+        "real_title": "",
+        "real_event": "",
+        "format": "other",
+        "main_topic": "",
+        "timestamps": "",
+        "hashtags": "",
         "analysis_summary": "",
-        "argument_arc":     "",
-        "key_categories":   [],
-        "questions":        [],
+        "argument_arc": "",
+        "key_categories": [],
+        "questions": [],
         "terms_data": {
-            "concepts":      [],
-            "scripture":     [],
-            "translations":  [],
+            "concepts": [],
+            "scripture": [],
+            "translations": [],
             "lexicon_notes": [],
         },
         "whisper_hints": [],
     }
 
     result["real_author"] = normalize_author_name(_clean_meta_line(data.get("real_author", "")))
-    result["real_title"]  = normalize_title_text(_clean_meta_line(data.get("real_title", "")))
+    result["real_title"] = normalize_title_text(_clean_meta_line(data.get("real_title", "")))
     _fmt = str(data.get("format", "") or "").strip().lower()
     result["format"] = _fmt if _fmt in ("sermon", "lecture", "qa", "interview", "discussion") else "other"
-    result["real_event"]  = _clean_meta_line(data.get("real_event", ""))
-    result["main_topic"]  = _scrub_inline(_strip_meta_lines(_clean_field(data.get("main_topic", ""))))
+    result["real_event"] = _clean_meta_line(data.get("real_event", ""))
+    result["main_topic"] = _scrub_inline(_strip_meta_lines(_clean_field(data.get("main_topic", ""))))
 
     # timestamps → строка "MM:SS описание\n..."
     ts_list = data.get("timestamps", [])
@@ -256,7 +258,7 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict[str, Any] | Non
     _title_issue = audit_title_topic_consistency(result.get("real_title", ""), result.get("main_topic", ""), ts_list)
     if _title_issue:
         # Если перекрытие почти нулевое - возможно Gemini галлюцинирует и взял не то видео
-        _tt_overlap = getattr(_title_issue, 'overlap', None)
+        _tt_overlap = getattr(_title_issue, "overlap", None)
         if _tt_overlap is not None and _tt_overlap < 0.05:
             # AUDIT R39: метафорическое/образное название («Трус и лжец», «Узкие
             # врата») ЗАКОННО может не пересекаться словами с пересказом main_topic
@@ -269,13 +271,17 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict[str, Any] | Non
             # Gemini. title_topic_warning ниже включает этот гейт.
             logger.error(
                 "Title/topic MISMATCH: %s overlap=%.2f title_terms=%s — решит choose_safe_public_title",
-                _title_issue.code, _title_issue.overlap, ",".join(_title_issue.title_terms),
+                _title_issue.code,
+                _title_issue.overlap,
+                ",".join(_title_issue.title_terms),
             )
             result["real_title_ai_rejected"] = result.get("real_title", "")
         else:
             logger.warning(
                 "Title/topic warning: %s overlap=%.2f title_terms=%s",
-                _title_issue.code, _title_issue.overlap, ",".join(_title_issue.title_terms),
+                _title_issue.code,
+                _title_issue.overlap,
+                ",".join(_title_issue.title_terms),
             )
         result["title_topic_warning"] = _title_issue.message
 
@@ -308,19 +314,16 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict[str, Any] | Non
             tags.append(camel)
         result["hashtags"] = " ".join(tags)
 
-    result["analysis_summary"] = _scrub_inline(_strip_meta_lines(
-        _clean_field(data.get("analysis_summary", ""))
-    ))
-    result["argument_arc"] = _scrub_inline(_strip_meta_lines(
-        _clean_field(data.get("argument_arc", ""))
-    ))
+    result["analysis_summary"] = _scrub_inline(_strip_meta_lines(_clean_field(data.get("analysis_summary", ""))))
+    result["argument_arc"] = _scrub_inline(_strip_meta_lines(_clean_field(data.get("argument_arc", ""))))
 
     # AUDIT #026: if main_topic and analysis_summary start identically, trim first sentence
     _mt = result.get("main_topic", "")
     _as = result.get("analysis_summary", "")
     if _mt and _as and len(_mt) > 30 and _mt[:60] == _as[:60]:
         import re as _re026
-        _sentences = _re026.split(r'(?<=[.!?])\s+', _as, maxsplit=1)
+
+        _sentences = _re026.split(r"(?<=[.!?])\s+", _as, maxsplit=1)
         if len(_sentences) > 1 and len(_sentences[1]) > 40:
             result["analysis_summary"] = _sentences[1]
             logger.info("main_topic/analysis_summary overlap trimmed: removed first sentence from analysis_summary")
@@ -331,24 +334,20 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict[str, Any] | Non
     kc_raw = data.get("key_categories", [])
     if isinstance(kc_raw, list):
         result["key_categories"] = [
-            _scrub_inline(_strip_meta_lines(_clean_field(str(item))))
-            for item in kc_raw
-            if _clean_field(str(item))
+            _scrub_inline(_strip_meta_lines(_clean_field(str(item)))) for item in kc_raw if _clean_field(str(item))
         ][:10]
 
     # questions — плоский массив строк (могут начинаться с 🟢/🔵)
     q_raw = data.get("questions", [])
     if isinstance(q_raw, list):
         result["questions"] = [
-            _scrub_inline(_strip_meta_lines(_clean_field(str(q))))
-            for q in q_raw
-            if _clean_field(str(q))
+            _scrub_inline(_strip_meta_lines(_clean_field(str(q)))) for q in q_raw if _clean_field(str(q))
         ][:18]
 
     # AUDIT #034: log if few questions end with "?"
     _q_list = result.get("questions", [])
     if len(_q_list) >= 4:
-        _q_like = sum(1 for q in _q_list if str(q).strip().rstrip(")»\'\"").endswith("?"))
+        _q_like = sum(1 for q in _q_list if str(q).strip().rstrip(")»'\"").endswith("?"))
         if _q_like < len(_q_list) // 2:
             logger.info("questions: only %d/%d look like actual questions", _q_like, len(_q_list))
 
@@ -464,7 +463,7 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict[str, Any] | Non
                         ref, use, phrase, times_str = parts
                         ref = _scrub_inline(_clean_field(ref))
                         # PATCH V2 FIX: убираем точку которую _clean_field добавил к scripture ссылке
-                        ref = re.sub(r'(\d+:\d+[^.]*)\.+$', r'\1', ref.strip())
+                        ref = re.sub(r"(\d+:\d+[^.]*)\.+$", r"\1", ref.strip())
                         use = _scrub_inline(_clean_field(use))
                         phrase = _scrub_inline(_clean_field(phrase))
                         times_str = _scrub_inline(times_str.strip())
@@ -492,7 +491,7 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict[str, Any] | Non
                         term, explanation, why, times_str = parts
                         term = _scrub_inline(_clean_field(term))
                         # PATCH V2 FIX: убираем точку в конце имени термина
-                        term = term.rstrip('.').strip() if term else term
+                        term = term.rstrip(".").strip() if term else term
                         explanation = _scrub_inline(_clean_field(explanation))
                         why = _scrub_inline(_clean_field(why))
                         times_str = _scrub_inline(times_str.strip())
@@ -525,35 +524,45 @@ def _parse_gemini_response(text: str, duration: int = 0) -> dict[str, Any] | Non
     # whisper_hints — плоский массив строк для initial_prompt Whisper
     wh_raw = data.get("whisper_hints", [])
     if isinstance(wh_raw, list):
-        result["whisper_hints"] = [
-            str(w).strip() for w in wh_raw
-            if isinstance(w, str) and str(w).strip()
-        ][:80]
+        result["whisper_hints"] = [str(w).strip() for w in wh_raw if isinstance(w, str) and str(w).strip()][:80]
     else:
         result["whisper_hints"] = []
 
     # hermeneutic_method — тип проповеди (expository/topical/narrative/...)
     _valid_methods = {
-        "expository", "topical", "narrative", "typological",
-        "redemptive_historical", "catechetical", "apologetic",
-        "evangelistic", "practical", "mixed"
+        "expository",
+        "topical",
+        "narrative",
+        "typological",
+        "redemptive_historical",
+        "catechetical",
+        "apologetic",
+        "evangelistic",
+        "practical",
+        "mixed",
     }
     _hm_raw = data.get("hermeneutic_method", "")
     result["hermeneutic_method"] = _hm_raw if _hm_raw in _valid_methods else "mixed"
 
-    has_content = any([
-        result["main_topic"], result["timestamps"],
-        result["real_author"], result["real_title"],
-        result["questions"], result["analysis_summary"],
-        any([
-            result["terms_data"]["concepts"],
-            result["terms_data"]["scripture"],
-            result["terms_data"]["translations"],
-            result["terms_data"]["lexicon_notes"],
-        ]),
-    ])
+    has_content = any(
+        [
+            result["main_topic"],
+            result["timestamps"],
+            result["real_author"],
+            result["real_title"],
+            result["questions"],
+            result["analysis_summary"],
+            any(
+                [
+                    result["terms_data"]["concepts"],
+                    result["terms_data"]["scripture"],
+                    result["terms_data"]["translations"],
+                    result["terms_data"]["lexicon_notes"],
+                ]
+            ),
+        ]
+    )
     return result if has_content else None
-
 
 
 # Alias для совместимости

@@ -169,10 +169,7 @@ def workflow_applies(mode: str, patterns: tuple[str, ...], changed: tuple[str, .
     if mode == "paths-ignore":
         if any(pattern.startswith("!") for pattern in patterns):
             raise ValueError("negative patterns are unsupported in paths-ignore")
-        return any(
-            not any(github_path_matches(path, pattern) for pattern in patterns)
-            for path in changed
-        )
+        return any(not any(github_path_matches(path, pattern) for pattern in patterns) for path in changed)
     raise ValueError(f"unsupported trigger mode: {mode}")
 
 
@@ -182,7 +179,7 @@ def expected_profile_workflows(
     workflows: tuple[str, ...] | None = None,
 ) -> tuple[str, ...]:
     expected: list[str] = []
-    for workflow in (workflows if workflows is not None else discover_profile_workflows(root)):
+    for workflow in workflows if workflows is not None else discover_profile_workflows(root):
         workflow_path = root / workflow
         if not workflow_path.is_file():
             raise FileNotFoundError(f"required profile workflow is missing: {workflow}")
@@ -230,9 +227,7 @@ def _latest_profile_runs(
             "per_page": 100,
         }
     )
-    payload = _github_json(
-        f"https://api.github.com/repos/{repository}/actions/runs?{query}", token
-    )
+    payload = _github_json(f"https://api.github.com/repos/{repository}/actions/runs?{query}", token)
     runs = payload.get("workflow_runs")
     if not isinstance(runs, list):
         raise RuntimeError("GitHub Actions API returned no workflow_runs list")
@@ -283,21 +278,13 @@ def wait_for_profile_workflows(
                 failures.append(f"{path} ({conclusion})")
 
         if failures:
-            raise RuntimeError(
-                "applicable profile workflow failed: " + ", ".join(failures)
-            )
+            raise RuntimeError("applicable profile workflow failed: " + ", ".join(failures))
         if not missing and not pending:
-            print(
-                "Required PR Gate: applicable profile workflows are green: "
-                + ", ".join(expected)
-            )
+            print("Required PR Gate: applicable profile workflows are green: " + ", ".join(expected))
             return
         if time.monotonic() >= deadline:
             details = [*(f"missing {path}" for path in missing), *pending]
-            raise TimeoutError(
-                "timed out waiting for applicable profile workflows: "
-                + ", ".join(details)
-            )
+            raise TimeoutError("timed out waiting for applicable profile workflows: " + ", ".join(details))
 
         waiting = [*(f"missing {path}" for path in missing), *pending]
         print("Required PR Gate: waiting for " + ", ".join(waiting), flush=True)
@@ -305,9 +292,7 @@ def wait_for_profile_workflows(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Wait for every profile workflow applicable to this PR diff."
-    )
+    parser = argparse.ArgumentParser(description="Wait for every profile workflow applicable to this PR diff.")
     # Must not expire before the job it runs inside: the aggregator budget is
     # 45 minutes and this wait also covers runner queueing for the slowest
     # profile workflow (Windows full suite). tests/test_required_pr_gate.py
@@ -320,9 +305,7 @@ def main() -> int:
     repository = os.environ.get("GITHUB_REPOSITORY")
     token = os.environ.get("GITHUB_TOKEN")
     if not event_path or not repository or not token:
-        raise RuntimeError(
-            "GITHUB_EVENT_PATH, GITHUB_REPOSITORY and GITHUB_TOKEN are required"
-        )
+        raise RuntimeError("GITHUB_EVENT_PATH, GITHUB_REPOSITORY and GITHUB_TOKEN are required")
 
     event = json.loads(Path(event_path).read_text(encoding="utf-8"))
     pull_request = event.get("pull_request")

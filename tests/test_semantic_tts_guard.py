@@ -69,6 +69,7 @@ def test_retry_reuses_good_checkpoints_and_drops_bad_ones(tmp_path: Path) -> Non
 
 def _model_class(api: str, calls: list[dict[str, Any]]) -> type:
     if api == "old":
+
         class OldModel:
             def generate(
                 self,
@@ -94,6 +95,7 @@ def _model_class(api: str, calls: list[dict[str, Any]]) -> type:
         return OldModel
 
     if api == "legacy_kwargs":
+
         class LegacyKwargsModel:
             def generate(
                 self,
@@ -152,5 +154,3 @@ def _fake_voxcpm_class(model_class: type) -> type:
             return model_class()
 
     return FakeVoxCPM
-
-

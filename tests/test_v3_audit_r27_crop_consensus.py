@@ -7,6 +7,7 @@ blind max() выбрал случайный битый вариант, ffmpeg у
 Фикс: `_crop_consensus` — crop берётся только при согласии сэмплов;
 иначе "" (без обрезки, безопасный полный кадр, Short рендерится).
 """
+
 from services.ffmpeg import _crop_consensus
 
 

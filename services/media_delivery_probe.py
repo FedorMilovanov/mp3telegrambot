@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Final media timing, size and silence evidence for public video delivery."""
+
 from __future__ import annotations
 
 import asyncio
@@ -97,11 +98,7 @@ def select_delivery_file(
     """
     limit = _finite_float(max_size_mb, -1.0)
     primary_size = file_size_mb(primary_path)
-    fallback_size = (
-        file_size_mb(fallback_path)
-        if fallback_path is not None and fallback_path != primary_path
-        else 0.0
-    )
+    fallback_size = file_size_mb(fallback_path) if fallback_path is not None and fallback_path != primary_path else 0.0
 
     if _usable_delivery_file(primary_path, size_mb=primary_size, limit_mb=limit):
         return DeliveryFileSelection(
@@ -344,8 +341,7 @@ def evaluate_highlights_delivery(
         "duration_tolerance": round(tolerance, 3),
         "max_internal_silence": round(max_internal_silence, 3),
         "silence_intervals": [
-            {"start": start, "end": end, "duration": round(end - start, 3)}
-            for start, end in silence_intervals
+            {"start": start, "end": end, "duration": round(end - start, 3)} for start, end in silence_intervals
         ],
         "bad_silences": bad_silences,
     }

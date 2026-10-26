@@ -15,6 +15,7 @@ Cache-hit сначала пытается отдать сохранённый Te
 лениво в момент вызова: необязательный генератор не может помешать отправке
 аудио ещё до того, как соответствующая настройка запрошена.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -167,10 +168,7 @@ def is_retryable_upload(error: Exception) -> bool:
     """Сетевая ли это ошибка, после которой повтор имеет смысл."""
     error_name = type(error).__name__
     error_text = str(error).lower()
-    return (
-        any(name in error_name for name in RETRYABLE_NAMES)
-        or any(text in error_text for text in RETRYABLE_STRINGS)
-    )
+    return any(name in error_name for name in RETRYABLE_NAMES) or any(text in error_text for text in RETRYABLE_STRINGS)
 
 
 def safe_filename(value: str) -> str:

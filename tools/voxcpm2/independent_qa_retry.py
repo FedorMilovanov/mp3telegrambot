@@ -14,6 +14,7 @@ Good checkpoint metadata is retargeted to the next base seed and failed IDs are
 removed through the established semantic guard helper before the next renderer
 call.
 """
+
 from __future__ import annotations
 
 import json
@@ -24,10 +25,7 @@ from typing import Any, Callable
 POLICY = "bounded-independent-qa-segment-retry-v1"
 MAX_RECOVERY_CYCLES = 3
 INTERNAL_SEED_ROUNDS_PER_CALL = 2
-_FAILURE_MARKER = (
-    "чистый direct renderer не прошел независимый qa после одного "
-    "прицельного повтора"
-)
+_FAILURE_MARKER = "чистый direct renderer не прошел независимый qa после одного прицельного повтора"
 _INSTALLED = False
 
 
@@ -86,9 +84,7 @@ def _read_json(path: Path) -> Any:
 def _strict_int(value: Any, *, field: str) -> int:
     if isinstance(value, bool):
         raise RuntimeError(f"{field} не может быть bool.")
-    if isinstance(value, float) and (
-        not math.isfinite(value) or not value.is_integer()
-    ):
+    if isinstance(value, float) and (not math.isfinite(value) or not value.is_integer()):
         raise RuntimeError(f"{field} должен быть целым числом.")
     try:
         result = int(value)
@@ -109,12 +105,7 @@ def _retry_context(
     request = kwargs.get("request")
     segments_raw = kwargs.get("segments_json")
     duration = kwargs.get("duration")
-    if (
-        root_raw is None
-        or not isinstance(request, dict)
-        or segments_raw is None
-        or duration is None
-    ):
+    if root_raw is None or not isinstance(request, dict) or segments_raw is None or duration is None:
         return None
 
     try:
@@ -158,12 +149,7 @@ def _retry_context(
     if not isinstance(raw_failed, list) or not raw_failed:
         return None
     try:
-        failed_ids = sorted(
-            {
-                _strict_int(value, field="failed_segment_id")
-                for value in raw_failed
-            }
-        )
+        failed_ids = sorted({_strict_int(value, field="failed_segment_id") for value in raw_failed})
     except RuntimeError:
         return None
     if not failed_ids or not set(failed_ids).issubset(all_ids):
@@ -175,8 +161,7 @@ def _retry_context(
         if isinstance(item, dict) and str(item.get("id") or "").isdigit()
     }
     if any(
-        not isinstance(checks.get(segment_id), dict)
-        or checks[segment_id].get("passed") is True
+        not isinstance(checks.get(segment_id), dict) or checks[segment_id].get("passed") is True
         for segment_id in failed_ids
     ):
         return None
@@ -214,9 +199,7 @@ def _run_with_recovery(
                 ) from exc
 
             stride = _retry_seed_offset()
-            next_base_seed = int(context["base_seed"]) + (
-                INTERNAL_SEED_ROUNDS_PER_CALL * stride
-            )
+            next_base_seed = int(context["base_seed"]) + (INTERNAL_SEED_ROUNDS_PER_CALL * stride)
             failed_ids = list(context["failed_ids"])
             all_ids = set(context["all_ids"])
             _retarget_checkpoints(

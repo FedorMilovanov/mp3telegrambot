@@ -8,6 +8,7 @@ published with an English title.  This module owns pure title/author and caption
 the explicit LiveDub publication path. It does not intercept Telegram methods or
 rebind pipeline functions at runtime.
 """
+
 from __future__ import annotations
 
 from core.media_title_policy import canonical_media_title
@@ -43,24 +44,44 @@ _VIDEO_SERVICE_LINES = {
 _AUDIO_CAPTION_REPLACEMENTS = {
     "🎧 Аудиоверсия русского перевода Яндекса": "🎧 Русская аудиоверсия",
     "🎧 Чистая аудиодорожка русского перевода Яндекса": "🎧 Русская аудиоверсия",
-    "🎧 Аудиоверсия финального дубляжа (русский перевод + тихий оригинал)":
-        "🎧 Русская аудиоверсия с тихим оригиналом",
+    "🎧 Аудиоверсия финального дубляжа (русский перевод + тихий оригинал)": "🎧 Русская аудиоверсия с тихим оригиналом",
 }
 
 # These words must never be capitalised merely because an English-style title
 # formatter touched the Russian heading.
 _RU_SERVICE_WORDS = {
-    "а", "без", "в", "во", "для", "до", "за", "и", "из", "или", "к", "ко",
-    "на", "над", "не", "но", "о", "об", "от", "по", "под", "при", "про", "с",
-    "со", "у", "через",
+    "а",
+    "без",
+    "в",
+    "во",
+    "для",
+    "до",
+    "за",
+    "и",
+    "из",
+    "или",
+    "к",
+    "ко",
+    "на",
+    "над",
+    "не",
+    "но",
+    "о",
+    "об",
+    "от",
+    "по",
+    "под",
+    "при",
+    "про",
+    "с",
+    "со",
+    "у",
+    "через",
 }
 
 
 def _enabled() -> bool:
-    return (
-        str(__import__("os").getenv("LIVEDUB_OUTPUT_POLICY", "1") or "1")
-        .strip().lower() in _TRUE
-    )
+    return str(__import__("os").getenv("LIVEDUB_OUTPUT_POLICY", "1") or "1").strip().lower() in _TRUE
 
 
 def _plain(value: Any, limit: int = 500) -> str:
@@ -98,11 +119,7 @@ def _looks_like_author(value: str) -> bool:
             looks_like_author_list,
         )
 
-        return bool(
-            known_author_from_text(text)
-            or known_ru_author_from_text(text)
-            or looks_like_author_list(text)
-        )
+        return bool(known_author_from_text(text) or known_ru_author_from_text(text) or looks_like_author_list(text))
     except Exception:
         words = text.split()
         return 2 <= len(words) <= 6 and all(word[:1].isupper() for word in words)
@@ -171,7 +188,7 @@ async def _ensure_html_caption_title_ru(caption: str) -> str:
     title, author = translated
     final_line = f"{title} - {author}" if author else title
     escaped = html.escape(final_line, quote=False)
-    return caption[:match.start(1)] + escaped + caption[match.end(1):]
+    return caption[: match.start(1)] + escaped + caption[match.end(1) :]
 
 
 def _is_livedub_audio_caption(value: Any) -> bool:

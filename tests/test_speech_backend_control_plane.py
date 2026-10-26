@@ -27,9 +27,7 @@ def test_control_plane_uses_default_and_resolves_aliases() -> None:
     assert default_selection.backend_id == "voxcpm2"
     assert default_selection.capabilities.voice_cloning is True
     assert alias_backend_id == "voxcpm2"
-    assert default_selection.as_dict()["control_plane_policy"].startswith(
-        "speech-backend-control-plane-"
-    )
+    assert default_selection.as_dict()["control_plane_policy"].startswith("speech-backend-control-plane-")
 
 
 def test_control_plane_rejects_unknown_backend() -> None:

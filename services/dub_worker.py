@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Backend-neutral durable worker for Dub Studio jobs."""
+
 from __future__ import annotations
 
 import argparse
@@ -107,9 +108,7 @@ class WorkerLock:
             return
         try:
             own_pid = str(os.getpid())
-            if self.path.exists() and self.path.read_text(
-                encoding="utf-8"
-            ).strip() == own_pid:
+            if self.path.exists() and self.path.read_text(encoding="utf-8").strip() == own_pid:
                 self.path.unlink()
         except OSError:
             pass
@@ -139,9 +138,7 @@ def _powershell_executable() -> str:
             "powershell.exe",
             "powershell",
         }:
-            raise RuntimeError(
-                "DUB_STUDIO_POWERSHELL must point to pwsh/powershell."
-            )
+            raise RuntimeError("DUB_STUDIO_POWERSHELL must point to pwsh/powershell.")
         return found
     found = shutil.which("pwsh") or shutil.which("powershell")
     if not found:
@@ -379,10 +376,7 @@ def _execute_runner_job(store: DubStore, worker_id: str, job: dict[str, Any]) ->
                     next_progress, next_stage = _progress_from_line(clean, progress)
                     if next_stage:
                         stage = next_stage
-                    if (
-                        next_progress > progress
-                        or time.monotonic() - last_progress_update > 30
-                    ):
+                    if next_progress > progress or time.monotonic() - last_progress_update > 30:
                         progress = next_progress
                         store.update_job_progress(
                             job_id,
@@ -403,11 +397,7 @@ def _execute_runner_job(store: DubStore, worker_id: str, job: dict[str, Any]) ->
                 store.finish_job(
                     job_id,
                     status="cancelled",
-                    error=(
-                        "Остановлено пользователем."
-                        if not _STOP.is_set()
-                        else "Worker stopping."
-                    ),
+                    error=("Остановлено пользователем." if not _STOP.is_set() else "Worker stopping."),
                 )
                 return
 
@@ -491,9 +481,7 @@ def _execute_runner_job(store: DubStore, worker_id: str, job: dict[str, Any]) ->
 
 _PROGRESS_PREFIX = "DUB_PROGRESS "
 _QA_ROUND_RE = re.compile(r"QA round\s+(\d+)\s*/\s*(\d+)", flags=re.I)
-_MODEL_TQDM_RE = re.compile(
-    r"^(?:\x1b\[[0-9;]*m)*\s*\d{1,3}%\|.*\|\s*\d+/\d+\s*\["
-)
+_MODEL_TQDM_RE = re.compile(r"^(?:\x1b\[[0-9;]*m)*\s*\d{1,3}%\|.*\|\s*\d+/\d+\s*\[")
 _MILESTONES = (25, 50, 75, 90)
 _PULSE_SECONDS = 15.0
 _FINAL_WORKER_JOB_STATES = {"succeeded", "failed", "cancelled"}
@@ -533,9 +521,15 @@ def _deepest_error_line(error: str) -> str:
     if not lines:
         return "Неизвестная ошибка runner."
     prefixes = (
-        "RuntimeError:", "TypeError:", "ValueError:", "AttributeError:",
-        "FileNotFoundError:", "ModuleNotFoundError:", "ImportError:",
-        "OSError:", "ОШИБКА:",
+        "RuntimeError:",
+        "TypeError:",
+        "ValueError:",
+        "AttributeError:",
+        "FileNotFoundError:",
+        "ModuleNotFoundError:",
+        "ImportError:",
+        "OSError:",
+        "ОШИБКА:",
     )
     for line in reversed(lines):
         if line.startswith(prefixes) or "Error:" in line:
@@ -788,7 +782,7 @@ def _progress_from_line(line: str, current: int) -> tuple[int, str]:
         return int(current), ""
     if text.startswith(_PROGRESS_PREFIX):
         try:
-            payload = json.loads(text[len(_PROGRESS_PREFIX):])
+            payload = json.loads(text[len(_PROGRESS_PREFIX) :])
         except (TypeError, json.JSONDecodeError):
             payload = None
         if isinstance(payload, dict):
@@ -853,9 +847,7 @@ class _TerminalCaptureStore:
                 "error": str(error or ""),
             }
             return
-        self._store.finish_job(
-            int(job_id), status=status, result=result, error=error
-        )
+        self._store.finish_job(int(job_id), status=status, result=result, error=error)
 
 
 def _quality_failure_detail(project: dict[str, Any], error: str) -> str:
@@ -876,9 +868,7 @@ def _archive_quality_retry_log(store: Any, job_id: int, retry_index: int) -> Non
     source = Path(store.logs_dir) / f"job-{int(job_id):06d}.log"
     if not source.is_file():
         return
-    target = source.with_name(
-        f"job-{int(job_id):06d}.quality-retry-{int(retry_index):02d}.log"
-    )
+    target = source.with_name(f"job-{int(job_id):06d}.quality-retry-{int(retry_index):02d}.log")
     try:
         shutil.copy2(source, target)
     except OSError:
@@ -990,10 +980,7 @@ def execute_job(store: WorkerDubStore, worker_id: str, job: dict[str, Any]) -> N
             job_id,
             progress=1,
             stage="preflight",
-            message=(
-                "Проверяю CPU Python, модель, FFmpeg, cadence/tail/fit gates "
-                "и production imports до синтеза."
-            ),
+            message=("Проверяю CPU Python, модель, FFmpeg, cadence/tail/fit gates и production imports до синтеза."),
         )
         report = dub_job_preflight.run(
             project,
@@ -1019,6 +1006,7 @@ def execute_job(store: WorkerDubStore, worker_id: str, job: dict[str, Any]) -> N
         _write_preflight_failure(store, job_id, exc)
         return
     _run_with_quality_restarts(store, worker_id, job, project)
+
 
 def run_worker(
     root: str | None,

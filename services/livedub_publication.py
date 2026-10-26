@@ -5,6 +5,7 @@ The explicit LiveDub delivery path calls these source-owned helpers before sendi
 video and MP3 results. No Telegram methods, info-card functions or pipeline modules
 are intercepted or rebound at runtime.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -193,9 +194,7 @@ async def _generate_quality_publication(source_line: str) -> dict[str, str] | No
     def _parse_publication_response(response) -> dict[str, str] | None:
         try:
             raw = str(getattr(response, "text", "") or "").strip()
-            raw = re.sub(
-                r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.MULTILINE
-            ).strip()
+            raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.MULTILINE).strip()
             data = json.loads(raw)
             title = _canonical_title(str(data.get("title") or ""))
             author = _canonical_author(str(data.get("author") or ""))

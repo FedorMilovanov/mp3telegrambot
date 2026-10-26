@@ -5,6 +5,7 @@ The Factory pipeline owns orchestration and delivery.  This module contains only
 validation helpers plus a compatibility entry function that delegates directly
 to that owner; it performs no runtime rebinding or import-time installation.
 """
+
 from __future__ import annotations
 
 import logging
@@ -108,8 +109,7 @@ def resolve_factory_spoken_language(
     if heard:
         if declared and declared != heard:
             logger.warning(
-                "Shorts Factory language mismatch: Gemini heard=%s, yt-dlp declared=%s; "
-                "using spoken-audio evidence",
+                "Shorts Factory language mismatch: Gemini heard=%s, yt-dlp declared=%s; using spoken-audio evidence",
                 heard,
                 declared,
             )
@@ -184,9 +184,7 @@ def enforce_factory_translation_preflight() -> None:
     node_available = bool(shutil.which("node") or shutil.which("node.exe"))
     npm_available = bool(shutil.which("npm") or shutil.which("npm.cmd"))
     helper_available = bool(
-        node_available
-        and helper_script.is_file()
-        and (helper_dependency.exists() or npm_available)
+        node_available and helper_script.is_file() and (helper_dependency.exists() or npm_available)
     )
     cli_available = bool(
         shutil.which("vot-cli-live")
@@ -194,9 +192,7 @@ def enforce_factory_translation_preflight() -> None:
         or shutil.which("npx")
         or shutil.which("npx.cmd")
     )
-    oauth_present = bool(
-        (os.getenv("VOT_API_TOKEN", "") or os.getenv("YANDEX_OAUTH_TOKEN", "")).strip()
-    )
+    oauth_present = bool((os.getenv("VOT_API_TOKEN", "") or os.getenv("YANDEX_OAUTH_TOKEN", "")).strip())
     issues = factory_translation_preflight_issues(
         oauth_present=oauth_present,
         helper_available=helper_available,
@@ -226,6 +222,7 @@ def enforce_factory_preflight() -> None:
     free_gb = min(free_values) if free_values else 0.0
     try:
         import services.shorts_video_impl as shorts_video_impl
+
         whisper_available = bool(shorts_video_impl.HAS_FASTER_WHISPER)
     except Exception:
         whisper_available = False

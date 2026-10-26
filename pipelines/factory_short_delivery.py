@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Strict source-owned delivery path for Factory Shorts."""
+
 from __future__ import annotations
 
 import asyncio
@@ -94,9 +95,7 @@ async def process_and_send_factory_shorts(
 ) -> int:
     """Render judged Factory candidates and count only proved Telegram deliveries."""
     if not HAS_FASTER_WHISPER:
-        raise RuntimeError(
-            "SHORTS FACTORY MAX requires faster-whisper for mandatory burned subtitles"
-        )
+        raise RuntimeError("SHORTS FACTORY MAX requires faster-whisper for mandatory burned subtitles")
     source_video_path = Path(source_video_path)
     source_duration = max(0.0, float(source_duration or 0.0))
     if not source_video_path.is_file():

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Factory-owned media acquisition, Gemini audio input and plan boundary."""
+
 from __future__ import annotations
 
 import asyncio
@@ -71,8 +72,7 @@ def factory_audio_mime_type(path: Path) -> str:
     mime_type = _AUDIO_MIME_BY_SUFFIX.get(Path(path).suffix.casefold(), "")
     if not mime_type:
         raise RuntimeError(
-            "SHORTS FACTORY audio format is not supported by Gemini: "
-            f"{Path(path).suffix or '<no extension>'}"
+            f"SHORTS FACTORY audio format is not supported by Gemini: {Path(path).suffix or '<no extension>'}"
         )
     return mime_type
 
@@ -153,9 +153,7 @@ async def measure_factory_audio_duration(path: Path) -> float:
         text=True,
     )
     if process.returncode != 0:
-        raise RuntimeError(
-            "Factory analysis audio decode verification failed: " + _stderr_tail(process)
-        )
+        raise RuntimeError("Factory analysis audio decode verification failed: " + _stderr_tail(process))
     duration = _progress_duration_seconds(process.stdout)
     if duration <= 0:
         raise RuntimeError("Factory analysis audio decode verification returned no timeline")
@@ -264,10 +262,7 @@ async def _prepare_gemini_audio(
     )
     if process.returncode != 0:
         output_path.unlink(missing_ok=True)
-        raise RuntimeError(
-            "ffmpeg could not prepare compact Gemini Factory audio: "
-            + _stderr_tail(process)
-        )
+        raise RuntimeError("ffmpeg could not prepare compact Gemini Factory audio: " + _stderr_tail(process))
 
     verified_duration = _progress_duration_seconds(process.stdout)
     if verified_duration <= 0:
@@ -331,15 +326,19 @@ async def _download_factory_audio_fresh(
     DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
     _remove_paths(DOWNLOAD_DIR.glob(f"{media_id}_factory_audio_*"))
     output_template = DOWNLOAD_DIR / f"{media_id}_factory_audio_source.%(ext)s"
-    command = list(YTDLP_BASE_ARGS) + _factory_quality_sort_reset() + [
-        "--abort-on-unavailable-fragments",
-        "--format",
-        "bestaudio/best",
-        "--no-playlist",
-        "--output",
-        str(output_template),
-        url,
-    ]
+    command = (
+        list(YTDLP_BASE_ARGS)
+        + _factory_quality_sort_reset()
+        + [
+            "--abort-on-unavailable-fragments",
+            "--format",
+            "bestaudio/best",
+            "--no-playlist",
+            "--output",
+            str(output_template),
+            url,
+        ]
+    )
     try:
         process = await run_cancellable_process(
             command,
@@ -347,10 +346,7 @@ async def _download_factory_audio_fresh(
             text=True,
         )
         if process.returncode != 0:
-            raise RuntimeError(
-                "yt-dlp maximum-quality Factory audio download failed: "
-                + _stderr_tail(process)
-            )
+            raise RuntimeError("yt-dlp maximum-quality Factory audio download failed: " + _stderr_tail(process))
         source_path, source_probe = await _select_audio_source(media_id)
         return await _prepare_gemini_audio(
             source_path,
@@ -415,17 +411,21 @@ async def download_factory_video_source(
     prefix = f"{media_id}_factory_max_source"
     _remove_paths(target_dir.glob(f"{prefix}.*"))
     output_template = target_dir / f"{prefix}.%(ext)s"
-    command = list(YTDLP_BASE_ARGS) + _factory_quality_sort_reset() + [
-        "--abort-on-unavailable-fragments",
-        "--format",
-        "bestvideo+bestaudio/best",
-        "--merge-output-format",
-        "mkv",
-        "--no-playlist",
-        "--output",
-        str(output_template),
-        url,
-    ]
+    command = (
+        list(YTDLP_BASE_ARGS)
+        + _factory_quality_sort_reset()
+        + [
+            "--abort-on-unavailable-fragments",
+            "--format",
+            "bestvideo+bestaudio/best",
+            "--merge-output-format",
+            "mkv",
+            "--no-playlist",
+            "--output",
+            str(output_template),
+            url,
+        ]
+    )
     try:
         process = await run_cancellable_process(
             command,
@@ -433,16 +433,9 @@ async def download_factory_video_source(
             text=True,
         )
         if process.returncode != 0:
-            raise RuntimeError(
-                "yt-dlp maximum-quality Factory video download failed: "
-                + _stderr_tail(process)
-            )
+            raise RuntimeError("yt-dlp maximum-quality Factory video download failed: " + _stderr_tail(process))
         candidates = sorted(
-            (
-                path
-                for path in target_dir.glob(f"{prefix}.*")
-                if path.is_file() and not _partial_media(path)
-            ),
+            (path for path in target_dir.glob(f"{prefix}.*") if path.is_file() and not _partial_media(path)),
             key=lambda path: path.stat().st_mtime,
             reverse=True,
         )
@@ -455,8 +448,7 @@ async def download_factory_video_source(
                     float(expected_duration),
                 ):
                     logger.warning(
-                        "Factory rejected incomplete maximum-quality video source: "
-                        "expected=%.3fs actual=%.3fs file=%s",
+                        "Factory rejected incomplete maximum-quality video source: expected=%.3fs actual=%.3fs file=%s",
                         float(expected_duration),
                         actual_duration,
                         path.name,
@@ -471,9 +463,7 @@ async def download_factory_video_source(
                     path.stat().st_size / (1024 * 1024),
                 )
                 return path
-        raise RuntimeError(
-            "yt-dlp completed without a probed maximum-quality video+audio source"
-        )
+        raise RuntimeError("yt-dlp completed without a probed maximum-quality video+audio source")
     except (asyncio.CancelledError, Exception):
         _remove_paths(target_dir.glob(f"{prefix}.*"))
         raise
@@ -493,13 +483,11 @@ async def prepare_factory_translation_video(
     backend = factory_pipeline._translation_backend()
     if backend != "yandex_live":
         raise RuntimeError(
-            "SHORTS FACTORY сейчас поддерживает только Яндекс «Живые голоса». "
-            f"Backend {backend!r} ещё не реализован."
+            f"SHORTS FACTORY сейчас поддерживает только Яндекс «Живые голоса». Backend {backend!r} ещё не реализован."
         )
     if not factory_pipeline._env_bool("SHORTS_FACTORY_LIVEDUB", True):
         raise RuntimeError(
-            "Для иностранного источника SHORTS_FACTORY_LIVEDUB должен быть "
-            "включён: собственный нейроперевод запрещён."
+            "Для иностранного источника SHORTS_FACTORY_LIVEDUB должен быть включён: собственный нейроперевод запрещён."
         )
 
     workdir = Path(workdir)
@@ -544,9 +532,7 @@ async def prepare_factory_translation_video(
     output_path.unlink(missing_ok=True)
     mixed = await mix_tracks(original_video, ru_audio, output_path)
     if not mixed or not Path(mixed).is_file():
-        raise RuntimeError(
-            "Factory could not mix Yandex live audio over the maximum-quality original"
-        )
+        raise RuntimeError("Factory could not mix Yandex live audio over the maximum-quality original")
 
     final_probe = await probe_media_async(Path(mixed))
     if not media_probe_is_deliverable(final_probe):

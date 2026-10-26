@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Keep non-cancellable inner work owned through outer task cancellation."""
+
 from __future__ import annotations
 
 import asyncio

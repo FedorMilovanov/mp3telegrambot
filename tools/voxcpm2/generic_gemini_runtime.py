@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Checked entrypoint for Gemini MAX Dub Studio production."""
+
 from __future__ import annotations
 
 import html
@@ -30,9 +31,6 @@ _NON_SPEECH_RE = re.compile(
 def _require_file(path: Path, label: str) -> None:
     if not path.is_file() or path.stat().st_size <= 0:
         raise RuntimeError(f"Gemini MAX не создал обязательный результат: {label} ({path}).")
-
-
-
 
 
 def clean_manual_caption_line(value: str) -> str:
@@ -128,7 +126,6 @@ def validate_completed_outputs(root: Path) -> dict[str, Any]:
     return manifest
 
 
-
 def _clean_source_groups(cues: list[pipeline.Cue]) -> list[dict[str, Any]]:
     groups = clean.group_source_cues(cues)
     for group in groups:
@@ -150,8 +147,15 @@ def _acquire_transcript_clean(*args: Any, **kwargs: Any) -> tuple[list[pipeline.
 
 
 def _run_clean_speech_and_master(
-    *, root: Path, request: dict[str, Any], source: Path, cues: list[Any],
-    duration: float, segments_json: Path, final_mixed: Path, final_russian: Path,
+    *,
+    root: Path,
+    request: dict[str, Any],
+    source: Path,
+    cues: list[Any],
+    duration: float,
+    segments_json: Path,
+    final_mixed: Path,
+    final_russian: Path,
 ) -> Path:
     extended, composite = continuous_reference_policy.build_calm_references(
         source=source, cues=cues, duration=duration, reference_dir=root / "references"
@@ -167,10 +171,16 @@ def _run_clean_speech_and_master(
     )
     production.log("source-guided emotional arc prepared; Russian text preserved; " + detail)
     return clean.render_and_master(
-        root=root, request=request, source=source, duration=duration,
-        segments_json=segments_json, extended_reference=extended,
-        composite_reference=composite, final_mixed=final_mixed,
-        final_russian=final_russian, force_fresh=True,
+        root=root,
+        request=request,
+        source=source,
+        duration=duration,
+        segments_json=segments_json,
+        extended_reference=extended,
+        composite_reference=composite,
+        final_mixed=final_mixed,
+        final_russian=final_russian,
+        force_fresh=True,
     )
 
 

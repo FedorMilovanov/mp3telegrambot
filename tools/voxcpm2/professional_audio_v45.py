@@ -7,6 +7,7 @@ directly. Standard production does not call ``install()`` and does not use its
 legacy renderer constants. Reference extraction preserves the original speaker:
 no denoiser is applied to already clean source audio.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -44,17 +45,9 @@ def split_balanced(text: str, count: int) -> list[str]:
     tokens = str(text or "").split()
     count = min(max(1, count), max(1, len(tokens)))
     return [
-        " ".join(
-            tokens[
-                round(index * len(tokens) / count) :
-                round((index + 1) * len(tokens) / count)
-            ]
-        ).strip()
+        " ".join(tokens[round(index * len(tokens) / count) : round((index + 1) * len(tokens) / count)]).strip()
         for index in range(count)
-        if tokens[
-            round(index * len(tokens) / count) :
-            round((index + 1) * len(tokens) / count)
-        ]
+        if tokens[round(index * len(tokens) / count) : round((index + 1) * len(tokens) / count)]
     ]
 
 
@@ -69,9 +62,7 @@ def split_text(text: str, duration: float, max_seconds: float = 5.4) -> list[str
     for part in parts:
         part_count = max(
             1,
-            math.ceil(
-                duration * words(part) / max(1, total) / max_seconds
-            ),
+            math.ceil(duration * words(part) / max(1, total) / max_seconds),
         )
         result.extend(split_balanced(part, part_count))
     return result
@@ -103,12 +94,7 @@ def migrate_legacy_audio_repair(root: Path, request: dict[str, Any]) -> bool:
         return False
     repair = json.loads(repair_path.read_text(encoding="utf-8-sig"))
     old = json.loads(segments_path.read_text(encoding="utf-8-sig"))
-    if (
-        not isinstance(repair, dict)
-        or not repair.get("repair_all")
-        or not isinstance(old, list)
-        or not old
-    ):
+    if not isinstance(repair, dict) or not repair.get("repair_all") or not isinstance(old, list) or not old:
         return False
     delay_ms = max(0, int(request.get("russian_delay_ms") or 420))
     delay = delay_ms / 1000
@@ -131,11 +117,7 @@ def migrate_legacy_audio_repair(root: Path, request: dict[str, Any]) -> bool:
         total = sum(weights)
         cursor = start
         for part_index, (part, weight) in enumerate(zip(parts, weights, strict=True)):
-            part_end = (
-                end
-                if part_index == len(parts) - 1
-                else cursor + duration * weight / total
-            )
+            part_end = end if part_index == len(parts) - 1 else cursor + duration * weight / total
             new.append(
                 {
                     "id": len(new) + 1,
@@ -158,12 +140,8 @@ def migrate_legacy_audio_repair(root: Path, request: dict[str, Any]) -> bool:
             item["reference_profile"] = "composite"
             item["tail_guard"] = 0.22
 
-    old_words = " ".join(
-        " ".join(str(item.get("text") or "").split()) for item in old
-    ).split()
-    new_words = " ".join(
-        " ".join(str(item.get("text") or "").split()) for item in new
-    ).split()
+    old_words = " ".join(" ".join(str(item.get("text") or "").split()) for item in old).split()
+    new_words = " ".join(" ".join(str(item.get("text") or "").split()) for item in new).split()
     if old_words != new_words:
         raise RuntimeError("Миграция изменила русский текст; операция остановлена.")
 
@@ -336,16 +314,10 @@ def build_reference_v45(
                 continue
             span = min(window, length)
             steps = max(1, int((length - span) / 0.75))
-            starts = [
-                left + index * (length - span) / steps
-                for index in range(steps + 1)
-            ]
+            starts = [left + index * (length - span) / steps for index in range(steps + 1)]
             for start in starts:
                 clip = np.asarray(
-                    whole[
-                        int(start * sample_rate) :
-                        int(min(right, start + span) * sample_rate)
-                    ],
+                    whole[int(start * sample_rate) : int(min(right, start + span) * sample_rate)],
                     dtype=np.float32,
                 )
                 if len(clip) < sample_rate * 2:
@@ -375,10 +347,7 @@ def build_reference_v45(
         selected: list[tuple[float, float, float, np.ndarray, dict[str, float]]] = []
         total = 0.0
         for item in sorted(candidates, key=lambda value: value[0]):
-            if any(
-                min(item[2], existing[2]) - max(item[1], existing[1]) > 0.75
-                for existing in selected
-            ):
+            if any(min(item[2], existing[2]) - max(item[1], existing[1]) > 0.75 for existing in selected):
                 continue
             selected.append(item)
             total += item[2] - item[1]
@@ -415,10 +384,7 @@ def build_reference_v45(
                 "start": round(item[1], 3),
                 "end": round(item[2], 3),
                 "score": round(item[0], 3),
-                **{
-                    key: round(float(value), 4)
-                    for key, value in item[4].items()
-                },
+                **{key: round(float(value), 4) for key, value in item[4].items()},
             }
             for item in selected
         ],
@@ -427,10 +393,7 @@ def build_reference_v45(
         json.dumps(report, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    log(
-        "reference calm windows, denoise=False: "
-        + ", ".join(f"{item[1]:.2f}-{item[2]:.2f}" for item in selected)
-    )
+    log("reference calm windows, denoise=False: " + ", ".join(f"{item[1]:.2f}-{item[2]:.2f}" for item in selected))
 
 
 def verify_timeline_v45(

@@ -6,6 +6,7 @@ then cannot distinguish a transient network error from deterministic
 ``CONTENT_TOO_BIG`` and wastes 3/6/12-second retries.  This transport preserves
 the exact API error and classifies whether another identical request can help.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -19,7 +20,9 @@ import requests
 
 from core.globals import TELEGRAPH_TOKEN
 from core.telegraph_contract import (
-    fit_telegraph_author_name, fit_telegraph_author_url, fit_telegraph_title,
+    fit_telegraph_author_name,
+    fit_telegraph_author_url,
+    fit_telegraph_title,
 )
 
 

@@ -150,5 +150,3 @@ def test_recovery_is_fail_closed_without_authoritative_report(
             duration=30.0,
             segments_json=segments,
         )
-
-

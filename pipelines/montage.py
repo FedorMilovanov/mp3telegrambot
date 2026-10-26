@@ -3,20 +3,23 @@
 Montage / Highlights Pipeline.
 Извлечено из bot.py строки 12240–12432.
 """
+
 from core.globals import DOWNLOAD_DIR
 from core.database import asettings_get, ashorts_speed_get, get_max_file_size_mb  # AUDIT M4
 from services.render_clips_montage import (
-    render_montage_short, create_extras_candidates,
-    build_montage_caption, build_highlights_caption,  # FIX montage
+    render_montage_short,
+    create_extras_candidates,
+    build_montage_caption,
+    build_highlights_caption,  # FIX montage
 )
 from services.shorts_video import (
     HAS_FASTER_WHISPER,
-    download_video_for_shorts,    # FIX montage
-    postprocess_short,            # FIX montage
-    transcribe_short_clip,        # FIX montage
-    create_short_snapshot,        # FIX montage
-    create_short_title_poster,    # FIX montage
-    get_shorts_visual_mode,       # FIX montage
+    download_video_for_shorts,  # FIX montage
+    postprocess_short,  # FIX montage
+    transcribe_short_clip,  # FIX montage
+    create_short_snapshot,  # FIX montage
+    create_short_title_poster,  # FIX montage
+    get_shorts_visual_mode,  # FIX montage
 )
 from services.shorts_subtitle_burn import burn_subtitles_into_short
 from services.highlights_candidate_gate import verify_highlights_candidate
@@ -55,9 +58,19 @@ def _validated_extras_speed(value: Any) -> tuple[float, bool] | None:
 
 
 async def _run_montage_or_highlights_pipeline(
-    cand: dict[str, Any], video_path: Path, media_id: str, prefix: str,
-    ai_data: dict[str, Any], performer: str, url: str, rutube_url: str, vk_url: str,
-    update: Any, caption_fn: Any, *, verified_highlights: bool = False,
+    cand: dict[str, Any],
+    video_path: Path,
+    media_id: str,
+    prefix: str,
+    ai_data: dict[str, Any],
+    performer: str,
+    url: str,
+    rutube_url: str,
+    vk_url: str,
+    update: Any,
+    caption_fn: Any,
+    *,
+    verified_highlights: bool = False,
 ) -> bool:
     """Общий render pipeline; Highlights may use the verified renderer."""
     format_name = (ai_data or {}).get("format", "other") or "other"
@@ -101,11 +114,7 @@ async def _run_montage_or_highlights_pipeline(
 
         total_dur = float(cand["total_dur"])
         raw_probe = await probe_media_async(raw_path)
-        raw_duration = (
-            raw_probe.duration
-            if raw_probe is not None and raw_probe.duration > 0
-            else max(0.001, total_dur)
-        )
+        raw_duration = raw_probe.duration if raw_probe is not None and raw_probe.duration > 0 else max(0.001, total_dur)
         size_mb = file_size_mb(raw_path)
         if size_mb > get_max_file_size_mb():
             logger.warning(
@@ -131,22 +140,18 @@ async def _run_montage_or_highlights_pipeline(
                 speed_applied = speed_required
             elif speed_required:
                 logger.warning(
-                    "%s: required speed transform %.6g failed; refusing raw "
-                    "fallback with the wrong playback speed",
+                    "%s: required speed transform %.6g failed; refusing raw fallback with the wrong playback speed",
                     prefix,
                     speed,
                 )
                 return False
             else:
                 logger.warning(
-                    "%s: optional normalize failed; verified raw media remains "
-                    "eligible because playback speed is 1.0",
+                    "%s: optional normalize failed; verified raw media remains eligible because playback speed is 1.0",
                     prefix,
                 )
 
-        expected_delivery_duration = (
-            raw_duration / speed if speed_applied else raw_duration
-        )
+        expected_delivery_duration = raw_duration / speed if speed_applied else raw_duration
         pre_subtitle_path = current_path
 
         if do_subtitles and HAS_FASTER_WHISPER:
@@ -182,8 +187,7 @@ async def _run_montage_or_highlights_pipeline(
         )
         if selection.path is None:
             logger.warning(
-                "%s: нет пригодного финального файла: reason=%s primary=%.1fMB "
-                "fallback=%.1fMB limit=%sMB",
+                "%s: нет пригодного финального файла: reason=%s primary=%.1fMB fallback=%.1fMB limit=%sMB",
                 prefix,
                 selection.reason,
                 selection.primary_size_mb,
@@ -196,8 +200,7 @@ async def _run_montage_or_highlights_pipeline(
         delivery_reason = selection.reason
         if selection.selected == "fallback":
             logger.warning(
-                "%s: subtitle-артефакт отклонён (%s, %.1fMB); "
-                "использую pre-subtitle файл %.1fMB",
+                "%s: subtitle-артефакт отклонён (%s, %.1fMB); использую pre-subtitle файл %.1fMB",
                 prefix,
                 selection.reason,
                 selection.primary_size_mb,
@@ -213,14 +216,9 @@ async def _run_montage_or_highlights_pipeline(
                     max_size_mb=max_upload_mb,
                 )
                 fallback_probe = (
-                    await probe_media_async(fallback_selection.path)
-                    if fallback_selection.path is not None
-                    else None
+                    await probe_media_async(fallback_selection.path) if fallback_selection.path is not None else None
                 )
-                if (
-                    fallback_selection.path is not None
-                    and media_probe_is_deliverable(fallback_probe)
-                ):
+                if fallback_selection.path is not None and media_probe_is_deliverable(fallback_probe):
                     logger.warning(
                         "%s: subtitle-артефакт не прошёл media probe; "
                         "использую проверенный pre-subtitle файл. probe=%r",
@@ -233,8 +231,7 @@ async def _run_montage_or_highlights_pipeline(
                     delivery_reason = "fallback_after_primary_media_probe_rejection"
             if not media_probe_is_deliverable(final_probe):
                 logger.warning(
-                    "%s: ни primary, ни fallback media probe не подтвердили "
-                    "пригодный video+audio файл",
+                    "%s: ни primary, ни fallback media probe не подтвердили пригодный video+audio файл",
                     prefix,
                 )
                 return False
@@ -247,10 +244,7 @@ async def _run_montage_or_highlights_pipeline(
                 current_path,
                 expected_duration=expected_delivery_duration,
             )
-            if (
-                not delivery_report.get("accepted")
-                and current_path != pre_subtitle_path
-            ):
+            if not delivery_report.get("accepted") and current_path != pre_subtitle_path:
                 fallback_selection = select_delivery_file(
                     pre_subtitle_path,
                     None,
@@ -292,8 +286,7 @@ async def _run_montage_or_highlights_pipeline(
             )
 
         logger.info(
-            "%s: delivery evidence selected=%s reason=%s duration=%.3fs "
-            "size=%.1fMB",
+            "%s: delivery evidence selected=%s reason=%s duration=%.3fs size=%.1fMB",
             prefix,
             delivery_selection,
             delivery_reason,
@@ -360,10 +353,18 @@ async def _run_montage_or_highlights_pipeline(
 
 
 async def process_and_send_montage(
-    url: str, media_id: str, mp3_path: Path, title: str, performer: str,
-    duration: int | float, ai_data: dict[str, Any], update: Any,
-    existing_audio_part: Any = None, existing_client: Any = None,
-    rutube_url: str = "", vk_url: str = "",
+    url: str,
+    media_id: str,
+    mp3_path: Path,
+    title: str,
+    performer: str,
+    duration: int | float,
+    ai_data: dict[str, Any],
+    update: Any,
+    existing_audio_part: Any = None,
+    existing_client: Any = None,
+    rutube_url: str = "",
+    vk_url: str = "",
     prefetched_candidates: list[dict[str, Any]] | None = None,
     livedub_video_path: Path | None = None,  # ENG: path to translated video
 ) -> None:
@@ -375,10 +376,14 @@ async def process_and_send_montage(
             candidate_source = Path(livedub_video_path)
             if candidate_source.exists():
                 livedub_source = candidate_source
-                duration = int(round(await probe_livedub_source_duration(
-                    livedub_source,
-                    fallback_duration=float(duration or 0),
-                )))
+                duration = int(
+                    round(
+                        await probe_livedub_source_duration(
+                            livedub_source,
+                            fallback_duration=float(duration or 0),
+                        )
+                    )
+                )
                 candidates = align_livedub_montage_candidates(
                     candidates,
                     source_duration=float(duration),
@@ -386,9 +391,7 @@ async def process_and_send_montage(
         if not candidates:
             logger.info("Montage: кандидаты не найдены")
             try:
-                await update.message.reply_text(
-                    "🎬 Montage для этого материала не найден."
-                )
+                await update.message.reply_text("🎬 Montage для этого материала не найден.")
             except Exception:
                 pass
             return
@@ -455,10 +458,18 @@ async def process_and_send_montage(
 
 
 async def process_and_send_highlights(
-    url: str, media_id: str, mp3_path: Path, title: str, performer: str,
-    duration: int | float, ai_data: dict[str, Any], update: Any,
-    existing_audio_part: Any = None, existing_client: Any = None,
-    rutube_url: str = "", vk_url: str = "",
+    url: str,
+    media_id: str,
+    mp3_path: Path,
+    title: str,
+    performer: str,
+    duration: int | float,
+    ai_data: dict[str, Any],
+    update: Any,
+    existing_audio_part: Any = None,
+    existing_client: Any = None,
+    rutube_url: str = "",
+    vk_url: str = "",
     prefetched_candidates: list[dict[str, Any]] | None = None,
     livedub_video_path: Path | None = None,  # ENG: path to translated video
 ) -> None:
@@ -468,9 +479,7 @@ async def process_and_send_highlights(
         if not candidates:
             logger.info("Highlights: кандидат не найден")
             try:
-                await update.message.reply_text(
-                    "🌟 Highlights для этого материала не найден."
-                )
+                await update.message.reply_text("🌟 Highlights для этого материала не найден.")
             except Exception:
                 pass
             return
@@ -480,10 +489,14 @@ async def process_and_send_highlights(
             candidate_source = Path(livedub_video_path)
             if candidate_source.exists():
                 livedub_source = candidate_source
-                duration = int(round(await probe_livedub_source_duration(
-                    livedub_source,
-                    fallback_duration=float(duration or 0),
-                )))
+                duration = int(
+                    round(
+                        await probe_livedub_source_duration(
+                            livedub_source,
+                            fallback_duration=float(duration or 0),
+                        )
+                    )
+                )
 
         if livedub_source is not None:
             video_path = livedub_source
@@ -504,9 +517,7 @@ async def process_and_send_highlights(
                 list(cand.keys()),
             )
             try:
-                await update.message.reply_text(
-                    "🌟 Highlights: данные кандидата повреждены."
-                )
+                await update.message.reply_text("🌟 Highlights: данные кандидата повреждены.")
             except Exception:
                 pass
             return

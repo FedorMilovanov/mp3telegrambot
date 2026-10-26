@@ -5,6 +5,7 @@
 исключения, последовательность Study/Reflection, изоляция сбоев и перенос
 компактной замены «Вопросы» из навигации.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -215,16 +216,8 @@ async def test_study_and_reflection_are_sequential() -> None:
 
 @pytest.mark.asyncio
 async def test_combined_mode_is_opt_in_and_passes_compact_fallbacks() -> None:
-    pages = Pages(
-        results={
-            "combined": _Combined(
-                "https://telegra.ph/razbor-1", "https://telegra.ph/razmyshlenie-1"
-            )
-        }
-    )
-    out = await render_pages(
-        make_request(plan=BOTH_NEW, combined_enabled=True), pages.deps()
-    )
+    pages = Pages(results={"combined": _Combined("https://telegra.ph/razbor-1", "https://telegra.ph/razmyshlenie-1")})
+    out = await render_pages(make_request(plan=BOTH_NEW, combined_enabled=True), pages.deps())
 
     assert "study" not in pages.calls and "reflection" not in pages.calls
     assert out.study_analysis_url == "https://telegra.ph/razbor-1"
@@ -246,12 +239,8 @@ async def test_combined_falls_back_to_separate_when_disabled_for_request() -> No
 
 @pytest.mark.asyncio
 async def test_combined_none_falls_back_to_separate() -> None:
-    pages = Pages(
-        results={"combined": None, "study": "u-s", "reflection": "https://telegra.ph/razmyshlenie-4"}
-    )
-    out = await render_pages(
-        make_request(plan=BOTH_NEW, combined_enabled=True), pages.deps()
-    )
+    pages = Pages(results={"combined": None, "study": "u-s", "reflection": "https://telegra.ph/razmyshlenie-4"})
+    out = await render_pages(make_request(plan=BOTH_NEW, combined_enabled=True), pages.deps())
 
     assert "study" in pages.calls
     assert out.study_analysis_url == "u-s"
@@ -266,9 +255,7 @@ async def test_combined_error_falls_back_and_keeps_publication(
         results={"study": "u-s", "reflection": "https://telegra.ph/razmyshlenie-5"},
     )
     with caplog.at_level(logging.WARNING):
-        out = await render_pages(
-            make_request(plan=BOTH_NEW, combined_enabled=True), pages.deps()
-        )
+        out = await render_pages(make_request(plan=BOTH_NEW, combined_enabled=True), pages.deps())
 
     assert "Study+Reflection combined pipeline error: 503" in caplog.text
     assert out.study_analysis_url == "u-s"
@@ -293,8 +280,7 @@ async def test_study_error_does_not_block_reflection(
 
 @pytest.mark.asyncio
 async def test_page_error_is_logged_and_isolated(caplog: pytest.LogCaptureFixture) -> None:
-    pages = Pages(errors={"analytics": RuntimeError("page exploded")},
-                  results={"questions": "u-q"})
+    pages = Pages(errors={"analytics": RuntimeError("page exploded")}, results={"questions": "u-q"})
     with caplog.at_level(logging.WARNING):
         out = await render_pages(make_request(), pages.deps())
 
@@ -306,9 +292,7 @@ async def test_page_error_is_logged_and_isolated(caplog: pytest.LogCaptureFixtur
 @pytest.mark.asyncio
 async def test_early_links_are_reused() -> None:
     pages = Pages(results={"analytics": "u"})
-    out = await render_pages(
-        make_request(early_links={"rutube": "https://rt/1", "vk": ""}), pages.deps()
-    )
+    out = await render_pages(make_request(early_links={"rutube": "https://rt/1", "vk": ""}), pages.deps())
 
     assert "links" not in pages.calls
     assert out.alt_links == {"rutube": "https://rt/1", "vk": ""}
@@ -356,9 +340,7 @@ async def test_reflection_fallback_moves_to_questions() -> None:
 @pytest.mark.asyncio
 async def test_reflection_fallback_does_not_overwrite_questions() -> None:
     pages = Pages(results={"reflection": "https://telegra.ph/voprosy-9", "analytics": "u-a"})
-    out = await render_pages(
-        make_request(plan=BOTH_NEW, questions=["q"]), pages.deps()
-    )
+    out = await render_pages(make_request(plan=BOTH_NEW, questions=["q"]), pages.deps())
     assert out.reflection_url is None
     assert out.questions_url == "https://telegra.ph/voprosy-9"
 
@@ -430,6 +412,7 @@ class _Combined:
 
 def test_gather_returns_do_not_leak_exceptions() -> None:
     """`asyncio.gather(return_exceptions=True)` не должен давать URL-исключение."""
+
     async def main() -> None:
         results = await asyncio.gather(
             asyncio.sleep(0, result="ok"),

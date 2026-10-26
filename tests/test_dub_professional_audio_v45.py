@@ -73,9 +73,7 @@ def test_legacy_repair_migration_preserves_every_word(tmp_path: Path) -> None:
     )
     migrated = json.loads(segments_path.read_text(encoding="utf-8"))
     assert len(migrated) > len(old)
-    assert " ".join(item["text"] for item in old).split() == " ".join(
-        item["text"] for item in migrated
-    ).split()
+    assert " ".join(item["text"] for item in old).split() == " ".join(item["text"] for item in migrated).split()
     assert max(float(item["end"]) - float(item["start"]) for item in migrated) <= 5.6
     assert all(item["quality_timing"] == "global-delay-v4.5" for item in migrated)
     assert (tmp_path / "segments_ru_final.pre_v45.json").is_file()
@@ -83,15 +81,9 @@ def test_legacy_repair_migration_preserves_every_word(tmp_path: Path) -> None:
 
 def test_recipe_routes_all_modes_through_clean_runtime() -> None:
     recipe = load_recipe("generic_short_v1")
-    assert recipe.action("render_gemini")["module"] == (
-        "tools.voxcpm2.generic_gemini_runtime"
-    )
-    assert recipe.action("render_direct")["module"] == (
-        "tools.voxcpm2.generic_direct_runtime"
-    )
-    assert recipe.action("repair_audio")["module"] == (
-        "tools.voxcpm2.generic_clean_audio_repair_runtime"
-    )
+    assert recipe.action("render_gemini")["module"] == ("tools.voxcpm2.generic_gemini_runtime")
+    assert recipe.action("render_direct")["module"] == ("tools.voxcpm2.generic_direct_runtime")
+    assert recipe.action("repair_audio")["module"] == ("tools.voxcpm2.generic_clean_audio_repair_runtime")
 
 
 def test_voice_gate_is_fail_closed_and_expression_aware() -> None:
@@ -140,9 +132,7 @@ def test_voice_gate_is_fail_closed_and_expression_aware() -> None:
 
 
 def test_renderer_adapter_keeps_acoustic_rejection_evidence() -> None:
-    adapter = Path("tools/voxcpm2/voxcpm2_professional_adapter_v45.py").read_text(
-        encoding="utf-8"
-    )
+    adapter = Path("tools/voxcpm2/voxcpm2_professional_adapter_v45.py").read_text(encoding="utf-8")
     assert "max_internal_gap" in adapter
     assert "f0_median_ratio" in adapter
     assert "cut_risk" in adapter

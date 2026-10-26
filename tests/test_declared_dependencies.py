@@ -17,6 +17,7 @@
 ``requirements.txt`` с учётом extras, плюс проверяет, что extras реально
 разрешились в lock (иначе объявление ничего не значит).
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -59,27 +60,19 @@ def _extras(requirement: Requirement) -> set[str]:
 
 def test_every_direct_import_is_a_direct_requirement() -> None:
     declared = _declared()
-    missing = {
-        module: dist
-        for module, dist in IMPORTED_DIRECTLY.items()
-        if canonical(dist) not in declared
-    }
+    missing = {module: dist for module, dist in IMPORTED_DIRECTLY.items() if canonical(dist) not in declared}
     for module, (dist, extra) in EXTRA_PROVIDED.items():
         requirement = declared.get(canonical(dist))
         if requirement is None or extra not in _extras(requirement):
             missing[module] = f"{dist}[{extra}]"
-    assert not missing, (
-        "эти пакеты импортируются напрямую, но не объявлены в requirements.txt: "
-        f"{missing}"
-    )
+    assert not missing, f"эти пакеты импортируются напрямую, но не объявлены в requirements.txt: {missing}"
 
 
 def test_socks_support_is_declared_as_an_extra() -> None:
     """``httpx[socks]`` — единственный способ объявить socksio осмысленно."""
     requirement = _declared()[canonical("httpx")]
     assert "socks" in _extras(requirement), (
-        "httpx объявлен без extras=socks: socksio не установится, и SOCKS-прокси "
-        "тихо уйдёт в HTTP-fallback (main.py)"
+        "httpx объявлен без extras=socks: socksio не установится, и SOCKS-прокси тихо уйдёт в HTTP-fallback (main.py)"
     )
 
 
@@ -117,8 +110,7 @@ def test_tooling_is_not_pulled_into_the_runtime_closure_by_accident() -> None:
     dev_names = {
         canonical(Requirement(line.split("#", 1)[0].strip()).name)
         for line in dev_text.splitlines()
-        if line.split("#", 1)[0].strip()
-        and not line.split("#", 1)[0].strip().startswith("-")
+        if line.split("#", 1)[0].strip() and not line.split("#", 1)[0].strip().startswith("-")
     }
     for name in TOOLING:
         assert (name in runtime) != (name in dev_names), (

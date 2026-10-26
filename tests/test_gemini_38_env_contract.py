@@ -17,9 +17,13 @@ def test_env_example_matches_gemini_38_quality_contract() -> None:
     # The GEMINI_LIGHT_* / GEMINI_MAX_MODEL / GEMINI_FORCE_THINKING_LEVEL
     # knobs were deleted: nothing read them, the policy overwrote them on every
     # start. The absence is the contract now — see test_env_policy_contract.py.
-    for removed in ("GEMINI_LIGHT_MODEL=", "GEMINI_LIGHT_FALLBACK_MODELS=",
-                    "GEMINI_LIGHT_ALLOW_MAIN_FALLBACK=", "GEMINI_MAX_MODEL=",
-                    "GEMINI_FORCE_THINKING_LEVEL="):
+    for removed in (
+        "GEMINI_LIGHT_MODEL=",
+        "GEMINI_LIGHT_FALLBACK_MODELS=",
+        "GEMINI_LIGHT_ALLOW_MAIN_FALLBACK=",
+        "GEMINI_MAX_MODEL=",
+        "GEMINI_FORCE_THINKING_LEVEL=",
+    ):
         assert removed not in env, f"{removed} вернулся в .env.example"
     assert f"MP3BOT_UTILITY_MODEL={MODEL_UTILITY}" in env
 
@@ -31,9 +35,7 @@ def test_env_example_matches_gemini_38_quality_contract() -> None:
 
 def test_factory_source_matches_gemini_38_quality_contract() -> None:
     factory = Path("services/shorts_factory_candidates.py").read_text(encoding="utf-8")
-    runtime = Path("services/shorts_factory_capacity_runtime.py").read_text(
-        encoding="utf-8"
-    )
+    runtime = Path("services/shorts_factory_capacity_runtime.py").read_text(encoding="utf-8")
 
     assert "DEFAULT_SHORTS_FACTORY_MODEL = MODEL_PRIMARY" in factory
     assert "SHORTS FACTORY MAX requires {DEFAULT_SHORTS_FACTORY_MODEL}" in factory

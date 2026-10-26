@@ -36,8 +36,18 @@ def test_section_to_nodes_prefers_blocks_and_preserves_boundaries():
         "blocks": [
             {"type": "paragraph", "text": "Первый отдельный абзац."},
             {"type": "bullet", "text": "Первый отдельный пункт."},
-            {"type": "scripture", "ref": "Ин. 6:37", "quote": "Все, что дает Мне Отец, ко Мне придет", "timestamp": "18:32"},
-            {"type": "source", "author": "Эндрю Фуллер", "title_original": "The Gospel Worthy of All Acceptation", "why_relevant": "Показывает обязанность веровать."},
+            {
+                "type": "scripture",
+                "ref": "Ин. 6:37",
+                "quote": "Все, что дает Мне Отец, ко Мне придет",
+                "timestamp": "18:32",
+            },
+            {
+                "type": "source",
+                "author": "Эндрю Фуллер",
+                "title_original": "The Gospel Worthy of All Acceptation",
+                "why_relevant": "Показывает обязанность веровать.",
+            },
             {"type": "lexicon", "lemma": "ἑλκύω", "role_in_argument": "Показывает действенное привлечение Отца."},
         ],
     }
@@ -55,14 +65,21 @@ def test_section_to_nodes_prefers_blocks_and_preserves_boundaries():
 
 
 def test_content_audit_normalizes_block_text_without_dropping_blocks():
-    sections = [{
-        "title": "T",
-        "content": "fallback",
-        "blocks": [
-            {"type": "paragraph", "text": "цитата / / Вторая глава книгеNine Marks"},
-            {"type": "source", "author": "John MacArthur", "title_original": "Strange Fire", "why_relevant": "труде«Учение»"},
-        ],
-    }]
+    sections = [
+        {
+            "title": "T",
+            "content": "fallback",
+            "blocks": [
+                {"type": "paragraph", "text": "цитата / / Вторая глава книгеNine Marks"},
+                {
+                    "type": "source",
+                    "author": "John MacArthur",
+                    "title_original": "Strange Fire",
+                    "why_relevant": "труде«Учение»",
+                },
+            ],
+        }
+    ]
     out_sections, _, issues = audit_expanded_sections(sections, label="StudyAnalysis")
     blocks = out_sections[0]["blocks"]
     assert len(blocks) == 2

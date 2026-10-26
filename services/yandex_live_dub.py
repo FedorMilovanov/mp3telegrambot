@@ -20,6 +20,7 @@ vot-cli-live делает всё сам:
   --output      → куда сохранить
   --voice-style=live → явно "Живые голоса" (не стандартный TTS)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -55,6 +56,7 @@ def _check_vot_cli() -> str:
     # Windows: npm global default path (Python may not have %APPDATA%\npm in PATH)
     if sys.platform == "win32":
         import os
+
         _appdata = os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming"))
         npm_global = Path(_appdata) / "npm"
         for ext in (".cmd", ".bat", ".exe", ""):
@@ -70,6 +72,7 @@ def _check_vot_cli() -> str:
     # Windows: npm global путь
     if sys.platform == "win32":
         import os
+
         appdata = os.environ.get("APPDATA", "")
         if appdata:
             for ext in (".cmd", ".bat", ""):
@@ -83,8 +86,7 @@ def _check_vot_cli() -> str:
             return str(candidate)
 
     raise RuntimeError(
-        "vot-cli-live не найден. Установите: npm install -g vot-cli-live\n"
-        "На Windows: npx vot-cli-live --help"
+        "vot-cli-live не найден. Установите: npm install -g vot-cli-live\nНа Windows: npx vot-cli-live --help"
     )
 
 
@@ -96,8 +98,12 @@ def _run_subprocess(cmd_parts: list, cwd: Optional[Path] = None, timeout: int = 
     # (весь старый протокол и выгрузка перевод-SRT были мертвы на npx-хостах).
     # Сплитим argv[0] с пробелом, если это не существующий путь
     # (защита от "C:\Program Files\...\vot-cli-live.cmd").
-    if cmd_parts and " " in str(cmd_parts[0]) and not str(cmd_parts[0]).startswith('"') \
-            and not Path(str(cmd_parts[0])).exists():
+    if (
+        cmd_parts
+        and " " in str(cmd_parts[0])
+        and not str(cmd_parts[0]).startswith('"')
+        and not Path(str(cmd_parts[0])).exists()
+    ):
         cmd_parts = str(cmd_parts[0]).split() + list(cmd_parts[1:])
 
     # Windows: .cmd/.bat files need shell=True for subprocess.run
@@ -192,7 +198,8 @@ def _ensure_vot_helper() -> Optional[list]:
         try:
             _run_subprocess(
                 [npm, "ci", "--omit=dev", "--no-audit", "--no-fund"],
-                cwd=VOT_HELPER_DIR, timeout=300,
+                cwd=VOT_HELPER_DIR,
+                timeout=300,
             )
         except Exception as e:
             logger.warning(f"[LiveDub] npm ci в vot_helper не удался: {e}")
@@ -202,22 +209,30 @@ def _ensure_vot_helper() -> Optional[list]:
 
 
 async def _get_audio_new_protocol(
-    helper: list, video_url: str, output_dir: Path,
-    timeout: int, voice_style: str, duration: float = 0.0,
+    helper: list,
+    video_url: str,
+    output_dir: Path,
+    timeout: int,
+    voice_style: str,
+    duration: float = 0.0,
     lang: str = "",
 ) -> Path:
     """Скачивает перевод через vot_helper (новый протокол, OAuth-токен)."""
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # 2026-06-11: Нормализуем код языка (en-us -> en), т.к. Яндекс предпочитает ISO 639-1.
-    _clean_lang = lang.split('-')[0].lower() if lang else ""
-    
+    _clean_lang = lang.split("-")[0].lower() if lang else ""
+
     cmd = helper + [
-        "--url", video_url,
-        "--output", str(output_dir),
-        "--voice-style", voice_style,
-        "--timeout", str(timeout),
+        "--url",
+        video_url,
+        "--output",
+        str(output_dir),
+        "--voice-style",
+        voice_style,
+        "--timeout",
+        str(timeout),
     ]
     if _clean_lang:
         cmd += ["--lang", _clean_lang]
@@ -234,9 +249,7 @@ async def _get_audio_new_protocol(
         _dur_log += f" (source={duration:g}s)"
     logger.info(f"[LiveDub] Новый протокол: vot_live.mjs --voice-style {voice_style}{_dur_log} {video_url}")
     loop = asyncio.get_running_loop()
-    stdout, stderr, rc = await loop.run_in_executor(
-        None, lambda: _run_subprocess(cmd, timeout=timeout + 60)
-    )
+    stdout, stderr, rc = await loop.run_in_executor(None, lambda: _run_subprocess(cmd, timeout=timeout + 60))
     if rc == 0:
         lines = [l.strip() for l in stdout.splitlines() if l.strip()]
         if lines:
@@ -271,7 +284,8 @@ def _find_latest_file(directory: Path, pattern: str) -> Optional[Path]:
         return select_clean_translation_mp3(directory)
 
     files = [
-        p for p in directory.glob(pattern)
+        p
+        for p in directory.glob(pattern)
         if not p.name.startswith(("original_video", "original_audio", "pro_dub", "live_dub_merged"))
         and not p.stem.endswith(("_qa", "_qa_original"))
     ]
@@ -280,11 +294,15 @@ def _find_latest_file(directory: Path, pattern: str) -> Optional[Path]:
     return max(files, key=lambda p: p.stat().st_mtime)
 
 
-async def get_live_dub_audio(video_url: str, output_dir: Path,
-                             timeout: int = 480, retries: int = 2,
-                             voice_style: str = "live",
-                             duration: float = 0.0,
-                             lang: str = "") -> Path:
+async def get_live_dub_audio(
+    video_url: str,
+    output_dir: Path,
+    timeout: int = 480,
+    retries: int = 2,
+    voice_style: str = "live",
+    duration: float = 0.0,
+    lang: str = "",
+) -> Path:
     """Скачивает MP3-перевод через vot-cli-live.
 
     AUDIT 2026-06-11: Яндекс готовит перевод длинного видео МИНУТЫ.
@@ -296,6 +314,7 @@ async def get_live_dub_audio(video_url: str, output_dir: Path,
         record_returned_ru_audio,
         snapshot_ru_audio_candidates,
     )
+
     _ru_before = snapshot_ru_audio_candidates(output_dir)
 
     # ── Путь 1: новый протокол (@vot.js/node, OAuth) ──
@@ -303,8 +322,12 @@ async def get_live_dub_audio(video_url: str, output_dir: Path,
     if helper:
         try:
             _new_result = await _get_audio_new_protocol(
-                helper, video_url, output_dir,
-                timeout=max(timeout, 900), voice_style=voice_style, duration=duration,
+                helper,
+                video_url,
+                output_dir,
+                timeout=max(timeout, 900),
+                voice_style=voice_style,
+                duration=duration,
                 lang=lang,
             )
             record_returned_ru_audio(
@@ -327,7 +350,7 @@ async def get_live_dub_audio(video_url: str, output_dir: Path,
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    _clean_lang = lang.split('-')[0].lower() if lang else ""
+    _clean_lang = lang.split("-")[0].lower() if lang else ""
     cmd = [vot, "--output", str(output_dir), "--voice-style", voice_style, "--quiet"]
     if _clean_lang:
         cmd += ["--lang", _clean_lang]
@@ -341,9 +364,7 @@ async def get_live_dub_audio(video_url: str, output_dir: Path,
         if _attempt:
             logger.info(f"[LiveDub] Перевод ещё готовится у Яндекса — повтор {_attempt}/{retries} через 90с")
             await asyncio.sleep(90)
-        stdout, stderr, rc = await loop.run_in_executor(
-            None, lambda: _run_subprocess(cmd, timeout=timeout)
-        )
+        stdout, stderr, rc = await loop.run_in_executor(None, lambda: _run_subprocess(cmd, timeout=timeout))
         if rc == 0:
             break
         if "Translation not available" in stderr or "Translation not available" in stdout:
@@ -400,9 +421,12 @@ async def get_live_dub_video(
     # Сначала — новый протокол. Это закрывает случай, когда pro-mix выключен:
     # раньше этот путь всё равно падал в старый vot-cli --merge-video.
     try:
-        ru_audio = await get_live_dub_audio(video_url, output_dir, timeout=900, voice_style="live", duration=duration, lang=lang)
+        ru_audio = await get_live_dub_audio(
+            video_url, output_dir, timeout=900, voice_style="live", duration=duration, lang=lang
+        )
         from services.eng_subtitles import download_original_video
         from services.livedub_mix import mix_tracks
+
         orig_video = await download_original_video(video_url, output_dir)
         out_path = output_dir / "live_dub_merged.mp4"
         mixed = await mix_tracks(orig_video, ru_audio, out_path)
@@ -420,18 +444,25 @@ async def get_live_dub_video(
     vot = _check_vot_cli()
 
     cmd = [
-        vot, "--output", str(output_dir), "--voice-style", "live",
-        "--merge-video", "--quiet",
+        vot,
+        "--output",
+        str(output_dir),
+        "--voice-style",
+        "live",
+        "--merge-video",
+        "--quiet",
     ]
-    _clean_lang = lang.split('-')[0].lower() if lang else ""
+    _clean_lang = lang.split("-")[0].lower() if lang else ""
     if _clean_lang:
         cmd += ["--lang", _clean_lang]
     if not keep_original_audio:
         cmd.append("--keep-original-audio=false")
     else:
         cmd += [
-            "--original-volume", str(original_volume),
-            "--translation-volume", str(translation_volume),
+            "--original-volume",
+            str(original_volume),
+            "--translation-volume",
+            str(translation_volume),
         ]
     cmd.append(video_url)
 
@@ -443,9 +474,7 @@ async def get_live_dub_video(
         if _attempt:
             logger.info(f"[LiveDub] merge-video повтор {_attempt}/1 через 90с (перевод мог ещё готовиться)")
             await asyncio.sleep(90)
-        stdout, stderr, rc = await loop.run_in_executor(
-            None, lambda: _run_subprocess(cmd, timeout=600)
-        )
+        stdout, stderr, rc = await loop.run_in_executor(None, lambda: _run_subprocess(cmd, timeout=600))
         if rc == 0:
             break
         if "Translation not available" in stderr or "Translation not available" in stdout:
@@ -521,9 +550,7 @@ async def get_translation_subtitles(video_url: str, output_dir: Path) -> Optiona
     logger.info(f"[LiveDub] Субтитры перевода: {' '.join(cmd)}")
     loop = asyncio.get_running_loop()
     try:
-        stdout, stderr, rc = await loop.run_in_executor(
-            None, lambda: _run_subprocess(cmd, timeout=180)
-        )
+        stdout, stderr, rc = await loop.run_in_executor(None, lambda: _run_subprocess(cmd, timeout=180))
     except Exception as e:
         logger.warning(f"[LiveDub] subs fetch failed: {e}")
         return None
@@ -537,9 +564,9 @@ async def get_translation_subtitles(video_url: str, output_dir: Path) -> Optiona
     # пишутся в тот же workdir ПАРАЛЛЕЛЬНО и могли попасть в new_files, выдав их
     # за официальный текст дубляжа Яндекса (тот же фильтр использует QA-глоб).
     new_files = sorted(
-        (f for f in (set(output_dir.glob("*.srt")) - before)
-         if f.name != "gemini_subs.srt"),
-        key=lambda f: f.stat().st_mtime, reverse=True,
+        (f for f in (set(output_dir.glob("*.srt")) - before) if f.name != "gemini_subs.srt"),
+        key=lambda f: f.stat().st_mtime,
+        reverse=True,
     )
     for f in new_files:
         if f.stat().st_size > 50:
@@ -570,7 +597,8 @@ async def download_live_dub_sync(
         return await get_live_dub_audio(video_url, output_dir)
     elif mode == "video":
         return await get_live_dub_video(
-            video_url, output_dir,
+            video_url,
+            output_dir,
             original_volume=original_volume,
             keep_original_audio=True,
         )

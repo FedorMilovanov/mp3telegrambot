@@ -43,10 +43,7 @@ def test_master_loudnorm_parser_uses_last_valid_object() -> None:
 
 @pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
 def test_master_loudnorm_parser_rejects_nonfinite_measurement(value: str) -> None:
-    text = (
-        '{"input_i":"' + value + '","input_tp":"-1.2",'
-        '"input_lra":"4","input_thresh":"-26","target_offset":"0.1"}'
-    )
+    text = '{"input_i":"' + value + '","input_tp":"-1.2","input_lra":"4","input_thresh":"-26","target_offset":"0.1"}'
     with pytest.raises(RuntimeError, match="Нефинитное значение"):
         master.parse_loudnorm(text)
 

@@ -1,4 +1,5 @@
 """Reference preparation strategies selected independently from orchestration."""
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -17,12 +18,8 @@ class PreparedReferences:
 
     def as_dict(self) -> dict[str, Any]:
         payload = asdict(self)
-        payload["extended_reference"] = (
-            str(self.extended_reference) if self.extended_reference else ""
-        )
-        payload["composite_reference"] = (
-            str(self.composite_reference) if self.composite_reference else ""
-        )
+        payload["extended_reference"] = str(self.extended_reference) if self.extended_reference else ""
+        payload["composite_reference"] = str(self.composite_reference) if self.composite_reference else ""
         payload["reference_strategy_policy"] = REFERENCE_STRATEGY_POLICY
         return payload
 

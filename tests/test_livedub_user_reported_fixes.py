@@ -12,33 +12,27 @@ from services.livedub_qa_trust import (
 
 
 def test_livedub_video_caption_hides_provider_label():
-    caption = (
-        "<b>Борьба с Сексуальной Распущенностью и Порнографией - Тим Конвей</b>\n"
-        "🎬 Живые голоса Яндекса"
-    )
+    caption = "<b>Борьба с Сексуальной Распущенностью и Порнографией - Тим Конвей</b>\n🎬 Живые голоса Яндекса"
     cleaned = _clean_video_caption(caption)
     assert "Живые голоса Яндекса" not in cleaned
     assert "Тим Конвей" in cleaned
 
 
 def test_livedub_audio_caption_is_neutral():
-    assert _clean_audio_caption(
-        "🎧 Чистая аудиодорожка русского перевода Яндекса"
-    ) == "🎧 Русская аудиоверсия"
+    assert _clean_audio_caption("🎧 Чистая аудиодорожка русского перевода Яндекса") == "🎧 Русская аудиоверсия"
 
 
 def test_tim_conway_is_split_and_canonicalized():
-    title, author = _split_title_author(
-        "The Battle Against Sexual Immorality & Pornography - Tim Conway"
-    )
+    title, author = _split_title_author("The Battle Against Sexual Immorality & Pornography - Tim Conway")
     assert title == "The Battle Against Sexual Immorality & Pornography"
     assert author == "Тим Конвей"
 
 
 def test_russian_heading_keeps_prepositions_lowercase():
-    assert _russian_heading_case(
-        "Борьба С Сексуальной Распущенностью И Порнографией"
-    ) == "Борьба с Сексуальной Распущенностью и Порнографией"
+    assert (
+        _russian_heading_case("Борьба С Сексуальной Распущенностью И Порнографией")
+        == "Борьба с Сексуальной Распущенностью и Порнографией"
+    )
 
 
 def _issue(time: str, heard: str, problem: str, severity: str = "major") -> dict:
@@ -75,9 +69,7 @@ def test_only_confirmed_qa_issues_survive_and_major_needs_two_major_votes():
 
 
 def test_failed_confirmation_does_not_publish_or_autofix_candidates():
-    result = _unconfirmed_failure_result(
-        {"score": 60, "issues": [_issue("01:00", "фраза", "возможная ошибка")]}
-    )
+    result = _unconfirmed_failure_result({"score": 60, "issues": [_issue("01:00", "фраза", "возможная ошибка")]})
     assert result["issues"] == []
     assert "score" not in result
     assert result["_qa_confirmation_failed"] is True

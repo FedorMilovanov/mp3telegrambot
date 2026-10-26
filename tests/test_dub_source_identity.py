@@ -35,5 +35,3 @@ def test_wizard_uses_the_production_single_video_parser(url: str) -> None:
 def test_wizard_rejects_non_single_video_sources(url: str) -> None:
     with pytest.raises(ValueError, match="каноническая ссылка на один YouTube-ролик"):
         dub_wizard._extract_youtube_video_id(url)
-
-

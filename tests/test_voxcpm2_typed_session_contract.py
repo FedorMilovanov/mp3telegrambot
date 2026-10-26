@@ -87,9 +87,7 @@ def test_voxcpm2_backend_accepts_only_typed_session_config(monkeypatch) -> None:
 
 def test_production_cli_builds_typed_session_config() -> None:
     source = CLI.read_text(encoding="utf-8")
-    adapter = (ROOT / "services" / "speech_backends" / "voxcpm2.py").read_text(
-        encoding="utf-8"
-    )
+    adapter = (ROOT / "services" / "speech_backends" / "voxcpm2.py").read_text(encoding="utf-8")
 
     assert "BackendSessionConfig" in source
     assert "session = backend.open_session(" in source

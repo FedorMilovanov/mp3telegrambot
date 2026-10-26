@@ -84,9 +84,7 @@ def test_factory_only_clients_disable_hidden_sdk_retries(monkeypatch):
     assert all(item["http_options"].retry_options.attempts == 1 for item in created)
 
 
-def test_compact_analysis_audio_is_aac_mono_and_source_is_not_render_media(
-    monkeypatch, tmp_path
-):
+def test_compact_analysis_audio_is_aac_mono_and_source_is_not_render_media(monkeypatch, tmp_path):
     source_file = tmp_path / "video_factory_audio_source.webm"
     source_file.write_bytes(b"source" * 500)
     source_probe = SimpleNamespace(

@@ -34,9 +34,7 @@ def test_active_health_requires_repair_and_project_barriers() -> None:
 def test_active_health_requires_current_worker_release() -> None:
     assert dub_worker.WORKER_RUNTIME == WORKER_RUNTIME
     assert dub_worker.CANCELLATION_POLICY == "preflight-cancel-before-runner-v1"
-    assert dub_worker.JOB_QUALITY_RETRY_POLICY == (
-        "worker-checkpoint-quality-restart-v1"
-    )
+    assert dub_worker.JOB_QUALITY_RETRY_POLICY == ("worker-checkpoint-quality-restart-v1")
     assert dub_worker.MAX_JOB_QUALITY_RESTARTS == 3
     assert callable(dub_worker.execute_job)
     assert callable(dub_worker._run_with_quality_restarts)
@@ -47,18 +45,14 @@ def test_active_health_requires_current_worker_release() -> None:
 def test_active_health_requires_long_form_delivery_resilience() -> None:
     assert direct_max_quality_io.SPEECH_SLOT_POLICY == "exact-srt-slot-minus-tail-v1"
     assert callable(direct_max_quality_io.speech_slot_seconds)
-    assert direct_max_quality_render.ADAPTIVE_RETRY_POLICY == (
-        "stable-identity-candidate-retry-v2"
-    )
+    assert direct_max_quality_render.ADAPTIVE_RETRY_POLICY == ("stable-identity-candidate-retry-v2")
     assert direct_retry_epoch.POLICY == "failed-segment-seed-epoch-scope-v2"
     assert callable(direct_retry_epoch.invalidate_segment_for_retry)
     assert direct_timeline_delivery_qa.POLICY == "assembled-monolithic-voice-v1"
     assert callable(direct_timeline_delivery_qa.verify_timeline_delivery)
     assert final_encoded_delivery_qa.POLICY == "post-aac-russian-delivery-v2"
     assert callable(final_encoded_delivery_qa.verify_final_encoded_russian)
-    assert clean_production_core.DELIVERY_RETRY_POLICY == (
-        "bounded-checkpointed-delivery-retry-v1"
-    )
+    assert clean_production_core.DELIVERY_RETRY_POLICY == ("bounded-checkpointed-delivery-retry-v1")
 
 
 def test_active_health_composes_and_fingerprints_current_contracts() -> None:

@@ -23,8 +23,8 @@ def _segment() -> dict[str, object]:
 def test_final_stress_uses_duration_energy_and_pitch() -> None:
     rate = 16_000
     audio = np.zeros(rate, dtype=np.float32)
-    audio[int(0.30 * rate):int(0.42 * rate)] = _tone(rate, 0.12, 165.0, 0.18)
-    audio[int(0.55 * rate):int(0.80 * rate)] = _tone(rate, 0.25, 175.0, 0.25)
+    audio[int(0.30 * rate) : int(0.42 * rate)] = _tone(rate, 0.12, 165.0, 0.18)
+    audio[int(0.55 * rate) : int(0.80 * rate)] = _tone(rate, 0.25, 175.0, 0.25)
 
     evidence = russian_pronunciation.stress_evidence(audio, rate, _segment())
 
@@ -39,9 +39,9 @@ def test_final_stress_uses_duration_energy_and_pitch() -> None:
 def test_phrase_final_lengthening_alone_does_not_prove_stress() -> None:
     rate = 16_000
     audio = np.zeros(rate, dtype=np.float32)
-    audio[int(0.30 * rate):int(0.43 * rate)] = _tone(rate, 0.13, 175.0, 0.24)
+    audio[int(0.30 * rate) : int(0.43 * rate)] = _tone(rate, 0.13, 175.0, 0.24)
     # Long, but much quieter and sharply falling: duration alone must not pass.
-    audio[int(0.55 * rate):int(0.78 * rate)] = _tone(rate, 0.23, 130.0, 0.07)
+    audio[int(0.55 * rate) : int(0.78 * rate)] = _tone(rate, 0.23, 130.0, 0.07)
 
     evidence = russian_pronunciation.stress_evidence(audio, rate, _segment())
 

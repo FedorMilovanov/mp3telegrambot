@@ -5,6 +5,7 @@
 не нашло свой ролик («не найдено в листинге»), хотя он есть на канале
 (VK поймал 0.90). Причина — кэширование листинга, обрезанного ранним выходом.
 """
+
 import time
 from pathlib import Path
 
@@ -76,10 +77,12 @@ def test_load_helper_marks_early_exit_incomplete():
 
 # ── Тайминг-фикс из того же прогона: точка после ⏱ сквозь жирный ──
 
+
 def test_ts_period_order_handles_bold_close_before_timestamp():
     """Дамп 07-09: application-блок Reflection даёт «**…истории.** ⏱ 20:17»
     (точка ВНУТРИ жирного). Точка обязана уехать за таймкод, жирный — цел."""
     from converters.md_telegraph import _fix_ts_period_order
+
     got = _fix_ts_period_order("**Лень и привычка доверять пересказам вместо исследования истории.** ⏱ 20:17")
     assert got == "**Лень и привычка доверять пересказам вместо исследования истории** ⏱ 20:17."
     # plain-случаи не сломаны
@@ -90,18 +93,28 @@ def test_ts_period_order_handles_bold_close_before_timestamp():
 def test_application_block_no_period_before_timestamp():
     """Сквозной путь application-блока: в готовых узлах нет «. ⏱»."""
     from converters.md_telegraph import _structured_blocks_to_nodes_v2
-    nodes = _structured_blocks_to_nodes_v2([
-        {"type": "application",
-         "challenge": "Интеллектуальная лень и доверие пересказам вместо личного исследования истории.",
-         "anchor_timestamp": "20:17", "concrete_step": "Прочитать Послание."},
-    ], yt_url="https://youtu.be/x", duration=3600)
+
+    nodes = _structured_blocks_to_nodes_v2(
+        [
+            {
+                "type": "application",
+                "challenge": "Интеллектуальная лень и доверие пересказам вместо личного исследования истории.",
+                "anchor_timestamp": "20:17",
+                "concrete_step": "Прочитать Послание.",
+            },
+        ],
+        yt_url="https://youtu.be/x",
+        duration=3600,
+    )
     flat = []
+
     def walk(n):
         if isinstance(n, str):
             flat.append(n)
         elif isinstance(n, dict):
             for c in n.get("children", []) or []:
                 walk(c)
+
     for n in nodes:
         walk(n)
     text = "".join(flat)

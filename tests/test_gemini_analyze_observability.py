@@ -6,7 +6,8 @@ def test_gemini_analyze_audio_logs_observability_events():
     source = Path("services/gemini_analyze.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
     calls = [
-        node for node in ast.walk(tree)
+        node
+        for node in ast.walk(tree)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
         and node.func.id in {"alog_gemini_response", "alog_gemini_run"}
@@ -21,4 +22,4 @@ def test_gemini_analyze_audio_logs_observability_events():
 def test_gemini_analyze_masks_errors_before_observability_logging():
     source = Path("services/gemini_analyze.py").read_text(encoding="utf-8")
     assert "safe_err = _mask_api_key(str(e))" in source
-    assert "error=f\"{err_type}: {safe_err[:300]}\"" in source
+    assert 'error=f"{err_type}: {safe_err[:300]}"' in source

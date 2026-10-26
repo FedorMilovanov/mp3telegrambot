@@ -129,9 +129,7 @@ def _is_sys_meta_path(node: ast.AST) -> bool:
 
 def _target_writes_container(target: ast.AST, predicate) -> bool:
     return any(
-        predicate(node)
-        or (isinstance(node, ast.Subscript) and predicate(node.value))
-        for node in ast.walk(target)
+        predicate(node) or (isinstance(node, ast.Subscript) and predicate(node.value)) for node in ast.walk(target)
     )
 
 
@@ -165,9 +163,7 @@ def test_critical_runtime_surfaces_do_not_setattr_telegram_delivery_methods():
             ):
                 continue
             method = node.args[1].value
-            assert method not in TELEGRAM_METHODS, (
-                f"{rel} reintroduced Telegram delivery interception: {method}"
-            )
+            assert method not in TELEGRAM_METHODS, f"{rel} reintroduced Telegram delivery interception: {method}"
 
 
 def test_production_has_zero_install_calls_and_no_module_alias_surgery():
@@ -195,32 +191,22 @@ def test_production_has_zero_install_calls_and_no_module_alias_surgery():
                     and node.func.attr in SYS_MODULE_MUTATORS
                     and _is_sys_modules(node.func.value)
                 ):
-                    module_aliases.append(
-                        f"{rel}:{node.lineno}:sys.modules.{node.func.attr}"
-                    )
+                    module_aliases.append(f"{rel}:{node.lineno}:sys.modules.{node.func.attr}")
                 if (
                     isinstance(node.func, ast.Attribute)
                     and node.func.attr in SYS_META_PATH_MUTATORS
                     and _is_sys_meta_path(node.func.value)
                 ):
-                    import_hook_findings.append(
-                        f"{rel}:{node.lineno}:sys.meta_path.{node.func.attr}"
-                    )
+                    import_hook_findings.append(f"{rel}:{node.lineno}:sys.meta_path.{node.func.attr}")
 
             targets: tuple[ast.AST, ...] = ()
             if isinstance(node, ast.Assign):
                 targets = tuple(node.targets)
             elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
                 targets = (node.target,)
-            if any(
-                _target_writes_container(target, _is_sys_modules)
-                for target in targets
-            ):
+            if any(_target_writes_container(target, _is_sys_modules) for target in targets):
                 module_aliases.append(f"{rel}:{node.lineno}:sys.modules assignment")
-            if any(
-                _target_writes_container(target, _is_sys_meta_path)
-                for target in targets
-            ):
+            if any(_target_writes_container(target, _is_sys_meta_path) for target in targets):
                 import_hook_findings.append(f"{rel}:{node.lineno}:sys.meta_path assignment")
 
     findings = {
@@ -230,9 +216,7 @@ def test_production_has_zero_install_calls_and_no_module_alias_surgery():
         "import_hooks": import_hook_findings,
     }
     nonempty = {key: value for key, value in findings.items() if value}
-    assert nonempty == {}, (
-        f"ROOT_CALLS={len(install_calls)}; zero-surgery findings={nonempty}"
-    )
+    assert nonempty == {}, f"ROOT_CALLS={len(install_calls)}; zero-surgery findings={nonempty}"
 
 
 def test_runtime_manifest_critical_routes_are_contracts_not_patch_stacks():
@@ -266,9 +250,7 @@ def test_contextvar_exception_is_limited_to_diagnostics(tmp_path) -> None:
     """
     service = tmp_path / "services"
     service.mkdir()
-    (service / "sneaky.py").write_text(
-        "from contextvars import ContextVar\nVAR = ContextVar('x')\n", encoding="utf-8"
-    )
+    (service / "sneaky.py").write_text("from contextvars import ContextVar\nVAR = ContextVar('x')\n", encoding="utf-8")
     allowed = tmp_path / "core"
     allowed.mkdir()
     (allowed / "logging_setup.py").write_text(

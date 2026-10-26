@@ -6,6 +6,7 @@ observed in production output and keeps legitimate technical/military uses
 untouched. Generative prompts still own style; this module is the publication
 boundary that prevents a known awkward phrase from reaching subscribers.
 """
+
 from __future__ import annotations
 
 import re

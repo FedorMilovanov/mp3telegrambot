@@ -11,45 +11,49 @@ def test_parse_quiz_json_requires_four_unique_options_and_valid_correct():
     ]
     """
     parsed = _parse_quiz_json(raw)
-    assert parsed == [{
-        "question": "Почему авторитет Бытия важен для аргумента о творении?",
-        "options": [
-            "Текст Бытия задаёт норму для толкования дней",
-            "Жанр Бытия задаёт символическую рамку для дней",
-            "Порядок дней служит только литературной организацией",
-            "Богословский вывод строится на поздней традиции",
-        ],
-        "correct": 0,
-        "explanation": "Материал связывает выводы о творении с доверием к тексту Бытия.",
-    }]
+    assert parsed == [
+        {
+            "question": "Почему авторитет Бытия важен для аргумента о творении?",
+            "options": [
+                "Текст Бытия задаёт норму для толкования дней",
+                "Жанр Бытия задаёт символическую рамку для дней",
+                "Порядок дней служит только литературной организацией",
+                "Богословский вывод строится на поздней традиции",
+            ],
+            "correct": 0,
+            "explanation": "Материал связывает выводы о творении с доверием к тексту Бытия.",
+        }
+    ]
 
 
 def test_parse_quiz_json_dedupes_questions_and_trims_lengths():
     long_q = "Как " + ("В" * 400)
-    raw = str([
-        {
-            "question": long_q,
-            "options": [
-                "Историко-грамматическое толкование дней творения " * 4,
-                "Литературно-рамочное толкование дней творения",
-                "Догматически-символическое толкование дней творения",
-                "Литургически-поэтическое толкование дней творения",
-            ],
-            "correct": 0,
-            "explanation": "E" * 250,
-        },
-        {
-            "question": long_q,
-            "options": [
-                "Историко-грамматическое толкование",
-                "Литературно-рамочное толкование",
-                "Догматически-символическое толкование",
-                "Литургически-поэтическое толкование",
-            ],
-            "correct": 0,
-            "explanation": "dup",
-        },
-    ]).replace("'", '"')
+    raw = str(
+        [
+            {
+                "question": long_q,
+                "options": [
+                    "Историко-грамматическое толкование дней творения " * 4,
+                    "Литературно-рамочное толкование дней творения",
+                    "Догматически-символическое толкование дней творения",
+                    "Литургически-поэтическое толкование дней творения",
+                ],
+                "correct": 0,
+                "explanation": "E" * 250,
+            },
+            {
+                "question": long_q,
+                "options": [
+                    "Историко-грамматическое толкование",
+                    "Литературно-рамочное толкование",
+                    "Догматически-символическое толкование",
+                    "Литургически-поэтическое толкование",
+                ],
+                "correct": 0,
+                "explanation": "dup",
+            },
+        ]
+    ).replace("'", '"')
     parsed = _parse_quiz_json(raw)
     assert parsed and len(parsed) == 1
     assert len(parsed[0]["question"]) <= 255
@@ -58,15 +62,17 @@ def test_parse_quiz_json_dedupes_questions_and_trims_lengths():
 
 
 def test_quiz_context_includes_argument_terms_and_timestamps():
-    ctx = _format_ai_context({
-        "main_topic": "Главная тема",
-        "analysis_summary": "Аналитика",
-        "argument_arc": "Аргумент",
-        "timestamps": "0:00 Начало\n10:00 Середина",
-        "key_categories": ["Категория"],
-        "terms_data": {"concepts": ["Термин || объяснение"], "scripture": ["Быт. 1:1 || роль"]},
-        "questions": ["🟢 Вопрос?"],
-    })
+    ctx = _format_ai_context(
+        {
+            "main_topic": "Главная тема",
+            "analysis_summary": "Аналитика",
+            "argument_arc": "Аргумент",
+            "timestamps": "0:00 Начало\n10:00 Середина",
+            "key_categories": ["Категория"],
+            "terms_data": {"concepts": ["Термин || объяснение"], "scripture": ["Быт. 1:1 || роль"]},
+            "questions": ["🟢 Вопрос?"],
+        }
+    )
     for needle in ("Главная тема", "Аргумент", "0:00 Начало", "Категория", "Термин", "Быт. 1:1"):
         assert needle in ctx
 
@@ -156,48 +162,68 @@ def test_parse_quiz_json_rejects_obvious_and_category_mismatched_distractors():
 
 
 def test_sanitize_poll_payload_enforces_telegram_limits_and_quality():
-    payload = _sanitize_poll_payload({
-        "question": "Почему буквальное чтение дней творения связано с авторитетом Писания" + " очень" * 80,
-        "options": [
-            "Текст Бытия задаёт норму для толкования дней",
-            "Жанр Бытия задаёт символическую рамку для дней",
-            "Порядок дней служит литературной организацией",
-            "Богословский вывод строится на поздней традиции",
-        ],
-        "correct": 0,
-        "explanation": "Объяснение" * 40,
-    }, index=12, total=20)
+    payload = _sanitize_poll_payload(
+        {
+            "question": "Почему буквальное чтение дней творения связано с авторитетом Писания" + " очень" * 80,
+            "options": [
+                "Текст Бытия задаёт норму для толкования дней",
+                "Жанр Бытия задаёт символическую рамку для дней",
+                "Порядок дней служит литературной организацией",
+                "Богословский вывод строится на поздней традиции",
+            ],
+            "correct": 0,
+            "explanation": "Объяснение" * 40,
+        },
+        index=12,
+        total=20,
+    )
     assert payload
     assert len(payload["question"]) <= 300
     assert payload["question"].startswith("❓ 12/20: ")
     assert payload["question"].endswith("…?")
     assert len(payload["explanation"]) <= 200
 
-    assert _sanitize_poll_payload({
-        "question": "Почему авторитет Бытия важен для аргумента о творении?",
-        "options": ["A", "B", "C", "D"],
-        "correct": 0,
-        "explanation": "bad",
-    }, index=1, total=1) is None
+    assert (
+        _sanitize_poll_payload(
+            {
+                "question": "Почему авторитет Бытия важен для аргумента о творении?",
+                "options": ["A", "B", "C", "D"],
+                "correct": 0,
+                "explanation": "bad",
+            },
+            index=1,
+            total=1,
+        )
+        is None
+    )
 
-    assert _sanitize_poll_payload({
-        "question": "Почему авторитет Бытия важен для аргумента о творении?",
-        "options": ["Текст Бытия задаёт норму", "Жанр отменяет историю", "Вопрос неясен", "Порядок не важен"],
-        "correct": 0,
-        "explanation": "bad",
-    }, index=1, total=1) is None
+    assert (
+        _sanitize_poll_payload(
+            {
+                "question": "Почему авторитет Бытия важен для аргумента о творении?",
+                "options": ["Текст Бытия задаёт норму", "Жанр отменяет историю", "Вопрос неясен", "Порядок не важен"],
+                "correct": 0,
+                "explanation": "bad",
+            },
+            index=1,
+            total=1,
+        )
+        is None
+    )
 
 
 def test_reflection_question_normalizer_repairs_markers_dedupes_and_filters():
     from services.telegraph_pages import _normalize_question_items
 
-    out = _normalize_question_items([
-        "Как этот аргумент проверяет мою веру",
-        "🟢 Как этот аргумент проверяет мою веру?",  # duplicate after ? repair
-        "🔵 Почему буквальное творение связано с авторитетом Писания?",
-        "Коротко",
-        "Это декларативное утверждение без вопроса.",
-    ])
+    out = _normalize_question_items(
+        [
+            "Как этот аргумент проверяет мою веру",
+            "🟢 Как этот аргумент проверяет мою веру?",  # duplicate after ? repair
+            "🔵 Почему буквальное творение связано с авторитетом Писания?",
+            "Коротко",
+            "Это декларативное утверждение без вопроса.",
+        ]
+    )
     assert out == [
         "🟢 Как этот аргумент проверяет мою веру?",
         "🔵 Почему буквальное творение связано с авторитетом Писания?",

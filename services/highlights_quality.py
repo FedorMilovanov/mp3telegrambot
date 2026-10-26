@@ -11,6 +11,7 @@ text-only Gemini pass to judge the actual recognised fragment texts.
 Highlights are optional.  When the evidence cannot prove a coherent reel, the
 safe result is no reel rather than a polished-looking broken one.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -39,16 +40,16 @@ logger = logging.getLogger(__name__)
 
 _SENTENCE_END_RE = re.compile(r'[.!?…]["»”’)]*$')
 _DANGLING_END_RE = re.compile(
-    r'(?i)(?:[,;:—–-]|'
-    r'\b(?:и|а|но|или|что|чтобы|когда|если|потому что|так как|который|которая|которые|'
+    r"(?i)(?:[,;:—–-]|"
+    r"\b(?:и|а|но|или|что|чтобы|когда|если|потому что|так как|который|которая|которые|"
     r'поскольку|хотя|ведь|как|к|с|в|на|для|из|по|от|у)\s*)["»”’)]*$'
 )
 _LEFT_CONTEXT_RE = re.compile(
-    r'(?i)^(?:и|а|но|или|потому|поэтому|однако|ведь|тогда|так что|в смысле|'
-    r'то есть|иными словами|другими словами|например|кроме того|более того|'
-    r'таким образом|с другой стороны|'
-    r'этот|эта|это|эти|такой|такая|такие|он|она|они|его|ее|её|их|'
-    r'который|которая|которые|что|когда|если|поскольку|хотя)\b'
+    r"(?i)^(?:и|а|но|или|потому|поэтому|однако|ведь|тогда|так что|в смысле|"
+    r"то есть|иными словами|другими словами|например|кроме того|более того|"
+    r"таким образом|с другой стороны|"
+    r"этот|эта|это|эти|такой|такая|такие|он|она|они|его|ее|её|их|"
+    r"который|которая|которые|что|когда|если|поскольку|хотя)\b"
 )
 _WORD_RE = re.compile(r"[A-Za-zА-Яа-яЁё0-9]+", re.UNICODE)
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
@@ -73,11 +74,7 @@ def _clean_text(value: Any) -> str:
 
 
 def _word_tokens(text: str) -> set[str]:
-    return {
-        token.casefold()
-        for token in _WORD_RE.findall(text)
-        if len(token) >= 3
-    }
+    return {token.casefold() for token in _WORD_RE.findall(text) if len(token) >= 3}
 
 
 def _text_similarity(left: str, right: str) -> float:
@@ -247,10 +244,7 @@ def refine_fragment_from_transcript(
     while (
         first_index > 0
         and context_hops < 3
-        and (
-            _needs_left_context(items[first_index]["text"])
-            or not _ends_cleanly(items[first_index - 1]["text"])
-        )
+        and (_needs_left_context(items[first_index]["text"]) or not _ends_cleanly(items[first_index - 1]["text"]))
         and items[first_index]["start"] - items[first_index - 1]["end"] <= 1.8
         and items[first_index - 1]["start"] >= window_start
     ):
@@ -351,11 +345,7 @@ def refine_fragment_from_transcript(
         "end_seconds": round(refined_end, 3),
         "transcript": text,
         "_subtitle_source_segments": subtitle_segments,
-        "_quality": {
-            key: value
-            for key, value in evidence.items()
-            if key != "transcript"
-        },
+        "_quality": {key: value for key, value in evidence.items() if key != "transcript"},
     }
     return refined, evidence
 
@@ -582,11 +572,7 @@ def _map_probe_segments_to_source(
     for item in items:
         center = (item["start"] + item["end"]) / 2
         window = next(
-            (
-                candidate
-                for candidate in windows
-                if candidate["probe_start"] <= center <= candidate["probe_end"]
-            ),
+            (candidate for candidate in windows if candidate["probe_start"] <= center <= candidate["probe_end"]),
             None,
         )
         if window is None:
@@ -611,9 +597,7 @@ def _map_probe_segments_to_source(
         if words:
             mapped_text = _clean_text(" ".join(word["word"] for word in words))
         else:
-            overhang = (clipped_start - float(item["start"])) + (
-                float(item["end"]) - clipped_end
-            )
+            overhang = (clipped_start - float(item["start"])) + (float(item["end"]) - clipped_end)
             if overhang > 0.25:
                 # A no-word segment crossing a synthetic separator cannot be
                 # split safely; accepting its full text would contaminate a cut.
@@ -826,10 +810,7 @@ async def refine_highlights_candidate(
         report["reason"] = "final_fragment_count"
         return None, report
 
-    total_duration = sum(
-        float(fragment["end_seconds"]) - float(fragment["start_seconds"])
-        for fragment in refined
-    )
+    total_duration = sum(float(fragment["end_seconds"]) - float(fragment["start_seconds"]) for fragment in refined)
     max_total = _env_float("HIGHLIGHTS_MAX_VERIFIED_DURATION_SECONDS", 115.0, 60.0, 180.0)
     if total_duration > max_total:
         report["reason"] = "verified_duration_too_long"
@@ -946,9 +927,7 @@ async def render_verified_highlights(
                         f"[bg{index}]"
                         "scale=720:1280:force_original_aspect_ratio=increase,"
                         f"crop=720:1280,gblur=sigma=20,setsar=1[blurred{index}]",
-                        f"[fg{index}]"
-                        "scale=720:1280:force_original_aspect_ratio=decrease,"
-                        f"setsar=1[small{index}]",
+                        f"[fg{index}]scale=720:1280:force_original_aspect_ratio=decrease,setsar=1[small{index}]",
                         f"[blurred{index}][small{index}]"
                         "overlay=(W-w)/2:(H-h)/2,fps=30,format=yuv420p,"
                         f"setpts=PTS-STARTPTS[v{index}]",
@@ -963,10 +942,7 @@ async def render_verified_highlights(
             )
             concat_inputs.append(f"[v{index}][a{index}]")
 
-        filters.append(
-            "".join(concat_inputs)
-            + f"concat=n={len(fragments)}:v=1:a=1[outv][outa]"
-        )
+        filters.append("".join(concat_inputs) + f"concat=n={len(fragments)}:v=1:a=1[outv][outa]")
         cmd = [
             ffmpeg,
             *input_args,

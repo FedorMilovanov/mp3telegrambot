@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Cancellation-safe ownership of long-running process trees."""
+
 from __future__ import annotations
 
 import asyncio
@@ -142,9 +143,7 @@ async def _stop_direct_process_fallback(
     try:
         await asyncio.wait_for(process.wait(), timeout=grace_seconds)
     except asyncio.TimeoutError as exc:
-        raise RuntimeError(
-            "direct child did not stop after terminate/kill fallback"
-        ) from exc
+        raise RuntimeError("direct child did not stop after terminate/kill fallback") from exc
 
 
 async def _stop_windows_tree(
@@ -169,9 +168,7 @@ async def _stop_windows_tree(
         try:
             await asyncio.wait_for(process.wait(), timeout=grace_seconds)
         except asyncio.TimeoutError as exc:
-            raise RuntimeError(
-                "Windows process tree did not stop after taskkill"
-            ) from exc
+            raise RuntimeError("Windows process tree did not stop after taskkill") from exc
 
 
 async def _stop_posix_tree(
@@ -195,9 +192,7 @@ async def _stop_posix_tree(
         try:
             await asyncio.wait_for(process.wait(), timeout=grace_seconds)
         except asyncio.TimeoutError as exc:
-            raise RuntimeError(
-                "POSIX process tree did not stop after SIGTERM/SIGKILL"
-            ) from exc
+            raise RuntimeError("POSIX process tree did not stop after SIGTERM/SIGKILL") from exc
 
 
 async def _stop_process(
@@ -219,9 +214,7 @@ async def _stop_before_returning(
     grace_seconds: float,
 ) -> None:
     """Finish tree cleanup before propagating one or many cancellations."""
-    stop_task = asyncio.create_task(
-        _stop_process(process, grace_seconds=grace_seconds)
-    )
+    stop_task = asyncio.create_task(_stop_process(process, grace_seconds=grace_seconds))
     cancellation: asyncio.CancelledError | None = None
 
     while True:
@@ -248,11 +241,7 @@ def _latency_stage(argv: Sequence[str]) -> str:
     # Do not use pathlib here. Some cross-platform ownership tests temporarily
     # emulate os.name='nt' on Linux; pathlib.Path would then try to instantiate
     # WindowsPath on a POSIX runner just for an observability label.
-    executable = (
-        str(argv[0]).replace("\\", "/").rsplit("/", 1)[-1].casefold()
-        if argv
-        else ""
-    )
+    executable = str(argv[0]).replace("\\", "/").rsplit("/", 1)[-1].casefold() if argv else ""
     joined = " ".join(lowered)
     if "yt-dlp" in joined or "yt_dlp" in joined:
         return "process_yt_dlp"

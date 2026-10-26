@@ -6,6 +6,7 @@ The entrypoint calls this through ``services.runtime_manifest`` *before* importi
 side-effect free; environment/model/network policy has one auditable lifecycle
 owner instead of depending on package import order.
 """
+
 from __future__ import annotations
 
 import os

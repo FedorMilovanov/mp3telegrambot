@@ -4,6 +4,7 @@
 No Gemini calls. This is for old pages: fetch content from Telegraph, run current
 node postprocess/audit, editPage, and optionally refresh archive timestamps later.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -21,7 +22,11 @@ logger = logging.getLogger(__name__)
 
 _TELEGRAPH_URL_RE = re.compile(r"^https?://telegra\.ph/(?P<path>[^\s?#]+)", re.IGNORECASE)
 _PAGE_URL_KEYS = (
-    "synopsis_url", "study_url", "reflection_url", "terms_url", "questions_url",
+    "synopsis_url",
+    "study_url",
+    "reflection_url",
+    "terms_url",
+    "questions_url",
 )
 
 
@@ -100,10 +105,13 @@ async def expand_telegraph_page_chain(url: str, *, max_pages: int | None = None)
         out.append(current)
         path = telegraph_path_from_url(current)
         try:
-            resp = await loop.run_in_executor(None, lambda p=path: requests.get(
-                f"https://api.telegra.ph/getPage/{p}?return_content=true",
-                timeout=30,
-            ))
+            resp = await loop.run_in_executor(
+                None,
+                lambda p=path: requests.get(
+                    f"https://api.telegra.ph/getPage/{p}?return_content=true",
+                    timeout=30,
+                ),
+            )
             data = resp.json()
             if not data.get("ok"):
                 continue
@@ -118,10 +126,13 @@ async def expand_telegraph_page_chain(url: str, *, max_pages: int | None = None)
                 if guessed and guessed not in seen and guessed not in queue:
                     try:
                         gpath = telegraph_path_from_url(guessed)
-                        gresp = await loop.run_in_executor(None, lambda p=gpath: requests.get(
-                            f"https://api.telegra.ph/getPage/{p}?return_content=false",
-                            timeout=30,
-                        ))
+                        gresp = await loop.run_in_executor(
+                            None,
+                            lambda p=gpath: requests.get(
+                                f"https://api.telegra.ph/getPage/{p}?return_content=false",
+                                timeout=30,
+                            ),
+                        )
                         if (gresp.json() or {}).get("ok"):
                             next_urls.append(guessed)
                     except Exception:
@@ -145,10 +156,13 @@ async def repair_telegraph_page_url(url: str) -> TelegraphRepairResult:
         return TelegraphRepairResult(url=url, ok=False, error="not_telegra_ph_url")
     loop = asyncio.get_running_loop()
     try:
-        resp = await loop.run_in_executor(None, lambda: requests.get(
-            f"https://api.telegra.ph/getPage/{path}?return_content=true",
-            timeout=30,
-        ))
+        resp = await loop.run_in_executor(
+            None,
+            lambda: requests.get(
+                f"https://api.telegra.ph/getPage/{path}?return_content=true",
+                timeout=30,
+            ),
+        )
         data = resp.json()
         if not data.get("ok"):
             return TelegraphRepairResult(url=url, ok=False, error=str(data.get("error") or "getPage_failed")[:300])
@@ -167,7 +181,9 @@ async def repair_telegraph_page_url(url: str) -> TelegraphRepairResult:
             return TelegraphRepairResult(url=url, ok=True, changed=False, title=title, audit_summary=audit_summary)
         ok = await _edit_telegraph_page(url, title, author, fixed_nodes, loop)
         if not ok:
-            return TelegraphRepairResult(url=url, ok=False, changed=True, title=title, error="editPage_failed", audit_summary=audit_summary)
+            return TelegraphRepairResult(
+                url=url, ok=False, changed=True, title=title, error="editPage_failed", audit_summary=audit_summary
+            )
         logger.info("Telegraph repair OK: %s changed=True", url)
         return TelegraphRepairResult(url=url, ok=True, changed=True, title=title, audit_summary=audit_summary)
     except Exception as exc:
@@ -182,7 +198,7 @@ async def repair_generated_page_record(record: dict[str, Any]) -> list[Telegraph
     expanded: list[str] = []
     for url in urls:
         chain = await expand_telegraph_page_chain(url)
-        for item in (chain or [url]):
+        for item in chain or [url]:
             if item not in expanded:
                 expanded.append(item)
     results: list[TelegraphRepairResult] = []
@@ -216,16 +232,20 @@ class TelegraphRepairBatchItem:
     results: list[TelegraphRepairResult]
 
 
-async def repair_generated_page_records(records: list[dict[str, Any]], *, limit: int = 10) -> list[TelegraphRepairBatchItem]:
+async def repair_generated_page_records(
+    records: list[dict[str, Any]], *, limit: int = 10
+) -> list[TelegraphRepairBatchItem]:
     """Repair Telegraph pages for several archive records, gently and sequentially."""
     out: list[TelegraphRepairBatchItem] = []
     for record in (records or [])[: max(1, min(int(limit or 10), 20))]:
         results = await repair_generated_page_record(record)
-        out.append(TelegraphRepairBatchItem(
-            video_id=str(record.get("video_id") or ""),
-            title=str(record.get("title") or "Без названия"),
-            results=results,
-        ))
+        out.append(
+            TelegraphRepairBatchItem(
+                video_id=str(record.get("video_id") or ""),
+                title=str(record.get("title") or "Без названия"),
+                results=results,
+            )
+        )
         await asyncio.sleep(1.0)
     return out
 
@@ -240,7 +260,9 @@ def format_batch_repair_results(items: list[TelegraphRepairBatchItem]) -> str:
     for idx, item in enumerate(items, 1):
         item_ok = sum(1 for r in item.results if r.ok)
         item_changed = sum(1 for r in item.results if r.changed)
-        lines.append(f"{idx}. {item.title} [{item.video_id}] — {item_ok}/{len(item.results)} OK, changed={item_changed}")
+        lines.append(
+            f"{idx}. {item.title} [{item.video_id}] — {item_ok}/{len(item.results)} OK, changed={item_changed}"
+        )
         for r in item.results[:5]:
             mark = "✅" if r.ok else "❌"
             suffix = " changed" if r.changed else ""

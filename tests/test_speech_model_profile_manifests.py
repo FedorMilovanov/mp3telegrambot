@@ -110,9 +110,7 @@ def test_builtin_catalog_is_manifest_backed_and_default_is_canonical() -> None:
     assert len(records[0].source_sha256) == 64
     assert snapshot["policy"] == PROFILE_MANIFEST_POLICY
     assert snapshot["profile_count"] == 1
-    assert snapshot["profiles"][0]["profile"]["model_revision"] == (
-        "local-archive-pinned-v1"
-    )
+    assert snapshot["profiles"][0]["profile"]["model_revision"] == ("local-archive-pinned-v1")
     assert evidence == {
         "schema_version": 1,
         "profile_id": DEFAULT_MODEL_PROFILE_ID,

@@ -5,6 +5,7 @@
 контура возвращает ``None`` и не отменяет аудио. Fresh и cache-hit используют
 одну реализацию, но сохраняют свои исторические тексты логов.
 """
+
 from __future__ import annotations
 
 import logging

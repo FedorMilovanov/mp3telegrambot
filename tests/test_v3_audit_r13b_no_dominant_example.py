@@ -10,14 +10,13 @@ test_v3_audit_r13_term_anchoring.py) — он проверяет ОБЩИЙ па
 Title-Case англоязычная богословская фраза не должна повторяться в
 STUDY_ANALYSIS_PROMPT больше 5 раз, чтобы не создать следующий такой же баг.
 """
+
 import re
 from collections import Counter
 
 from core.prompts import STUDY_ANALYSIS_PROMPT, REFLECTION_APPLICATION_PROMPT
 
-_TITLE_CASE_PHRASE_RE = re.compile(
-    r'\b[A-Z][a-z]+(?:\s(?:of|the|and)?\s?[A-Z][a-z]+){1,3}\b'
-)
+_TITLE_CASE_PHRASE_RE = re.compile(r"\b[A-Z][a-z]+(?:\s(?:of|the|and)?\s?[A-Z][a-z]+){1,3}\b")
 
 # Общие служебные ярлыки (не богословские термины) — не считаются.
 _NOT_A_TERM = {"Original Title", "Original Author"}
@@ -28,14 +27,8 @@ _MECHANICAL_EXAMPLE_ALLOWLIST = {"Total Depravity"}
 
 
 def test_no_theological_term_dominates_study_prompt():
-    counts = Counter(
-        m for m in _TITLE_CASE_PHRASE_RE.findall(STUDY_ANALYSIS_PROMPT)
-        if m not in _NOT_A_TERM
-    )
-    offenders = {
-        term: n for term, n in counts.items()
-        if n > 5 and term not in _MECHANICAL_EXAMPLE_ALLOWLIST
-    }
+    counts = Counter(m for m in _TITLE_CASE_PHRASE_RE.findall(STUDY_ANALYSIS_PROMPT) if m not in _NOT_A_TERM)
+    offenders = {term: n for term, n in counts.items() if n > 5 and term not in _MECHANICAL_EXAMPLE_ALLOWLIST}
     assert not offenders, (
         f"термин(ы) повторяются как доминирующий пример: {offenders} — "
         "риск few-shot anchoring (см. AGENTS.md 'No default-vocabulary injection rule')"
@@ -43,16 +36,14 @@ def test_no_theological_term_dominates_study_prompt():
 
 
 def test_no_theological_term_dominates_reflection_prompt():
-    counts = Counter(
-        m for m in _TITLE_CASE_PHRASE_RE.findall(REFLECTION_APPLICATION_PROMPT)
-        if m not in _NOT_A_TERM
-    )
+    counts = Counter(m for m in _TITLE_CASE_PHRASE_RE.findall(REFLECTION_APPLICATION_PROMPT) if m not in _NOT_A_TERM)
     offenders = {term: n for term, n in counts.items() if n > 5}
     assert not offenders, f"термин(ы) повторяются как доминирующий пример: {offenders}"
 
 
 def test_agents_md_documents_the_anchoring_rule():
     from pathlib import Path
+
     agents = Path(__file__).resolve().parents[1].joinpath("AGENTS.md").read_text(encoding="utf-8")
     assert "No default-vocabulary injection rule" in agents
     assert "few-shot anchoring" in agents

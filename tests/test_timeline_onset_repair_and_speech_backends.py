@@ -91,9 +91,7 @@ def test_late_onset_is_shifted_without_resynthesis(tmp_path: Path, onset: float)
     assert result["checkpoints_preserved"] is True
     assert timing["passed"] is True
     assert timing["onset_ms"] <= 220.0
-    assert np.sum(np.abs(repaired)) == pytest.approx(
-        np.sum(np.abs(original)), rel=2e-3
-    )
+    assert np.sum(np.abs(repaired)) == pytest.approx(np.sum(np.abs(original)), rel=2e-3)
 
 
 def test_repaired_window_rechecks_only_timing_and_reuses_semantics(tmp_path: Path) -> None:
@@ -163,9 +161,7 @@ def test_speech_backend_registry_exposes_voxcpm2_as_an_adapter() -> None:
 def test_runtime_contract_fingerprints_backend_and_onset_repair_sources() -> None:
     from tools.voxcpm2 import clean_runtime_contract
 
-    names = set(clean_runtime_contract._RENDER_MODULES) | set(
-        clean_runtime_contract._RELEASE_MODULES
-    )
+    names = set(clean_runtime_contract._RENDER_MODULES) | set(clean_runtime_contract._RELEASE_MODULES)
     for marker in (
         "services/speech_backends/base.py",
         "services/speech_backends/registry.py",
@@ -177,12 +173,9 @@ def test_runtime_contract_fingerprints_backend_and_onset_repair_sources() -> Non
         assert marker in names
 
 
-
 def test_complete_retry_round_checkpoints_are_migratable_without_audio_loss() -> None:
     root = Path(__file__).resolve().parents[1]
-    source = (root / "tools" / "voxcpm2" / "generic_direct_runtime.py").read_text(
-        encoding="utf-8"
-    )
+    source = (root / "tools" / "voxcpm2" / "generic_direct_runtime.py").read_text(encoding="utf-8")
     for marker in (
         "_legacy_checkpoint_prefix",
         "selected_raw_pitch_evidence_ok",
@@ -193,4 +186,3 @@ def test_complete_retry_round_checkpoints_are_migratable_without_audio_loss() ->
     ):
         assert marker in source
     assert "generic_clean_direct_runtime" not in source
-

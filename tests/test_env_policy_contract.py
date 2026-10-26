@@ -13,6 +13,7 @@
 * новые политики не начинают писать ``os.environ[...]`` напрямую, в обход
   реестра.
 """
+
 from __future__ import annotations
 
 import ast
@@ -138,11 +139,7 @@ def test_registry_matches_the_documented_list(clean_policy_env) -> None:
 def test_each_policy_owns_exactly_its_documented_variables(clean_policy_env) -> None:
     _apply_both_policies()
     for owner, expected in EXPECTED_OWNED.items():
-        actual = {
-            name
-            for name, owners in env_policy.POLICY_OWNED.items()
-            if owner in owners
-        }
+        actual = {name for name, owners in env_policy.POLICY_OWNED.items() if owner in owners}
         assert actual == expected, f"{owner}: {actual ^ expected}"
 
 

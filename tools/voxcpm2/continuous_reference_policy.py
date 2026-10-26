@@ -10,6 +10,7 @@ fallback montage is judged by the actual assembled WAV against the renderer's
 pre-model release floor, not rejected merely because every individual source
 window misses the stricter continuous-window preference.
 """
+
 from __future__ import annotations
 
 import json
@@ -145,21 +146,13 @@ def _usable_stats(stats: dict[str, Any]) -> bool:
 
 
 def _report_has_selection(payload: Any) -> bool:
-    return bool(
-        isinstance(payload, dict)
-        and isinstance(payload.get("selected"), list)
-        and payload.get("selected")
-    )
+    return bool(isinstance(payload, dict) and isinstance(payload.get("selected"), list) and payload.get("selected"))
 
 
 def _report_has_usable_selection(payload: Any) -> bool:
     if not _report_has_selection(payload):
         return False
-    return any(
-        _usable_stats(item)
-        for item in payload["selected"]
-        if isinstance(item, dict)
-    )
+    return any(_usable_stats(item) for item in payload["selected"] if isinstance(item, dict))
 
 
 def _assembled_reference_stats(path: Path) -> dict[str, float]:
@@ -199,33 +192,17 @@ def _assembled_release_failures(stats: dict[str, Any]) -> list[str]:
     if duration < 2.0:
         failures.append(f"duration={duration:.3f}s < 2.0s")
     if peak < release_analysis.MIN_REFERENCE_PEAK:
-        failures.append(
-            f"peak={peak:.6f} < {release_analysis.MIN_REFERENCE_PEAK:.3f}"
-        )
+        failures.append(f"peak={peak:.6f} < {release_analysis.MIN_REFERENCE_PEAK:.3f}")
     if clipping > release_analysis.MAX_REFERENCE_CLIPPING_RATIO:
-        failures.append(
-            "clipping_ratio="
-            f"{clipping:.6f} > {release_analysis.MAX_REFERENCE_CLIPPING_RATIO:.3f}"
-        )
+        failures.append(f"clipping_ratio={clipping:.6f} > {release_analysis.MAX_REFERENCE_CLIPPING_RATIO:.3f}")
     if voiced < release_analysis.MIN_REFERENCE_VOICED_RATIO:
-        failures.append(
-            "voiced_ratio="
-            f"{voiced:.3f} < {release_analysis.MIN_REFERENCE_VOICED_RATIO:.2f}"
-        )
+        failures.append(f"voiced_ratio={voiced:.3f} < {release_analysis.MIN_REFERENCE_VOICED_RATIO:.2f}")
     if active < release_analysis.MIN_REFERENCE_ACTIVE_RATIO:
-        failures.append(
-            "active_ratio="
-            f"{active:.3f} < {release_analysis.MIN_REFERENCE_ACTIVE_RATIO:.2f}"
-        )
+        failures.append(f"active_ratio={active:.3f} < {release_analysis.MIN_REFERENCE_ACTIVE_RATIO:.2f}")
     if gap > release_analysis.MAX_REFERENCE_INTERNAL_GAP:
-        failures.append(
-            "max_internal_gap="
-            f"{gap:.3f} > {release_analysis.MAX_REFERENCE_INTERNAL_GAP:.2f}"
-        )
+        failures.append(f"max_internal_gap={gap:.3f} > {release_analysis.MAX_REFERENCE_INTERNAL_GAP:.2f}")
     if f0_median <= 1.0 or f0_p90 <= 1.0:
-        failures.append(
-            f"pitch evidence missing (f0={f0_median:.2f}/{f0_p90:.2f})"
-        )
+        failures.append(f"pitch evidence missing (f0={f0_median:.2f}/{f0_p90:.2f})")
     return failures
 
 
@@ -256,10 +233,7 @@ def _candidate_windows(
         window = min(target, run_length)
         travel = max(0.0, run_length - window)
         count = max(1, int(math.ceil(travel / 0.50)))
-        starts = [
-            run_start + (travel * index / count)
-            for index in range(count + 1)
-        ]
+        starts = [run_start + (travel * index / count) for index in range(count + 1)]
         for start in starts:
             end = min(run_end, start + window)
             left = max(0, int(start * sample_rate))
@@ -330,9 +304,7 @@ def build_reference(
         if not _report_has_selection(payload):
             output.unlink(missing_ok=True)
             fallback_path.unlink(missing_ok=True)
-            raise RuntimeError(
-                f"Fallback voice reference {profile} не содержит выбранных окон."
-            )
+            raise RuntimeError(f"Fallback voice reference {profile} не содержит выбранных окон.")
 
         try:
             assembled_stats = _assembled_reference_stats(output)
@@ -340,17 +312,13 @@ def build_reference(
             output.unlink(missing_ok=True)
             fallback_path.unlink(missing_ok=True)
             raise RuntimeError(
-                f"Fallback voice reference {profile} не прошёл hard-quality floor: "
-                f"assembled WAV не читается: {exc}"
+                f"Fallback voice reference {profile} не прошёл hard-quality floor: assembled WAV не читается: {exc}"
             ) from exc
         failures = _assembled_release_failures(assembled_stats)
         if failures:
             output.unlink(missing_ok=True)
             fallback_path.unlink(missing_ok=True)
-            raise RuntimeError(
-                f"Fallback voice reference {profile} не прошёл release floor: "
-                + "; ".join(failures)
-            )
+            raise RuntimeError(f"Fallback voice reference {profile} не прошёл release floor: " + "; ".join(failures))
 
         payload.update(
             {
@@ -419,10 +387,7 @@ def build_reference(
                 "robust_f0_p90": selected.get("robust_f0_p90"),
                 "f0_median_log_distance": selected.get("f0_median_log_distance"),
                 "f0_p90_log_distance": selected.get("f0_p90_log_distance"),
-                **{
-                    key: round(float(value), 6)
-                    for key, value in selected["stats"].items()
-                },
+                **{key: round(float(value), 6) for key, value in selected["stats"].items()},
             }
         ],
     }
@@ -474,12 +439,10 @@ __all__ = [
     "build_reference",
 ]
 
-_BASE_ALL = tuple(globals().get('__all__', ()))
-
+_BASE_ALL = tuple(globals().get("__all__", ()))
 
 
 import types
-
 
 
 _window_score = _window_score
@@ -498,6 +461,7 @@ VOICED_TARGET = 0.58
 
 VOICED_WEIGHT = 28.0
 
+
 def _positive(value: Any) -> float | None:
     try:
         result = float(value)
@@ -505,20 +469,19 @@ def _positive(value: Any) -> float | None:
         return None
     return result if math.isfinite(result) and result > 1.0 else None
 
+
 def _log_distance(value: float | None, reference: float | None) -> float:
     if value is None or reference is None:
         return 4.0
     return abs(math.log2(value / reference))
 
+
 def _quality_score(stats: dict[str, Any]) -> float:
     active = float(stats.get("active_ratio") or 0.0)
     gap = float(stats.get("max_internal_gap") or 0.0)
     voiced = float(stats.get("voiced_ratio") or 0.0)
-    return (
-        gap * 75.0
-        + abs(active - 0.74) * 50.0
-        + abs(voiced - VOICED_TARGET) * VOICED_WEIGHT
-    )
+    return gap * 75.0 + abs(active - 0.74) * 50.0 + abs(voiced - VOICED_TARGET) * VOICED_WEIGHT
+
 
 def _candidate_windows(
     audio: np.ndarray,
@@ -561,14 +524,10 @@ def _candidate_windows(
             )
 
     median_values = [
-        value
-        for value in (_positive(item["stats"].get("f0_median")) for item in candidates)
-        if value is not None
+        value for value in (_positive(item["stats"].get("f0_median")) for item in candidates) if value is not None
     ]
     p90_values = [
-        value
-        for value in (_positive(item["stats"].get("f0_p90")) for item in candidates)
-        if value is not None
+        value for value in (_positive(item["stats"].get("f0_p90")) for item in candidates) if value is not None
     ]
     robust_median = float(np.median(median_values)) if median_values else None
     robust_p90 = float(np.median(p90_values)) if p90_values else None
@@ -578,9 +537,7 @@ def _candidate_windows(
         median_distance = _log_distance(_positive(stats.get("f0_median")), robust_median)
         p90_distance = _log_distance(_positive(stats.get("f0_p90")), robust_p90)
         item["score"] = float(
-            item["base_quality_score"]
-            + median_distance * MEDIAN_F0_WEIGHT
-            + p90_distance * P90_F0_WEIGHT
+            item["base_quality_score"] + median_distance * MEDIAN_F0_WEIGHT + p90_distance * P90_F0_WEIGHT
         )
         item["selection_policy"] = SELECTION_POLICY
         item["robust_f0_median"] = robust_median
@@ -588,6 +545,7 @@ def _candidate_windows(
         item["f0_median_log_distance"] = median_distance
         item["f0_p90_log_distance"] = p90_distance
     return candidates
+
 
 POLICY = POLICY
 

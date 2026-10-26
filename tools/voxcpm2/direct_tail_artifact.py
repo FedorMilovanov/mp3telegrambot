@@ -9,6 +9,7 @@ rebound after speech, immediate voice-to-broadband transition, and an embedded
 terminal broadband island bracketed by short voice runs. Embedded islands are
 fail-closed and never auto-trimmed because valid speech may follow them.
 """
+
 from __future__ import annotations
 
 import math
@@ -38,9 +39,7 @@ def _frame_metrics(
         return empty, empty, empty, empty, empty
     window = np.hanning(frame)
     frequencies = np.fft.rfftfreq(frame, d=1.0 / rate)
-    audible_mask = (frequencies >= 80.0) & (
-        frequencies <= min(7600.0, rate * 0.48)
-    )
+    audible_mask = (frequencies >= 80.0) & (frequencies <= min(7600.0, rate * 0.48))
     # The numerator must be a subset of the audible denominator. The previous
     # mask included ultrasonic bins at 48 kHz and could produce ratios > 1.0.
     high_mask = audible_mask & (frequencies >= min(3200.0, rate * 0.30))
@@ -49,14 +48,10 @@ def _frame_metrics(
     high_ratio: list[float] = []
     flatness: list[float] = []
     for pos in starts:
-        chunk = audio[pos:pos + frame].astype(np.float64)
+        chunk = audio[pos : pos + frame].astype(np.float64)
         rms = math.sqrt(float(np.mean(chunk**2)) + 1e-12)
         levels.append(20.0 * math.log10(max(rms, 1e-9)))
-        zcr.append(
-            float(np.mean(np.signbit(chunk[1:]) != np.signbit(chunk[:-1])))
-            if len(chunk) > 1
-            else 0.0
-        )
+        zcr.append(float(np.mean(np.signbit(chunk[1:]) != np.signbit(chunk[:-1]))) if len(chunk) > 1 else 0.0)
         work = chunk - float(np.mean(chunk))
         power = np.square(np.abs(np.fft.rfft(work * window))) + 1e-15
         audible = power[audible_mask]
@@ -64,12 +59,7 @@ def _frame_metrics(
         high = float(np.sum(power[high_mask])) if np.any(high_mask) else 0.0
         high_ratio.append(high / max(total, 1e-15))
         if len(audible):
-            flatness.append(
-                float(
-                    np.exp(np.mean(np.log(audible)))
-                    / max(np.mean(audible), 1e-15)
-                )
-            )
+            flatness.append(float(np.exp(np.mean(np.log(audible))) / max(np.mean(audible), 1e-15)))
         else:
             flatness.append(0.0)
     times = (starts + frame / 2) / rate
@@ -105,14 +95,8 @@ def _sustained_voice_runs(
     # A frame is voice-like only when its crossing rate is speech-compatible and
     # at least one spectral measure is harmonic. The former OR-chain allowed a
     # broadband tail to become the "last voice" merely because one metric was low.
-    voice_like = active & (zcr <= 0.23) & (
-        (high_ratio <= 0.48) | (flatness <= 0.22)
-    )
-    return [
-        (left, right)
-        for left, right in _runs(voice_like)
-        if right - left >= 4
-    ]
+    voice_like = active & (zcr <= 0.23) & ((high_ratio <= 0.48) | (flatness <= 0.22))
+    return [(left, right) for left, right in _runs(voice_like) if right - left >= 4]
 
 
 def _last_sustained_voice(
@@ -148,16 +132,14 @@ def _after_decay(
     quiet_threshold: float,
     active_threshold: float,
 ) -> tuple[float, float, bool]:
-    after = levels[int(start):]
+    after = levels[int(start) :]
     if len(after):
         quiet_fraction = float(np.mean(after <= quiet_threshold))
         active_after_seconds = float(np.sum(after > active_threshold)) * 0.010
     else:
         quiet_fraction = 1.0
         active_after_seconds = 0.0
-    followed_by_decay = bool(
-        quiet_fraction >= 0.45 and active_after_seconds <= 0.20
-    )
+    followed_by_decay = bool(quiet_fraction >= 0.45 and active_after_seconds <= 0.20)
     return quiet_fraction, active_after_seconds, followed_by_decay
 
 
@@ -200,10 +182,10 @@ def detect_late_broadband_tail(samples: Any, sample_rate: int) -> dict[str, Any]
             continue
 
         voice_probe_left = max(previous[0], previous[1] - 14)
-        voice_level = float(np.median(levels[voice_probe_left:previous[1]]))
-        voice_zcr = float(np.median(zcr[voice_probe_left:previous[1]]))
-        voice_high = float(np.median(high_ratio[voice_probe_left:previous[1]]))
-        voice_flatness = float(np.median(flatness[voice_probe_left:previous[1]]))
+        voice_level = float(np.median(levels[voice_probe_left : previous[1]]))
+        voice_zcr = float(np.median(zcr[voice_probe_left : previous[1]]))
+        voice_high = float(np.median(high_ratio[voice_probe_left : previous[1]]))
+        voice_flatness = float(np.median(flatness[voice_probe_left : previous[1]]))
         burst_levels = levels[burst_start:burst_end]
         level = float(np.percentile(burst_levels, 80))
         median_zcr = float(np.median(zcr[burst_start:burst_end]))
@@ -217,7 +199,7 @@ def detect_late_broadband_tail(samples: Any, sample_rate: int) -> dict[str, Any]
             voice_high=voice_high,
             voice_flatness=voice_flatness,
         )
-        before = levels[max(0, burst_start - 12):burst_start]
+        before = levels[max(0, burst_start - 12) : burst_start]
         valley_rebound = 0.0
         low_pre_fraction = 0.0
         if len(before):
@@ -309,7 +291,7 @@ def detect_late_broadband_tail(samples: Any, sample_rate: int) -> dict[str, Any]
             voice_flatness=voice_flatness,
         )
 
-        before = levels[max(0, burst_start - 12):burst_start]
+        before = levels[max(0, burst_start - 12) : burst_start]
         valley_rebound = 0.0
         low_pre_fraction = 0.0
         if len(before):
@@ -326,11 +308,7 @@ def detect_late_broadband_tail(samples: Any, sample_rate: int) -> dict[str, Any]
         near_end = duration - burst_time <= 0.72
         detached = bool(
             (valley_rebound >= 8.0 and low_pre_fraction >= 0.30)
-            or (
-                spectral_jump >= 0.36
-                and level <= voice_level + 7.0
-                and burst_time >= voice_end_time - 0.04
-            )
+            or (spectral_jump >= 0.36 and level <= voice_level + 7.0 and burst_time >= voice_end_time - 0.04)
         )
         if not (near_end and followed_by_decay and detached):
             continue
@@ -379,12 +357,11 @@ def detect_late_broadband_tail(samples: Any, sample_rate: int) -> dict[str, Any]
 
 __all__ = ["POLICY", "detect_late_broadband_tail"]
 
-_BASE_ALL = tuple(globals().get('__all__', ()))
+_BASE_ALL = tuple(globals().get("__all__", ()))
 
 from pathlib import Path
 
 import types
-
 
 
 POLICY = "late-broadband-tail-v5"
@@ -399,6 +376,7 @@ FRAME_OVERLAP_TOLERANCE = 2
 
 _legacy_detect = detect_late_broadband_tail
 
+
 def _voice_runs(
     active: np.ndarray,
     zcr: np.ndarray,
@@ -409,14 +387,9 @@ def _voice_runs(
     zcr = np.asarray(zcr, dtype=np.float64)
     high_ratio = np.asarray(high_ratio, dtype=np.float64)
     flatness = np.asarray(flatness, dtype=np.float64)
-    voice_like = active & (zcr <= 0.23) & (
-        (high_ratio <= 0.48) | (flatness <= 0.22)
-    )
-    return [
-        (left, right)
-        for left, right in _runs(voice_like)
-        if right - left >= 4
-    ]
+    voice_like = active & (zcr <= 0.23) & ((high_ratio <= 0.48) | (flatness <= 0.22))
+    return [(left, right) for left, right in _runs(voice_like) if right - left >= 4]
+
 
 def _last_sustained_voice(
     active: np.ndarray,
@@ -426,6 +399,7 @@ def _last_sustained_voice(
 ) -> tuple[int, int] | None:
     sustained = _voice_runs(active, zcr, high_ratio, flatness)
     return sustained[-1] if sustained else None
+
 
 def _bracketing_voice_runs(
     voice_runs: list[tuple[int, int]],
@@ -443,16 +417,8 @@ def _bracketing_voice_runs(
     and expose the overlap in the report instead of silently widening a gap.
     """
     tolerance = int(FRAME_OVERLAP_TOLERANCE)
-    previous_candidates = [
-        item
-        for item in voice_runs
-        if item[0] < burst_start and item[1] <= burst_start + tolerance
-    ]
-    following_candidates = [
-        item
-        for item in voice_runs
-        if item[1] > burst_end and item[0] >= burst_end - tolerance
-    ]
+    previous_candidates = [item for item in voice_runs if item[0] < burst_start and item[1] <= burst_start + tolerance]
+    following_candidates = [item for item in voice_runs if item[1] > burst_end and item[0] >= burst_end - tolerance]
     if not previous_candidates or not following_candidates:
         return None
     previous = previous_candidates[-1]
@@ -467,6 +433,7 @@ def _bracketing_voice_runs(
     if overlap_before + overlap_after > tolerance:
         return None
     return previous, following, overlap_before, overlap_after
+
 
 def _embedded_terminal_island(samples: Any, sample_rate: int) -> dict[str, Any]:
     audio = _mono(samples)
@@ -518,10 +485,10 @@ def _embedded_terminal_island(samples: Any, sample_rate: int) -> dict[str, Any]:
             continue
 
         voice_probe_left = max(previous[0], previous[1] - 14)
-        voice_level = float(np.median(levels[voice_probe_left:previous[1]]))
-        voice_zcr = float(np.median(zcr[voice_probe_left:previous[1]]))
-        voice_high = float(np.median(high_ratio[voice_probe_left:previous[1]]))
-        voice_flatness = float(np.median(flatness[voice_probe_left:previous[1]]))
+        voice_level = float(np.median(levels[voice_probe_left : previous[1]]))
+        voice_zcr = float(np.median(zcr[voice_probe_left : previous[1]]))
+        voice_high = float(np.median(high_ratio[voice_probe_left : previous[1]]))
+        voice_flatness = float(np.median(flatness[voice_probe_left : previous[1]]))
         level = float(np.percentile(levels[burst_start:burst_end], 80))
         median_zcr = float(np.median(zcr[burst_start:burst_end]))
         median_high = float(np.median(high_ratio[burst_start:burst_end]))
@@ -537,22 +504,20 @@ def _embedded_terminal_island(samples: Any, sample_rate: int) -> dict[str, Any]:
 
         # Only the immediately preceding 60 ms describes the measured quiet dip.
         # A longer median is dominated by the previous word and hides the valley.
-        before = levels[max(0, burst_start - 6):burst_start]
+        before = levels[max(0, burst_start - 6) : burst_start]
         if not len(before):
             continue
         pre_quiet_level = float(np.percentile(before, 25))
         valley_rebound = level - pre_quiet_level
         low_pre_fraction = float(np.mean(before <= level - 8.0))
-        after = levels[following[1]:]
+        after = levels[following[1] :]
         if len(after):
             quiet_fraction = float(np.mean(after <= quiet_threshold))
             active_after_seconds = float(np.sum(after > active_threshold)) * 0.010
         else:
             quiet_fraction = 1.0
             active_after_seconds = 0.0
-        followed_by_decay = bool(
-            quiet_fraction >= 0.45 and active_after_seconds <= 0.20
-        )
+        followed_by_decay = bool(quiet_fraction >= 0.45 and active_after_seconds <= 0.20)
         residue_start = max(int(following[0]), int(burst_end))
         terminal_residue_seconds = max(0, following[1] - residue_start) * 0.010
         suspicious = bool(
@@ -614,6 +579,7 @@ def _embedded_terminal_island(samples: Any, sample_rate: int) -> dict[str, Any]:
         "reason": "no_embedded_terminal_broadband_island",
     }
 
+
 def detect_late_broadband_tail(samples: Any, sample_rate: int) -> dict[str, Any]:
     base = dict(_legacy_detect(samples, sample_rate))
     if base.get("suspicious"):
@@ -637,6 +603,7 @@ def detect_late_broadband_tail(samples: Any, sample_rate: int) -> dict[str, Any]
     base["bracketing_policy"] = BRACKETING_POLICY
     base["embedded_detector_result"] = embedded
     return base
+
 
 _last_sustained_voice = _last_sustained_voice
 

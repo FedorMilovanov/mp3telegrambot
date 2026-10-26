@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Ordinary Shorts pipeline with direct source-window and delivery ownership."""
+
 from __future__ import annotations
 
 import json
@@ -20,6 +21,7 @@ from core.database import (
     settings_get,
     short_trim_save,
 )
+
 # InlineKeyboard* — не наши имена: импорт через core.globals был неявным
 # реэкспортом (strict ловит его как attr-defined). Берём у владельца.
 from core.globals import DOWNLOAD_DIR
@@ -70,8 +72,7 @@ def _finalize_short_caption_for_delivery(
     if raw_visible_len > 1024:
         final_caption = safe_trim_caption(final_caption, 1024)
     logger.info(
-        "Shorts public caption: media_id=%s index=%d/%d range=%s-%s "
-        "raw_visible_len=%d final_visible_len=%d caption=%r",
+        "Shorts public caption: media_id=%s index=%d/%d range=%s-%s raw_visible_len=%d final_visible_len=%d caption=%r",
         media_id,
         index,
         total,
@@ -166,11 +167,7 @@ async def process_and_send_shorts(
         do_normalize = bool(await asettings_get("shorts_audio_normalize"))
         do_snapshot = bool(await asettings_get("shorts_snapshot"))
         do_subtitles = bool(await asettings_get("shorts_subtitles"))
-        do_boundary_pad = (
-            False
-            if livedub_source is not None
-            else bool(await asettings_get("shorts_boundary_padding"))
-        )
+        do_boundary_pad = False if livedub_source is not None else bool(await asettings_get("shorts_boundary_padding"))
         do_title_poster = bool(await asettings_get("shorts_title_poster"))
         keep_for_montage = bool(
             await asettings_get("shorts_montage")
@@ -352,20 +349,14 @@ async def process_and_send_shorts(
                     None,
                     max_size_mb=max_upload_mb,
                 )
-                fallback_probe = (
-                    await probe_media_async(fallback.path)
-                    if fallback.path is not None
-                    else None
-                )
+                fallback_probe = await probe_media_async(fallback.path) if fallback.path is not None else None
                 if fallback.path is not None and media_probe_is_deliverable(fallback_probe):
                     current_path = fallback.path
                     final_probe = fallback_probe
                     delivery_selection = "fallback"
                     delivery_reason = "fallback_after_primary_media_probe_rejection"
                     subtitles_applied = False
-                    subtitle_fallback_notice = (
-                        "⚠️ Субтитры сняты: версия с ними не прошла финальную проверку."
-                    )
+                    subtitle_fallback_notice = "⚠️ Субтитры сняты: версия с ними не прошла финальную проверку."
                     _unlink(nosub_path)
                     nosub_path = None
 
@@ -421,22 +412,28 @@ async def process_and_send_shorts(
             thumb = None
             if do_title_poster:
                 try:
-                    if await create_short_title_poster(
-                        current_path,
-                        poster_path,
-                        str(candidate.get("title") or ""),
-                        delivery_duration,
-                    ) and poster_path.exists():
+                    if (
+                        await create_short_title_poster(
+                            current_path,
+                            poster_path,
+                            str(candidate.get("title") or ""),
+                            delivery_duration,
+                        )
+                        and poster_path.exists()
+                    ):
                         thumb = InputFile(poster_path.read_bytes(), filename=poster_path.name)
                 except Exception as exc:
                     logger.warning("Shorts %d/%d title poster failed: %s", index, total, exc)
             if thumb is None and do_snapshot:
                 try:
-                    if await create_short_snapshot(
-                        current_path,
-                        snapshot_path,
-                        delivery_duration,
-                    ) and snapshot_path.exists():
+                    if (
+                        await create_short_snapshot(
+                            current_path,
+                            snapshot_path,
+                            delivery_duration,
+                        )
+                        and snapshot_path.exists()
+                    ):
                         thumb = InputFile(snapshot_path.read_bytes(), filename=snapshot_path.name)
                 except Exception as exc:
                     logger.warning("Shorts %d/%d snapshot failed: %s", index, total, exc)
@@ -485,12 +482,14 @@ async def process_and_send_shorts(
                     else []
                 )
                 trim_keyboard = InlineKeyboardMarkup(
-                    [[
-                        InlineKeyboardButton("⏪ Начало -10", callback_data=f"strim:s10:{short_id}"),
-                        InlineKeyboardButton("⏭ Конец +10", callback_data=f"strim:e10:{short_id}"),
-                        InlineKeyboardButton("⏭⏭ Конец +20", callback_data=f"strim:e20:{short_id}"),
-                        *nosub_buttons,
-                    ]]
+                    [
+                        [
+                            InlineKeyboardButton("⏪ Начало -10", callback_data=f"strim:s10:{short_id}"),
+                            InlineKeyboardButton("⏭ Конец +10", callback_data=f"strim:e10:{short_id}"),
+                            InlineKeyboardButton("⏭⏭ Конец +20", callback_data=f"strim:e20:{short_id}"),
+                            *nosub_buttons,
+                        ]
+                    ]
                 )
                 await update.message.reply_video(
                     video=current_path,
@@ -520,9 +519,7 @@ async def process_and_send_shorts(
     except Exception as exc:
         logger.warning("Shorts process_and_send error: %s", exc)
         try:
-            await update.message.reply_text(
-                f"✂️ Ошибка при подготовке Shorts: {str(exc)[:150]}"
-            )
+            await update.message.reply_text(f"✂️ Ошибка при подготовке Shorts: {str(exc)[:150]}")
         except Exception:
             pass
     finally:

@@ -4,6 +4,7 @@
 No installer, ContextVar or runtime rebinding lives here. Request-local progress
 is passed explicitly by the Factory owner.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -75,10 +76,7 @@ def _factory_api_key_entries() -> list[tuple[str, str]]:
     """Return de-duplicated API keys with optional opaque quota-domain labels."""
     from core import globals as core_globals
 
-    keys = [
-        str(getattr(core_globals, key_attr, "") or "").strip()
-        for key_attr in _FACTORY_KEY_ATTRS
-    ]
+    keys = [str(getattr(core_globals, key_attr, "") or "").strip() for key_attr in _FACTORY_KEY_ATTRS]
     return quota_domains.key_domain_entries(keys, deduplicate=True)
 
 
@@ -95,20 +93,13 @@ def factory_gemini_clients() -> list[Any]:
     """Create Factory clients with a 900s request timeout and SDK retries off."""
     from core import globals as core_globals
 
-    if (
-        not core_globals.HAS_GEMINI
-        or core_globals.genai is None
-        or core_globals.types is None
-    ):
+    if not core_globals.HAS_GEMINI or core_globals.genai is None or core_globals.types is None:
         return []
     options = core_globals.types.HttpOptions(
         timeout=FACTORY_HTTP_TIMEOUT_MS,
         retry_options=core_globals.types.HttpRetryOptions(attempts=1),
     )
-    return [
-        core_globals.genai.Client(api_key=key, http_options=options)
-        for key in _factory_api_keys()
-    ]
+    return [core_globals.genai.Client(api_key=key, http_options=options) for key in _factory_api_keys()]
 
 
 def _exception_status_code(exc: BaseException) -> int | None:

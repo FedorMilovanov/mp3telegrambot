@@ -1,4 +1,5 @@
 """Small deterministic PCM renderer used to prove multi-backend contracts in CI."""
+
 from __future__ import annotations
 
 import argparse
@@ -16,11 +17,7 @@ def _segment_texts(path: Path) -> list[str]:
     items = payload.get("segments") if isinstance(payload, dict) else payload
     if not isinstance(items, list):
         raise RuntimeError("segments JSON должен содержать список.")
-    return [
-        str(item.get("text") or "")
-        for item in items
-        if isinstance(item, dict)
-    ]
+    return [str(item.get("text") or "") for item in items if isinstance(item, dict)]
 
 
 def render_timeline(
@@ -34,10 +31,7 @@ def render_timeline(
         raise ValueError("sample_rate должен быть > 0.")
     duration = max(0.25, min(float(duration), 60.0))
     texts = _segment_texts(Path(segments_json))
-    seed = sum(
-        (index + 1) * sum(ord(char) for char in text)
-        for index, text in enumerate(texts)
-    )
+    seed = sum((index + 1) * sum(ord(char) for char in text) for index, text in enumerate(texts))
     frequency = 180.0 + float(seed % 240)
     total = max(1, int(round(duration * sample_rate)))
     pcm = array("h")

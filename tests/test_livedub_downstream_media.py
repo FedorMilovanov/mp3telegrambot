@@ -32,12 +32,15 @@ def test_livedub_short_rejects_interval_without_room_for_required_tail(monkeypat
     monkeypatch.setenv("LIVEDUB_DELAY_MS", "600")
     monkeypatch.setenv("LIVEDUB_TAIL_MARGIN_MS", "1000")
 
-    assert align_livedub_interval(
-        10,
-        189,
-        source_duration=300,
-        public_max_seconds=180,
-    ) is None
+    assert (
+        align_livedub_interval(
+            10,
+            189,
+            source_duration=300,
+            public_max_seconds=180,
+        )
+        is None
+    )
 
 
 def test_livedub_candidate_keeps_public_labels_but_changes_render_numbers(monkeypatch):
@@ -105,10 +108,13 @@ async def test_livedub_source_duration_uses_exact_deliverable_probe(monkeypatch,
     monkeypatch.setattr(media, "probe_media_async", fake_probe)
     monkeypatch.setattr(media, "media_probe_is_deliverable", lambda value: value is probe)
 
-    assert await probe_livedub_source_duration(
-        source,
-        fallback_duration=900,
-    ) == 901.234
+    assert (
+        await probe_livedub_source_duration(
+            source,
+            fallback_duration=900,
+        )
+        == 901.234
+    )
 
 
 @pytest.mark.asyncio
@@ -142,10 +148,13 @@ async def test_livedub_probe_fallback_requires_explicit_degraded_opt_out(
     monkeypatch.setattr(media, "probe_media_async", fake_probe)
     monkeypatch.setattr(media, "media_probe_is_deliverable", lambda _value: False)
 
-    assert await probe_livedub_source_duration(
-        source,
-        fallback_duration=900,
-    ) == 900
+    assert (
+        await probe_livedub_source_duration(
+            source,
+            fallback_duration=900,
+        )
+        == 900
+    )
 
 
 def test_livedub_cut_owners_are_source_owned_without_runtime_rebinding():
@@ -164,10 +173,7 @@ def test_livedub_cut_owners_are_source_owned_without_runtime_rebinding():
     assert "if livedub_source is not None" in shorts_source
     compact_shorts = "".join(shorts_source.split())
     assert "do_boundary_pad=" in compact_shorts
-    assert (
-        'Falseiflivedub_sourceisnotNoneelsebool(awaitasettings_get("shorts_boundary_padding"))'
-        in compact_shorts
-    )
+    assert 'Falseiflivedub_sourceisnotNoneelsebool(awaitasettings_get("shorts_boundary_padding"))' in compact_shorts
     assert "boundary_padding=do_boundary_pad" in shorts_source
 
     assert "probe_livedub_source_duration(" in clips_source

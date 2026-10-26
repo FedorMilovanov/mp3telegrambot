@@ -6,6 +6,7 @@ silence. A pause is a semantic/render boundary, not missing data to be filled.
 The generated ASS is validated before FFmpeg sees it so malformed, overlapping
 or abnormally long karaoke events fail closed instead of being published.
 """
+
 from __future__ import annotations
 
 import math
@@ -198,12 +199,7 @@ def _chunk_words(words: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
             sentence_break = previous_text.endswith(_SENTENCE_END)
             clause_break = previous_text.endswith(",") and current_len >= MAX_CHARS // 2
 
-        if current and (
-            hard_pause
-            or sentence_break
-            or clause_break
-            or projected > MAX_CHARS
-        ):
+        if current and (hard_pause or sentence_break or clause_break or projected > MAX_CHARS):
             chunks.append(current)
             current = []
             current_len = 0
@@ -236,11 +232,7 @@ def _wrap_chunk(
         if distance < best_distance:
             best_index = index
             best_distance = distance
-    return (
-        " ".join(text_words[:best_index])
-        + r"\N"
-        + " ".join(text_words[best_index:])
-    )
+    return " ".join(text_words[:best_index]) + r"\N" + " ".join(text_words[best_index:])
 
 
 def _header(font_name: str) -> str:
@@ -287,15 +279,11 @@ def validate_ass_document(
             issues.append(f"line {line_no}: {exc}")
             continue
         if end <= start:
-            issues.append(
-                f"line {line_no}: non-positive interval {start:.2f}-{end:.2f}"
-            )
+            issues.append(f"line {line_no}: non-positive interval {start:.2f}-{end:.2f}")
         if previous_end >= 0 and start < previous_end - _ASS_FLOAT_TOLERANCE:
             issues.append(f"line {line_no}: overlaps previous event")
         if karaoke and end - start > max_karaoke_hold + _ASS_FLOAT_TOLERANCE:
-            issues.append(
-                f"line {line_no}: karaoke hold {end - start:.2f}s is too long"
-            )
+            issues.append(f"line {line_no}: karaoke hold {end - start:.2f}s is too long")
         if not fields[9].strip():
             issues.append(f"line {line_no}: empty subtitle text")
         previous_end = max(previous_end, end)
@@ -312,9 +300,7 @@ def generate_ass_from_segments(
     """Build a validated ASS document from Whisper segments."""
     from services.shorts_video_impl import _pick_subtitle_font
 
-    words = _normalize_words(
-        _merge_tokens(_normalize_words(_collect_words(segments)))
-    )
+    words = _normalize_words(_merge_tokens(_normalize_words(_collect_words(segments))))
     if not words:
         raise ValueError("subtitle transcript contains no timed words")
     chunks = _chunk_words(words)
@@ -334,10 +320,7 @@ def generate_ass_from_segments(
             )
     else:
         for chunk in chunks:
-            clean = [
-                _escape_ass_text(str(word.get("word") or ""))
-                for word in chunk
-            ]
+            clean = [_escape_ass_text(str(word.get("word") or "")) for word in chunk]
             for index, word in enumerate(chunk):
                 start = float(word["start"])
                 natural_end = max(
@@ -357,18 +340,9 @@ def generate_ass_from_segments(
 
                 rendered: list[str] = []
                 for word_index, text in enumerate(clean):
-                    colour = (
-                        COLOUR_ACTIVE
-                        if word_index == index
-                        else COLOUR_INACTIVE
-                    )
-                    rendered.append(
-                        f"{{\\c{colour}}}{text}{{\\c{COLOUR_INACTIVE}}}"
-                    )
-                lines.append(
-                    f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Default,,0,0,0,,"
-                    + " ".join(rendered)
-                )
+                    colour = COLOUR_ACTIVE if word_index == index else COLOUR_INACTIVE
+                    rendered.append(f"{{\\c{colour}}}{text}{{\\c{COLOUR_INACTIVE}}}")
+                lines.append(f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Default,,0,0,0,," + " ".join(rendered))
 
     document = "\n".join(lines)
     issues = validate_ass_document(document, karaoke=karaoke)

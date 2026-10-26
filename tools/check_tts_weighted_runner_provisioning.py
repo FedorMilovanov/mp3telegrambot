@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Validate an already registered weighted-TTS Windows self-hosted runner."""
+
 from __future__ import annotations
 
 import argparse
@@ -73,8 +74,7 @@ def main(argv: list[str] | None = None) -> int:
         report = run_weighted_tts_runner_provisioning_check(config)
     except Exception as exc:
         print(
-            "TTS_WEIGHTED_RUNNER_PROVISIONING_FAILED "
-            f"{type(exc).__name__}: {_redacted_failure(exc, config)}",
+            f"TTS_WEIGHTED_RUNNER_PROVISIONING_FAILED {type(exc).__name__}: {_redacted_failure(exc, config)}",
             file=sys.stderr,
         )
         return 1

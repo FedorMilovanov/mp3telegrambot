@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Universal fail-fast timing, retry-scope and candidate-budget contracts."""
+
 from __future__ import annotations
 
 from tools.voxcpm2 import direct_surgical_polish_v2 as polish
@@ -50,8 +51,11 @@ def _normalise(value: Any) -> str:
 def _json_object(value: Mapping[str, Any] | None) -> dict[str, Any]:
     try:
         encoded = json.dumps(
-            dict(value or {}), ensure_ascii=False, sort_keys=True,
-            separators=(",", ":"), allow_nan=False,
+            dict(value or {}),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
         )
     except (TypeError, ValueError, OverflowError) as exc:
         raise RuntimeError("Timing context должен быть JSON-safe.") from exc
@@ -128,13 +132,7 @@ def text_metrics(text: str, speech_slot: float, *, max_tempo: float) -> dict[str
     lps = letters / slot
     hard = max(1.01, float(max_tempo))
     high_density = wps >= 3.0 or sps >= 6.2 or lps >= 18.0
-    critical = bool(
-        words >= 6
-        and (
-            tempo >= hard + 0.24
-            or (words >= 8 and tempo >= hard + 0.12 and high_density)
-        )
-    )
+    critical = bool(words >= 6 and (tempo >= hard + 0.24 or (words >= 8 and tempo >= hard + 0.12 and high_density)))
     warning = critical or tempo >= hard - 0.05 or sps >= 5.8
     return {
         "text": normalized,
@@ -154,8 +152,11 @@ def text_metrics(text: str, speech_slot: float, *, max_tempo: float) -> dict[str
 
 
 def candidate_efficiency_plan(
-    segment: Mapping[str, Any], *, speech_slot: float,
-    retry_epoch: int, max_tempo: float,
+    segment: Mapping[str, Any],
+    *,
+    speech_slot: float,
+    retry_epoch: int,
+    max_tempo: float,
 ) -> dict[str, Any]:
     metrics = text_metrics(str(segment.get("text") or ""), speech_slot, max_tempo=max_tempo)
     tempo = float(metrics["estimated_required_tempo"])
@@ -197,7 +198,9 @@ def _polish_base_load_signature_context(work_dir: Path) -> dict[str, Any]:
 
 
 def failure_scope_fingerprint(
-    segment: Mapping[str, Any], *, signature_context: Mapping[str, Any] | None,
+    segment: Mapping[str, Any],
+    *,
+    signature_context: Mapping[str, Any] | None,
 ) -> str:
     payload = {
         "policy": POLICY,
@@ -230,7 +233,10 @@ def _retry_history(work_dir: Path, segment_id: int) -> list[Mapping[str, Any]]:
 
 
 def _base_enforce_retry_epoch_budget(
-    *, work_dir: Path, segment: Mapping[str, Any], retry_epoch: int,
+    *,
+    work_dir: Path,
+    segment: Mapping[str, Any],
+    retry_epoch: int,
     signature_context: Mapping[str, Any] | None,
 ) -> None:
     segment_id = int(segment.get("id") or 0)
@@ -267,8 +273,12 @@ def _candidate_snapshot(candidate: Mapping[str, Any], slot: float) -> dict[str, 
 
 
 def evaluate_dynamic_timing_failure(
-    candidates: list[dict[str, Any]], *, segment: Mapping[str, Any],
-    speech_slot: float, retry_epoch: int, max_tempo: float,
+    candidates: list[dict[str, Any]],
+    *,
+    segment: Mapping[str, Any],
+    speech_slot: float,
+    retry_epoch: int,
+    max_tempo: float,
 ) -> dict[str, Any] | None:
     if len(candidates) < 2:
         return None
@@ -313,9 +323,7 @@ def _polish_base_persist_timing_block(
     evidence: Mapping[str, Any],
 ) -> dict[str, Any]:
     segment_id = int(segment.get("id") or 0)
-    slot = _finite(segment.get("end")) - _finite(segment.get("start")) - _finite(
-        segment.get("tail_guard")
-    )
+    slot = _finite(segment.get("end")) - _finite(segment.get("start")) - _finite(segment.get("tail_guard"))
     attempts = [item for item in evidence.get("attempts") or [] if isinstance(item, Mapping)]
     durations = [_finite(item.get("duration")) for item in attempts if _finite(item.get("duration")) > 0]
     max_tempo = max(0.1, _finite(evidence.get("max_tempo"), 1.36))
@@ -326,18 +334,14 @@ def _polish_base_persist_timing_block(
         "policy": SURGICAL_GUARD_POLICY,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "segment_id": segment_id,
-        "signature": failure_scope_fingerprint(
-            segment, signature_context=signature_context
-        ),
+        "signature": failure_scope_fingerprint(segment, signature_context=signature_context),
         "text": _normalise(segment.get("text")),
         "speech_slot": round(slot, 6),
         "retry_epoch": int(retry_epoch),
         "evidence": dict(evidence),
         "recommendation": {
             "hard_minimum_speech_slot": round(max(slot, hard_slot), 3),
-            "hard_shorten_percent": int(
-                math.ceil(max(0.0, 1.0 - slot / max(slot, hard_slot)) * 20.0) * 5
-            ),
+            "hard_shorten_percent": int(math.ceil(max(0.0, 1.0 - slot / max(slot, hard_slot)) * 20.0) * 5),
         },
     }
     _atomic_json(timing_block_path(work_dir, segment_id), payload)
@@ -350,9 +354,7 @@ def format_timing_block_message(block: Mapping[str, Any], *, repeated: bool) -> 
     tempos = [_finite(item.get("required_tempo")) for item in attempts if _finite(item.get("required_tempo")) > 0]
     tempo_text = f"{min(tempos):.2f}–{max(tempos):.2f}×" if tempos else "нет данных"
     note = (
-        "Повтор не запущен и новый retry epoch не расходуется."
-        if repeated
-        else "Оставшиеся дорогие seed остановлены."
+        "Повтор не запущен и новый retry epoch не расходуется." if repeated else "Оставшиеся дорогие seed остановлены."
     )
     recommendation = block.get("recommendation") or {}
     return (
@@ -364,8 +366,11 @@ def format_timing_block_message(block: Mapping[str, Any], *, repeated: bool) -> 
 
 
 def _base_run_pre_model_guard(
-    segments: Iterable[dict[str, Any]], *, work_dir: Path,
-    max_tempo: float, signature_context: Mapping[str, Any] | None,
+    segments: Iterable[dict[str, Any]],
+    *,
+    work_dir: Path,
+    max_tempo: float,
+    signature_context: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
     values = [dict(item) for item in segments]
     if not values:
@@ -394,14 +399,21 @@ def _base_run_pre_model_guard(
         previous_end = end
         metrics = text_metrics(str(segment["text"]), slot, max_tempo=max_tempo)
         plan = candidate_efficiency_plan(
-            segment, speech_slot=slot, retry_epoch=0, max_tempo=max_tempo,
+            segment,
+            speech_slot=slot,
+            retry_epoch=0,
+            max_tempo=max_tempo,
         )
-        rows.append({
-            "id": segment_id, "start": start, "end": end,
-            "tail_guard": _finite(segment.get("tail_guard")),
-            **metrics,
-            "candidate_plan": {key: value for key, value in plan.items() if key != "static_metrics"},
-        })
+        rows.append(
+            {
+                "id": segment_id,
+                "start": start,
+                "end": end,
+                "tail_guard": _finite(segment.get("tail_guard")),
+                **metrics,
+                "candidate_plan": {key: value for key, value in plan.items() if key != "static_metrics"},
+            }
+        )
     report = {
         "schema_version": 1,
         "policy": PREFLIGHT_POLICY,
@@ -423,7 +435,6 @@ def _base_run_pre_model_guard(
             f"{float(max_tempo):.2f}×. Текст: «{worst['text'][:360]}»."
         )
     return report
-
 
 
 SURGICAL_GUARD_POLICY = "voxcpm2-surgical-timing-polish-v1"
@@ -455,9 +466,7 @@ class RetryableSynthesisFailure(RuntimeError):
 
 def _archive_timing_marker(path: Path, reason: str) -> None:
     suffix = re.sub(r"[^a-z0-9_-]+", "-", reason.casefold()).strip("-")
-    destination = path.with_suffix(
-        path.suffix + f".stale-{suffix or 'unknown'}-{uuid.uuid4().hex[:8]}"
-    )
+    destination = path.with_suffix(path.suffix + f".stale-{suffix or 'unknown'}-{uuid.uuid4().hex[:8]}")
     try:
         path.replace(destination)
     except OSError:
@@ -548,7 +557,7 @@ def _prune_marker_archives(directory: Path, stem: str, *, limit: int = 8) -> Non
     for pattern in (f"{stem}.stale-*", f"{stem}.corrupt-*", f"{stem}.oversized-*"):
         files.extend(path for path in Path(directory).glob(pattern) if path.is_file())
     files.sort(key=lambda path: path.stat().st_mtime_ns, reverse=True)
-    for stale in files[max(0, int(limit)):]:
+    for stale in files[max(0, int(limit)) :]:
         stale.unlink(missing_ok=True)
 
 
@@ -583,11 +592,15 @@ def load_matching_timing_block(
                 and polish._number(
                     recommendation.get("hard_minimum_speech_slot"),
                     "hard_slot",
-                ) + 1e-6 >= slot
-                and 0 <= polish._integer(
+                )
+                + 1e-6
+                >= slot
+                and 0
+                <= polish._integer(
                     recommendation.get("hard_shorten_percent"),
                     "shorten",
-                ) <= 100
+                )
+                <= 100
             )
         except RuntimeError:
             valid = False
@@ -595,14 +608,11 @@ def load_matching_timing_block(
             return value
         polish._archive(
             path,
-            "input-changed"
-            if value.get("signature") != expected
-            else "contract-mismatch",
+            "input-changed" if value.get("signature") != expected else "contract-mismatch",
         )
         return None
     finally:
         _prune_marker_archives(path.parent, path.name, limit=8)
-
 
 
 MARKER_SCHEMA_VERSION = polish.MARKER_SCHEMA_VERSION
@@ -665,14 +675,24 @@ def persist_timing_block(
     polish._atomic(polish._marker_path(work_dir, clean["id"]), value)
     return value
 
+
 __all__ = [
-    "CONTEXT_NAME", "POLICY",
+    "CONTEXT_NAME",
+    "POLICY",
     "SURGICAL_GUARD_POLICY",
     "RetryableSynthesisFailure",
-    "load_matching_timing_block", "PREFLIGHT_POLICY", "REPORT_NAME",
-    "candidate_efficiency_plan", "enforce_retry_epoch_budget",
-    "evaluate_dynamic_timing_failure", "failure_scope_fingerprint",
-    "format_timing_block_message", "load_signature_context",
-    "persist_timing_block", "run_pre_model_guard", "text_metrics",
-    "timing_block_path", "write_signature_context",
+    "load_matching_timing_block",
+    "PREFLIGHT_POLICY",
+    "REPORT_NAME",
+    "candidate_efficiency_plan",
+    "enforce_retry_epoch_budget",
+    "evaluate_dynamic_timing_failure",
+    "failure_scope_fingerprint",
+    "format_timing_block_message",
+    "load_signature_context",
+    "persist_timing_block",
+    "run_pre_model_guard",
+    "text_metrics",
+    "timing_block_path",
+    "write_signature_context",
 ]

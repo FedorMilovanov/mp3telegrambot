@@ -4,6 +4,7 @@
 Extracts the common render → subtitle → verify → send pipeline to avoid code
 duplication between cutseg_command and segcut callback.
 """
+
 from __future__ import annotations
 
 import html as html_mod
@@ -76,9 +77,7 @@ async def render_and_send_segment(
                 "Segment %s rejected: base render lacks verified video+audio",
                 segment.index,
             )
-            await reply_target.reply_text(
-                f"❌ Сегмент {segment.index} не прошёл проверку видео и звука."
-            )
+            await reply_target.reply_text(f"❌ Сегмент {segment.index} не прошёл проверку видео и звука.")
             return False
 
         final_clip_path = clip_path
@@ -151,17 +150,14 @@ async def render_and_send_segment(
                     "Segment %s rejected: no final file has verified video+audio",
                     segment.index,
                 )
-                await reply_target.reply_text(
-                    f"❌ Сегмент {segment.index} не прошёл финальную проверку файла."
-                )
+                await reply_target.reply_text(f"❌ Сегмент {segment.index} не прошёл финальную проверку файла.")
                 return False
 
         assert final_probe is not None
         delivery_duration = float(final_probe.duration)
         delivery_size_mb = file_size_mb(final_clip_path)
         logger.info(
-            "Segment delivery evidence: index=%s selected=%s reason=%s "
-            "duration=%.3fs size=%.1fMB subtitles=%s",
+            "Segment delivery evidence: index=%s selected=%s reason=%s duration=%.3fs size=%.1fMB subtitles=%s",
             segment.index,
             selection.selected,
             selection.reason,

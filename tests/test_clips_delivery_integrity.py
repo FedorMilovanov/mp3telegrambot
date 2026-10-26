@@ -80,9 +80,7 @@ async def _configure_pipeline(monkeypatch, tmp_path: Path, *, probe):
 
 
 @pytest.mark.asyncio
-async def test_clips_use_probed_duration_and_preserve_borrowed_livedub(
-    monkeypatch, tmp_path
-):
+async def test_clips_use_probed_duration_and_preserve_borrowed_livedub(monkeypatch, tmp_path):
     probe = _deliverable_probe(125.6)
     await _configure_pipeline(monkeypatch, tmp_path, probe=probe)
 
@@ -109,9 +107,7 @@ async def test_clips_use_probed_duration_and_preserve_borrowed_livedub(
 
 
 @pytest.mark.asyncio
-async def test_clips_reject_nonempty_render_without_delivery_probe(
-    monkeypatch, tmp_path
-):
+async def test_clips_reject_nonempty_render_without_delivery_probe(monkeypatch, tmp_path):
     await _configure_pipeline(monkeypatch, tmp_path, probe=None)
 
     livedub = tmp_path / "translated.mp4"

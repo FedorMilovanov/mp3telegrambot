@@ -5,6 +5,7 @@ Synopsis is deliberately separate: it is a transcription task, not an analytical
 or editorial task. Its guidance must never ask the model to compress, improve or
 interpret the speaker's substantive speech.
 """
+
 from __future__ import annotations
 
 

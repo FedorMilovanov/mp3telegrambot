@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Canonical non-media contract for Translation Editorial Review ZIPs."""
+
 from __future__ import annotations
 
 import json
@@ -43,9 +44,7 @@ def _review_contract() -> dict[str, Any]:
         "issue_severities": sorted(ISSUE_SEVERITIES),
         "action_types": sorted(ACTION_TYPES),
         "automatically_executable_actions": sorted(EXECUTABLE_ACTIONS),
-        "borrow_span_policy": (
-            "review-only in v1; donor media is never synthesized or inserted automatically"
-        ),
+        "borrow_span_policy": ("review-only in v1; donor media is never synthesized or inserted automatically"),
     }
 
 
@@ -109,14 +108,10 @@ def _verify_preview_shape(manifest: dict[str, Any], candidates: dict[str, Any]) 
             raise ValueError(f"translation editorial candidate group must be a list: {group_name}")
         for index, item in enumerate(group, 1):
             if not isinstance(item, dict):
-                raise ValueError(
-                    f"translation editorial candidate must be an object: {group_name}[{index}]"
-                )
+                raise ValueError(f"translation editorial candidate must be an object: {group_name}[{index}]")
             candidate_id = str(item.get("candidate_id") or "").strip()
             if not candidate_id:
-                raise ValueError(
-                    f"translation editorial candidate_id is required: {group_name}[{index}]"
-                )
+                raise ValueError(f"translation editorial candidate_id is required: {group_name}[{index}]")
             if candidate_id in seen_ids:
                 raise ValueError(f"duplicate translation editorial candidate_id: {candidate_id}")
             seen_ids.add(candidate_id)
@@ -194,9 +189,7 @@ def load_verified_review_pack(pack_path: Path) -> dict[str, Any]:
 
     if manifest.get("review_contract") != _review_contract():
         raise ValueError("translation editorial review_contract was modified")
-    expected_instructions = (
-        _timeline_instructions() if "timeline" in manifest else _legacy_instructions()
-    )
+    expected_instructions = _timeline_instructions() if "timeline" in manifest else _legacy_instructions()
     if instructions != expected_instructions:
         raise ValueError("translation editorial REVIEW_INSTRUCTIONS.md was modified")
     return manifest

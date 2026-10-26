@@ -14,11 +14,14 @@ async def test_atomic_mp3_conversion_publishes_only_after_probe(monkeypatch, tmp
     output = tmp_path / "out.mp3"
     source.write_bytes(b"source" * 4096)
     monkeypatch.setattr(mp3_conversion.shutil, "which", lambda name: f"/{name}")
+
     async def fake_run(command, **_kwargs):
         Path(command[-1]).write_bytes(b"encoded" * 4096)
         return SimpleNamespace(returncode=0, stdout="", stderr="")
+
     async def fake_probe(path):
         return Path(path).is_file() and Path(path).stat().st_size > 1024
+
     monkeypatch.setattr(mp3_conversion, "run_cancellable_process", fake_run)
     monkeypatch.setattr(mp3_conversion, "_probe_audio_file", fake_probe)
     assert await mp3_conversion.reencode_mp3_64k_atomic(source, output) is True
@@ -34,11 +37,14 @@ async def test_atomic_mp3_conversion_keeps_existing_output_on_failed_probe(monke
     output.write_bytes(b"old" * 4096)
     old = output.read_bytes()
     monkeypatch.setattr(mp3_conversion.shutil, "which", lambda name: f"/{name}")
+
     async def fake_run(command, **_kwargs):
         Path(command[-1]).write_bytes(b"bad" * 4096)
         return SimpleNamespace(returncode=0, stdout="", stderr="")
+
     async def fake_probe(_path):
         return False
+
     monkeypatch.setattr(mp3_conversion, "run_cancellable_process", fake_run)
     monkeypatch.setattr(mp3_conversion, "_probe_audio_file", fake_probe)
     source.touch()

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Immutable provenance for deterministic translation-editorial repairs."""
+
 from __future__ import annotations
 
 import asyncio
@@ -36,11 +37,7 @@ def _canonical_sha256(value: Any) -> str:
 
 def _is_sha256(value: Any) -> bool:
     token = str(value or "")
-    return (
-        len(token) == 71
-        and token.startswith("sha256:")
-        and all(char in "0123456789abcdef" for char in token[7:])
-    )
+    return len(token) == 71 and token.startswith("sha256:") and all(char in "0123456789abcdef" for char in token[7:])
 
 
 def _finite_float(value: Any) -> float | None:
@@ -254,9 +251,7 @@ async def verify_repair_provenance(
     output = data["output"]
     stored_output_path = Path(str(output.get("local_path") or ""))
     output_path = (
-        Path(expected_output_path).resolve(strict=False)
-        if expected_output_path is not None
-        else stored_output_path
+        Path(expected_output_path).resolve(strict=False) if expected_output_path is not None else stored_output_path
     )
     if not output_path.is_file() or output_path.stat().st_size <= 1024:
         raise FileNotFoundError(output_path)

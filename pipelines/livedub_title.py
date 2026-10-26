@@ -5,6 +5,7 @@ The main pipeline keeps compatibility wrappers/re-exports for existing callers.
 The implementation lives here so caption metadata policy, its bounded cache and
 Gemini fallback can be tested without importing the delivery orchestration.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -41,12 +42,8 @@ def _cache_max_entries(raw: str | None) -> int:
         return 256
 
 
-_LIVEDUB_TITLE_CACHE_MAX = _cache_max_entries(
-    os.getenv("LIVEDUB_TITLE_CACHE_MAX", "256")
-)
-_LIVEDUB_TITLE_CACHE: BoundedLRUDict = BoundedLRUDict(
-    max_entries=_LIVEDUB_TITLE_CACHE_MAX
-)
+_LIVEDUB_TITLE_CACHE_MAX = _cache_max_entries(os.getenv("LIVEDUB_TITLE_CACHE_MAX", "256"))
+_LIVEDUB_TITLE_CACHE: BoundedLRUDict = BoundedLRUDict(max_entries=_LIVEDUB_TITLE_CACHE_MAX)
 
 
 def _clean_livedub_meta_text(text: str) -> str:
@@ -104,7 +101,9 @@ def _title_part_has_cyrillic(line: str) -> bool:
     return bool(re.search(r"[А-Яа-яЁё]", target))
 
 
-def _split_livedub_title_author(full_title: str, parsed_title: str, parsed_performer: str, channel_name: str) -> tuple[str, str]:
+def _split_livedub_title_author(
+    full_title: str, parsed_title: str, parsed_performer: str, channel_name: str
+) -> tuple[str, str]:
     full_title = _clean_livedub_meta_text(full_title)
     parsed_title = _clean_livedub_meta_text(parsed_title)
     parsed_performer = _clean_livedub_meta_text(parsed_performer)
@@ -124,10 +123,14 @@ def _split_livedub_title_author(full_title: str, parsed_title: str, parsed_perfo
     return title, author
 
 
-def _fallback_livedub_ru_title(full_title: str, parsed_title: str, parsed_performer: str, channel_name: str) -> tuple[str, str]:
+def _fallback_livedub_ru_title(
+    full_title: str, parsed_title: str, parsed_performer: str, channel_name: str
+) -> tuple[str, str]:
     raw_title, raw_author = _split_livedub_title_author(full_title, parsed_title, parsed_performer, channel_name)
     title_ru = title_case_fragment(normalize_title_text(_replace_known_author_names(raw_title)) or raw_title)
-    author_ru = _replace_known_author_names(raw_author) or _known_author_from_text(full_title, parsed_performer, channel_name)
+    author_ru = _replace_known_author_names(raw_author) or _known_author_from_text(
+        full_title, parsed_performer, channel_name
+    )
     if author_ru and author_ru.lower() in {"grace to you", "heartcry", "heartcry missionary society"}:
         author_ru = _known_author_from_text(author_ru) or author_ru
     return title_ru.strip(), author_ru.strip()
@@ -152,8 +155,11 @@ async def _translate_livedub_title_for_caption(
     """
     clients = GEMINI_CLIENTS if _gemini_clients is None else _gemini_clients
     cache_key = (
-        str(full_title or ""), str(parsed_title or ""), str(channel_name or ""),
-        str(analysis_title or ""), str(analysis_author or ""),
+        str(full_title or ""),
+        str(parsed_title or ""),
+        str(channel_name or ""),
+        str(analysis_title or ""),
+        str(analysis_author or ""),
     )
     if cache_key in _LIVEDUB_TITLE_CACHE:
         return cast(tuple[str, str], _LIVEDUB_TITLE_CACHE[cache_key])
@@ -163,9 +169,7 @@ async def _translate_livedub_title_for_caption(
     )
 
     # Best path: use already-paid analysis result (ENG Full / cache-hit), no extra AI call.
-    analysis_title = normalize_common_typos(
-        normalize_title_text(analysis_title) or str(analysis_title or "")
-    ).strip()
+    analysis_title = normalize_common_typos(normalize_title_text(analysis_title) or str(analysis_title or "")).strip()
     analysis_author = normalize_author_name(analysis_author).strip()
     if analysis_title or analysis_author:
         result = (analysis_title or fallback_title, analysis_author or fallback_author)
@@ -175,18 +179,17 @@ async def _translate_livedub_title_for_caption(
     # ENG Quick/default title translation: use the lightweight info pipeline,
     # not the heavy audio-analysis model directly. This keeps the DUB caption
     # Russian while still preferring cheap/free Flash-Lite models.
-    if (clients
-            and os.getenv("LIVEDUB_TITLE_TRANSLATE", "1").strip().lower() in {"1", "true", "yes", "on", "always"}):
+    if clients and os.getenv("LIVEDUB_TITLE_TRANSLATE", "1").strip().lower() in {"1", "true", "yes", "on", "always"}:
         try:
             from services.livedub_info import build_livedub_info_card
+
             base_line = _format_livedub_title_line(fallback_title, fallback_author)
             card = await build_livedub_info_card(base_line, None, source_url="", force=True)
             yt_title = _clean_livedub_meta_text((card or {}).get("youtube_title") or "")
             if yt_title:
                 yt_title_norm, yt_author_norm = _split_title_author_line(yt_title)
                 yt_line = (
-                    f"{yt_title_norm.strip()} - {yt_author_norm.strip()}"
-                    if yt_author_norm else yt_title_norm.strip()
+                    f"{yt_title_norm.strip()} - {yt_author_norm.strip()}" if yt_author_norm else yt_title_norm.strip()
                 )
                 if _title_part_has_cyrillic(yt_line):
                     result = (yt_line, "")
@@ -197,14 +200,19 @@ async def _translate_livedub_title_for_caption(
             logger.info("[LiveDubTitle] light title translation failed: %s", str(_light_title_err)[:120])
 
     # If lightweight title translation is disabled/unavailable, deterministic metadata fallback.
-    if (not clients
-            or os.getenv("LIVEDUB_TITLE_TRANSLATE", "1").strip().lower() not in {"1", "true", "yes", "on", "always"}):
+    if not clients or os.getenv("LIVEDUB_TITLE_TRANSLATE", "1").strip().lower() not in {
+        "1",
+        "true",
+        "yes",
+        "on",
+        "always",
+    }:
         _LIVEDUB_TITLE_CACHE[cache_key] = (fallback_title, fallback_author)
         return fallback_title, fallback_author
 
     prompt = (
         "Переведи название и автора христианского видео на РУССКИЙ язык для публикации в Telegram.\n"
-        "Верни СТРОГО JSON: {\"title_ru\":\"...\",\"author_ru\":\"...\"}.\n"
+        'Верни СТРОГО JSON: {"title_ru":"...","author_ru":"..."}.\n'
         "ПРАВИЛА:\n"
         "- title_ru: ОБЯЗАТЕЛЬНО на русском языке; естественное название, без #shorts, без слова Shorts, без кавычек;\n"
         "- author_ru: имя автора/спикера на русском, если оно явно есть в названии/канале "
@@ -222,12 +230,14 @@ async def _translate_livedub_title_for_caption(
     )
     try:
         from core.globals import gemini_generate, make_text_config_smart
+
         cfg = make_text_config_smart(
             temperature=0.1,
             max_output_tokens=512,
             thinking_level="minimal",
             response_mime_type="application/json",
         )
+
         async def _generate_title(client: Any) -> Any:
             return await client.aio.models.generate_content(
                 model=GEMINI_MODEL,

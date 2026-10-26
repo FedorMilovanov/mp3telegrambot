@@ -4,6 +4,7 @@ The entry point must not silently continue with an arbitrary subset of safety
 adapters. This module owns one ordered feature manifest, records activation
 evidence and stops startup when a required feature cannot be activated.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -89,12 +90,7 @@ class RuntimeManifest:
         if len(ids) != len(set(ids)):
             raise ValueError("Runtime feature ids must be unique.")
         known = set(ids)
-        missing = {
-            dependency
-            for feature in ordered
-            for dependency in feature.dependencies
-            if dependency not in known
-        }
+        missing = {dependency for feature in ordered for dependency in feature.dependencies if dependency not in known}
         if missing:
             raise ValueError(f"Unknown runtime feature dependencies: {sorted(missing)}")
         self._features = ordered
@@ -150,17 +146,12 @@ class RuntimeManifest:
 
                 dependency_failure = self._dependency_failure(feature)
                 if dependency_failure:
-                    state = (
-                        RuntimeFeatureState.FAILED
-                        if feature.required
-                        else RuntimeFeatureState.SKIPPED
-                    )
+                    state = RuntimeFeatureState.FAILED if feature.required else RuntimeFeatureState.SKIPPED
                     result = self._record(feature, state, dependency_failure)
                     completed.append(result)
                     if feature.required:
                         raise RuntimeBootstrapError(
-                            f"Required runtime feature {feature.feature_id!r} blocked: "
-                            f"{dependency_failure}"
+                            f"Required runtime feature {feature.feature_id!r} blocked: {dependency_failure}"
                         )
                     continue
 
@@ -169,9 +160,7 @@ class RuntimeManifest:
                     result = self._record(feature, RuntimeFeatureState.FAILED, detail)
                     completed.append(result)
                     if feature.required:
-                        raise RuntimeBootstrapError(
-                            f"Required runtime feature {feature.feature_id!r} failed: {detail}"
-                        )
+                        raise RuntimeBootstrapError(f"Required runtime feature {feature.feature_id!r} failed: {detail}")
                     continue
 
                 try:
@@ -189,8 +178,7 @@ class RuntimeManifest:
                     completed.append(result)
                     if feature.required:
                         raise RuntimeBootstrapError(
-                            f"Required runtime feature {feature.feature_id!r} failed: "
-                            f"{type(exc).__name__}: {exc}"
+                            f"Required runtime feature {feature.feature_id!r} failed: {type(exc).__name__}: {exc}"
                         ) from exc
                     logger.warning(
                         "Optional runtime feature %s was not installed: %s",
@@ -213,10 +201,7 @@ class RuntimeManifest:
             if result.required and result.state is not RuntimeFeatureState.INSTALLED
         ]
         if failures:
-            summary = "; ".join(
-                f"{result.feature_id}={result.state.value}({result.detail})"
-                for result in failures
-            )
+            summary = "; ".join(f"{result.feature_id}={result.state.value}({result.detail})" for result in failures)
             raise RuntimeBootstrapError(f"Runtime manifest is not ready: {summary}")
 
     def snapshot(self) -> Mapping[str, RuntimeFeatureResult]:
@@ -226,16 +211,12 @@ class RuntimeManifest:
     def as_dict(self) -> dict[str, Any]:
         snapshot = self.snapshot()
         required_ready = all(
-            not result.required or result.state is RuntimeFeatureState.INSTALLED
-            for result in snapshot.values()
+            not result.required or result.state is RuntimeFeatureState.INSTALLED for result in snapshot.values()
         )
         return {
             "policy": RUNTIME_MANIFEST_POLICY,
             "required_ready": required_ready,
-            "features": {
-                feature_id: result.as_dict()
-                for feature_id, result in snapshot.items()
-            },
+            "features": {feature_id: result.as_dict() for feature_id, result in snapshot.items()},
         }
 
     def status_lines(self) -> tuple[str, ...]:
@@ -247,9 +228,7 @@ class RuntimeManifest:
         for feature_id, result in payload["features"].items():
             marker = "required" if result["required"] else "optional"
             detail = f" — {result['detail']}" if result["detail"] else ""
-            lines.append(
-                f"{feature_id}: {result['state']} ({marker}, {result['phase']}){detail}"
-            )
+            lines.append(f"{feature_id}: {result['state']} ({marker}, {result['phase']}){detail}")
         return tuple(lines)
 
 

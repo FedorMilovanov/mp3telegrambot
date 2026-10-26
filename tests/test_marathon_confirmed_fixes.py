@@ -22,26 +22,32 @@ def test_john_piper_workflow_is_valid_yaml() -> None:
 
 def test_process_timeout_defaults_and_clamps(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("DUB_TEST_TIMEOUT", raising=False)
-    assert dub_rendering._process_timeout_seconds(
-        {}, request_key="timeout", env_name="DUB_TEST_TIMEOUT", default=600
-    ) == 600
+    assert (
+        dub_rendering._process_timeout_seconds({}, request_key="timeout", env_name="DUB_TEST_TIMEOUT", default=600)
+        == 600
+    )
 
     monkeypatch.setenv("DUB_TEST_TIMEOUT", "5")
-    assert dub_rendering._process_timeout_seconds(
-        {}, request_key="timeout", env_name="DUB_TEST_TIMEOUT", default=600
-    ) == 60
+    assert (
+        dub_rendering._process_timeout_seconds({}, request_key="timeout", env_name="DUB_TEST_TIMEOUT", default=600)
+        == 60
+    )
 
     monkeypatch.setenv("DUB_TEST_TIMEOUT", "999999")
-    assert dub_rendering._process_timeout_seconds(
-        {}, request_key="timeout", env_name="DUB_TEST_TIMEOUT", default=600
-    ) == 86400
+    assert (
+        dub_rendering._process_timeout_seconds({}, request_key="timeout", env_name="DUB_TEST_TIMEOUT", default=600)
+        == 86400
+    )
 
-    assert dub_rendering._process_timeout_seconds(
-        {"timeout": "120"},
-        request_key="timeout",
-        env_name="DUB_TEST_TIMEOUT",
-        default=600,
-    ) == 120
+    assert (
+        dub_rendering._process_timeout_seconds(
+            {"timeout": "120"},
+            request_key="timeout",
+            env_name="DUB_TEST_TIMEOUT",
+            default=600,
+        )
+        == 120
+    )
 
 
 def test_run_passes_finite_timeout(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

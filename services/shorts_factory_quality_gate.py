@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Pure Factory plan acceptance policy."""
+
 from __future__ import annotations
 
 import copy
@@ -112,9 +113,7 @@ def validated_factory_plan_language(plan: dict[str, Any]) -> str:
 
     normalized = normalize_factory_language(raw_language)
     if not normalized:
-        raise RuntimeError(
-            "Gemini не доказала один доминирующий язык речи по аудио"
-        )
+        raise RuntimeError("Gemini не доказала один доминирующий язык речи по аудио")
     return normalized
 
 

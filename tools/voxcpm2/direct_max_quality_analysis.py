@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Audio diagnostics and candidate scoring for direct VoxCPM2 production."""
+
 from __future__ import annotations
 
 import math
@@ -53,9 +54,7 @@ def frame_levels(
         chunk = audio[start : start + frame]
         if len(chunk) < frame:
             break
-        rms = float(
-            np.sqrt(np.mean(np.square(chunk.astype(np.float64))) + 1e-12)
-        )
+        rms = float(np.sqrt(np.mean(np.square(chunk.astype(np.float64))) + 1e-12))
         levels.append(20.0 * math.log10(max(rms, 1e-9)))
         centers.append((start + frame / 2) / sample_rate)
     return (
@@ -111,9 +110,7 @@ def activity_stats(samples: np.ndarray, sample_rate: int) -> dict[str, float]:
                 run = 0
             else:
                 run += 1
-    rms = math.sqrt(
-        float(np.mean(np.square(audio.astype(np.float64)))) + 1e-12
-    )
+    rms = math.sqrt(float(np.mean(np.square(audio.astype(np.float64)))) + 1e-12)
     peak = float(np.max(np.abs(audio))) if len(audio) else 0.0
     return {
         "active_ratio": float(np.mean(active)),
@@ -134,12 +131,7 @@ def _pitch_analysis_audio(
         factor = max(1, int(round(rate / EXPECTED_ENCODE_SR)))
         usable = len(audio) - (len(audio) % factor)
         if factor > 1 and usable >= factor * 320:
-            audio = (
-                audio[:usable]
-                .reshape(-1, factor)
-                .mean(axis=1)
-                .astype(np.float32)
-            )
+            audio = audio[:usable].reshape(-1, factor).mean(axis=1).astype(np.float32)
             rate = int(round(rate / factor))
     return audio, rate
 
@@ -152,17 +144,7 @@ def pitch_profile(samples: np.ndarray, sample_rate: int) -> dict[str, float]:
         return {"voiced_ratio": 0.0, "f0_median": 0.0, "f0_p90": 0.0}
     starts = list(range(0, len(audio) - frame + 1, hop))
     rms = np.asarray(
-        [
-            np.sqrt(
-                np.mean(
-                    np.square(
-                        audio[start : start + frame].astype(np.float64)
-                    )
-                )
-                + 1e-12
-            )
-            for start in starts
-        ],
+        [np.sqrt(np.mean(np.square(audio[start : start + frame].astype(np.float64))) + 1e-12) for start in starts],
         dtype=np.float64,
     )
     threshold = max(
@@ -181,9 +163,7 @@ def pitch_profile(samples: np.ndarray, sample_rate: int) -> dict[str, float]:
         autocorrelation = np.correlate(chunk, chunk, "full")[frame - 1 :]
         if autocorrelation[0] <= 1e-9:
             continue
-        lag = lag_lo + int(
-            np.argmax(autocorrelation[lag_lo : lag_hi + 1])
-        )
+        lag = lag_lo + int(np.argmax(autocorrelation[lag_lo : lag_hi + 1]))
         if autocorrelation[lag] / autocorrelation[0] >= 0.30:
             values.append(sample_rate / lag)
     if not values:
@@ -228,10 +208,7 @@ def detect_tail_restart(
                     resume_start = float(centers[start_index] - 0.01)
                     resume_end = float(centers[end_index] + 0.01)
                     resumed_duration = resume_end - resume_start
-                    if (
-                        resume_start > duration * 0.62
-                        and resumed_duration <= 1.60
-                    ):
+                    if resume_start > duration * 0.62 and resumed_duration <= 1.60:
                         return {
                             "suspicious": True,
                             "silence_start": max(
@@ -299,10 +276,7 @@ def _read_reference_transport(
     """Use prepared mono-16k WAV directly; otherwise only resample/downmix."""
     try:
         info = sf_module.info(str(source))
-        native = (
-            int(info.samplerate) == EXPECTED_ENCODE_SR
-            and int(info.channels) == 1
-        )
+        native = int(info.samplerate) == EXPECTED_ENCODE_SR and int(info.channels) == 1
     except Exception:
         native = False
     if native:
@@ -355,31 +329,17 @@ def _reference_quality(
     if peak < MIN_REFERENCE_PEAK:
         failures.append(f"peak={peak:.6f} < {MIN_REFERENCE_PEAK:.3f}")
     if clip > MAX_REFERENCE_CLIPPING_RATIO:
-        failures.append(
-            f"clipping={clip:.6f} > {MAX_REFERENCE_CLIPPING_RATIO:.3f}"
-        )
+        failures.append(f"clipping={clip:.6f} > {MAX_REFERENCE_CLIPPING_RATIO:.3f}")
     if float(pitch["voiced_ratio"]) < MIN_REFERENCE_VOICED_RATIO:
-        failures.append(
-            f"voiced_ratio={pitch['voiced_ratio']:.3f} < {MIN_REFERENCE_VOICED_RATIO:.2f}"
-        )
+        failures.append(f"voiced_ratio={pitch['voiced_ratio']:.3f} < {MIN_REFERENCE_VOICED_RATIO:.2f}")
     if float(activity["active_ratio"]) < MIN_REFERENCE_ACTIVE_RATIO:
-        failures.append(
-            f"active_ratio={activity['active_ratio']:.3f} < {MIN_REFERENCE_ACTIVE_RATIO:.2f}"
-        )
+        failures.append(f"active_ratio={activity['active_ratio']:.3f} < {MIN_REFERENCE_ACTIVE_RATIO:.2f}")
     if float(activity["max_internal_gap"]) > MAX_REFERENCE_INTERNAL_GAP:
-        failures.append(
-            f"max_internal_gap={activity['max_internal_gap']:.3f} > {MAX_REFERENCE_INTERNAL_GAP:.2f}"
-        )
-    if (
-        int(spectrum.get("frames") or 0) <= 0
-        or len(spectrum.get("bands") or []) != len(BAND_EDGES_HZ) - 1
-    ):
+        failures.append(f"max_internal_gap={activity['max_internal_gap']:.3f} > {MAX_REFERENCE_INTERNAL_GAP:.2f}")
+    if int(spectrum.get("frames") or 0) <= 0 or len(spectrum.get("bands") or []) != len(BAND_EDGES_HZ) - 1:
         failures.append("нет валидного spectral envelope")
     if failures:
-        raise RuntimeError(
-            f"Voice reference не прошёл pre-model hard-floor: {source}: "
-            + "; ".join(failures)
-        )
+        raise RuntimeError(f"Voice reference не прошёл pre-model hard-floor: {source}: " + "; ".join(failures))
     return {
         "reference_quality_policy": "pre-model-reference-hard-floor-v1",
         "peak": peak,
@@ -413,13 +373,9 @@ def prepare_reference(
     audio = _trim_reference_edges(samples, sample_rate)
     duration = len(audio) / max(1, sample_rate)
     if duration < 5.0:
-        raise RuntimeError(
-            f"Voice reference короче 5 секунд после очистки: {source}"
-        )
+        raise RuntimeError(f"Voice reference короче 5 секунд после очистки: {source}")
     if duration > 30.0:
-        raise RuntimeError(
-            f"Voice reference длиннее 30 секунд после очистки: {source}"
-        )
+        raise RuntimeError(f"Voice reference длиннее 30 секунд после очистки: {source}")
     quality = _reference_quality(audio, sample_rate, source)
     fade = min(int(sample_rate * 0.025), len(audio) // 8)
     if fade > 1:
@@ -487,14 +443,9 @@ def candidate_score(
     if float(activity["active_ratio"]) < 0.22:
         score += (0.22 - float(activity["active_ratio"])) * 360.0
     if float(activity["max_internal_gap"]) > 0.68:
-        score += (
-            float(activity["max_internal_gap"]) - 0.68
-        ) * 100.0
+        score += (float(activity["max_internal_gap"]) - 0.68) * 100.0
     if float(pitch["voiced_ratio"]) < 0.18:
-        score += (
-            120.0
-            + (0.18 - float(pitch["voiced_ratio"])) * 500.0
-        )
+        score += 120.0 + (0.18 - float(pitch["voiced_ratio"])) * 500.0
 
     median_ratio = _ratio(
         float(pitch["f0_median"]),
@@ -520,12 +471,8 @@ def candidate_score(
         "spectral_similarity": similarity,
     }
 
-    score += abs(
-        math.log2(max(0.20, min(5.0, median_ratio)))
-    ) * 28.0
-    score += abs(
-        math.log2(max(0.20, min(5.0, p90_ratio)))
-    ) * 16.0
+    score += abs(math.log2(max(0.20, min(5.0, median_ratio)))) * 28.0
+    score += abs(math.log2(max(0.20, min(5.0, p90_ratio)))) * 16.0
     if median_ratio < 0.68 or median_ratio > 1.38:
         score += 85.0
     if p90_ratio < 0.62 or p90_ratio > 1.45:
@@ -586,9 +533,8 @@ def candidate_hard_ok(
         and timbre_hard_ok(similarity)
     )
 
-_BASE_ALL = tuple(globals().get('__all__', ()))
 
-
+_BASE_ALL = tuple(globals().get("__all__", ()))
 
 
 from tools.voxcpm2.direct_max_quality_io import MAX_TEMPO
@@ -597,11 +543,13 @@ FIT_TEMPO_POLICY = "candidate-fit-tempo-hard-gate-v2"
 
 _legacy_candidate_hard_ok = candidate_hard_ok
 
+
 def _effective_slot(candidate: dict[str, Any], speech_slot: float) -> float:
     try:
         return float(candidate.get("actual_speech_slot", speech_slot))
     except (TypeError, ValueError, OverflowError):
         return math.nan
+
 
 def required_tempo(candidate: dict[str, Any], speech_slot: float) -> float:
     """Return the exact atempo factor the fitter would need for this candidate.
@@ -619,6 +567,7 @@ def required_tempo(candidate: dict[str, Any], speech_slot: float) -> float:
         return math.inf
     return max(1.0, duration / slot)
 
+
 def candidate_hard_ok(candidate: dict[str, Any], speech_slot: float) -> bool:
     """Reject overlong speech before selection, not after expensive fitting."""
     actual_slot = _effective_slot(candidate, speech_slot)
@@ -633,6 +582,7 @@ def candidate_hard_ok(candidate: dict[str, Any], speech_slot: float) -> bool:
     candidate["required_tempo"] = tempo
     candidate["fit_tempo_policy"] = FIT_TEMPO_POLICY
     return bool(math.isfinite(tempo) and tempo <= float(MAX_TEMPO) + 1e-9)
+
 
 candidate_hard_ok = candidate_hard_ok
 

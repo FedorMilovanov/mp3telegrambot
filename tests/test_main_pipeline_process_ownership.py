@@ -9,10 +9,7 @@ def _process_function_source() -> tuple[str, str]:
     source = path.read_text(encoding="utf-8")
     tree = ast.parse(source)
     node = next(
-        item
-        for item in tree.body
-        if isinstance(item, ast.AsyncFunctionDef)
-        and item.name == "process_single_video"
+        item for item in tree.body if isinstance(item, ast.AsyncFunctionDef) and item.name == "process_single_video"
     )
     return source, ast.get_source_segment(source, node) or ""
 

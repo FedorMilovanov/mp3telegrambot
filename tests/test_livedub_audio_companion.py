@@ -20,7 +20,9 @@ def test_title_and_variant_filenames_are_human_readable(tmp_path: Path) -> None:
 
 def test_public_error_text_masks_bot_tokens_and_proxy_passwords() -> None:
     token = "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi_123456"
-    public = companion._public_error_text(RuntimeError(f"https://api.telegram.org/bot{token}/sendAudio via http://user:secret@127.0.0.1:1080"), 500)
+    public = companion._public_error_text(
+        RuntimeError(f"https://api.telegram.org/bot{token}/sendAudio via http://user:secret@127.0.0.1:1080"), 500
+    )
     assert token not in public and "secret" not in public and "***" in public
 
 

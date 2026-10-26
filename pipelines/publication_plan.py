@@ -11,6 +11,7 @@
 Здесь только решение. Никакого I/O: вход — настройки и данные анализа, выход —
 что запускать. Поэтому все 32 комбинации флагов проверяются в тестах.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -103,9 +104,7 @@ def has_ai_analysis(ai_data: Mapping[str, Any] | None) -> bool:
     return bool(ai_data.get("questions"))
 
 
-def feature_flags(
-    settings: Mapping[str, Any] | None, *, analysis_available: bool
-) -> FeatureFlags:
+def feature_flags(settings: Mapping[str, Any] | None, *, analysis_available: bool) -> FeatureFlags:
     """Флаги из настроек, погашенные, если анализа нет.
 
     Настройки по умолчанию включены: отсутствие ключа означает «пользователь
@@ -134,8 +133,7 @@ def page_plan(flags: FeatureFlags) -> PagePlan:
     return PagePlan(
         analytics=flags.analytics and not flags.study_analysis,
         questions=flags.questions and not flags.reflection_application,
-        terms=flags.terms
-        and not (flags.study_analysis and flags.reflection_application),
+        terms=flags.terms and not (flags.study_analysis and flags.reflection_application),
         study_analysis=flags.study_analysis,
         reflection_application=flags.reflection_application,
     )

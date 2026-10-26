@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Rebuild selected Dub Studio audio segments without translation or title work."""
+
 from __future__ import annotations
 
 import hashlib
@@ -42,11 +43,7 @@ def _load_segments(path: Path) -> list[dict[str, Any]]:
         raise RuntimeError("segments_ru_final.json пуст или повреждён.")
     result = [dict(item) for item in payload if isinstance(item, dict)]
     ids = [int(item.get("id") or 0) for item in result]
-    if (
-        len(result) != len(payload)
-        or any(value <= 0 for value in ids)
-        or len(ids) != len(set(ids))
-    ):
+    if len(result) != len(payload) or any(value <= 0 for value in ids) or len(ids) != len(set(ids)):
         raise RuntimeError("segments_ru_final.json содержит некорректные ID.")
     return sorted(result, key=lambda item: int(item["id"]))
 
@@ -82,9 +79,7 @@ def _current_guard_version() -> str:
 
 def _delete_segment_files(work_dir: Path, segment_ids: set[int]) -> None:
     for segment_id in segment_ids:
-        (work_dir / "checkpoints" / f"segment_{segment_id:02d}.json").unlink(
-            missing_ok=True
-        )
+        (work_dir / "checkpoints" / f"segment_{segment_id:02d}.json").unlink(missing_ok=True)
         for directory in ("segments_clean", "segments_fitted", "attempts"):
             root = work_dir / directory
             if not root.is_dir():
@@ -160,9 +155,7 @@ def _source_cues_from_segments(root: Path) -> list[pipeline.Cue]:
     for item in payload:
         if not isinstance(item, dict):
             continue
-        start = float(
-            item.get("original_srt_start", item.get("start", 0.0)) or 0.0
-        )
+        start = float(item.get("original_srt_start", item.get("start", 0.0)) or 0.0)
         end = float(item.get("source_end", item.get("end", 0.0)) or 0.0)
         text = str(item.get("source") or item.get("text") or "").strip()
         if end > start and text:
@@ -216,9 +209,7 @@ def _existing_references(root: Path) -> tuple[Path, Path]:
     extended = root / "references" / "extended_reference.wav"
     composite = root / "references" / "composite_reference.wav"
     if not extended.is_file() or not composite.is_file():
-        raise RuntimeError(
-            "Не найдены голосовые референсы; используйте полный аудиоремонт all."
-        )
+        raise RuntimeError("Не найдены голосовые референсы; используйте полный аудиоремонт all.")
     return extended, composite
 
 
@@ -239,11 +230,7 @@ def _refresh_named_outputs(
     stable_mixed: Path,
     stable_russian: Path,
 ) -> None:
-    outputs = (
-        manifest.get("outputs")
-        if isinstance(manifest.get("outputs"), dict)
-        else {}
-    )
+    outputs = manifest.get("outputs") if isinstance(manifest.get("outputs"), dict) else {}
     pairs = (
         (outputs.get("mixed"), stable_mixed),
         (outputs.get("russian_only"), stable_russian),
@@ -294,18 +281,13 @@ def main() -> None:
     request = production.load_request(root)
     repair_path = root / "input" / "audio_repair.json"
     repair = _load_object(repair_path, "audio_repair.json")
-    if (
-        int(repair.get("schema_version") or 0) != 1
-        or str(repair.get("project_id")) != project_id
-    ):
+    if int(repair.get("schema_version") or 0) != 1 or str(repair.get("project_id")) != project_id:
         raise RuntimeError("Некорректный запрос аудиоремонта.")
 
     segments_path = root / "segments_ru_final.json"
     segments = _load_segments(segments_path)
     if str(repair.get("segments_sha256") or "") != _sha256(segments_path):
-        raise RuntimeError(
-            "Реплики проекта изменились после команды /dubfix; создайте запрос заново."
-        )
+        raise RuntimeError("Реплики проекта изменились после команды /dubfix; создайте запрос заново.")
     all_ids = {int(item["id"]) for item in segments}
     selected_ids = sorted({int(value) for value in repair.get("segment_ids") or []})
     selected_set = set(selected_ids)
@@ -359,9 +341,7 @@ def main() -> None:
     runtime = backend.runtime_paths(repo, request)
     cpu_python = runtime.cpu_python
     if not cpu_python.is_file():
-        raise RuntimeError(
-            f"CPU Python не найден для backend={backend.backend_id}: {cpu_python}"
-        )
+        raise RuntimeError(f"CPU Python не найден для backend={backend.backend_id}: {cpu_python}")
 
     threads = max(1, int(request.get("threads") or 10))
     steps = max(1, int(request.get("steps") or 16))
@@ -378,10 +358,7 @@ def main() -> None:
     ).as_dict(os.environ)
 
     log(f"=== AUDIO REPAIR: {backend.backend_id} QUALITY ===")
-    log(
-        f"Проект={project_id}; selected={selected_ids}; "
-        f"all={repair_all}; seed={base_seed}"
-    )
+    log(f"Проект={project_id}; selected={selected_ids}; all={repair_all}; seed={base_seed}")
     synth = backend.build_renderer_command(
         runtime,
         values={
@@ -405,10 +382,7 @@ def main() -> None:
         check=False,
     )
     if result.returncode != 0:
-        raise RuntimeError(
-            f"Аудиоремонт speech backend {backend.backend_id} завершился "
-            f"с кодом {result.returncode}."
-        )
+        raise RuntimeError(f"Аудиоремонт speech backend {backend.backend_id} завершился с кодом {result.returncode}.")
 
     log("=== AUDIO REPAIR: QUALITY MASTER ===")
     master = backend.build_master_command(
@@ -432,9 +406,7 @@ def main() -> None:
         check=False,
     )
     if result.returncode != 0:
-        raise RuntimeError(
-            f"Аудиоремонт master завершился с кодом {result.returncode}."
-        )
+        raise RuntimeError(f"Аудиоремонт master завершился с кодом {result.returncode}.")
 
     _refresh_named_outputs(manifest, stable_mixed, stable_russian)
     report_path = output_dir / "audio_repair_report.json"

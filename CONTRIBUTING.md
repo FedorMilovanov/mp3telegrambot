@@ -22,6 +22,7 @@ pre-commit install && pre-commit install --hook-type pre-push
 |---|---|---|
 | `python -m pytest -q` | весь набор | ~90 с |
 | `python -m ruff check .` | гейт линтера | ~2 с |
+| `python -m ruff format --check .` | repo-wide форматирование не откатилось | ~2 с |
 | `python tools/check_types.py` | `mypy --strict` по объявленному срезу (`core/`, `pipelines/`) | ~2 с (кэш) |
 | `python tools/check_import_layers.py` | направление production-импортов и burn-down legacy-рёбер | ~1 с |
 | `python tools/check_coverage_ratchet.py` | покрытие объявленных файлов не упало (нужен `coverage.xml`) | ~1 с |
@@ -30,9 +31,10 @@ pre-commit install && pre-commit install --hook-type pre-push
 
 Для проверки файлов уже созданных коммитов ветки используйте
 `pre-commit run --from-ref origin/main --to-ref HEAD`; для произвольного набора —
-`pre-commit run --files <paths>`. Пока не проведена отдельная repo-wide волна
-форматирования, не заменяйте эти команды на `pre-commit run --all-files`:
-записывающий `ruff format` иначе переформатирует весь легаси-код.
+`pre-commit run --files <paths>`. Repo-wide волна форматирования уже проведена;
+для проверки всего дерева используйте read-only `ruff format --check .`, а не
+записывающие hooks на всех файлах. Чтобы локальный `git blame` пропускал эту
+волну, один раз выполните `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
 
 `pre-commit` на `pre-push` запускает `verify_repo.py` автоматически — это ровно
 те проверки, из-за которых PR бывает красным, хотя локально «всё работало».

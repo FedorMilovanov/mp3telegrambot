@@ -5,6 +5,7 @@ This module owns no runtime installation, ContextVar state or post-import
 rebinding. Callers explicitly probe translated masters and align their own
 candidate lists before rendering.
 """
+
 from __future__ import annotations
 
 import copy
@@ -38,8 +39,7 @@ def livedub_downstream_envelope() -> tuple[float, float]:
     required_tail = max(0.0, float(params.get("tail_pad_ms", 0)) / 1000.0)
     return (
         _env_float("LIVEDUB_DOWNSTREAM_PREROLL_SEC", 0.25),
-        required_tail
-        + _env_float("LIVEDUB_DOWNSTREAM_TAIL_EXTRA_SEC", 0.15),
+        required_tail + _env_float("LIVEDUB_DOWNSTREAM_TAIL_EXTRA_SEC", 0.15),
     )
 
 
@@ -70,11 +70,7 @@ def align_livedub_interval(
     if public_max > 0 and semantic_duration + required_tail > public_max + 1e-6:
         return None
 
-    available_extra = (
-        max(0.0, public_max - semantic_duration)
-        if public_max > 0
-        else pre_roll + desired_tail
-    )
+    available_extra = max(0.0, public_max - semantic_duration) if public_max > 0 else pre_roll + desired_tail
     actual_pre = min(
         pre_roll,
         semantic_start,
@@ -166,10 +162,7 @@ def align_livedub_montage_candidates(
         if not fragments or len(aligned) != len(fragments):
             continue
         candidate["fragments"] = aligned
-        candidate["total_dur"] = sum(
-            float(item["end_seconds"]) - float(item["start_seconds"])
-            for item in aligned
-        )
+        candidate["total_dur"] = sum(float(item["end_seconds"]) - float(item["start_seconds"]) for item in aligned)
         output.append(candidate)
     return output
 
@@ -187,8 +180,7 @@ async def probe_livedub_source_duration(
 
     if _env_bool("LIVEDUB_DOWNSTREAM_REQUIRE_PROBE", True):
         raise RuntimeError(
-            "LiveDub-файл не прошёл обязательный media probe: нужны "
-            "доказанные video+audio и точная длительность"
+            "LiveDub-файл не прошёл обязательный media probe: нужны доказанные video+audio и точная длительность"
         )
 
     logger.warning(
@@ -210,8 +202,7 @@ async def validated_factory_source_duration(
     exact_duration = float(probe.duration)
     if exact_duration + 3.0 < float(expected_duration):
         raise RuntimeError(
-            "Общий Factory-источник обрезан: "
-            f"ожидалось около {expected_duration:.0f}с, получено {exact_duration:.3f}с"
+            f"Общий Factory-источник обрезан: ожидалось около {expected_duration:.0f}с, получено {exact_duration:.3f}с"
         )
     return exact_duration
 

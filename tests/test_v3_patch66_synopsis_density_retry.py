@@ -19,6 +19,7 @@ def test_synopsis_density_retry_policy_only_for_long_thin_outputs():
     assert should_retry_synopsis_density(issues, 15 * 60) is False
     # транскрипто-специфичные сигналы — по-прежнему только для длинных
     from core.synopsis_quality import SynopsisQualityIssue
+
     transcript_only = [SynopsisQualityIssue("synopsis_author_voice_low", "x")]
     assert should_retry_synopsis_density(transcript_only, 30 * 60) is False
     assert should_retry_synopsis_density(transcript_only, 50 * 60) is True

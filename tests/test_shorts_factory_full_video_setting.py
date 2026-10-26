@@ -8,9 +8,7 @@ def test_factory_full_video_setting_persists_per_user(monkeypatch, tmp_path):
 
     def connect():
         conn = sqlite3.connect(db_path)
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS bot_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
-        )
+        conn.execute("CREATE TABLE IF NOT EXISTS bot_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
         return conn
 
     monkeypatch.setattr(mode_command, "_db_conn", connect)

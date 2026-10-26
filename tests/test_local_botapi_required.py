@@ -173,11 +173,7 @@ def test_socks5h_proxy_is_normalized_for_httpx():
 
 
 def test_entrypoint_requires_local_before_importing_main_and_has_no_cloud_adapter():
-    feature = next(
-        item
-        for item in DEFAULT_RUNTIME_FEATURES
-        if item.feature_id == "local-bot-api"
-    )
+    feature = next(item for item in DEFAULT_RUNTIME_FEATURES if item.feature_id == "local-bot-api")
     assert feature.module == "services.local_botapi_required"
     assert feature.installer == "require_local_bot_api"
     assert feature.phase is RuntimePhase.PRE_MAIN

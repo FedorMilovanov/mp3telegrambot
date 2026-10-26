@@ -8,14 +8,7 @@ from tools.voxcpm2 import final_media_qa
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MASTER = (
-    ROOT
-    / "tools"
-    / "voxcpm2"
-    / "examples"
-    / "john_piper_z20py4yqhyq"
-    / "master_constant_mix.py"
-)
+MASTER = ROOT / "tools" / "voxcpm2" / "examples" / "john_piper_z20py4yqhyq" / "master_constant_mix.py"
 
 
 def _media() -> dict[str, object]:

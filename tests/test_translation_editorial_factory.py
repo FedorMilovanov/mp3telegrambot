@@ -121,9 +121,7 @@ def test_render_review_markdown_is_readable() -> None:
                     }
                 ],
             },
-            "candidate_reviews": [
-                {"candidate_id": "short:1", "verdict": "keep", "reason": "Чисто."}
-            ],
+            "candidate_reviews": [{"candidate_id": "short:1", "verdict": "keep", "reason": "Чисто."}],
         }
     )
 

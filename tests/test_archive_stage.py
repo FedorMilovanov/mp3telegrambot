@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Архив публикации: нормализация записи, порядок сохранения, сбои без потери MP3."""
+
 from __future__ import annotations
 
 import logging
@@ -245,9 +246,7 @@ async def test_save_order_record_repair_then_segments(
 async def test_empty_repair_report_does_not_update_metadata() -> None:
     recorder = Recorder()
 
-    result = await archive_pages(
-        make_request(), repair=RepairReport(), deps=recorder.deps()
-    )
+    result = await archive_pages(make_request(), repair=RepairReport(), deps=recorder.deps())
 
     assert result.ok is True
     assert recorder.names() == ["record", "segments"]
@@ -263,9 +262,7 @@ async def test_every_io_failure_is_non_fatal_and_reports_progress(
     repair = RepairReport(results=[PageRepair(url=STUDY, ok=True, changed=True)])
 
     with caplog.at_level(logging.WARNING):
-        result = await archive_pages(
-            make_request(), repair=repair, deps=recorder.deps()
-        )
+        result = await archive_pages(make_request(), repair=repair, deps=recorder.deps())
 
     assert result.ok is False
     assert result.error == f"{fail_at}: диск недоступен"

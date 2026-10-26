@@ -11,6 +11,7 @@
 `ArchiveResult.error`, но не отменяет отправку уже готового MP3 пользователю.
 Порядок записи сохранён: страница → статус починки (если был проход) → сегменты.
 """
+
 from __future__ import annotations
 
 import logging
@@ -117,9 +118,7 @@ def build_archive_record(request: ArchiveRequest) -> dict[str, Any]:
     return build_generated_page_record(
         video_id=request.media_id,
         source_url=request.source_url,
-        title=normalize_common_typos(
-            normalize_title_text(ai.get("real_title") or title_fallback) or title_fallback
-        ),
+        title=normalize_common_typos(normalize_title_text(ai.get("real_title") or title_fallback) or title_fallback),
         author=normalize_common_typos(
             normalize_author_name(ai.get("real_author") or author_fallback) or author_fallback
         ),

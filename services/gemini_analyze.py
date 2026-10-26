@@ -13,10 +13,14 @@ Gemini Audio Analyzer — анализ аудио через Gemini API.
     - used_audio_part: audio_part для повторного использования (конспект и т.п.)
 Все три — None при фатальной ошибке.
 """
+
 from core.globals import (
-    HAS_GEMINI, GEMINI_API_KEY,
-    GEMINI_CLIENTS, GEMINI_CLIENT_QUOTA_DOMAINS,
-    is_quota_error, is_overload_error,
+    HAS_GEMINI,
+    GEMINI_API_KEY,
+    GEMINI_CLIENTS,
+    GEMINI_CLIENT_QUOTA_DOMAINS,
+    is_quota_error,
+    is_overload_error,
     make_audio_config,
 )
 from core.database import GEMINI_MODEL
@@ -110,7 +114,9 @@ def _format_repaired_timestamps(data: dict, duration: int) -> str:
     return "\n".join(lines)
 
 
-async def _repair_timestamp_coverage_if_needed(client, audio_part, parsed: dict | None, duration: int, model_name: str, video_id: str) -> dict | None:
+async def _repair_timestamp_coverage_if_needed(
+    client, audio_part, parsed: dict | None, duration: int, model_name: str, video_id: str
+) -> dict | None:
     """One targeted, non-fatal LOW-thinking repair pass for timestamp coverage."""
     if not parsed or not _timestamp_repair_enabled() or not parsed.get("timestamp_coverage_warning"):
         return parsed
@@ -126,7 +132,7 @@ async def _repair_timestamp_coverage_if_needed(client, audio_part, parsed: dict 
         f"Особенно восстанови смысловые повороты с {_missing_from} до конца; итоговый список должен покрыть весь материал. "
         f"Длительность: {_format_ts_for_prompt(duration)}. "
         f"Последний смысловой таймкод должен быть примерно не раньше {min_final}, если материал не закончился раньше. "
-        "Верни JSON только вида {\"timestamps\":[{\"time\":\"M:SS\",\"topic\":\"...\"}]}. "
+        'Верни JSON только вида {"timestamps":[{"time":"M:SS","topic":"..."}]}. '
         "СТИЛЬ topic такой же, как в текущем списке: в каждом topic выдели "
         "**жирным** 1 ключевую фразу (2-4 слова) через **двойные звёздочки** — "
         "как в исходных строках; без точки в конце. "
@@ -153,6 +159,7 @@ async def _repair_timestamp_coverage_if_needed(client, audio_part, parsed: dict 
         )
         raw = (resp.text or "").strip()
         import json as _json
+
         try:
             repaired = _json.loads(raw)
         except _json.JSONDecodeError:
@@ -165,19 +172,25 @@ async def _repair_timestamp_coverage_if_needed(client, audio_part, parsed: dict 
             parsed.pop("timestamp_coverage_warning", None)
             logger.info("Timestamp coverage repair applied: %d lines", len(repaired_lines.splitlines()))
         await alog_gemini_response(
-            response=resp, task="audio_timestamp_repair", video_id=video_id,
-            model=model_name, thinking_level="low", json_valid=bool(repaired_lines),
+            response=resp,
+            task="audio_timestamp_repair",
+            video_id=video_id,
+            model=model_name,
+            thinking_level="low",
+            json_valid=bool(repaired_lines),
             error="" if repaired_lines else "empty_repair",
         )
     except Exception as exc:
         if is_overload_error(exc):
-            capacity_control.note_overload(
-                capacity_control.transient_retry_delay(1), domain="inference"
-            )
+            capacity_control.note_overload(capacity_control.transient_retry_delay(1), domain="inference")
         logger.warning("Timestamp coverage repair failed non-fatally: %s: %s", type(exc).__name__, str(exc)[:180])
         await alog_gemini_run(
-            task="audio_timestamp_repair", video_id=video_id, model=model_name,
-            thinking_level="low", json_valid=False, error=f"{type(exc).__name__}: {str(exc)[:240]}",
+            task="audio_timestamp_repair",
+            video_id=video_id,
+            model=model_name,
+            thinking_level="low",
+            json_valid=False,
+            error=f"{type(exc).__name__}: {str(exc)[:240]}",
         )
     return parsed
 
@@ -208,7 +221,7 @@ def _validate_and_fix_timestamps(data: dict, duration: int) -> dict:
     if duration <= 0:
         return data
 
-    ts_pattern = re.compile(r'^(\d+):(\d{2})(?::(\d{2}))?$')
+    ts_pattern = re.compile(r"^(\d+):(\d{2})(?::(\d{2}))?$")
 
     def _secs(ts_str: str):
         if not isinstance(ts_str, str):
@@ -315,9 +328,7 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                 _poll_start = _loop.time()
                 while uf.state == "PROCESSING":
                     if _loop.time() - _poll_start > _MAX_UPLOAD_WAIT:
-                        raise TimeoutError(
-                            f"Gemini file processing timeout ({_MAX_UPLOAD_WAIT}s)"
-                        )
+                        raise TimeoutError(f"Gemini file processing timeout ({_MAX_UPLOAD_WAIT}s)")
                     await set_progress(status_msg, 4, {"info": "🧠 Gemini обрабатывает аудио... ⏳"})
                     await asyncio.sleep(3)
                     uf = await capacity_control.run_heavy_gemini_call(
@@ -394,7 +405,8 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                         raise
                     logger.warning(
                         "audio_analysis structured output failed (%s: %s) — retry legacy JSON config",
-                        type(_schema_err).__name__, str(_schema_err)[:180],
+                        type(_schema_err).__name__,
+                        str(_schema_err)[:180],
                     )
             return await capacity_control.run_heavy_gemini_call(
                 lambda: asyncio.wait_for(
@@ -425,10 +437,7 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
             for client_index, client in enumerate(clients, 1):
                 if success or inference_budget.exhausted or upload_budget.exhausted:
                     break
-                files_blocked = (
-                    file_size_mb > 0
-                    and quota_tracker.should_skip(client, "files")
-                )
+                files_blocked = file_size_mb > 0 and quota_tracker.should_skip(client, "files")
                 inference_blocked = quota_tracker.should_skip(client, "inference")
                 if files_blocked or inference_blocked:
                     logger.info(
@@ -452,9 +461,7 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                                 upload_err,
                             )
                         transient_upload = (
-                            is_quota_error(upload_err)
-                            or is_overload_error(upload_err)
-                            or _is_timeout_error(upload_err)
+                            is_quota_error(upload_err) or is_overload_error(upload_err) or _is_timeout_error(upload_err)
                         )
                         if not transient_upload:
                             raise
@@ -470,9 +477,7 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                         if upload_budget.exhausted:
                             break
                         if is_overload_error(upload_err):
-                            await asyncio.sleep(
-                                capacity_control.transient_retry_delay(upload_budget.used)
-                            )
+                            await asyncio.sleep(capacity_control.transient_retry_delay(upload_budget.used))
                         continue
 
                 same_client_transients = 0
@@ -693,8 +698,7 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
             return None, used_client, used_audio_part
         elif _finish_str not in ("FinishReason.STOP", "STOP", "1", "UNKNOWN"):
             logger.warning(
-                f"Gemini finish_reason={_finish_str} — ответ возможно неполный. "
-                f"Длина: {len(answer)} символов"
+                f"Gemini finish_reason={_finish_str} — ответ возможно неполный. Длина: {len(answer)} символов"
             )
 
         parsed = _parse_gemini_response(answer, duration)
@@ -734,6 +738,6 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
             json_valid=False,
             error=f"{err_type}: {safe_err[:300]}",
         )
-        if used_audio_part and hasattr(used_audio_part, 'name') and used_client:
+        if used_audio_part and hasattr(used_audio_part, "name") and used_client:
             _spawn_safe_delete(used_client, used_audio_part.name)
         return None, None, None

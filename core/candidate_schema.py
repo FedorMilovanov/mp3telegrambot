@@ -280,9 +280,19 @@ def audio_analysis_response_schema() -> dict[str, Any]:
             "hermeneutic_method": _string_schema(),
         },
         "required": [
-            "real_author", "real_title", "real_event", "format", "main_topic",
-            "timestamps", "hashtags", "analysis_summary", "argument_arc",
-            "key_categories", "questions", "terms_data", "whisper_hints",
+            "real_author",
+            "real_title",
+            "real_event",
+            "format",
+            "main_topic",
+            "timestamps",
+            "hashtags",
+            "analysis_summary",
+            "argument_arc",
+            "key_categories",
+            "questions",
+            "terms_data",
+            "whisper_hints",
             "hermeneutic_method",
         ],
     }
@@ -308,8 +318,17 @@ def expanded_page_response_schema() -> dict[str, Any]:
             "type": {
                 "type": "string",
                 "enum": [
-                    "paragraph", "bullet", "scripture", "source", "lexicon", "heading",
-                    "thesis", "argument_spine", "pull_quote", "application", "word_study",
+                    "paragraph",
+                    "bullet",
+                    "scripture",
+                    "source",
+                    "lexicon",
+                    "heading",
+                    "thesis",
+                    "argument_spine",
+                    "pull_quote",
+                    "application",
+                    "word_study",
                 ],
             },
             "text": _string_schema(),
@@ -361,7 +380,6 @@ def expanded_page_response_schema() -> dict[str, Any]:
     }
 
 
-
 def combined_expanded_pages_response_schema() -> dict[str, Any]:
     """Structured-output schema for optional combined Study+Reflection call."""
     page_schema = expanded_page_response_schema()
@@ -373,6 +391,7 @@ def combined_expanded_pages_response_schema() -> dict[str, Any]:
         },
         "required": ["study", "reflection"],
     }
+
 
 def timestamp_repair_response_schema() -> dict[str, Any]:
     """Structured-output schema for targeted timestamp coverage repair."""

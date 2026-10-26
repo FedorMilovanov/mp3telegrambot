@@ -1,5 +1,3 @@
-
-
 from core.model_catalog import MODEL_PRIMARY
 import asyncio
 import importlib.util
@@ -22,25 +20,20 @@ qa = _load("livedub_qa_hardening_test", "livedub_qa_hardening.py")
 
 
 def test_russian_title_case_has_broad_lowercase_service_words():
-    assert publication.russian_title_case(
-        "борьба со страхом через веру и между испытаниями"
-    ) == "Борьба со Страхом через Веру и между Испытаниями"
+    assert (
+        publication.russian_title_case("борьба со страхом через веру и между испытаниями")
+        == "Борьба со Страхом через Веру и между Испытаниями"
+    )
 
 
 def test_reported_title_override_and_author_are_canonical():
-    title, author = publication.split_title_author(
-        "The Battle Against Sexual Immorality & Pornography - Tim Conway"
-    )
-    assert publication.canonical_title(title) == (
-        "Борьба с Сексуальной Безнравственностью и Порнографией"
-    )
+    title, author = publication.split_title_author("The Battle Against Sexual Immorality & Pornography - Tim Conway")
+    assert publication.canonical_title(title) == ("Борьба с Сексуальной Безнравственностью и Порнографией")
     assert author == "Тим Конвей"
 
 
 def test_all_caps_title_is_normalized_but_real_acronyms_survive():
-    assert publication.russian_title_case(
-        "БОРЬБА С ГРЕХОМ И ИИ"
-    ) == "Борьба с Грехом и ИИ"
+    assert publication.russian_title_case("БОРЬБА С ГРЕХОМ И ИИ") == "Борьба с Грехом и ИИ"
 
 
 def test_audio_filename_is_russian_safe_and_bounded():
@@ -51,9 +44,7 @@ def test_audio_filename_is_russian_safe_and_bounded():
 
 
 def test_cached_file_id_never_receives_synthetic_filename():
-    src = (Path(__file__).parents[1] / "services/livedub_delivery_coordinator.py").read_text(
-        encoding="utf-8"
-    )
+    src = (Path(__file__).parents[1] / "services/livedub_delivery_coordinator.py").read_text(encoding="utf-8")
     start = src.index("async def deliver_cached_companions")
     end = src.index("@dataclass", start)
     cached = src[start:end]
@@ -183,12 +174,8 @@ def test_same_title_at_two_urls_does_not_reuse_wrong_source(monkeypatch):
     monkeypatch.setattr(publication, "_build_uncached", fake_build)
 
     async def run():
-        first = await publication.build_publication_card(
-            "Same", "https://youtu.be/one"
-        )
-        second = await publication.build_publication_card(
-            "Same", "https://youtu.be/two"
-        )
+        first = await publication.build_publication_card("Same", "https://youtu.be/one")
+        second = await publication.build_publication_card("Same", "https://youtu.be/two")
         return first, second
 
     first, second = asyncio.run(run())

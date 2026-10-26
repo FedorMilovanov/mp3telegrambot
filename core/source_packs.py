@@ -6,6 +6,7 @@ Instead of handing Gemini a giant bibliography or selecting one flat keyword
 match, we choose a small, deduplicated, topic-weighted allowlist. The goal is to
 help Gemini reason with better sources, not to constrain it with more bans.
 """
+
 from __future__ import annotations
 
 import re
@@ -14,74 +15,104 @@ from typing import Iterable, Any
 
 _PACKS: dict[str, list[str]] = {
     "justification": [
-        "1689 LBCF гл.11", "Westminster Confession гл.11",
-        "Sproul — Faith Alone", "Calvin — Institutes III.11–18",
-        "Owen — Justification by Faith", "Murray — Redemption Accomplished",
+        "1689 LBCF гл.11",
+        "Westminster Confession гл.11",
+        "Sproul — Faith Alone",
+        "Calvin — Institutes III.11–18",
+        "Owen — Justification by Faith",
+        "Murray — Redemption Accomplished",
         "Luther — Galatians Commentary",
     ],
     "repentance": [
-        "1689 LBCF гл.15", "Heidelberg Catechism Q88–90",
+        "1689 LBCF гл.15",
+        "Heidelberg Catechism Q88–90",
         "Watson — The Doctrine of Repentance",
-        "Edwards — Religious Affections", "Owen — Mortification of Sin",
+        "Edwards — Religious Affections",
+        "Owen — Mortification of Sin",
         "Brooks — Precious Remedies Against Satan's Devices",
     ],
     "scripture_authority": [
-        "1689 LBCF гл.1", "Chicago Statement on Biblical Inerrancy (1978)",
-        "Warfield — Inspiration and Authority of the Bible",
-        "Calvin — Institutes I.6–9", "Frame — Systematic Theology (Scripture)",
-    ],
-    "scripture_sufficiency": [
-        "MacArthur — The Sufficiency of Scripture", "1689 LBCF гл.1",
+        "1689 LBCF гл.1",
         "Chicago Statement on Biblical Inerrancy (1978)",
         "Warfield — Inspiration and Authority of the Bible",
-        "Packer — Fundamentalism and the Word of God", "Frame — The Doctrine of the Word of God",
+        "Calvin — Institutes I.6–9",
+        "Frame — Systematic Theology (Scripture)",
+    ],
+    "scripture_sufficiency": [
+        "MacArthur — The Sufficiency of Scripture",
+        "1689 LBCF гл.1",
+        "Chicago Statement on Biblical Inerrancy (1978)",
+        "Warfield — Inspiration and Authority of the Bible",
+        "Packer — Fundamentalism and the Word of God",
+        "Frame — The Doctrine of the Word of God",
     ],
     "soteriology": [
-        "1689 LBCF гл.10–11", "Canons of Dort (1619)",
-        "Calvin — Institutes III", "Owen — The Death of Death in the Death of Christ",
+        "1689 LBCF гл.10–11",
+        "Canons of Dort (1619)",
+        "Calvin — Institutes III",
+        "Owen — The Death of Death in the Death of Christ",
         "Murray — Redemption Accomplished and Applied",
         "Sproul — Chosen by God",
     ],
     "sanctification": [
-        "1689 LBCF гл.13", "Westminster Confession гл.13",
+        "1689 LBCF гл.13",
+        "Westminster Confession гл.13",
         "Owen — Of the Mortification of Sin in Believers",
         "Bridges — The Pursuit of Holiness",
-        "Ryle — Holiness", "Ferguson — Devoted to God",
+        "Ryle — Holiness",
+        "Ferguson — Devoted to God",
     ],
     "christology": [
-        "Chalcedonian Definition (451)", "Athanasius — On the Incarnation",
-        "Calvin — Institutes II.12–17", "Owen — Christologia",
-        "Warfield — The Person and Work of Christ", "Macleod — The Person of Christ",
+        "Chalcedonian Definition (451)",
+        "Athanasius — On the Incarnation",
+        "Calvin — Institutes II.12–17",
+        "Owen — Christologia",
+        "Warfield — The Person and Work of Christ",
+        "Macleod — The Person of Christ",
     ],
     "isaiah_servant": [
-        "Calvin — Commentary on Isaiah", "Motyer — The Prophecy of Isaiah",
-        "Young — The Book of Isaiah", "Oswalt — The Book of Isaiah",
-        "Owen — The Death of Death in the Death of Christ", "Murray — Redemption Accomplished and Applied",
+        "Calvin — Commentary on Isaiah",
+        "Motyer — The Prophecy of Isaiah",
+        "Young — The Book of Isaiah",
+        "Oswalt — The Book of Isaiah",
+        "Owen — The Death of Death in the Death of Christ",
+        "Murray — Redemption Accomplished and Applied",
         "Grogan — Isaiah",
     ],
     "trinity": [
-        "Nicene Creed (325/381)", "Athanasius — On the Incarnation",
-        "Augustine — De Trinitate", "Calvin — Institutes I.13",
-        "Bavinck — Reformed Dogmatics (God and Creation)", "Letham — The Holy Trinity",
+        "Nicene Creed (325/381)",
+        "Athanasius — On the Incarnation",
+        "Augustine — De Trinitate",
+        "Calvin — Institutes I.13",
+        "Bavinck — Reformed Dogmatics (God and Creation)",
+        "Letham — The Holy Trinity",
     ],
     "pneumatology": [
-        "Owen — The Holy Spirit", "Calvin — Institutes III.1–2",
-        "Gaffin — Perspectives on Pentecost", "Ferguson — The Holy Spirit",
+        "Owen — The Holy Spirit",
+        "Calvin — Institutes III.1–2",
+        "Gaffin — Perspectives on Pentecost",
+        "Ferguson — The Holy Spirit",
         "Bavinck — Reformed Dogmatics (Holy Spirit, Church, New Creation)",
     ],
     "eschatology": [
-        "Hoekema — The Bible and the Future", "Ryrie — Basic Theology (Things to Come)",
-        "Berkhof — Systematic Theology (Eschatology)", "Ladd — The Blessed Hope",
+        "Hoekema — The Bible and the Future",
+        "Ryrie — Basic Theology (Things to Come)",
+        "Berkhof — Systematic Theology (Eschatology)",
+        "Ladd — The Blessed Hope",
         "Chou — The Hermeneutics of the Biblical Writers",
     ],
     "angelology": [
-        "Calvin — Institutes I.14", "Bavinck — Reformed Dogmatics (Creation)",
-        "Berkhof — Systematic Theology (Angels)", "Warfield — Biblical Doctrines",
+        "Calvin — Institutes I.14",
+        "Bavinck — Reformed Dogmatics (Creation)",
+        "Berkhof — Systematic Theology (Angels)",
+        "Warfield — Biblical Doctrines",
         "MacArthur — The Invisible Army",
     ],
     "ecclesiology": [
-        "1689 LBCF гл.26–29", "Dever — Nine Marks of a Healthy Church",
-        "Clowney — The Church", "Horton — The Christian Faith (Church)",
+        "1689 LBCF гл.26–29",
+        "Dever — Nine Marks of a Healthy Church",
+        "Clowney — The Church",
+        "Horton — The Christian Faith (Church)",
         "MacArthur — The Master's Plan for the Church",
     ],
     "preaching_hermeneutics": [
@@ -100,7 +131,8 @@ _PACKS: dict[str, list[str]] = {
         "Masters — The Charismatic Phenomenon",
     ],
     "covenant_theology": [
-        "1689 LBCF гл.7", "Westminster Confession гл.7",
+        "1689 LBCF гл.7",
+        "Westminster Confession гл.7",
         "Witsius — The Economy of the Covenants",
         "Berkhof — Systematic Theology (Covenant)",
         "Robertson — The Christ of the Covenants",
@@ -114,8 +146,10 @@ _PACKS: dict[str, list[str]] = {
         "Ryrie — Dispensationalism",
     ],
     "infant_salvation_children": [
-        "Spurgeon — Infant Salvation", "MacArthur — Safe in the Arms of God",
-        "1689 LBCF гл.10 пар.3", "Canons of Dort I.17",
+        "Spurgeon — Infant Salvation",
+        "MacArthur — Safe in the Arms of God",
+        "1689 LBCF гл.10 пар.3",
+        "Canons of Dort I.17",
         "Watson — A Body of Divinity",
     ],
     "evangelism_gospel": [
@@ -128,65 +162,113 @@ _PACKS: dict[str, list[str]] = {
     ],
     "mission": [
         "DeYoung and Gilbert — What Is the Mission of the Church?",
-        "Piper — Let the Nations Be Glad!", "Fuller — The Gospel Worthy of All Acceptation",
-        "Packer — Evangelism and the Sovereignty of God", "Bavinck — An Introduction to the Science of Missions",
+        "Piper — Let the Nations Be Glad!",
+        "Fuller — The Gospel Worthy of All Acceptation",
+        "Packer — Evangelism and the Sovereignty of God",
+        "Bavinck — An Introduction to the Science of Missions",
     ],
     "prayer_spirituality": [
-        "Calvin — Institutes III.20", "Owen — Communion with God",
-        "Bunyan — Pilgrim's Progress", "Carson — A Call to Spiritual Reformation",
+        "Calvin — Institutes III.20",
+        "Owen — Communion with God",
+        "Bunyan — Pilgrim's Progress",
+        "Carson — A Call to Spiritual Reformation",
         "Whitney — Spiritual Disciplines for the Christian Life",
     ],
     "providence_suffering": [
-        "Calvin — Institutes I.16–18", "Watson — All Things for Good",
+        "Calvin — Institutes I.16–18",
+        "Watson — All Things for Good",
         "Burroughs — The Rare Jewel of Christian Contentment",
-        "Piper — Suffering and the Sovereignty of God", "Westminster Confession гл.5",
+        "Piper — Suffering and the Sovereignty of God",
+        "Westminster Confession гл.5",
     ],
     "social_justice_gospel": [
         "Dallas Statement on Social Justice and the Gospel (2018)",
-        "Baucham — Fault Lines", "Machen — Christianity and Liberalism",
+        "Baucham — Fault Lines",
+        "Machen — Christianity and Liberalism",
         "DeYoung and Gilbert — What Is the Mission of the Church?",
         "MacArthur — The Gospel According to Jesus",
     ],
     "church_history_biography": [
-        "Spurgeon — Lectures to My Students", "MacArthur — Ashamed of the Gospel",
-        "Fuller — The Gospel Worthy of All Acceptation", "Dallimore — Spurgeon",
+        "Spurgeon — Lectures to My Students",
+        "MacArthur — Ashamed of the Gospel",
+        "Fuller — The Gospel Worthy of All Acceptation",
+        "Dallimore — Spurgeon",
         "Haykin — The Christian Lover",
     ],
     "default": [
-        "1689 London Baptist Confession", "Westminster Confession of Faith",
+        "1689 London Baptist Confession",
+        "Westminster Confession of Faith",
         "Calvin — Institutes of the Christian Religion",
         "Owen — Works (тематически релевантный том)",
-        "Spurgeon — Sermons", "MacArthur Study Bible",
+        "Spurgeon — Sermons",
+        "MacArthur Study Bible",
     ],
 }
 
 # Backward-compatible keyword map for tests and simple external uses.
 _KEYWORD_TO_TOPIC: dict[str, str] = {
-    "оправдан": "justification", "justif": "justification", "sola fide": "justification",
-    "покаян": "repentance", "repent": "repentance", "умерщвлен": "repentance",
-    "авторитет писани": "scripture_authority", "непогрешим": "scripture_authority", "inerrancy": "scripture_authority",
-    "достаточность писания": "scripture_sufficiency", "sufficiency": "scripture_sufficiency",
-    "избрание": "soteriology", "монергизм": "soteriology", "суверенная благодать": "soteriology",
-    "освящен": "sanctification", "святость": "sanctification", "holiness": "sanctification",
-    "христолог": "christology", "мессия": "christology", "incarnation": "christology",
-    "исайя 53": "isaiah_servant", "раб иеговы": "isaiah_servant", "страдающий раб": "isaiah_servant",
-    "троиц": "trinity", "trinity": "trinity", "святой дух": "pneumatology", "pneumatology": "pneumatology",
-    "эсхатолог": "eschatology", "eschatology": "eschatology", "великая скорб": "eschatology",
-    "ангел": "angelology", "angel": "angelology", "ангелолог": "angelology",
-    "экклесиолог": "ecclesiology", "поместная церковь": "ecclesiology",
-    "проповед": "preaching_hermeneutics", "hermeneutic": "preaching_hermeneutics", "кафедра": "preaching_hermeneutics",
-    "харизмат": "charismatic_cessationism", "цессационизм": "charismatic_cessationism", "чуждый огонь": "charismatic_cessationism",
-    "завет": "covenant_theology", "covenant": "covenant_theology", "израиль": "israel_church",
+    "оправдан": "justification",
+    "justif": "justification",
+    "sola fide": "justification",
+    "покаян": "repentance",
+    "repent": "repentance",
+    "умерщвлен": "repentance",
+    "авторитет писани": "scripture_authority",
+    "непогрешим": "scripture_authority",
+    "inerrancy": "scripture_authority",
+    "достаточность писания": "scripture_sufficiency",
+    "sufficiency": "scripture_sufficiency",
+    "избрание": "soteriology",
+    "монергизм": "soteriology",
+    "суверенная благодать": "soteriology",
+    "освящен": "sanctification",
+    "святость": "sanctification",
+    "holiness": "sanctification",
+    "христолог": "christology",
+    "мессия": "christology",
+    "incarnation": "christology",
+    "исайя 53": "isaiah_servant",
+    "раб иеговы": "isaiah_servant",
+    "страдающий раб": "isaiah_servant",
+    "троиц": "trinity",
+    "trinity": "trinity",
+    "святой дух": "pneumatology",
+    "pneumatology": "pneumatology",
+    "эсхатолог": "eschatology",
+    "eschatology": "eschatology",
+    "великая скорб": "eschatology",
+    "ангел": "angelology",
+    "angel": "angelology",
+    "ангелолог": "angelology",
+    "экклесиолог": "ecclesiology",
+    "поместная церковь": "ecclesiology",
+    "проповед": "preaching_hermeneutics",
+    "hermeneutic": "preaching_hermeneutics",
+    "кафедра": "preaching_hermeneutics",
+    "харизмат": "charismatic_cessationism",
+    "цессационизм": "charismatic_cessationism",
+    "чуждый огонь": "charismatic_cessationism",
+    "завет": "covenant_theology",
+    "covenant": "covenant_theology",
+    "израиль": "israel_church",
     # AUDIT R40: «дети» (общее) убрано — пак про ВЕЧНУЮ УЧАСТЬ УМЕРШИХ младенцев,
     # а не про детей вообще; проповедь «Христос и дети» (Лк 18) получала книги
     # про смерть младенцев. Остаётся специфичный «младенец».
     "младенец": "infant_salvation_children",
-    "евангелизм": "evangelism_gospel", "евангелие": "evangelism_gospel", "благовести": "evangelism_gospel",
-    "миссия": "mission", "великое поручение": "mission", "mission": "mission",
-    "молитва": "prayer_spirituality", "prayer": "prayer_spirituality",
-    "провидение": "providence_suffering", "страдан": "providence_suffering",
-    "социальная справедливость": "social_justice_gospel", "social justice": "social_justice_gospel",
-    "сперджен": "church_history_biography", "история церкви": "church_history_biography",
+    "евангелизм": "evangelism_gospel",
+    "евангелие": "evangelism_gospel",
+    "благовести": "evangelism_gospel",
+    "миссия": "mission",
+    "великое поручение": "mission",
+    "mission": "mission",
+    "молитва": "prayer_spirituality",
+    "prayer": "prayer_spirituality",
+    "провидение": "providence_suffering",
+    "страдан": "providence_suffering",
+    "социальная справедливость": "social_justice_gospel",
+    "social justice": "social_justice_gospel",
+    "сперджен": "church_history_biography",
+    "история церкви": "church_history_biography",
 }
 
 
@@ -204,7 +286,13 @@ _TOPIC_RULES: dict[str, TopicRule] = {
 # Higher precision overrides. Keep "церковь" out of generic ecclesiology: it is
 # too common in prayer/mission/sermon materials and caused false source packs.
 _TOPIC_RULES["ecclesiology"] = TopicRule(
-    positive=(("экклесиолог", 3.0), ("поместная церковь", 3.0), ("членство", 2.0), ("церковная дисциплина", 2.5), ("невеста христа", 2.0)),
+    positive=(
+        ("экклесиолог", 3.0),
+        ("поместная церковь", 3.0),
+        ("членство", 2.0),
+        ("церковная дисциплина", 2.5),
+        ("невеста христа", 2.0),
+    ),
     negative=("молитва", "ангел", "исайя 53"),
 )
 _TOPIC_RULES["prayer_spirituality"] = TopicRule(
@@ -212,11 +300,24 @@ _TOPIC_RULES["prayer_spirituality"] = TopicRule(
     negative=("социальная справедливость", "ангел"),
 )
 _TOPIC_RULES["isaiah_servant"] = TopicRule(
-    positive=(("исайя 53", 4.0), ("исаия 53", 4.0), ("раб иеговы", 4.0), ("страдающий раб", 3.5), ("муж скорбей", 3.0), ("заместительное искупление", 2.5)),
+    positive=(
+        ("исайя 53", 4.0),
+        ("исаия 53", 4.0),
+        ("раб иеговы", 4.0),
+        ("страдающий раб", 3.5),
+        ("муж скорбей", 3.0),
+        ("заместительное искупление", 2.5),
+    ),
     negative=("ангел", "харизмат"),
 )
 _TOPIC_RULES["scripture_sufficiency"] = TopicRule(
-    positive=(("достаточность писания", 4.0), ("достаточность слова", 3.0), ("псалом 18", 3.0), ("психолог", 2.0), ("авторитет библии", 2.0)),
+    positive=(
+        ("достаточность писания", 4.0),
+        ("достаточность слова", 3.0),
+        ("псалом 18", 3.0),
+        ("психолог", 2.0),
+        ("авторитет библии", 2.0),
+    ),
     negative=("миссия", "ангел"),
 )
 _TOPIC_RULES["angelology"] = TopicRule(
@@ -224,7 +325,13 @@ _TOPIC_RULES["angelology"] = TopicRule(
     negative=("исайя 53", "раб иеговы"),
 )
 _TOPIC_RULES["mission"] = TopicRule(
-    positive=(("миссия церкви", 4.0), ("великое поручение", 4.0), ("делать учеников", 3.0), ("благовестие", 2.0), ("mission", 2.0)),
+    positive=(
+        ("миссия церкви", 4.0),
+        ("великое поручение", 4.0),
+        ("делать учеников", 3.0),
+        ("благовестие", 2.0),
+        ("mission", 2.0),
+    ),
     negative=("молитва", "ангел"),
 )
 
@@ -281,7 +388,9 @@ def _max_sources_for_duration(duration_seconds: int | float = 0) -> int:
     return 5
 
 
-def select_source_pack_topics(key_categories: list[str], main_topic: str = "", max_topics: int = 2) -> list[tuple[str, float]]:
+def select_source_pack_topics(
+    key_categories: list[str], main_topic: str = "", max_topics: int = 2
+) -> list[tuple[str, float]]:
     """Return scored topics for diagnostics/tests."""
     search_text = " ".join([str(x) for x in (key_categories or [])] + [main_topic or ""])
     scores = _score_topics(search_text)
@@ -291,15 +400,13 @@ def select_source_pack_topics(key_categories: list[str], main_topic: str = "", m
     # Keep a secondary topic only if it is meaningful, not a weak incidental hit.
     primary_score = ranked[0][1]
     selected = [ranked[0]]
-    selected.extend(
-        item for item in ranked[1:]
-        if item[1] >= max(2.0, primary_score * 0.55)
-    )
-    return selected[:max(1, max_topics)]
+    selected.extend(item for item in ranked[1:] if item[1] >= max(2.0, primary_score * 0.55))
+    return selected[: max(1, max_topics)]
 
 
-def get_source_pack(key_categories: list[str], main_topic: str = "", duration_seconds: int | float = 0,
-                    max_sources: int | None = None) -> str:
+def get_source_pack(
+    key_categories: list[str], main_topic: str = "", duration_seconds: int | float = 0, max_sources: int | None = None
+) -> str:
     """Return a scored, deduplicated source allowlist for Study Analysis."""
     selected = select_source_pack_topics(key_categories, main_topic)
     limit = int(max_sources or _max_sources_for_duration(duration_seconds))

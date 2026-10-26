@@ -16,6 +16,7 @@
 Порядок шагов — это и есть поведение, поэтому он проверяется тестами на
 фейковых зависимостях, а не глазами в 2900-строчной функции.
 """
+
 from __future__ import annotations
 
 import logging
@@ -200,10 +201,7 @@ async def run_analysis(
         ANALYZE_STEP,
         {
             "title": f"📝 {request.title}",
-            "author": (
-                f"👤 {request.performer}  •  "
-                f"{request.duration // 60}:{request.duration % 60:02d}"
-            ),
+            "author": (f"👤 {request.performer}  •  {request.duration // 60}:{request.duration % 60:02d}"),
             "size": f"🎵 {size_mb:.1f} МБ  •  {request.bitrate} kbps",
         },
         prefix=request.progress_prefix,
@@ -220,8 +218,7 @@ async def run_analysis(
 
     if not ai_data:
         logger.warning(
-            "Gemini analysis unavailable for %s — honest degraded mode: "
-            "MP3 only, no AI pages/questions",
+            "Gemini analysis unavailable for %s — honest degraded mode: MP3 only, no AI pages/questions",
             request.media_id,
         )
         return AnalysisOutcome(

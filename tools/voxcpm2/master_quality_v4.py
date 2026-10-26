@@ -6,6 +6,7 @@ Unlike the legacy master, the completed mixed bus is not loudness-normalized a
 second time.  That prevents the requested 18% source bed and both noise floors
 from being raised unpredictably after mixing.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -55,14 +56,20 @@ def master_russian(
     target_tp: float,
 ) -> dict[str, Any]:
     # High-pass only the synthetic voice. Never filter or normalize the source bed.
-    first_filter = (
-        f"highpass=f=45,loudnorm=I={target_i}:LRA={target_lra}:"
-        f"TP={target_tp}:print_format=json"
-    )
+    first_filter = f"highpass=f=45,loudnorm=I={target_i}:LRA={target_lra}:TP={target_tp}:print_format=json"
     first = run(
         [
-            "ffmpeg", "-hide_banner", "-nostats", "-y", "-i", str(input_wav),
-            "-af", first_filter, "-f", "null", "-",
+            "ffmpeg",
+            "-hide_banner",
+            "-nostats",
+            "-y",
+            "-i",
+            str(input_wav),
+            "-af",
+            first_filter,
+            "-f",
+            "null",
+            "-",
         ],
         capture=True,
     )
@@ -76,9 +83,22 @@ def master_russian(
     )
     run(
         [
-            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-            "-i", str(input_wav), "-af", second_filter,
-            "-ar", "48000", "-ac", "2", "-c:a", "pcm_s24le", str(output_wav),
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            str(input_wav),
+            "-af",
+            second_filter,
+            "-ar",
+            "48000",
+            "-ac",
+            "2",
+            "-c:a",
+            "pcm_s24le",
+            str(output_wav),
         ]
     )
     return {
@@ -141,22 +161,61 @@ def main() -> None:
     )
     run(
         [
-            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-            "-i", str(source), "-i", str(mastered_russian),
-            "-filter_complex", mix_filter, "-map", "[mix]",
-            "-ar", "48000", "-ac", "2", "-c:a", "pcm_s24le", str(mixed_wav),
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            str(source),
+            "-i",
+            str(mastered_russian),
+            "-filter_complex",
+            mix_filter,
+            "-map",
+            "[mix]",
+            "-ar",
+            "48000",
+            "-ac",
+            "2",
+            "-c:a",
+            "pcm_s24le",
+            str(mixed_wav),
         ]
     )
 
     for audio, output in ((mixed_wav, mixed_video), (mastered_russian, russian_only_video)):
         run(
             [
-                "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-                "-i", str(source), "-i", str(audio),
-                "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy",
-                "-c:a", "aac", "-b:a", "320k", "-ar", "48000", "-ac", "2",
-                "-metadata:s:a:0", "language=rus", "-movflags", "+faststart",
-                "-shortest", str(output),
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-i",
+                str(source),
+                "-i",
+                str(audio),
+                "-map",
+                "0:v:0",
+                "-map",
+                "1:a:0",
+                "-c:v",
+                "copy",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "320k",
+                "-ar",
+                "48000",
+                "-ac",
+                "2",
+                "-metadata:s:a:0",
+                "language=rus",
+                "-movflags",
+                "+faststart",
+                "-shortest",
+                str(output),
             ]
         )
 

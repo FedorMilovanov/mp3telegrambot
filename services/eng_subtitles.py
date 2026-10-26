@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 # ── Hard limits for English subtitle pipeline ───────────────────
 _MAX_SUBTITLE_AUDIO_SECONDS = 180  # 3 minutes: longer than Shorts, skip entirely
 
+
 async def _translate_chunk_with_retry(chunk_segs, prev_context=""):
     """Translates a chunk of segments with retries and JSON enforcement across multiple Gemini keys."""
     if not GEMINI_CLIENTS:
@@ -33,7 +34,7 @@ async def _translate_chunk_with_retry(chunk_segs, prev_context=""):
         "5. Do NOT output any markdown, explanations, or text outside the JSON object.",
     ]
     if prev_context:
-        prompt_lines.append(f"\nFor context, the preceding translated segment was: \"{prev_context}\"")
+        prompt_lines.append(f'\nFor context, the preceding translated segment was: "{prev_context}"')
 
     prompt_lines.append("\nSegments to translate:")
     for sid, text in chunk_segs:
@@ -90,9 +91,13 @@ async def _get_audio_duration(path: Path) -> float:
     try:
         result = await run_cancellable_process(
             [
-                ffprobe, "-v", "error",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
+                ffprobe,
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
                 str(path),
             ],
             timeout=30,
@@ -106,8 +111,11 @@ async def _get_audio_duration(path: Path) -> float:
         return 0.0
 
 
-async def create_gemini_subtitles(video_url: str, workdir: Path, known_duration: int = 0, lang: str = "") -> Optional[Path]:
+async def create_gemini_subtitles(
+    video_url: str, workdir: Path, known_duration: int = 0, lang: str = ""
+) -> Optional[Path]:
     from services.shorts_video import _get_whisper_model
+
     """
     Скачивает оригинальное аудио, прогоняет faster-whisper (CPU-only),
     переводит через Gemini (JSON), сохраняет в SRT.
@@ -125,7 +133,8 @@ async def create_gemini_subtitles(video_url: str, workdir: Path, known_duration:
     if known_duration and known_duration > _MAX_SUBTITLE_AUDIO_SECONDS:
         logger.info(
             "[EngSubtitles] Видео %dс > %dс (из метаданных) — субтитры пропущены без скачивания.",
-            known_duration, _MAX_SUBTITLE_AUDIO_SECONDS,
+            known_duration,
+            _MAX_SUBTITLE_AUDIO_SECONDS,
         )
         return None
 
@@ -133,9 +142,7 @@ async def create_gemini_subtitles(video_url: str, workdir: Path, known_duration:
     cmd = YTDLP_BASE_ARGS + ["--format", "bestaudio/best", "--output", f"{audio_path}.%(ext)s", video_url]
     logger.info(f"[EngSubtitles] Скачиваем аудио: {' '.join(cmd)}")
 
-    proc = await run_cancellable_process(
-        cmd, timeout=300, text=True
-    )
+    proc = await run_cancellable_process(cmd, timeout=300, text=True)
 
     # FIX AUDIT R4: проверяем код выхода yt-dlp и пропускаем обломки
     # недокачанного файла (.part/.ytdl) — иначе Whisper транскрибировал
@@ -160,14 +167,16 @@ async def create_gemini_subtitles(video_url: str, workdir: Path, known_duration:
     if audio_duration > _MAX_SUBTITLE_AUDIO_SECONDS:
         logger.info(
             "[EngSubtitles] Аудио слишком длинное (%.1f сек > %d сек) — субтитры пропущены.",
-            audio_duration, _MAX_SUBTITLE_AUDIO_SECONDS,
+            audio_duration,
+            _MAX_SUBTITLE_AUDIO_SECONDS,
         )
         return None
 
     # 3. Whisper — CPU-only, large-v3, int8, beam_size=1
     logger.info(
         "[EngSubtitles] Whisper CPU: model=large-v3, int8, beam_size=1, audio=%.1fs, lang=%s",
-        audio_duration, lang or "auto",
+        audio_duration,
+        lang or "auto",
     )
 
     def _run_whisper():
@@ -183,9 +192,7 @@ async def create_gemini_subtitles(video_url: str, workdir: Path, known_duration:
         segs_gen, _ = model.transcribe(str(actual_audio), **transcribe_args)
         return list(segs_gen)
 
-    segments = await await_owned_coroutine(
-        asyncio.to_thread(_run_whisper)
-    )
+    segments = await await_owned_coroutine(asyncio.to_thread(_run_whisper))
 
     if not segments:
         logger.warning("[EngSubtitles] Whisper не нашел речь.")
@@ -213,7 +220,7 @@ async def create_gemini_subtitles(video_url: str, workdir: Path, known_duration:
 
         prev_context = ""
         for idx, chunk in enumerate(chunks):
-            logger.info(f"[EngSubtitles] Перевод чанка {idx+1}/{len(chunks)}...")
+            logger.info(f"[EngSubtitles] Перевод чанка {idx + 1}/{len(chunks)}...")
             data = await _translate_chunk_with_retry(chunk, prev_context)
 
             if data and isinstance(data, dict):
@@ -236,7 +243,8 @@ async def create_gemini_subtitles(video_url: str, workdir: Path, known_duration:
                 if _missing:
                     logger.warning(
                         "[EngSubtitles] Чанк %d: %d ID отсутствуют в ответе — ретрай точечно.",
-                        idx + 1, len(_missing),
+                        idx + 1,
+                        len(_missing),
                     )
                     _retry_data = await _translate_chunk_with_retry(_missing, prev_context)
                     if _retry_data and isinstance(_retry_data, dict):
@@ -250,10 +258,11 @@ async def create_gemini_subtitles(video_url: str, workdir: Path, known_duration:
                         logger.warning(
                             "[EngSubtitles] %d строк(и) остались непереведёнными (ID %s) — "
                             "в субтитрах будет английский текст.",
-                            len(_still_missing), _still_missing[:10],
+                            len(_still_missing),
+                            _still_missing[:10],
                         )
             else:
-                logger.warning(f"[EngSubtitles] Чанк {idx+1} не удался. Используем оригинал.")
+                logger.warning(f"[EngSubtitles] Чанк {idx + 1} не удался. Используем оригинал.")
                 for sid, text in chunk:
                     translated_segments[str(sid)] = text
 
@@ -270,14 +279,11 @@ async def create_gemini_subtitles(video_url: str, workdir: Path, known_duration:
             text = translated_segments.get(str(i), seg.text.strip())
             text = text.replace("\n", " ").strip()
 
-            f.write(
-                f"{i}\n"
-                f"{_to_srt_time(seg.start)} --> {_to_srt_time(seg.end)}\n"
-                f"{text}\n\n"
-            )
+            f.write(f"{i}\n{_to_srt_time(seg.start)} --> {_to_srt_time(seg.end)}\n{text}\n\n")
 
     logger.info(f"[EngSubtitles] Субтитры созданы: {srt_path}")
     return srt_path
+
 
 def _has_video_stream(path: Path) -> bool:
     """True если файл реально содержит видеопоток.
@@ -291,6 +297,7 @@ def _has_video_stream(path: Path) -> bool:
         return False
     try:
         from services.livedub_mix import has_video_stream
+
         return has_video_stream(path)
     except Exception as e:
         logger.debug("[EngSubtitles] video-stream check failed for %s: %s", path, e)
@@ -311,27 +318,28 @@ async def download_original_video(video_url: str, workdir: Path) -> Path:
         if existing.is_file() and existing.stat().st_size > 100 * 1024:
             logger.info(f"[EngSubtitles] {existing.name} без видеопотока — не реюзаю для DUB")
 
-    
     # FIX: используем YTDLP_BASE_ARGS (cookies, js-runtime, общие настройки) —
     # без них YouTube часто отвечает 403 Forbidden (та же причина, что в cabbac8).
     # Ограничиваем высоту 1080p: для дубляжа выше не нужно, а вес/время скачивания
     # на длинных роликах падают в разы.
     cmd = YTDLP_BASE_ARGS + [
-        "--format", "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
-        "--merge-output-format", "mp4",
-        "--output", str(video_path), video_url
+        "--format",
+        "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
+        "--merge-output-format",
+        "mp4",
+        "--output",
+        str(video_path),
+        video_url,
     ]
     logger.info("[EngSubtitles] Скачиваем оригинальное видео (<=1080p, base args)...")
 
-    proc = await run_cancellable_process(
-        cmd, timeout=900, text=True
-    )
+    proc = await run_cancellable_process(cmd, timeout=900, text=True)
     if proc.returncode != 0:
         raise RuntimeError(
             f"Не удалось скачать оригинальное видео (yt-dlp rc={proc.returncode}). "
             f"stderr: {proc.stderr[-500:] if proc.stderr else ''}"
         )
-    
+
     actual_video = None
     for file in sorted(workdir.glob("original_video.*")):
         if _has_video_stream(file):
@@ -339,11 +347,14 @@ async def download_original_video(video_url: str, workdir: Path) -> Path:
             break
         if file.is_file() and file.stat().st_size > 100 * 1024:
             logger.info(f"[EngSubtitles] после yt-dlp {file.name} без видеопотока — пропускаю")
-        
+
     if not actual_video or not actual_video.exists():
-        raise RuntimeError(f"Не удалось скачать оригинальное видео с видеопотоком. stderr: {proc.stderr[-500:] if proc.stderr else ''}")
-        
+        raise RuntimeError(
+            f"Не удалось скачать оригинальное видео с видеопотоком. stderr: {proc.stderr[-500:] if proc.stderr else ''}"
+        )
+
     return actual_video
+
 
 async def _burn_subtitles(video_path: Path, srt_path: Path, ffmpeg: str) -> Optional[Path]:
     """Прожигает SRT в кадр. YouTube-стиль: белый текст на полупрозрачной
@@ -355,22 +366,28 @@ async def _burn_subtitles(video_path: Path, srt_path: Path, ffmpeg: str) -> Opti
     # NVENC если доступен (у пользователя рабочий ASIC) — прожиг быстрее
     # и без нагрузки на CPU; качество формулы p5+hq уже выверено.
     from services.ffmpeg import _get_video_encoder
-    _enc, _q, _pr = await await_owned_coroutine(
-        asyncio.to_thread(_get_video_encoder)
-    )
+
+    _enc, _q, _pr = await await_owned_coroutine(asyncio.to_thread(_get_video_encoder))
     cmd = [
-        ffmpeg, "-i", str(video_path),
-        "-vf", f"subtitles='{srt_arg}':force_style='{style}'",
-        "-c:v", _enc, *_q, *_pr,
-        "-c:a", "copy",
-        "-movflags", "+faststart",
-        "-y", str(output_path),
+        ffmpeg,
+        "-i",
+        str(video_path),
+        "-vf",
+        f"subtitles='{srt_arg}':force_style='{style}'",
+        "-c:v",
+        _enc,
+        *_q,
+        *_pr,
+        "-c:a",
+        "copy",
+        "-movflags",
+        "+faststart",
+        "-y",
+        str(output_path),
     ]
     output_path.unlink(missing_ok=True)
     try:
-        proc = await run_cancellable_process(
-            cmd, timeout=600, text=True
-        )
+        proc = await run_cancellable_process(cmd, timeout=600, text=True)
     except asyncio.CancelledError:
         output_path.unlink(missing_ok=True)
         raise
@@ -381,8 +398,7 @@ async def _burn_subtitles(video_path: Path, srt_path: Path, ffmpeg: str) -> Opti
     if proc.returncode == 0 and output_path.exists() and output_path.stat().st_size > 10240:
         logger.info("[EngSubtitles] Субтитры прожжены в кадр (hardsub)")
         return output_path
-    logger.warning("[EngSubtitles] hardsub rc=%s: %s", proc.returncode,
-                   (proc.stderr or "")[-300:])
+    logger.warning("[EngSubtitles] hardsub rc=%s: %s", proc.returncode, (proc.stderr or "")[-300:])
     output_path.unlink(missing_ok=True)
     return None
 
@@ -402,32 +418,43 @@ async def merge_subtitles(video_path: Path, srt_path: Path, is_fallback: bool = 
         logger.warning("[EngSubtitles] ffmpeg не найден")
         return video_path
 
-    if (os.getenv("LIVEDUB_HARDSUB", "1").strip().lower() not in {"0", "false", "no", "off"}):
+    if os.getenv("LIVEDUB_HARDSUB", "1").strip().lower() not in {"0", "false", "no", "off"}:
         burned = await _burn_subtitles(video_path, srt_path, ffmpeg)
         if burned is not None:
             return burned
         logger.warning("[EngSubtitles] hardsub не удался — fallback на mov_text")
-        
+
     output_path = video_path.with_suffix(".merged.mp4")
-    
+
     cmd = [
-        ffmpeg, "-i", str(video_path), "-i", str(srt_path),
-        "-map", "0", "-map", "1",
-        "-c", "copy", 
-        "-c:s", "mov_text", 
-        "-metadata:s:s:0", "language=rus",
-        "-disposition:s:0", "default",
-        "-movflags", "+faststart",
-        "-y", str(output_path)
+        ffmpeg,
+        "-i",
+        str(video_path),
+        "-i",
+        str(srt_path),
+        "-map",
+        "0",
+        "-map",
+        "1",
+        "-c",
+        "copy",
+        "-c:s",
+        "mov_text",
+        "-metadata:s:s:0",
+        "language=rus",
+        "-disposition:s:0",
+        "default",
+        "-movflags",
+        "+faststart",
+        "-y",
+        str(output_path),
     ]
-    
+
     logger.info(f"[EngSubtitles] Склейка субтитров: {' '.join(cmd)}")
 
     output_path.unlink(missing_ok=True)
     try:
-        proc = await run_cancellable_process(
-            cmd, timeout=300, text=True
-        )
+        proc = await run_cancellable_process(cmd, timeout=300, text=True)
     except BaseException:
         output_path.unlink(missing_ok=True)
         raise
@@ -437,27 +464,37 @@ async def merge_subtitles(video_path: Path, srt_path: Path, is_fallback: bool = 
     # усечённый >1KB файл, который иначе отдавался пользователю как готовое видео.
     if proc.returncode == 0 and output_path.exists() and output_path.stat().st_size > 1000:
         return output_path
-    
-    logger.warning(f"[EngSubtitles] Ошибка склейки субтитров (default flag). Пробуем без default. stderr: {proc.stderr[-300:] if proc.stderr else ''}")
-    
+
+    logger.warning(
+        f"[EngSubtitles] Ошибка склейки субтитров (default flag). Пробуем без default. stderr: {proc.stderr[-300:] if proc.stderr else ''}"
+    )
+
     # Резервный fallback - без disposition и без mov_text если контейнер конфликтует
     cmd_fallback = [
-        ffmpeg, "-i", str(video_path), "-i", str(srt_path),
-        "-c", "copy", "-c:s", "mov_text", "-metadata:s:s:0", "language=rus",
-        "-y", str(output_path)
+        ffmpeg,
+        "-i",
+        str(video_path),
+        "-i",
+        str(srt_path),
+        "-c",
+        "copy",
+        "-c:s",
+        "mov_text",
+        "-metadata:s:s:0",
+        "language=rus",
+        "-y",
+        str(output_path),
     ]
 
     output_path.unlink(missing_ok=True)
     try:
-        proc2 = await run_cancellable_process(
-            cmd_fallback, timeout=300, text=True
-        )
+        proc2 = await run_cancellable_process(cmd_fallback, timeout=300, text=True)
     except BaseException:
         output_path.unlink(missing_ok=True)
         raise
     if proc2.returncode == 0 and output_path.exists() and output_path.stat().st_size > 1000:
         return output_path
-        
+
     logger.error(f"[EngSubtitles] Полный отказ склейки. stderr: {proc2.stderr[-300:] if proc2.stderr else ''}")
     output_path.unlink(missing_ok=True)
     return video_path

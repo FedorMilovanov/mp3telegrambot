@@ -3,6 +3,7 @@
 Search — поиск перезаливов на RuTube и VK.
 Извлечено из bot.py строки 7805–8364.
 """
+
 import asyncio
 import logging
 import os
@@ -11,8 +12,8 @@ import requests
 import time
 
 from core.text_utils import normalize_author_name, normalize_title_text  # FIX search
-from core.database import get_channel_mapping                             # FIX search
-from core.url_utils import get_youtube_video_url                         # FIX search
+from core.database import get_channel_mapping  # FIX search
+from core.url_utils import get_youtube_video_url  # FIX search
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,7 @@ def _normalize(s: str) -> str:
     s = re.sub(r"[|()\[\]{}<>\"'«».,!?;:\-–—]", " ", s)
     return re.sub(r"\s+", " ", s).strip()
 
+
 def _normalize_duration(d) -> int:
     """Нормализует duration — может быть int, float, str ('3542' или '00:59:02')."""
     if isinstance(d, (int, float)):
@@ -77,25 +79,91 @@ def _normalize_duration(d) -> int:
             return 0
     return 0
 
+
 # Стоп-слова для религиозного контента — встречаются в каждом втором видео
 # и не несут идентификационной нагрузки при поиске по RuTube/VK
-_SEARCH_STOPWORDS: frozenset = frozenset({
-    # Русские
-    "вера", "благодать", "покаяние", "суд", "истина", "бог", "господь", "христос",
-    "иисус", "библия", "писание", "церковь", "молитва", "грех", "спасение",
-    "евангелие", "проповедь", "слово", "дух", "святой", "жизнь", "любовь",
-    "свидетельство", "служение", "братья", "сестры", "боже", "святого",
-    # Английские
-    "faith", "grace", "truth", "god", "lord", "christ", "jesus", "bible",
-    "prayer", "sin", "salvation", "gospel", "church", "sermon", "spirit",
-    "holy", "love", "life", "word",
-    # Частые имена авторов/канала: важны для поиска, но не должны тащить
-    # ложные совпадения только по "Джон МакАртур" при одинаковой длительности.
-    "джон", "макартур", "макартер", "john", "macarthur", "mac",
-    "пол", "вошер", "paul", "washer", "том", "пеннингтон", "tom", "pennington",
-    "алексей", "коломийцев", "евгений", "бахмутский", "рбц", "рбц_москва",
-    "bible", "q&a", "qa", "вопросы", "ответы", "panel", "дискуссия",
-})
+_SEARCH_STOPWORDS: frozenset = frozenset(
+    {
+        # Русские
+        "вера",
+        "благодать",
+        "покаяние",
+        "суд",
+        "истина",
+        "бог",
+        "господь",
+        "христос",
+        "иисус",
+        "библия",
+        "писание",
+        "церковь",
+        "молитва",
+        "грех",
+        "спасение",
+        "евангелие",
+        "проповедь",
+        "слово",
+        "дух",
+        "святой",
+        "жизнь",
+        "любовь",
+        "свидетельство",
+        "служение",
+        "братья",
+        "сестры",
+        "боже",
+        "святого",
+        # Английские
+        "faith",
+        "grace",
+        "truth",
+        "god",
+        "lord",
+        "christ",
+        "jesus",
+        "bible",
+        "prayer",
+        "sin",
+        "salvation",
+        "gospel",
+        "church",
+        "sermon",
+        "spirit",
+        "holy",
+        "love",
+        "life",
+        "word",
+        # Частые имена авторов/канала: важны для поиска, но не должны тащить
+        # ложные совпадения только по "Джон МакАртур" при одинаковой длительности.
+        "джон",
+        "макартур",
+        "макартер",
+        "john",
+        "macarthur",
+        "mac",
+        "пол",
+        "вошер",
+        "paul",
+        "washer",
+        "том",
+        "пеннингтон",
+        "tom",
+        "pennington",
+        "алексей",
+        "коломийцев",
+        "евгений",
+        "бахмутский",
+        "рбц",
+        "рбц_москва",
+        "bible",
+        "q&a",
+        "qa",
+        "вопросы",
+        "ответы",
+        "panel",
+        "дискуссия",
+    }
+)
 
 
 def _score_candidate_match(
@@ -136,11 +204,15 @@ def _score_candidate_match(
         dur_score = 0.5
     else:
         dur_score = (
-            1.0 if dur_diff < 30 else
-            0.7 if dur_diff < 120 else
-            0.4 if dur_diff < 300 else
-            0.15 if dur_diff < 600 else
-            0.0
+            1.0
+            if dur_diff < 30
+            else 0.7
+            if dur_diff < 120
+            else 0.4
+            if dur_diff < 300
+            else 0.15
+            if dur_diff < 600
+            else 0.0
         )
 
     # Hard safety gates for long materials. One matched author/event word must
@@ -171,22 +243,25 @@ def _score_candidate_match(
 
     return score, word_score, dur_score, recall, inter_count
 
-# Порог досрочного выхода: score >= этого значения считается надёжным совпадением
-_EARLY_EXIT_SCORE  = 0.80
-# Сколько лучших кандидатов выводить в лог (остальные молча отбрасываются)
-_LOG_TOP_N         = 5
 
-def _best_match(results: list, title: str, duration: int, platform: str,
-                early_exit: bool = True, log: bool = True) -> tuple[str | None, float]:
-    norm_title  = _normalize(title)
+# Порог досрочного выхода: score >= этого значения считается надёжным совпадением
+_EARLY_EXIT_SCORE = 0.80
+# Сколько лучших кандидатов выводить в лог (остальные молча отбрасываются)
+_LOG_TOP_N = 5
+
+
+def _best_match(
+    results: list, title: str, duration: int, platform: str, early_exit: bool = True, log: bool = True
+) -> tuple[str | None, float]:
+    norm_title = _normalize(title)
     title_words = set(norm_title.split())
     # Убираем стоп-слова из scoring: они встречаются в каждом религиозном видео
     # и дают ложные совпадения по частым словам
     meaningful_words = title_words - _SEARCH_STOPWORDS if len(title_words) > 2 else title_words
-    rare_words  = {w for w in meaningful_words if len(w) > 5}
+    rare_words = {w for w in meaningful_words if len(w) > 5}
     best_score, best_url = 0.0, None
     threshold = 0.15 if len(title_words) <= 3 else 0.18
-    candidates: list[tuple[float, str, str]] = []   # (score, url, log_line)
+    candidates: list[tuple[float, str, str]] = []  # (score, url, log_line)
 
     for item in results:
         # AUDIT M13: пропускаем элементы без id для RuTube — иначе URL "https://rutube.ru/video//"
@@ -200,16 +275,19 @@ def _best_match(results: list, title: str, duration: int, platform: str,
             item_url = item.get("url") or item.get("player", "")
             if not item_url:
                 continue
-        item_title    = item.get("title", "") or item.get("name", "")
+        item_title = item.get("title", "") or item.get("name", "")
         item_duration = _normalize_duration(item.get("duration", 0))
         if duration > 300 and 0 < item_duration < 60:
             continue
-        norm_item  = _normalize(item_title)
+        norm_item = _normalize(item_title)
         item_words = set(norm_item.split())
         item_meaningful = item_words - _SEARCH_STOPWORDS if len(item_words) > 2 else item_words
         score, word_score, dur_score, recall, inter_count = _score_candidate_match(
-            meaningful_words, item_meaningful, rare_words,
-            duration=duration, item_duration=item_duration,
+            meaningful_words,
+            item_meaningful,
+            rare_words,
+            duration=duration,
+            item_duration=item_duration,
         )
         intersection = meaningful_words & item_meaningful
 
@@ -234,29 +312,35 @@ def _best_match(results: list, title: str, duration: int, platform: str,
         for _, _, log_line in top:
             logger.info(log_line)
         if len(candidates) > _LOG_TOP_N:
-            logger.info(f"  [{platform}] ... и ещё {len(candidates) - _LOG_TOP_N} кандидатов с score > threshold (не показаны)")
+            logger.info(
+                f"  [{platform}] ... и ещё {len(candidates) - _LOG_TOP_N} кандидатов с score > threshold (не показаны)"
+            )
 
     return best_url, best_score
+
 
 def _best_match_confident(results: list, title: str, duration: int) -> bool:
     """Возвращает True если в results уже есть кандидат с score >= _EARLY_EXIT_SCORE.
     Используется для страничного раннего выхода в search_rutube."""
-    norm_title  = _normalize(title)
+    norm_title = _normalize(title)
     title_words = set(norm_title.split())
     meaningful_words = title_words - _SEARCH_STOPWORDS if len(title_words) > 2 else title_words
-    rare_words  = {w for w in meaningful_words if len(w) > 5}
-    threshold   = _EARLY_EXIT_SCORE
+    rare_words = {w for w in meaningful_words if len(w) > 5}
+    threshold = _EARLY_EXIT_SCORE
     for item in results:
-        item_title    = item.get("title", "") or item.get("name", "")
+        item_title = item.get("title", "") or item.get("name", "")
         item_duration = _normalize_duration(item.get("duration", 0))
         if duration > 300 and 0 < item_duration < 60:
             continue
-        norm_item  = _normalize(item_title)
+        norm_item = _normalize(item_title)
         item_words = set(norm_item.split())
         item_meaningful = item_words - _SEARCH_STOPWORDS if len(item_words) > 2 else item_words
         score, _word_score, _dur_score, _recall, _inter_count = _score_candidate_match(
-            meaningful_words, item_meaningful, rare_words,
-            duration=duration, item_duration=item_duration,
+            meaningful_words,
+            item_meaningful,
+            rare_words,
+            duration=duration,
+            item_duration=item_duration,
         )
         if score >= threshold:
             return True
@@ -265,19 +349,21 @@ def _best_match_confident(results: list, title: str, duration: int) -> bool:
 
 def _clean_search_title(title: str) -> str:
     """Убираем номер серии, имя автора в скобках — для поиска на RuTube/VK."""
-    t = re.sub(r"^\d+\s*[|:]\s*", "", title)   # '7 | Название' → 'Название'
-    t = re.sub(r"\s*\([^)]+\)\s*$", "", t)       # 'Название (Автор)' → 'Название'
+    t = re.sub(r"^\d+\s*[|:]\s*", "", title)  # '7 | Название' → 'Название'
+    t = re.sub(r"\s*\([^)]+\)\s*$", "", t)  # 'Название (Автор)' → 'Название'
     return t.strip()
+
 
 def _extract_search_keywords(title: str) -> str:
     """Извлекает ключевые слова для поиска на RuTube — убирает ссылки на Писание и лишние дефисы."""
     t = _clean_search_title(title)
     # Убираем ссылки на Писание: "Даниила 4:4-37", "Матфея 11:28-30"
-    t = re.sub(r'\b\w+\s+\d+[:\-]\d+(?:[:\-]\d+)?\b', '', t)
+    t = re.sub(r"\b\w+\s+\d+[:\-]\d+(?:[:\-]\d+)?\b", "", t)
     # Убираем одиночные разделители-дефисы
-    t = re.sub(r'\s+-\s+', ' ', t)
-    t = re.sub(r'\s{2,}', ' ', t).strip()
+    t = re.sub(r"\s+-\s+", " ", t)
+    t = re.sub(r"\s{2,}", " ", t).strip()
     return t or _clean_search_title(title)  # fallback если всё вырезало
+
 
 def _build_search_title(ai_data: dict | None, fallback_title: str) -> str:
     """Строит оптимальный поисковый заголовок для RuTube/VK.
@@ -287,8 +373,8 @@ def _build_search_title(ai_data: dict | None, fallback_title: str) -> str:
     if not ai_data:
         return _clean_search_title(fallback_title)
 
-    real_event  = (ai_data.get("real_event")  or "").strip()
-    real_title  = normalize_title_text(ai_data.get("real_title")  or "")
+    real_event = (ai_data.get("real_event") or "").strip()
+    real_title = normalize_title_text(ai_data.get("real_title") or "")
     real_author = normalize_author_name(ai_data.get("real_author") or "")
 
     parts = []
@@ -321,8 +407,14 @@ def _build_search_title(ai_data: dict | None, fallback_title: str) -> str:
 
 
 async def _load_rutube_listing(
-    cid: str, headers: dict, loop, search_title: str, duration: int,
-    *, start_page: int = 1, existing: list[dict] | None = None,
+    cid: str,
+    headers: dict,
+    loop,
+    search_title: str,
+    duration: int,
+    *,
+    start_page: int = 1,
+    existing: list[dict] | None = None,
     allow_early_exit: bool = True,
 ) -> tuple[list[dict], bool]:
     """Грузит листинг канала RuTube постранично. Возвращает (results, complete).
@@ -356,24 +448,34 @@ async def _load_rutube_listing(
             all_results.extend(page_results)
             # Ранний выход: если уже есть уверенное совпадение — не грузим дальше.
             # Листинг помечается НЕПОЛНЫМ, чтобы кэш не соврал другим видео.
-            if allow_early_exit and len(all_results) >= 2 * per_page \
-                    and _best_match_confident(all_results, search_title, duration):
-                logger.info(f"RuTube: досрочный выход на стр.{page} ({len(all_results)} видео) — найдено уверенное совпадение")
+            if (
+                allow_early_exit
+                and len(all_results) >= 2 * per_page
+                and _best_match_confident(all_results, search_title, duration)
+            ):
+                logger.info(
+                    f"RuTube: досрочный выход на стр.{page} ({len(all_results)} видео) — найдено уверенное совпадение"
+                )
                 complete = False
                 break
             if len(page_results) < per_page:
                 break
         except Exception as e:
             logger.warning(f"RuTube листинг стр.{page} ошибка: {e}")
-            if "timed out" in str(e).lower() or "ReadTimeout" in type(e).__name__ or "ssl" in str(e).lower() or "connection" in str(e).lower() or "eof" in str(e).lower():
+            if (
+                "timed out" in str(e).lower()
+                or "ReadTimeout" in type(e).__name__
+                or "ssl" in str(e).lower()
+                or "connection" in str(e).lower()
+                or "eof" in str(e).lower()
+            ):
                 await asyncio.sleep(1.0)
                 continue
             break
     return all_results, complete
 
 
-async def search_rutube(title: str, channel_name: str = "", duration: int = 0,
-                        fallback_title: str = "") -> str | None:
+async def search_rutube(title: str, channel_name: str = "", duration: int = 0, fallback_title: str = "") -> str | None:
     loop = asyncio.get_running_loop()
     mapping = get_channel_mapping(channel_name)
     headers = {"User-Agent": "Mozilla/5.0 (compatible; Bot/1.0)"}
@@ -385,32 +487,39 @@ async def search_rutube(title: str, channel_name: str = "", duration: int = 0,
             return None
 
         cid = mapping["rutube_channel_id"]
-        logger.info(
-            f"RuTube: поиск ТОЛЬКО по листингу канала cid={cid}, "
-            f"q='{search_title}' (original: '{title}')"
-        )
+        logger.info(f"RuTube: поиск ТОЛЬКО по листингу канала cid={cid}, q='{search_title}' (original: '{title}')")
 
         cached = _get_rutube_listing_cache(cid)
         listing_complete = True
         if cached is not None:
             all_results, listing_complete = cached
-            logger.info("RuTube: листинг из кэша — %d видео%s",
-                        len(all_results), "" if listing_complete else " (частичный)")
+            logger.info(
+                "RuTube: листинг из кэша — %d видео%s", len(all_results), "" if listing_complete else " (частичный)"
+            )
         else:
             all_results, listing_complete = await _load_rutube_listing(
-                cid, headers, loop, search_title, duration,
+                cid,
+                headers,
+                loop,
+                search_title,
+                duration,
             )
             if all_results:
                 _set_rutube_listing_cache(cid, all_results, listing_complete)
-                logger.info("RuTube: листинг загружен — %d видео%s",
-                            len(all_results), "" if listing_complete else " (частичный, ранний выход)")
+                logger.info(
+                    "RuTube: листинг загружен — %d видео%s",
+                    len(all_results),
+                    "" if listing_complete else " (частичный, ранний выход)",
+                )
         if not all_results:
             logger.info("RuTube: листинг канала пуст, видео не найдено")
             return None
 
         def _score_listing():
             _res, _score = None, 0.0
-            for i, _t in enumerate([search_title, title] + ([fallback_title] if fallback_title and fallback_title != title else [])):
+            for i, _t in enumerate(
+                [search_title, title] + ([fallback_title] if fallback_title and fallback_title != title else [])
+            ):
                 _r, _sc = _best_match(all_results, _t, duration, "rutube", log=(i == 0))
                 if _r and _sc > _score:
                     _score, _res = _sc, _r
@@ -427,8 +536,13 @@ async def search_rutube(title: str, channel_name: str = "", duration: int = 0,
         if listing_score < _EARLY_EXIT_SCORE and not listing_complete:
             logger.info("RuTube: частичный листинг без уверенного совпадения — дозагружаю остаток")
             more, listing_complete = await _load_rutube_listing(
-                cid, headers, loop, search_title, duration,
-                start_page=len(all_results) // 20 + 1, existing=all_results,
+                cid,
+                headers,
+                loop,
+                search_title,
+                duration,
+                start_page=len(all_results) // 20 + 1,
+                existing=all_results,
                 allow_early_exit=False,
             )
             if len(more) > len(all_results):
@@ -452,7 +566,9 @@ async def search_rutube(title: str, channel_name: str = "", duration: int = 0,
             return listing_result
 
         if listing_result:
-            logger.info(f"RuTube: score={listing_score:.2f} ниже порога {_MIN_RETURN_SCORE} — видео не найдено (лучший кандидат не подходит)")
+            logger.info(
+                f"RuTube: score={listing_score:.2f} ниже порога {_MIN_RETURN_SCORE} — видео не найдено (лучший кандидат не подходит)"
+            )
         else:
             logger.info("RuTube: видео не найдено в листинге")
         return None
@@ -460,6 +576,7 @@ async def search_rutube(title: str, channel_name: str = "", duration: int = 0,
     except Exception as e:
         logger.warning(f"RuTube поиск: {e}")
         return None
+
 
 def _build_vk_search_title(
     full_title: str,
@@ -470,6 +587,7 @@ def _build_vk_search_title(
     """Строит короткий поисковый запрос для VK video.search (3–8 слов).
     VK плохо ищет по длинным перегруженным заголовкам.
     """
+
     def _cl(s):
         s = (s or "").strip()
         s = re.sub(r"\s+", " ", s)
@@ -492,13 +610,24 @@ def _build_vk_search_title(
 
     def _is_qa(t):
         t = t.lower()
-        return any(m in t for m in ["вопросы и ответы", "q&a", "qa", "questions and answers",
-                                     "вопрос-ответ", "panel", "панель", "дискуссия"])
+        return any(
+            m in t
+            for m in [
+                "вопросы и ответы",
+                "q&a",
+                "qa",
+                "questions and answers",
+                "вопрос-ответ",
+                "panel",
+                "панель",
+                "дискуссия",
+            ]
+        )
 
-    ft  = _cl(re.sub(r"\[[^\]]+\]|\([^\)]*\)$", "", full_title))
-    rt  = _cl(real_title)
+    ft = _cl(re.sub(r"\[[^\]]+\]|\([^\)]*\)$", "", full_title))
+    rt = _cl(real_title)
     rev = _cl(real_event)
-    ra  = _shorten_authors(real_author)
+    ra = _shorten_authors(real_author)
 
     qa = _is_qa(ft) or _is_qa(rt) or _is_qa(rev)
 
@@ -533,12 +662,13 @@ def _build_vk_search_title(
     return _cl(candidate) or _cl(ft)
 
 
-async def search_vk_video(title: str, channel_name: str = "", duration: int = 0,
-                          ai_data: dict | None = None) -> str | None:
-    loop      = asyncio.get_running_loop()
-    mapping   = get_channel_mapping(channel_name)
-    vk_token  = os.getenv("VK_API_TOKEN", "").strip()
-    headers   = {"User-Agent": "Mozilla/5.0 (compatible; Bot/1.0)"}
+async def search_vk_video(
+    title: str, channel_name: str = "", duration: int = 0, ai_data: dict | None = None
+) -> str | None:
+    loop = asyncio.get_running_loop()
+    mapping = get_channel_mapping(channel_name)
+    vk_token = os.getenv("VK_API_TOKEN", "").strip()
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; Bot/1.0)"}
     search_title = _build_vk_search_title(
         full_title=title,
         real_title=(ai_data or {}).get("real_title", ""),
@@ -560,10 +690,12 @@ async def search_vk_video(title: str, channel_name: str = "", duration: int = 0,
                 _gid_params = {"group_id": mapping["vk_domain"], "v": "5.199"}
                 if vk_token:
                     _gid_params["access_token"] = vk_token
-                r = await loop.run_in_executor(None, lambda: requests.get(
-                    "https://api.vk.com/method/groups.getById",
-                    params=_gid_params,
-                    timeout=8, headers=headers))
+                r = await loop.run_in_executor(
+                    None,
+                    lambda: requests.get(
+                        "https://api.vk.com/method/groups.getById", params=_gid_params, timeout=8, headers=headers
+                    ),
+                )
                 _resp_json = r.json().get("response", {})
                 if isinstance(_resp_json, dict):
                     _groups = _resp_json.get("groups") or []
@@ -575,14 +707,17 @@ async def search_vk_video(title: str, channel_name: str = "", duration: int = 0,
                 else:
                     logger.warning(
                         "VK groups.getById: не удалось определить owner_id для домена %s — "
-                        "поиск будет НЕ ограничен каналом", mapping["vk_domain"],
+                        "поиск будет НЕ ограничен каналом",
+                        mapping["vk_domain"],
                     )
             except Exception as _gid_err:
                 logger.warning("VK groups.getById error: %s", str(_gid_err)[:120])
         if vk_token:
             params["access_token"] = vk_token
-        resp = await loop.run_in_executor(None, lambda: requests.get(
-            "https://api.vk.com/method/video.search", params=params, timeout=10, headers=headers))
+        resp = await loop.run_in_executor(
+            None,
+            lambda: requests.get("https://api.vk.com/method/video.search", params=params, timeout=10, headers=headers),
+        )
         logger.info(f"VK ответ: status={resp.status_code}")
         if resp.status_code == 200:
             rjson = resp.json()
@@ -606,7 +741,8 @@ async def search_vk_video(title: str, channel_name: str = "", duration: int = 0,
                         "Необходим User Token через OAuth VK. "
                         "Получите токен на vk.com/dev/authcode_flow_user и установите VK_API_TOKEN в .env. "
                         "Поиск VK будет пропущен.",
-                        err_code, err_msg,
+                        err_code,
+                        err_msg,
                     )
                     return None
                 # Приложение заблокировано — пробуем без токена
@@ -614,15 +750,22 @@ async def search_vk_video(title: str, channel_name: str = "", duration: int = 0,
                     logger.info("VK: app заблокирован, повтор без токена...")
                     params_noauth = {k: v for k, v in params.items() if k != "access_token"}
                     try:
-                        resp2 = await loop.run_in_executor(None, lambda: requests.get(
-                            "https://api.vk.com/method/video.search",
-                            params=params_noauth, timeout=10, headers=headers))
+                        resp2 = await loop.run_in_executor(
+                            None,
+                            lambda: requests.get(
+                                "https://api.vk.com/method/video.search",
+                                params=params_noauth,
+                                timeout=10,
+                                headers=headers,
+                            ),
+                        )
                         rj2 = resp2.json()
                         if "error" not in rj2:
                             items2 = rj2.get("response", {}).get("items", [])
                             logger.info(f"VK (без токена) items: {len(items2)}")
                             for item in items2:
-                                oid = item.get("owner_id", ""); vid = item.get("id", "")
+                                oid = item.get("owner_id", "")
+                                vid = item.get("id", "")
                                 canonical2 = f"https://vk.com/video{oid}_{vid}"
                                 if mapping and mapping.get("vk_domain"):
                                     item["url"] = f"https://vkvideo.ru/@{mapping['vk_domain']}?z=video{oid}_{vid}"
@@ -652,19 +795,25 @@ async def search_vk_video(title: str, channel_name: str = "", duration: int = 0,
                 # FIX: if AI-generated real_title gave 0 results, retry with original YouTube title
                 _fallback_q = re.sub(r"\[[^\]]+\]|\([^\)]*\)$", "", title).strip()
                 if _fallback_q and _fallback_q != search_title:
-                    logger.info("VK: 0 по AI-title '%s', fallback на YouTube-title '%s'", search_title, _fallback_q[:60])
+                    logger.info(
+                        "VK: 0 по AI-title '%s', fallback на YouTube-title '%s'", search_title, _fallback_q[:60]
+                    )
                     _fb_params = dict(params, q=_fallback_q)
                     try:
-                        _fb_resp = await loop.run_in_executor(None, lambda: requests.get(
-                            "https://api.vk.com/method/video.search",
-                            params=_fb_params, timeout=10, headers=headers))
+                        _fb_resp = await loop.run_in_executor(
+                            None,
+                            lambda: requests.get(
+                                "https://api.vk.com/method/video.search", params=_fb_params, timeout=10, headers=headers
+                            ),
+                        )
                         _fb_rj = _fb_resp.json()
                         if "error" not in _fb_rj:
                             _fb_items = _fb_rj.get("response", {}).get("items", [])
                             if _fb_items:
                                 logger.info("VK fallback: %d items по YouTube-title", len(_fb_items))
                                 for item in _fb_items:
-                                    oid = item.get("owner_id", ""); vid = item.get("id", "")
+                                    oid = item.get("owner_id", "")
+                                    vid = item.get("id", "")
                                     canonical = f"https://vk.com/video{oid}_{vid}"
                                     if mapping and mapping.get("vk_domain"):
                                         item["url"] = f"https://vkvideo.ru/@{mapping['vk_domain']}?z=video{oid}_{vid}"
@@ -688,7 +837,7 @@ async def search_vk_video(title: str, channel_name: str = "", duration: int = 0,
 
             for item in items:
                 owner_id = item.get("owner_id", "")
-                vid_id   = item.get("id", "")
+                vid_id = item.get("id", "")
                 canonical = f"https://vk.com/video{owner_id}_{vid_id}"
                 if mapping and mapping.get("vk_domain"):
                     item["url"] = f"https://vkvideo.ru/@{mapping['vk_domain']}?z=video{owner_id}_{vid_id}"
@@ -707,9 +856,10 @@ async def search_vk_video(title: str, channel_name: str = "", duration: int = 0,
         logger.warning(f"VK Video поиск: {type(e).__name__}: {e}")
     return None
 
-async def find_alternative_links(title: str, channel_name: str, duration: int,
-                               ai_data: dict | None = None,
-                               fallback_title: str = "") -> dict:
+
+async def find_alternative_links(
+    title: str, channel_name: str, duration: int, ai_data: dict | None = None, fallback_title: str = ""
+) -> dict:
     # Ищем только если канал известен — есть в CHANNEL_MAP
     if not get_channel_mapping(channel_name):
         logger.info(f"Канал '{channel_name}' не в CHANNEL_MAP — поиск RuTube/VK пропущен")
@@ -727,8 +877,12 @@ async def find_alternative_links(title: str, channel_name: str, duration: int,
     except asyncio.TimeoutError:
         logger.warning("find_alternative_links: общий timeout 120s — RuTube/VK поиск слишком долгий")
         return {"rutube": None, "vk": None}
-    if isinstance(rutube_url, Exception): logger.warning(f"RuTube: {rutube_url}", exc_info=rutube_url); rutube_url = None
-    if isinstance(vk_url,    Exception): logger.warning(f"VK: {vk_url}",          exc_info=vk_url);    vk_url    = None
+    if isinstance(rutube_url, Exception):
+        logger.warning(f"RuTube: {rutube_url}", exc_info=rutube_url)
+        rutube_url = None
+    if isinstance(vk_url, Exception):
+        logger.warning(f"VK: {vk_url}", exc_info=vk_url)
+        vk_url = None
     # FIX AUDIT R7: retry с ОРИГИНАЛЬНЫМ YouTube-названием был только у RuTube.
     # VK искал по AI-заголовку (Gemini переименовывает материал — «Трусливый
     # лжец…» вместо реального «Трус и лжец») и получал 0 результатов.
@@ -751,22 +905,34 @@ async def find_alternative_links(title: str, channel_name: str, duration: int,
 
 
 def build_telegraph_links(
-    telegraph_url="", quotes_tg_url="", questions_tg_url="",
-    terms_tg_url="", study_tg_url="", reflection_tg_url="",
+    telegraph_url="",
+    quotes_tg_url="",
+    questions_tg_url="",
+    terms_tg_url="",
+    study_tg_url="",
+    reflection_tg_url="",
 ) -> str:
     items = []
     if telegraph_url:
-        items.append(f'├ <tg-emoji emoji-id="5204459709356069827">📝</tg-emoji> <a href="{telegraph_url}">Читать конспект</a>')
+        items.append(
+            f'├ <tg-emoji emoji-id="5204459709356069827">📝</tg-emoji> <a href="{telegraph_url}">Читать конспект</a>'
+        )
     if study_tg_url:
-        items.append(f'├ <tg-emoji emoji-id="5328226699593142053">📖</tg-emoji> <a href="{study_tg_url}">Разбор материала</a>')
+        items.append(
+            f'├ <tg-emoji emoji-id="5328226699593142053">📖</tg-emoji> <a href="{study_tg_url}">Разбор материала</a>'
+        )
     elif quotes_tg_url:
         # Legacy: показываем Аналитику только если нет новой страницы Разбора
         items.append(f'├ 🧠 <a href="{quotes_tg_url}">Аналитика</a>')
     if reflection_tg_url:
-        items.append(f'├ <tg-emoji emoji-id="5283180056095527519">🙏</tg-emoji> <a href="{reflection_tg_url}">Размышление и применение</a>')
+        items.append(
+            f'├ <tg-emoji emoji-id="5283180056095527519">🙏</tg-emoji> <a href="{reflection_tg_url}">Размышление и применение</a>'
+        )
     elif questions_tg_url:
         # Legacy: показываем Вопросы только если нет новой страницы Размышления
-        items.append(f'├ <tg-emoji emoji-id="5283180056095527519">❓</tg-emoji> <a href="{questions_tg_url}">Размышление и применение</a>')
+        items.append(
+            f'├ <tg-emoji emoji-id="5283180056095527519">❓</tg-emoji> <a href="{questions_tg_url}">Размышление и применение</a>'
+        )
     if terms_tg_url:
         items.append(f'├ 📚 <a href="{terms_tg_url}">Термины</a>')
     if not items:
@@ -793,6 +959,4 @@ def build_platform_links(url: str = "", rutube_url: str = "", vk_url: str = "") 
     return "\n".join(parts)
 
 
-
 # AUDIT M19: SETTINGS_GROUPS lives in core/database.py — dead alias removed.
-

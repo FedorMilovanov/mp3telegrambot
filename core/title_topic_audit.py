@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Title/main-topic consistency diagnostics and source-title context recovery."""
+
 from __future__ import annotations
 
 import re
@@ -7,8 +8,22 @@ from dataclasses import dataclass
 from typing import Any
 
 _STOP = {
-    "джон", "макартур", "пол", "вошер", "альберт", "молер", "проповедь", "лекция",
-    "часть", "разбор", "вопросы", "ответы", "бог", "христос", "иисус", "святой",
+    "джон",
+    "макартур",
+    "пол",
+    "вошер",
+    "альберт",
+    "молер",
+    "проповедь",
+    "лекция",
+    "часть",
+    "разбор",
+    "вопросы",
+    "ответы",
+    "бог",
+    "христос",
+    "иисус",
+    "святой",
 }
 
 # The parser historically escalates overlap < 0.05 to ERROR. A very short,
@@ -54,7 +69,7 @@ class SourceTitleContext:
 
 
 def _clean_context_value(value: str) -> str:
-    return re.sub(r"\s+", " ", str(value or "")).strip(" \t\r\n-—–|,;:()[]{}\"")
+    return re.sub(r"\s+", " ", str(value or "")).strip(' \t\r\n-—–|,;:()[]{}"')
 
 
 def extract_source_title_context(source_title: str) -> SourceTitleContext:

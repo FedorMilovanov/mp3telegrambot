@@ -130,13 +130,9 @@ def test_new_request_is_pinned_and_rebind_removes_stale_tts_fields() -> None:
         profile.profile_id,
     )
     assert rebound["speech_profile_fingerprint"] == profile.fingerprint()
-    assert rebound["speech_options"] == {
-        spec.name: spec.default for spec in profile.option_specs
-    }
+    assert rebound["speech_options"] == {spec.name: spec.default for spec in profile.option_specs}
     assert rebound["speech_backend_config"] == dict(profile.backend_defaults)
-    assert rebound["threads"] == next(
-        spec.default for spec in profile.option_specs if spec.name == "threads"
-    )
+    assert rebound["threads"] == next(spec.default for spec in profile.option_specs if spec.name == "threads")
     assert rebound["vox_archive"] == profile.backend_defaults["vox_archive"]
 
 
@@ -201,14 +197,10 @@ def test_inactive_project_rebind_updates_request_metadata_and_event(
     assert result.as_dict()["rebind_policy"] == TTS_PROJECT_REBIND_POLICY
     assert saved["speech_model_profile"] == alternate_profile.profile_id
     assert saved["speech_profile_fingerprint"] == alternate_profile.fingerprint()
-    assert saved["speech_options"] == {
-        spec.name: spec.default for spec in alternate_profile.option_specs
-    }
+    assert saved["speech_options"] == {spec.name: spec.default for spec in alternate_profile.option_specs}
     assert saved != previous
     assert updated["metadata"]["speech_model_profile"] == alternate_profile.profile_id
-    assert updated["metadata"]["speech_model_revision"] == (
-        alternate_profile.model_revision
-    )
+    assert updated["metadata"]["speech_model_revision"] == (alternate_profile.model_revision)
     assert updated["stage"] == "tts_profile_rebound"
     with store.connect() as conn:
         event = conn.execute(

@@ -7,6 +7,7 @@ reuses the repository's canonical requirements contract and verifies the
 installed runtime dependency closure against exact lock pins. Dev-only packages
 remain outside that closure unless a runtime package actually requires them.
 """
+
 from __future__ import annotations
 
 from collections import deque
@@ -35,8 +36,7 @@ def _requirement_tools():
     except ImportError as exc:
         missing = getattr(exc, "name", None) or type(exc).__name__
         raise RuntimeDependencyLockError(
-            "Dependency-lock verifier is unavailable "
-            f"(import failure: {missing}); install requirements-lock.txt"
+            f"Dependency-lock verifier is unavailable (import failure: {missing}); install requirements-lock.txt"
         ) from exc
 
     return (
@@ -93,10 +93,7 @@ def validate_runtime_dependency_lock(
     except RuntimeDependencyLockError:
         raise
     except Exception as exc:
-        raise RuntimeDependencyLockError(
-            "Repository dependency lock is invalid: "
-            f"{type(exc).__name__}: {exc}"
-        ) from exc
+        raise RuntimeDependencyLockError(f"Repository dependency lock is invalid: {type(exc).__name__}: {exc}") from exc
 
     skipped = {canonicalize_name(name) for name in skip_names}
     active_extras: dict[str, set[str]] = {}
@@ -110,8 +107,7 @@ def validate_runtime_dependency_lock(
             applies = _marker_applies(requirement, extras)
         except Exception as exc:
             raise RuntimeDependencyLockError(
-                f"Direct runtime requirement marker is invalid for {name}: "
-                f"{type(exc).__name__}: {exc}"
+                f"Direct runtime requirement marker is invalid for {name}: {type(exc).__name__}: {exc}"
             ) from exc
         if not applies:
             platform_skipped += 1
@@ -145,9 +141,7 @@ def validate_runtime_dependency_lock(
                 mismatches.append(f"{name}=missing (locked {expected})")
                 continue
             except Exception as exc:
-                mismatches.append(
-                    f"{name}=unreadable:{type(exc).__name__} (locked {expected})"
-                )
+                mismatches.append(f"{name}=unreadable:{type(exc).__name__} (locked {expected})")
                 continue
 
             try:
@@ -169,9 +163,7 @@ def validate_runtime_dependency_lock(
             mismatches.append(f"{name}=metadata-missing (locked {expected})")
             continue
         except Exception as exc:
-            mismatches.append(
-                f"{name}=requires-unreadable:{type(exc).__name__} (locked {expected})"
-            )
+            mismatches.append(f"{name}=requires-unreadable:{type(exc).__name__} (locked {expected})")
             continue
 
         for raw_dependency in requires:
@@ -179,9 +171,7 @@ def validate_runtime_dependency_lock(
                 dependency = Requirement(raw_dependency)
                 applies = _marker_applies(dependency, extras)
             except Exception as exc:
-                mismatches.append(
-                    f"{name}=invalid-requires:{type(exc).__name__}"
-                )
+                mismatches.append(f"{name}=invalid-requires:{type(exc).__name__}")
                 continue
             if not applies:
                 continue
@@ -189,9 +179,7 @@ def validate_runtime_dependency_lock(
             dependency_name = canonicalize_name(dependency.name)
             dependency_lock = locked.get(dependency_name)
             if dependency_lock is None:
-                mismatches.append(
-                    f"{dependency_name}=required-by-{name}-but-missing-from-lock"
-                )
+                mismatches.append(f"{dependency_name}=required-by-{name}-but-missing-from-lock")
                 continue
             dependency_expected = next(iter(dependency_lock.specifier)).version
             if dependency.specifier and not dependency.specifier.contains(
@@ -199,8 +187,7 @@ def validate_runtime_dependency_lock(
                 prereleases=True,
             ):
                 mismatches.append(
-                    f"{dependency_name}=locked-{dependency_expected}-violates-"
-                    f"{name}-requirement-{dependency.specifier}"
+                    f"{dependency_name}=locked-{dependency_expected}-violates-{name}-requirement-{dependency.specifier}"
                 )
                 continue
 
@@ -216,8 +203,7 @@ def validate_runtime_dependency_lock(
         if len(unique_mismatches) > 8:
             preview += f"; +{len(unique_mismatches) - 8} more"
         raise RuntimeDependencyLockError(
-            "Installed runtime dependency closure differs from requirements-lock.txt: "
-            + preview
+            "Installed runtime dependency closure differs from requirements-lock.txt: " + preview
         )
 
     return {

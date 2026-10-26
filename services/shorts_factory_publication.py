@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Cheap, optional publication polish for SHORTS FACTORY captions."""
+
 from __future__ import annotations
 
 import asyncio
@@ -46,9 +47,7 @@ def _light_models() -> list[str]:
 
 
 def _enabled() -> bool:
-    return os.getenv("SHORTS_FACTORY_PUBLICATION_DESCRIPTION", "1").strip().lower() not in {
-        "0", "false", "no", "off"
-    }
+    return os.getenv("SHORTS_FACTORY_PUBLICATION_DESCRIPTION", "1").strip().lower() not in {"0", "false", "no", "off"}
 
 
 def _timeout() -> float:
@@ -63,10 +62,19 @@ def _clean_description(value: Any) -> str:
     text = html.unescape(str(value or ""))
     text = " ".join(text.split()).strip(" •·—–-*\t\r\n")
     low = text.casefold()
-    if not text or any(x in low for x in (
-        "gemini", "искусственный интеллект", "нейросет", "сгенерирован",
-        "перевод яндекса", "живые голоса яндекса", "в этом видео", "в этом ролике",
-    )):
+    if not text or any(
+        x in low
+        for x in (
+            "gemini",
+            "искусственный интеллект",
+            "нейросет",
+            "сгенерирован",
+            "перевод яндекса",
+            "живые голоса яндекса",
+            "в этом видео",
+            "в этом ролике",
+        )
+    ):
         return ""
     if "<" in text or ">" in text:
         return ""
@@ -79,11 +87,16 @@ def _clean_description(value: Any) -> str:
 def _schema() -> dict[str, Any]:
     return {
         "type": "object",
-        "properties": {"items": {"type": "array", "items": {
-            "type": "object",
-            "properties": {"index": {"type": "integer"}, "description": {"type": "string"}},
-            "required": ["index", "description"],
-        }}},
+        "properties": {
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {"index": {"type": "integer"}, "description": {"type": "string"}},
+                    "required": ["index", "description"],
+                },
+            }
+        },
         "required": ["items"],
     }
 
@@ -121,12 +134,15 @@ async def _generate_descriptions(
     ai_data, source_title, performer = _metadata(args, kwargs)
     author = str(ai_data.get("real_author") or performer or "")[:160]
     event = str(ai_data.get("real_event") or "")[:180]
-    fragments = [{
-        "index": i,
-        "title": str(c.get("title") or "")[:160],
-        "hook": str(c.get("hook") or "")[:180],
-        "reason": str(c.get("reason") or "")[:240],
-    } for i, c in enumerate(candidates)]
+    fragments = [
+        {
+            "index": i,
+            "title": str(c.get("title") or "")[:160],
+            "hook": str(c.get("hook") or "")[:180],
+            "reason": str(c.get("reason") or "")[:240],
+        }
+        for i, c in enumerate(candidates)
+    ]
     prompt = (
         "Для каждого фрагмента напиши один небольшой естественный абзац для Telegram: "
         "1–2 предложения, примерно 90–240 знаков. Пиши спокойно и по-человечески, "
@@ -218,8 +234,11 @@ async def _generate_descriptions(
 
 
 async def enrich_factory_candidates(
-    candidates: list[dict[str, Any]], *, call_args: tuple[Any, ...] = (),
-    call_kwargs: dict[str, Any] | None = None, kind: str = "short",
+    candidates: list[dict[str, Any]],
+    *,
+    call_args: tuple[Any, ...] = (),
+    call_kwargs: dict[str, Any] | None = None,
+    kind: str = "short",
 ) -> list[dict[str, Any]]:
     enriched = copy.deepcopy(candidates or [])
     for item in enriched:

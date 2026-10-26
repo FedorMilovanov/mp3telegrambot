@@ -12,12 +12,14 @@ _GIB = 1024**3
 def test_selection_payload_sums_selected_video_and_audio_streams():
     payload = {
         "duration": 600,
-        "requested_downloads": [{
-            "requested_formats": [
-                {"filesize": 900_000_000, "duration": 600},
-                {"filesize_approx": 80_000_000, "duration": 600},
-            ]
-        }],
+        "requested_downloads": [
+            {
+                "requested_formats": [
+                    {"filesize": 900_000_000, "duration": 600},
+                    {"filesize_approx": 80_000_000, "duration": 600},
+                ]
+            }
+        ],
     }
     estimated, duration = disk_guard.estimate_factory_selection_payload(payload)
     assert estimated == 980_000_000

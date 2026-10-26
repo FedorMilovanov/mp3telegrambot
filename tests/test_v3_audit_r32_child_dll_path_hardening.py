@@ -5,6 +5,7 @@
 System32 в НАЧАЛО PATH (prepend-only), чтобы core-DLL грузились раньше
 «отравленного» каталога. Только Windows, ничего не удаляем.
 """
+
 import os
 from pathlib import Path
 
@@ -31,6 +32,7 @@ def test_import_does_not_break_on_non_windows():
     import importlib
 
     import core.globals as g
+
     importlib.reload(g)
     assert g is not None
     if os.name != "nt":

@@ -1,4 +1,5 @@
 """User-facing early return for audio that remains above Telegram's limit."""
+
 from __future__ import annotations
 
 import logging
@@ -25,12 +26,7 @@ async def fail_audio_too_large(
     distinction remains explicit in ``cache_hit``.  Reply and cleanup failures
     propagate as before, while a LiveDub delivery error is best-effort only.
     """
-    message = (
-        f"⚠️ Файл слишком большой ({error.size_mb:.1f} МБ) "
-        "даже после сжатия."
-        if cache_hit
-        else str(error)
-    )
+    message = f"⚠️ Файл слишком большой ({error.size_mb:.1f} МБ) даже после сжатия." if cache_hit else str(error)
     await update.message.reply_text(message)
 
     # LiveDub has an independent size check: an oversized MP3 must not discard

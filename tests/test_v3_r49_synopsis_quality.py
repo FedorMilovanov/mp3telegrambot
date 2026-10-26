@@ -42,8 +42,8 @@ def test_r49_scripture_context_guard_matches_declensions():
         "как сказано в Исаии ",
         "Исаия ",
         "стих ",
-        "он читает стих ",          # «стих 8:32» — число идёт сразу за словом
-        "стих пророка ",            # промежуточное слово опционально
+        "он читает стих ",  # «стих 8:32» — число идёт сразу за словом
+        "стих пророка ",  # промежуточное слово опционально
         "в главе ",
         "Псалом ",
     ):
@@ -71,7 +71,7 @@ def test_r49_strip_timestamp_inside_multiparagraph_quote():
     out = _strip_timestamps_inside_scripture_quotes(content)
     for ts in ("⏱ 2:18", "⏱ 2:51"):
         assert ts not in out, f"{ts} survived inside quote"
-    assert "  " not in out            # без двойных пробелов
+    assert "  " not in out  # без двойных пробелов
     assert " ." not in out.replace(" .*", ".*")  # без осиротевшей « .»
 
 
@@ -115,8 +115,7 @@ def test_r49_join_title_author_no_duplicate_when_title_ends_with_author():
 
 
 def test_r49_join_title_author_appends_when_absent():
-    assert join_title_author("Поразительный Раб Иеговы", "Джон МакАртур") == \
-        "Поразительный Раб Иеговы — Джон МакАртур"
+    assert join_title_author("Поразительный Раб Иеговы", "Джон МакАртур") == "Поразительный Раб Иеговы — Джон МакАртур"
 
 
 def test_r49_join_title_author_ignores_placeholder_author():
@@ -125,8 +124,7 @@ def test_r49_join_title_author_ignores_placeholder_author():
 
 def test_r49_join_title_author_partial_word_is_not_a_match():
     # «Артур» ≠ «МакАртур»: частичное совпадение хвоста не глушит суффикс.
-    assert join_title_author("Проповедь Артура", "Джон МакАртур") == \
-        "Проповедь Артура — Джон МакАртур"
+    assert join_title_author("Проповедь Артура", "Джон МакАртур") == "Проповедь Артура — Джон МакАртур"
 
 
 def test_r49_join_title_author_used_in_related_and_page_builders():
@@ -168,10 +166,13 @@ def test_r49_fullwidth_brackets_normalized_in_title():
 
 # ── #37d. Ис. 53:5 «мучем за» → «мучим за» (Синодальный) ─────────────────────
 def test_r49_isaiah_53_5_mucem_typo_fixed():
-    assert normalize_common_typos(
-        "Он был изъязвлен за грехи наши и мучем за беззакония наши",
-        source_map=False,
-    ) == "Он был изъязвлен за грехи наши и мучим за беззакония наши"
+    assert (
+        normalize_common_typos(
+            "Он был изъязвлен за грехи наши и мучем за беззакония наши",
+            source_map=False,
+        )
+        == "Он был изъязвлен за грехи наши и мучим за беззакония наши"
+    )
 
 
 def test_r49_mucem_correction_is_anchored_not_context_blind():
@@ -183,13 +184,15 @@ def test_r49_mucem_correction_is_anchored_not_context_blind():
 
 # ── #37e. Пс. 2:10 «уразумейте, цари» → «вразумитесь, цари» (Синодальный) ─────
 def test_r49_psalm_2_10_urazumejte_typo_fixed():
-    assert normalize_common_typos(
-        "Итак, уразумейте, цари; научитесь, судьи земли",
-        source_map=False,
-    ) == "Итак, вразумитесь, цари; научитесь, судьи земли"
+    assert (
+        normalize_common_typos(
+            "Итак, уразумейте, цари; научитесь, судьи земли",
+            source_map=False,
+        )
+        == "Итак, вразумитесь, цари; научитесь, судьи земли"
+    )
 
 
 def test_r49_psalm_2_10_correction_is_anchored():
     # голый императив «уразумейте» (не Пс. 2:10) — легитимен, не трогаем
-    assert normalize_common_typos("уразумейте волю Божью", source_map=False) == \
-        "уразумейте волю Божью"
+    assert normalize_common_typos("уразумейте волю Божью", source_map=False) == "уразумейте волю Божью"

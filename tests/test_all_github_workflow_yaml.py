@@ -57,10 +57,6 @@ def test_literal_repo_python_paths_referenced_by_workflows_exist() -> None:
         references = sorted(set(LITERAL_REPO_PYTHON_PATH_RE.findall(source)))
         for reference in references:
             if not (ROOT / reference).is_file():
-                failures.append(
-                    f"{relative_workflow}: missing referenced Python path {reference}"
-                )
+                failures.append(f"{relative_workflow}: missing referenced Python path {reference}")
 
-    assert not failures, "GitHub Actions workflows reference missing Python paths:\n" + "\n".join(
-        failures
-    )
+    assert not failures, "GitHub Actions workflows reference missing Python paths:\n" + "\n".join(failures)

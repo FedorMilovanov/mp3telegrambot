@@ -7,6 +7,7 @@ log-frequency energy envelope of a candidate with its real voice reference. The
 metric is used mainly as a soft tie-breaker; the hard floor is intentionally low
 because phonetic content also changes the spectrum.
 """
+
 from __future__ import annotations
 
 import math
@@ -48,12 +49,7 @@ def spectral_envelope(samples: np.ndarray, sample_rate: int) -> dict[str, Any]:
         factor = max(1, int(round(rate / 16_000)))
         usable = len(audio) - len(audio) % factor
         if usable >= factor * 512:
-            audio = (
-                audio[:usable]
-                .reshape(-1, factor)
-                .mean(axis=1)
-                .astype(np.float32)
-            )
+            audio = audio[:usable].reshape(-1, factor).mean(axis=1).astype(np.float32)
             rate = int(round(rate / factor))
 
     frame = max(512, int(rate * 0.032))
@@ -64,16 +60,7 @@ def spectral_envelope(samples: np.ndarray, sample_rate: int) -> dict[str, Any]:
     starts = list(range(0, len(audio) - frame + 1, hop))
     rms = np.asarray(
         [
-            math.sqrt(
-                float(
-                    np.mean(
-                        np.square(
-                            audio[start : start + frame].astype(np.float64)
-                        )
-                    )
-                )
-                + 1e-12
-            )
+            math.sqrt(float(np.mean(np.square(audio[start : start + frame].astype(np.float64)))) + 1e-12)
             for start in starts
         ],
         dtype=np.float64,
@@ -99,25 +86,19 @@ def spectral_envelope(samples: np.ndarray, sample_rate: int) -> dict[str, Any]:
         power = np.square(np.abs(np.fft.rfft(chunk * window)))
         if not np.isfinite(power).all():
             continue
-        audible = (frequencies >= BAND_EDGES_HZ[0]) & (
-            frequencies <= BAND_EDGES_HZ[-1]
-        )
+        audible = (frequencies >= BAND_EDGES_HZ[0]) & (frequencies <= BAND_EDGES_HZ[-1])
         audible_power = power[audible]
         audible_frequencies = frequencies[audible]
         total = float(np.sum(audible_power))
         if not math.isfinite(total) or total <= 1e-12:
             continue
         for band_index in range(len(accumulated)):
-            mask = (frequencies >= BAND_EDGES_HZ[band_index]) & (
-                frequencies < BAND_EDGES_HZ[band_index + 1]
-            )
+            mask = (frequencies >= BAND_EDGES_HZ[band_index]) & (frequencies < BAND_EDGES_HZ[band_index + 1])
             band_power = float(np.sum(power[mask]))
             if not math.isfinite(band_power):
                 continue
             accumulated[band_index] += math.log1p(max(0.0, band_power))
-        centroid_numerator += float(
-            np.sum(audible_frequencies * audible_power)
-        )
+        centroid_numerator += float(np.sum(audible_frequencies * audible_power))
         centroid_denominator += total
         used += 1
 
@@ -205,10 +186,7 @@ def timbre_hard_ok(similarity: float) -> bool:
         value = float(similarity)
     except (TypeError, ValueError, OverflowError):
         return False
-    return bool(
-        math.isfinite(value)
-        and HARD_SIMILARITY_FLOOR <= value <= 1.0
-    )
+    return bool(math.isfinite(value) and HARD_SIMILARITY_FLOOR <= value <= 1.0)
 
 
 __all__ = [

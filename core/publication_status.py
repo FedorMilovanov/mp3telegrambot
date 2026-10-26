@@ -4,6 +4,7 @@
 Small pure layer used by the pipeline and tests. It keeps UX/status decisions
 out of the huge async pipeline and prepares the future generated_pages archive.
 """
+
 from __future__ import annotations
 
 import json
@@ -18,11 +19,14 @@ class PublicationStatus:
     warning: str = ""
 
     def to_json(self) -> str:
-        return json.dumps({
-            "status": self.status,
-            "missing": list(self.missing),
-            "warning": self.warning,
-        }, ensure_ascii=False)
+        return json.dumps(
+            {
+                "status": self.status,
+                "missing": list(self.missing),
+                "warning": self.warning,
+            },
+            ensure_ascii=False,
+        )
 
 
 _LABELS = {
@@ -56,11 +60,15 @@ def build_publication_status(
         missing.append("reflection")
 
     expected_count = sum(1 for x in (expect_synopsis, expect_study, expect_reflection) if x)
-    present_count = sum(1 for x in (
-        bool(synopsis_url) if expect_synopsis else False,
-        bool(study_url) if expect_study else False,
-        bool(reflection_url) if expect_reflection else False,
-    ) if x)
+    present_count = sum(
+        1
+        for x in (
+            bool(synopsis_url) if expect_synopsis else False,
+            bool(study_url) if expect_study else False,
+            bool(reflection_url) if expect_reflection else False,
+        )
+        if x
+    )
 
     if expected_count == 0:
         status = "unknown"

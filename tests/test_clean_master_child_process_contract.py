@@ -11,14 +11,7 @@ from tools.voxcpm2 import clean_production_core as core
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MASTER = (
-    ROOT
-    / "tools"
-    / "voxcpm2"
-    / "examples"
-    / "john_piper_z20py4yqhyq"
-    / "master_constant_mix.py"
-)
+MASTER = ROOT / "tools" / "voxcpm2" / "examples" / "john_piper_z20py4yqhyq" / "master_constant_mix.py"
 
 
 def test_child_environment_places_repo_root_first() -> None:
@@ -64,9 +57,7 @@ def test_master_failure_surfaces_exact_stderr_and_releases_to_caller(
 ) -> None:
     script = tmp_path / "master_constant_mix.py"
     script.write_text(
-        "import sys\n"
-        "sys.stderr.write('MASTER_EXACT_SENTINEL\\n')\n"
-        "raise SystemExit(7)\n",
+        "import sys\nsys.stderr.write('MASTER_EXACT_SENTINEL\\n')\nraise SystemExit(7)\n",
         encoding="utf-8",
     )
     with pytest.raises(RuntimeError, match="MASTER_EXACT_SENTINEL") as captured:
@@ -88,4 +79,3 @@ def test_clean_core_uses_explicit_child_process_owner() -> None:
     assert "_SubprocessProxy" not in source
     assert "subprocess = _SubprocessProxy()" not in source
     assert core.CHILD_PYTHON_POLICY == "repo-root-pythonpath-master-stderr-and-post-aac-v2"
-

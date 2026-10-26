@@ -1,4 +1,5 @@
 """Behavioral contracts for the extracted pipeline ``finally`` teardown."""
+
 from __future__ import annotations
 
 import asyncio
@@ -83,12 +84,15 @@ def test_no_resources_is_a_noop():
 def test_completed_task_missing_workdir_and_nameless_audio_are_skipped(tmp_path):
     events = []
 
-    assert _run(
-        live_dub_task=_Task(events, done=True),
-        workdir=tmp_path / "missing",
-        used_audio_part=object(),
-        used_client=_client(events),
-    ) is None
+    assert (
+        _run(
+            live_dub_task=_Task(events, done=True),
+            workdir=tmp_path / "missing",
+            used_audio_part=object(),
+            used_client=_client(events),
+        )
+        is None
+    )
 
     assert _kinds(events) == ["done"]
     assert not (tmp_path / "missing").exists()
@@ -100,13 +104,16 @@ def test_cancelled_task_workdir_audio_part_and_thumbnail_are_cleaned(tmp_path):
     workdir.mkdir()
     (workdir / "partial.mp4").write_bytes(b"partial")
 
-    assert _run(
-        live_dub_task=_Task(events, await_error=asyncio.CancelledError()),
-        workdir=workdir,
-        used_audio_part=SimpleNamespace(name="files/audio"),
-        used_client=_client(events),
-        thumbnail=_Thumbnail(events),
-    ) is None
+    assert (
+        _run(
+            live_dub_task=_Task(events, await_error=asyncio.CancelledError()),
+            workdir=workdir,
+            used_audio_part=SimpleNamespace(name="files/audio"),
+            used_client=_client(events),
+            thumbnail=_Thumbnail(events),
+        )
+        is None
+    )
 
     assert _kinds(events) == ["done", "cancel", "await", "delete", "close"]
     assert events[3][1] == "files/audio"
@@ -124,9 +131,7 @@ def test_cancelled_task_may_finish_normally():
 def test_task_runtime_error_after_cancel_is_suppressed():
     events = []
 
-    assert _run(
-        live_dub_task=_Task(events, await_error=RuntimeError("worker failed"))
-    ) is None
+    assert _run(live_dub_task=_Task(events, await_error=RuntimeError("worker failed"))) is None
 
     assert _kinds(events) == ["done", "cancel", "await"]
 
@@ -134,11 +139,14 @@ def test_task_runtime_error_after_cancel_is_suppressed():
 def test_named_audio_part_without_client_is_not_deleted():
     events = []
 
-    assert _run(
-        used_audio_part=SimpleNamespace(name="files/audio"),
-        used_client=None,
-        thumbnail=_Thumbnail(events),
-    ) is None
+    assert (
+        _run(
+            used_audio_part=SimpleNamespace(name="files/audio"),
+            used_client=None,
+            thumbnail=_Thumbnail(events),
+        )
+        is None
+    )
 
     assert _kinds(events) == ["close"]
 
@@ -146,11 +154,14 @@ def test_named_audio_part_without_client_is_not_deleted():
 def test_gemini_delete_failure_is_suppressed_and_thumbnail_still_closes():
     events = []
 
-    assert _run(
-        used_audio_part=SimpleNamespace(name="files/audio"),
-        used_client=_client(events, error=RuntimeError("delete failed")),
-        thumbnail=_Thumbnail(events),
-    ) is None
+    assert (
+        _run(
+            used_audio_part=SimpleNamespace(name="files/audio"),
+            used_client=_client(events, error=RuntimeError("delete failed")),
+            thumbnail=_Thumbnail(events),
+        )
+        is None
+    )
 
     assert _kinds(events) == ["delete", "close"]
 

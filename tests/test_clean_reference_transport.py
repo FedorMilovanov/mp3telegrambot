@@ -35,10 +35,7 @@ def test_reference_selection_keeps_real_voice_metrics_and_report() -> None:
 
 def test_direct_transport_does_not_filter_prepared_reference_again() -> None:
     source = _source(ANALYSIS)
-    transport = source[
-        source.index("def _read_reference_transport"):
-        source.index("def prepare_reference")
-    ]
+    transport = source[source.index("def _read_reference_transport") : source.index("def prepare_reference")]
     assert '"native-mono-16k"' in transport
     assert '"resample-mono-only"' in transport
     assert "highpass" not in transport

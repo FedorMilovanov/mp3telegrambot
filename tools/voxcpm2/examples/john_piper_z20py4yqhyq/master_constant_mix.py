@@ -7,6 +7,7 @@ never raised by a loudness normalizer after the mix. Russian speech is mastered
 first and its gain is then calibrated around the fixed English branch so the
 final mix still meets the delivery loudness and true-peak contract.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -51,11 +52,7 @@ def run(
     )
     if process.returncode != 0:
         tail = (process.stderr or process.stdout or "")[-6000:] if capture else ""
-        raise RuntimeError(
-            "Команда завершилась с ошибкой:\n"
-            + " ".join(command)
-            + ("\n\n" + tail if tail else "")
-        )
+        raise RuntimeError("Команда завершилась с ошибкой:\n" + " ".join(command) + ("\n\n" + tail if tail else ""))
     return process
 
 
@@ -348,10 +345,7 @@ def calibrate_russian_gain(
             target_lra=target_lra,
             target_tp=target_tp,
         )
-        if (
-            measured["integrated_lufs"] > target_i + LOUDNESS_TOLERANCE_LU
-            or measured["true_peak_dbtp"] > -1.0
-        ):
+        if measured["integrated_lufs"] > target_i + LOUDNESS_TOLERANCE_LU or measured["true_peak_dbtp"] > -1.0:
             raise RuntimeError(
                 "Даже минимальная русская громкость не позволяет сохранить постоянный "
                 f"оригинал {original_level * 100:.1f}% и пройти master-QA: {measured}"
@@ -451,9 +445,7 @@ def encode_upload_mp4(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Fixed-English-level Russian Dub master with final AAC QA."
-    )
+    parser = argparse.ArgumentParser(description="Fixed-English-level Russian Dub master with final AAC QA.")
     parser.add_argument("--source-video", required=True)
     parser.add_argument("--russian-wav", required=True)
     parser.add_argument("--work-dir", required=True)

@@ -16,6 +16,7 @@
 Всё это чистые функции без I/O — поэтому проверяются тестами на таблицах
 случаев, а не глазами.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -80,11 +81,11 @@ def with_timestamp_coverage(
     if not ai_data:
         return ai_data
     ratio = timestamp_coverage_ratio(ai_data.get("timestamps", ""), duration)
-    status = "partial" if (
-        duration >= PARTIAL_COVERAGE_MIN_DURATION
-        and ratio
-        and ratio < PARTIAL_COVERAGE_THRESHOLD
-    ) else "complete"
+    status = (
+        "partial"
+        if (duration >= PARTIAL_COVERAGE_MIN_DURATION and ratio and ratio < PARTIAL_COVERAGE_THRESHOLD)
+        else "complete"
+    )
     if ai_data.get("timestamp_coverage_warning") and duration >= PARTIAL_COVERAGE_MIN_DURATION:
         status = "partial"
     return {

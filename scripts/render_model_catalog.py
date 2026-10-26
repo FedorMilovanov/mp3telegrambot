@@ -18,6 +18,7 @@ A catalog bump is therefore: edit ``core/model_catalog.py``, run this script,
 run ``tools/verify_repo.py``.  Production code needs no edits at all: it imports
 roles (``MODEL_PRIMARY`` / ``MODEL_UTILITY`` / ...) from the catalog.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -52,6 +53,7 @@ from core.model_catalog import (  # noqa: E402  (path bootstrap above)
     unverified_free_tier_models,
 )
 
+
 def _paid_only_examples(limit: int = 1) -> str:
     """Flagship paid-only model id for prose, straight from the catalog.
 
@@ -64,10 +66,7 @@ def _paid_only_examples(limit: int = 1) -> str:
     return ", ".join(names[:limit])
 
 
-GENERATED_NOTE = (
-    "Сгенерировано scripts/render_model_catalog.py из core/model_catalog.py — "
-    "не редактируйте вручную."
-)
+GENERATED_NOTE = "Сгенерировано scripts/render_model_catalog.py из core/model_catalog.py — не редактируйте вручную."
 
 # Env variables that must follow a catalog role.
 ENV_ROLE_MAP: dict[str, str] = {
@@ -108,9 +107,7 @@ def _role_table() -> str:
     for role, kind, usage in _ROLE_ROWS:
         model = ROLE_MODELS.get(role, "")
         free = _FREE_TIER_MARK[role_free_tier(role)]
-        lines.append(
-            f"| `{role}` ({kind}) | `{model or '(не задан)'}` | {free} | {usage} |"
-        )
+        lines.append(f"| `{role}` ({kind}) | `{model or '(не задан)'}` | {free} | {usage} |")
     return "\n".join(lines) + "\n"
 
 
@@ -162,13 +159,9 @@ def _override_lines() -> str:
     lines.append("# MP3BOT_FALLBACK_MODEL=")
     lines.append("# ↑ пусто = cross-model downgrade выключен (рекомендуется).")
     lines.append(
-        "# ↑ reasoning пуст намеренно: бесплатной reasoning-модели нет; "
-        f"{_paid_only_examples()} — только paid tier."
+        f"# ↑ reasoning пуст намеренно: бесплатной reasoning-модели нет; {_paid_only_examples()} — только paid tier."
     )
-    lines.append(
-        "# Платные модели (недоступные на free tier) отклоняются: причина "
-        "пишется в лог при старте."
-    )
+    lines.append("# Платные модели (недоступные на free tier) отклоняются: причина пишется в лог при старте.")
     return "\n".join(lines)
 
 
@@ -247,9 +240,7 @@ def _catalog_section() -> str:
 def _replace_block(text: str, block: str, *, marker: str = "MODEL-CATALOG") -> str:
     start = f"<!-- {marker}:START -->"
     end = f"<!-- {marker}:END -->"
-    pattern = re.compile(
-        re.escape(start) + r".*?" + re.escape(end), re.DOTALL
-    )
+    pattern = re.compile(re.escape(start) + r".*?" + re.escape(end), re.DOTALL)
     replacement = f"{start}\n{block.rstrip()}\n{end}"
     if not pattern.search(text):
         raise SystemExit(f"marker {marker} not found")
@@ -266,9 +257,7 @@ def _render_env(text: str) -> str:
 
 def _render_ps1(text: str) -> str:
     for name, value in ENV_ROLE_MAP.items():
-        pattern = re.compile(
-            rf'(Set-EnvValue\s+-Name\s+"{re.escape(name)}"\s+-Value\s+)"[^"]*"'
-        )
+        pattern = re.compile(rf'(Set-EnvValue\s+-Name\s+"{re.escape(name)}"\s+-Value\s+)"[^"]*"')
         if pattern.search(text):
             text = pattern.sub(lambda m, value=value: f'{m.group(1)}"{value}"', text)
     return text
@@ -338,13 +327,9 @@ def render_all(root: Path = ROOT) -> dict[Path, str]:
         "рассинхронизацию, прогоняет генератор и контрактные тесты, затем\n"
         "восстанавливает файл из бэкапа. Зелёный прогон = апгрейд модели не требует\n"
         "правок в коде. Если тест начнёт падать — значит в нём появился литерал\n"
-        "модели вместо роли.\n\n"
-        + _catalog_section()
-        + "\n## Переопределения\n\n"
+        "модели вместо роли.\n\n" + _catalog_section() + "\n## Переопределения\n\n"
         "| Переменная | Роль |\n|---|---|\n"
-        + "\n".join(
-            f"| `{name}` | `{role}` |" for role, names in ROLE_ENV.items() for name in names
-        )
+        + "\n".join(f"| `{name}` | `{role}` |" for role, names in ROLE_ENV.items() for name in names)
         + "\n| `MP3BOT_FALLBACK_MODEL` | `fallback` (пусто = выключено) |\n"
     )
 

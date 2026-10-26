@@ -7,6 +7,7 @@ Default source-card policy: when an original English title is present, prefer it
 because it is verifiable; known official Russian titles are kept as metadata and
 used to correct wrong Russian variants such as «Странный огонь».
 """
+
 from __future__ import annotations
 
 import re
@@ -56,7 +57,6 @@ AUTHOR_CANONICAL: dict[str, str] = {
     "Jonathan Edwards": "Джонатан Эдвардс",
     "Martyn Lloyd-Jones": "Мартин Лойд-Джонс",
     "Martyn Ллойд-Джонс": "Мартин Лойд-Джонс",
-
     "John Murray": "Джон Мюррей",
     "B.B. Warfield": "Б. Б. Уорфилд",
     "B. B. Warfield": "Б. Б. Уорфилд",
@@ -83,7 +83,6 @@ AUTHOR_CANONICAL: dict[str, str] = {
     "Iain Murray": "Иэн Мюррей",
     "Arnold Dallimore": "Арнольд Даллимор",
     "Michael Haykin": "Майкл Хейкин",
-
     # Surname aliases used in source_packs.py. Keep these deterministic so
     # source-card rendering can canonicalize pack entries without asking Gemini
     # to invent Russian names.
@@ -217,7 +216,6 @@ OFFICIAL_RU_TITLES: dict[tuple[str, str], str] = {
     ("John Calvin", "Commentaries on Isaiah"): "Комментарии на Исаию",
     ("John Calvin", "Institutes of the Christian Religion"): "Наставление в христианской вере",
     ("Jonathan Edwards", "Religious Affections"): "Религиозные чувства",
-
     ("John Murray", "Redemption Accomplished and Applied"): "Искупление совершённое и применённое",
     ("J.C. Ryle", "Holiness"): "Святость",
     ("J. C. Ryle", "Holiness"): "Святость",
@@ -231,7 +229,11 @@ RU_TITLE_CORRECTIONS: dict[str, str] = {
 }
 
 DISALLOWED_SOURCE_AUTHORS: set[str] = {
-    "Tim Keller", "Timothy Keller", "Keller", "Тим Келлер", "Тимоти Келлер",
+    "Tim Keller",
+    "Timothy Keller",
+    "Keller",
+    "Тим Келлер",
+    "Тимоти Келлер",
 }
 
 # FIX AUDIT R4: денилист по подстроке «Keller» ловил и других авторов
@@ -260,6 +262,7 @@ class SourceCard:
     ``title_ru`` is optional; when absent, ``title_original`` is displayed as the
     main title. ``author_original`` is retained for the parenthetical verifier.
     """
+
     author_ru: str
     title_original: str
     author_original: str = ""
@@ -316,13 +319,19 @@ def build_source_card(
 ) -> SourceCard:
     """Create a canonical SourceCard from raw model/legacy fields."""
     if is_disallowed_source_author(author) or is_disallowed_source_author(original_author):
-        return SourceCard(author_ru="", title_original="", author_original="", title_ru="", bullet=bullet, why_relevant="")
+        return SourceCard(
+            author_ru="", title_original="", author_original="", title_ru="", bullet=bullet, why_relevant=""
+        )
     title_original = str(title_original or "").strip().rstrip(".")
     original_author = original_author_name(original_author or author)
     if is_disallowed_source_author(original_author):
-        return SourceCard(author_ru="", title_original="", author_original="", title_ru="", bullet=bullet, why_relevant="")
+        return SourceCard(
+            author_ru="", title_original="", author_original="", title_ru="", bullet=bullet, why_relevant=""
+        )
     author_ru = canonical_author_name(author or original_author)
-    title_ru = official_ru_title(original_author, title_original) or correct_known_ru_title(fallback_ru_title).strip().rstrip(".")
+    title_ru = official_ru_title(original_author, title_original) or correct_known_ru_title(
+        fallback_ru_title
+    ).strip().rstrip(".")
     if title_ru and re.search(r"[A-Za-z]", title_ru) and not re.search(r"[А-Яа-яЁё]", title_ru):
         title_ru = ""
     return SourceCard(
@@ -333,6 +342,7 @@ def build_source_card(
         bullet=bullet,
         why_relevant=str(why_relevant or "").strip(),
     )
+
 
 _SOURCE_RU_WITH_ORIGINAL_RE = re.compile(
     r"^(?P<bullet>\s*[•\-]\s*)?"
@@ -361,9 +371,7 @@ _EN_AUTHOR_WITH_TITLE_RE = re.compile(
 # «Похоже на имя автора»: минимум два слова с заглавной буквы; допускаются
 # инициалы и соединители «и»/«and» для соавторов. Отсекает английскую прозу
 # вида "Behold, I stand at the door" (en_author был бы одиночным словом).
-_MULTIWORD_NAME_RE = re.compile(
-    r"^[А-ЯЁA-Z][\w.’'\-]*(?:\s+(?:и|and|[А-ЯЁA-Z][\w.’'\-]*)){1,4}$"
-)
+_MULTIWORD_NAME_RE = re.compile(r"^[А-ЯЁA-Z][\w.’'\-]*(?:\s+(?:и|and|[А-ЯЁA-Z][\w.’'\-]*)){1,4}$")
 
 _SOURCE_AUTHOR_WHY_TITLE_RE = re.compile(
     r"^(?P<bullet>\s*[•\-]\s*)?"
@@ -427,6 +435,7 @@ def _same_author(a: str, b: str) -> bool:
 def _same_title(a: str, b: str) -> bool:
     def norm(x: str) -> str:
         return re.sub(r"\W+", "", str(x or "").strip().rstrip(".").casefold())
+
     return bool(norm(a)) and norm(a) == norm(b)
 
 
@@ -471,8 +480,8 @@ def _titles_match(known: str, given: str) -> bool:
     цеплял любой «Holiness of God» (Спрол) / «Holiness, Repentance and Faith»
     и подменял чужую книгу переводом Райла. Оставляем только «модель сократила
     канонное название» (Owen «…of Sin» → реестровое «…of Sin in Believers»)."""
-    a = _norm_title_for_match(known)   # реестровый (канон)
-    b = _norm_title_for_match(given)   # что дала модель
+    a = _norm_title_for_match(known)  # реестровый (канон)
+    b = _norm_title_for_match(given)  # что дала модель
     if not a or not b:
         return False
     return a == b or a.startswith(b + " ")
@@ -533,18 +542,22 @@ def dedupe_bilingual_authors(line: str) -> str:
     return out.strip()
 
 
-
-def _format_canonical_source_card(bullet: str, author: str, en_author: str, en_title: str, *, fallback_ru_title: str = "") -> str:
+def _format_canonical_source_card(
+    bullet: str, author: str, en_author: str, en_title: str, *, fallback_ru_title: str = ""
+) -> str:
     """Backward-compatible wrapper around typed SourceCard rendering."""
-    return render_source_card(build_source_card(
-        author=author,
-        title_original=en_title,
-        original_author=en_author,
-        fallback_ru_title=fallback_ru_title,
-        bullet=bullet,
-    ))
+    return render_source_card(
+        build_source_card(
+            author=author,
+            title_original=en_title,
+            original_author=en_author,
+            fallback_ru_title=fallback_ru_title,
+            bullet=bullet,
+        )
+    )
 
-_SOURCE_BULLET_RE = re.compile(r'^(\s*[•\-]\s+)')
+
+_SOURCE_BULLET_RE = re.compile(r"^(\s*[•\-]\s+)")
 
 
 def _ensure_source_title_bold(line: str) -> str:
@@ -559,29 +572,29 @@ def _ensure_source_title_bold(line: str) -> str:
     if not m:
         return line
     bullet = m.group(1)
-    rest = line[m.end():]
-    if ',' not in rest:
+    rest = line[m.end() :]
+    if "," not in rest:
         return line
     # Skip scripture references: lines containing guillemets «»
-    if '\u00ab' in rest or '\u00bb' in rest:
+    if "\u00ab" in rest or "\u00bb" in rest:
         return line
 
     # If already has bold on first segment before comma — trust it
-    first_seg = rest.split(',')[0].strip()
-    if first_seg.startswith('**') and first_seg.endswith('**'):
+    first_seg = rest.split(",")[0].strip()
+    if first_seg.startswith("**") and first_seg.endswith("**"):
         return line
 
-    if '**' not in rest:
+    if "**" not in rest:
         # No bold at all — add to first part (title)
-        title_part, _, author_part = rest.partition(',')
+        title_part, _, author_part = rest.partition(",")
         title_part = title_part.strip()
         if len(title_part) >= 3:
             return f"{bullet}**{title_part}**,{author_part}"
         return line
 
     # Bold exists but NOT on first segment — misplaced
-    clean = rest.replace('**', '')
-    title_part, _, author_part = clean.partition(',')
+    clean = rest.replace("**", "")
+    title_part, _, author_part = clean.partition(",")
     title_part = title_part.strip()
     if len(title_part) >= 3:
         return f"{bullet}**{title_part}**,{author_part}"
@@ -624,9 +637,14 @@ def _upgrade_english_titled_source_card(line: str) -> str | None:
     # AUDIT R34b: без «why» карточка сама ставит точку; с «why» точку в конце
     # карточки НЕ ставим, иначе выходит «…(Original, Author). — why.» (точка
     # перед тире). Каноничный вид — «…(Original, Author) — why.».
-    card = render_source_card(build_source_card(
-        author=author_ru, title_original=title, original_author=en_author,
-    ), trailing_period=not why)
+    card = render_source_card(
+        build_source_card(
+            author=author_ru,
+            title_original=title,
+            original_author=en_author,
+        ),
+        trailing_period=not why,
+    )
     return f"{card} — {why}." if why else card
 
 
@@ -672,8 +690,7 @@ def normalize_source_card_line(line: str, *, prefer_original: bool = True) -> st
     if upgraded is not None:
         return upgraded
 
-    if (re.match(r"^\s*(?:[•\-]\s+)?\*\*", out)
-            and re.search(r"\([^)]*[A-Za-z]{3,}[^)]*\)", out)):
+    if re.match(r"^\s*(?:[•\-]\s+)?\*\*", out) and re.search(r"\([^)]*[A-Za-z]{3,}[^)]*\)", out):
         return out.rstrip() + ("" if re.search(r"[.!?]\s*$", out) else ".")
 
     weird_author = _SOURCE_AUTHOR_WHY_TITLE_RE.match(out.strip())
@@ -702,14 +719,21 @@ def normalize_source_card_line(line: str, *, prefer_original: bool = True) -> st
         return f"{bullet}{author}, {title}."
 
     flex_dup = _FLEX_DUPLICATE_PAREN_RE.match(out.strip())
-    if flex_dup and _same_author(flex_dup.group("head_author"), flex_dup.group("paren_author")) and _same_title(flex_dup.group("title"), flex_dup.group("paren_title")):
+    if (
+        flex_dup
+        and _same_author(flex_dup.group("head_author"), flex_dup.group("paren_author"))
+        and _same_title(flex_dup.group("title"), flex_dup.group("paren_title"))
+    ):
         bullet = flex_dup.group("bullet") or ""
         author = canonical_author_name(flex_dup.group("paren_author"))
         if author == flex_dup.group("paren_author"):
             author = normalize_person_names(flex_dup.group("head_author").strip())
         title = flex_dup.group("paren_title").strip().rstrip(".")
         return _format_canonical_source_card(
-            bullet, author, flex_dup.group("paren_author"), title,
+            bullet,
+            author,
+            flex_dup.group("paren_author"),
+            title,
             fallback_ru_title=flex_dup.group("title"),
         )
 
@@ -724,7 +748,10 @@ def normalize_source_card_line(line: str, *, prefer_original: bool = True) -> st
         if canonical_author_name(en_title) == en_title:
             author = canonical_author_name(en_author) or canonical_author_name(title_author.group("author").strip())
             return _format_canonical_source_card(
-                bullet, author, en_author, en_title,
+                bullet,
+                author,
+                en_author,
+                en_title,
                 # Do not trust model-invented Russian titles in title-first source cards;
                 # official_ru_title() will still supply known published Russian titles.
                 fallback_ru_title="",
@@ -737,7 +764,10 @@ def normalize_source_card_line(line: str, *, prefer_original: bool = True) -> st
         en_title = m.group("en_title").strip().rstrip(".")
         author = canonical_author_name(en_author) or m.group("author").strip()
         return _format_canonical_source_card(
-            bullet, author, en_author, en_title,
+            bullet,
+            author,
+            en_author,
+            en_title,
             # Do not trust model-invented Russian titles; official_ru_title()
             # still supplies known canonical Russian titles.
             fallback_ru_title="",

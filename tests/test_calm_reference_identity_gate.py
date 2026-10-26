@@ -86,9 +86,7 @@ def test_safe_calm_fallback_carries_identity_evidence(
     )
     assert built is False
     assert "identity similarity=0.9100" in detail
-    payload = json.loads(
-        composite.with_suffix(".selection.json").read_text(encoding="utf-8")
-    )
+    payload = json.loads(composite.with_suffix(".selection.json").read_text(encoding="utf-8"))
     assert payload["identity_policy"] == gate.IDENTITY_POLICY
     assert payload["identity_spectral_similarity"] == pytest.approx(0.91)
     assert payload["identity_spectral_floor"] == gate.MIN_IDENTITY_SPECTRAL_SIMILARITY

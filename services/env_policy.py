@@ -19,6 +19,7 @@
 
 Никаких импортов проекта здесь нет: модуль вызывается до ``core.globals``.
 """
+
 from __future__ import annotations
 
 import logging
@@ -81,10 +82,7 @@ def override_summary() -> str:
     items = overridden()
     if not items:
         return ""
-    return ", ".join(
-        f"{name}:{operator!r}->{enforced!r}"
-        for name, (operator, enforced) in sorted(items.items())
-    )
+    return ", ".join(f"{name}:{operator!r}->{enforced!r}" for name, (operator, enforced) in sorted(items.items()))
 
 
 def reset() -> None:

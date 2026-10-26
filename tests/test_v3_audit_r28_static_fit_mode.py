@@ -7,6 +7,7 @@
 full_frame_blur (картинка целиком по центру + размытый фон + субтитры на
 нём). Реальное видео остаётся на crop_zoom.
 """
+
 import inspect
 from pathlib import Path
 
@@ -22,12 +23,11 @@ def test_is_static_video_is_async_and_uses_source_owned_static_policy():
     assert "moving/default-crop" in policy
 
 
-
 def test_shorts_render_switches_static_to_full_frame():
     src = Path("services/shorts_video_impl.py").read_text(encoding="utf-8")
     assert "_is_static_video(source_video_path" in src
     idx = src.find("_is_static_video(source_video_path")
-    window = src[idx - 200:idx + 200]
+    window = src[idx - 200 : idx + 200]
     assert 'visual_mode == "crop_zoom"' in window
     assert 'visual_mode = "full_frame_vertical"' in src
 

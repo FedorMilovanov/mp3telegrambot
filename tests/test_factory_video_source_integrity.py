@@ -20,9 +20,7 @@ def _deliverable_probe(duration: float):
     )
 
 
-def test_factory_video_rejects_incomplete_source_and_aborts_missing_fragments(
-    monkeypatch, tmp_path
-):
+def test_factory_video_rejects_incomplete_source_and_aborts_missing_fragments(monkeypatch, tmp_path):
     seen: list[str] = []
 
     async def fake_run(command, **_kwargs):

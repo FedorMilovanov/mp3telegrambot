@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Validate declarative TTS model manifests and adapter conformance."""
+
 from __future__ import annotations
 
 import argparse
@@ -43,10 +44,7 @@ def _canonical_default(records: tuple[Any, ...], requested: str) -> str:
             matches.append(profile.profile_id)
     if len(matches) != 1:
         available = ", ".join(record.profile.profile_id for record in records) or "—"
-        raise ProfileManifestError(
-            f"Default TTS profile {requested!r} не разрешён однозначно. "
-            f"Доступно: {available}."
-        )
+        raise ProfileManifestError(f"Default TTS profile {requested!r} не разрешён однозначно. Доступно: {available}.")
     return matches[0]
 
 
@@ -60,29 +58,20 @@ def validate_catalog(
         contract = get_backend_model_contract(record.profile.backend_id)
         contract.validate_profile(record.profile)
     canonical_default = _canonical_default(records, default_profile)
-    selected = next(
-        record.profile for record in records if record.profile.profile_id == canonical_default
-    )
+    selected = next(record.profile for record in records if record.profile.profile_id == canonical_default)
     if not selected.production_enabled:
-        raise ProfileManifestError(
-            f"Default TTS profile отключён для production: {canonical_default}"
-        )
+        raise ProfileManifestError(f"Default TTS profile отключён для production: {canonical_default}")
     snapshot = catalog_snapshot(records, root=root)
     snapshot["configured_default"] = str(default_profile)
     snapshot["canonical_default"] = canonical_default
     snapshot["adapter_contracts"] = {
-        record.profile.backend_id: get_backend_model_contract(
-            record.profile.backend_id
-        ).as_dict()
-        for record in records
+        record.profile.backend_id: get_backend_model_contract(record.profile.backend_id).as_dict() for record in records
     }
     return snapshot
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Validate repository-owned TTS model profile manifests."
-    )
+    parser = argparse.ArgumentParser(description="Validate repository-owned TTS model profile manifests.")
     parser.add_argument(
         "--root",
         default=str(default_profile_manifest_root()),

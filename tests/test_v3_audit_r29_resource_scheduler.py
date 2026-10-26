@@ -4,6 +4,7 @@
 Фикс: глобальные семафоры — 1 GPU-рендер и 1 Whisper одновременно по
 умолчанию, тяжёлые шаги идут по очереди, а не в гонке.
 """
+
 import asyncio
 import os
 from pathlib import Path

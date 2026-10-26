@@ -9,7 +9,7 @@ from core.reasoning_guidance import build_reasoning_first_block
 def test_segments_command_uses_safe_pre_without_nested_code_tags():
     src = Path("handlers/commands.py").read_text(encoding="utf-8")
     assert "Нажмите кнопку или: /cut {video_id} N" in src
-    assert "&lt;code&gt;" not in src[src.find("async def segments_command"):src.find("async def cutseg_command")]
+    assert "&lt;code&gt;" not in src[src.find("async def segments_command") : src.find("async def cutseg_command")]
     assert "caption=caption[:1024]" not in src
     assert "safe_trim" not in src.lower()
 
@@ -35,7 +35,7 @@ def test_no_known_bad_html_slice_or_nested_segment_code_regression():
     assert "segment.title[:220]" in render_src
     # cutseg_command uses render_and_send_segment
     src = Path("handlers/commands.py").read_text(encoding="utf-8")
-    cutseg_block = src[src.find("async def cutseg_command"):]
+    cutseg_block = src[src.find("async def cutseg_command") :]
     assert "render_and_send_segment" in cutseg_block
 
 

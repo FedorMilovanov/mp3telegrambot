@@ -56,9 +56,7 @@ def test_pack_contract_rejects_modified_editor_instructions(tmp_path: Path) -> N
     _rewrite_zip(
         pack,
         tampered,
-        mutate=lambda name, payload: (
-            payload + b"\nCHANGED\n" if name == "REVIEW_INSTRUCTIONS.md" else payload
-        ),
+        mutate=lambda name, payload: payload + b"\nCHANGED\n" if name == "REVIEW_INSTRUCTIONS.md" else payload,
     )
 
     with pytest.raises(ValueError, match="REVIEW_INSTRUCTIONS"):
@@ -208,9 +206,7 @@ def test_legacy_pr113_pack_contract_remains_supported(tmp_path: Path) -> None:
         "issue_severities": sorted(editorial.ISSUE_SEVERITIES),
         "action_types": sorted(editorial.ACTION_TYPES),
         "automatically_executable_actions": sorted(editorial.EXECUTABLE_ACTIONS),
-        "borrow_span_policy": (
-            "review-only in v1; donor media is never synthesized or inserted automatically"
-        ),
+        "borrow_span_policy": ("review-only in v1; donor media is never synthesized or inserted automatically"),
     }
     manifest = {
         **identity,

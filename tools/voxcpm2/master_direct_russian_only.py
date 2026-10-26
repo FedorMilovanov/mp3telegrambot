@@ -8,6 +8,7 @@ metadata. Common loudness, AAC and final-media QA primitives remain owned by the
 established constant-mix master module and are called explicitly; no imported
 module is patched or rebound.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -147,14 +148,8 @@ def calibrate_russian_only_gain(
             target_lra=target_lra,
             target_tp=target_tp,
         )
-        if (
-            measured["integrated_lufs"] > target_i + base.LOUDNESS_TOLERANCE_LU
-            or measured["true_peak_dbtp"] > -1.0
-        ):
-            raise RuntimeError(
-                "Russian-only direct master cannot meet final loudness/peak QA: "
-                f"{measured}"
-            )
+        if measured["integrated_lufs"] > target_i + base.LOUDNESS_TOLERANCE_LU or measured["true_peak_dbtp"] > -1.0:
+            raise RuntimeError(f"Russian-only direct master cannot meet final loudness/peak QA: {measured}")
         best = (gain, measured, graph)
 
     gain, _measured, graph = best
@@ -181,8 +176,7 @@ def calibrate_russian_only_gain(
         )
     if final_measured["true_peak_dbtp"] > -1.0:
         raise RuntimeError(
-            "Russian-only direct master exceeds safe true peak: "
-            f"{final_measured['true_peak_dbtp']:.2f} dBTP."
+            f"Russian-only direct master exceeds safe true peak: {final_measured['true_peak_dbtp']:.2f} dBTP."
         )
     return {
         "policy": POLICY,

@@ -6,6 +6,7 @@ multi-segment compositions. This module validates an exact plan and renders it
 from exact source bytes. It never invents segment boundaries, silently reorders
 speech, or treats an unverified previous output as resumable work.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -72,10 +73,7 @@ def _finite_float(value: Any) -> float | None:
 
 
 def _safe_name(value: str, fallback: str = "piece") -> str:
-    safe = "".join(
-        char if (char.isalnum() or char in "_-.") else "_"
-        for char in str(value or fallback)
-    ).strip("._")
+    safe = "".join(char if (char.isalnum() or char in "_-.") else "_" for char in str(value or fallback)).strip("._")
     return safe[:120] or fallback
 
 
@@ -107,11 +105,7 @@ def _composition_identity_payload(document: dict[str, Any]) -> dict[str, Any]:
     source = document.get("source") if isinstance(document.get("source"), dict) else {}
     repair = source.get("repair_provenance") if isinstance(source.get("repair_provenance"), dict) else {}
     pieces = document.get("pieces") if isinstance(document.get("pieces"), list) else document.get("pieces")
-    media_pieces = (
-        [_piece_media_payload(piece) for piece in pieces]
-        if isinstance(pieces, list)
-        else pieces
-    )
+    media_pieces = [_piece_media_payload(piece) for piece in pieces] if isinstance(pieces, list) else pieces
     return {
         "schema_name": document.get("schema_name"),
         "schema_version": document.get("schema_version"),
@@ -262,9 +256,7 @@ def _validate_publication(piece_id: str, metadata: Any) -> list[str]:
     errors: list[str] = []
     unexpected = sorted(set(metadata) - PUBLICATION_FIELDS)
     if unexpected:
-        errors.append(
-            f"piece {piece_id}: unsupported publication fields: " + ", ".join(unexpected)
-        )
+        errors.append(f"piece {piece_id}: unsupported publication fields: " + ", ".join(unexpected))
     limits = {
         "title": 300,
         "description": 12000,
@@ -443,11 +435,7 @@ def validate_composition_document(document: dict[str, Any]) -> list[str]:
             coverage = total / source_duration
             if coverage < 0.85:
                 errors.append(f"piece {piece_id}: full output must retain at least 85% of source duration")
-            valid_values = [
-                values
-                for segment in normalized
-                if (values := _segment_values(segment)) is not None
-            ]
+            valid_values = [values for segment in normalized if (values := _segment_values(segment)) is not None]
             if valid_values:
                 edge_margin = max(15.0, min(60.0, source_duration * 0.02))
                 if valid_values[0][0] > edge_margin:
@@ -476,12 +464,8 @@ def _piece_filter(piece: dict[str, Any]) -> tuple[str, float]:
             raise ValueError("piece contains non-finite segment values")
         start, end = values
         total += end - start
-        parts.append(
-            f"[0:v]trim=start={start:.3f}:end={end:.3f},setpts=PTS-STARTPTS[v{index}]"
-        )
-        parts.append(
-            f"[0:a]atrim=start={start:.3f}:end={end:.3f},asetpts=PTS-STARTPTS[a{index}]"
-        )
+        parts.append(f"[0:v]trim=start={start:.3f}:end={end:.3f},setpts=PTS-STARTPTS[v{index}]")
+        parts.append(f"[0:a]atrim=start={start:.3f}:end={end:.3f},asetpts=PTS-STARTPTS[a{index}]")
         inputs.append(f"[v{index}][a{index}]")
     parts.append("".join(inputs) + f"concat=n={len(segments)}:v=1:a=1[outv][outa]")
     return ";".join(parts), total
@@ -527,9 +511,7 @@ async def _verify_source(document: dict[str, Any]) -> tuple[Path, float]:
     declared = float(source["duration_seconds"])
     tolerance = max(0.35, min(0.75, declared * 0.001))
     if abs(float(probe.duration) - declared) > tolerance:
-        raise RuntimeError(
-            f"composition source duration drift: plan={declared:.3f}s probe={probe.duration:.3f}s"
-        )
+        raise RuntimeError(f"composition source duration drift: plan={declared:.3f}s probe={probe.duration:.3f}s")
     await _verify_repair_binding(source, path)
     return path, float(probe.duration)
 

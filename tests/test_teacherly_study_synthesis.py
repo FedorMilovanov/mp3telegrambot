@@ -91,13 +91,16 @@ def test_word_study_renders_as_one_natural_paragraph() -> None:
 
 def test_incomplete_decorative_word_is_dropped() -> None:
     runtime = _load_runtime()
-    assert runtime.render_word_study_as_prose(
-        {
-            "type": "word_study",
-            "lemma": "spoudazō",
-            "role_in_argument": "Это подчёркивает усердие",
-        }
-    ) is None
+    assert (
+        runtime.render_word_study_as_prose(
+            {
+                "type": "word_study",
+                "lemma": "spoudazō",
+                "role_in_argument": "Это подчёркивает усердие",
+            }
+        )
+        is None
+    )
 
 
 def test_one_telegraph_page_budget_replaces_short_word_cap() -> None:
@@ -114,13 +117,9 @@ def test_teacherly_policy_is_source_owned_by_telegraph_pages() -> None:
     telegraph = (ROOT / "services" / "telegraph_pages.py").read_text(encoding="utf-8")
     runtime = (ROOT / "services" / "study_synthesis_runtime.py").read_text(encoding="utf-8")
     assert "install_teacherly_study_runtime()" not in package
-    assert (
-        "from services.study_synthesis_policy import "
-        "TEACHERLY_STUDY_PROMPT as STUDY_ANALYSIS_PROMPT"
-    ) in telegraph
+    assert ("from services.study_synthesis_policy import TEACHERLY_STUDY_PROMPT as STUDY_ANALYSIS_PROMPT") in telegraph
     assert "performs no mutation" in runtime
     assert "STUDY_ANALYSIS_PROMPT =" not in runtime
-
 
 
 def test_agent_contract_prevents_rubric_regression() -> None:

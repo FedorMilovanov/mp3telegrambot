@@ -16,6 +16,7 @@ known weak or project-obsolete QA model overrides, keeps deliberate custom model
 high reasoning, and keeps audio grounding plus focused confirmation enabled.
 An explicit emergency escape hatch remains available for operator debugging.
 """
+
 from __future__ import annotations
 
 import os
@@ -92,9 +93,7 @@ def configure_gemini_qa_policy() -> str:
         os.environ["LIVEDUB_QA_CONFIRM_ISSUES"] = "1"
 
     models = ",".join(
-        f"{name.removeprefix('LIVEDUB_').removesuffix('_MODEL').lower()}="
-        f"{os.environ[name]}"
-        for name in _QA_MODEL_ENV
+        f"{name.removeprefix('LIVEDUB_').removesuffix('_MODEL').lower()}={os.environ[name]}" for name in _QA_MODEL_ENV
     )
     confirmation = os.getenv("LIVEDUB_QA_CONFIRM_ISSUES", "1").strip() or "1"
     grounding = os.getenv("LIVEDUB_QA_AUDIO_TRUST", "1").strip() or "1"

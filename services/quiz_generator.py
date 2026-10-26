@@ -11,6 +11,7 @@ Uses Gemini to create high-quality theological quiz questions with:
 
 Output: list of dicts ready for telegram bot.send_poll(type="quiz").
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -149,11 +150,65 @@ def _dedupe_keep_order(items: list[str]) -> list[str]:
 
 
 _RU_STOPWORDS = {
-    "а", "без", "более", "был", "была", "были", "было", "быть", "в", "во", "вот",
-    "все", "всё", "для", "до", "его", "ее", "её", "если", "же", "за", "и", "из", "или",
-    "именно", "их", "к", "как", "ко", "ли", "на", "над", "не", "но", "о", "об", "от",
-    "по", "под", "при", "с", "со", "так", "то", "у", "что", "это", "этот", "эта", "эти",
-    "он", "она", "они", "оно", "потому", "через", "его", "ее", "её",
+    "а",
+    "без",
+    "более",
+    "был",
+    "была",
+    "были",
+    "было",
+    "быть",
+    "в",
+    "во",
+    "вот",
+    "все",
+    "всё",
+    "для",
+    "до",
+    "его",
+    "ее",
+    "её",
+    "если",
+    "же",
+    "за",
+    "и",
+    "из",
+    "или",
+    "именно",
+    "их",
+    "к",
+    "как",
+    "ко",
+    "ли",
+    "на",
+    "над",
+    "не",
+    "но",
+    "о",
+    "об",
+    "от",
+    "по",
+    "под",
+    "при",
+    "с",
+    "со",
+    "так",
+    "то",
+    "у",
+    "что",
+    "это",
+    "этот",
+    "эта",
+    "эти",
+    "он",
+    "она",
+    "они",
+    "оно",
+    "потому",
+    "через",
+    "его",
+    "ее",
+    "её",
 }
 
 _TRIVIAL_DISTRACTOR_RE = re.compile(
@@ -195,10 +250,23 @@ def _bad_quiz_option(text: str) -> bool:
     return any(
         marker in low
         for marker in (
-            "все перечислен", "всё перечислен", "все варианты", "всё варианты",
-            "нет правильного", "нет верного", "ни один", "ни один из",
-            "оба варианта", "a и b", "а и б", "all of the above", "none of the above",
-            "затрудняюсь", "не знаю", "не уверен", "нельзя определить",
+            "все перечислен",
+            "всё перечислен",
+            "все варианты",
+            "всё варианты",
+            "нет правильного",
+            "нет верного",
+            "ни один",
+            "ни один из",
+            "оба варианта",
+            "a и b",
+            "а и б",
+            "all of the above",
+            "none of the above",
+            "затрудняюсь",
+            "не знаю",
+            "не уверен",
+            "нельзя определить",
         )
     )
 
@@ -257,8 +325,14 @@ def _parse_correct_index(value, options: list[str]) -> int | None:
         return None
 
     letter_map = {
-        "A": 0, "B": 1, "C": 2, "D": 3,
-        "А": 0, "Б": 1, "В": 2, "Г": 3,
+        "A": 0,
+        "B": 1,
+        "C": 2,
+        "D": 3,
+        "А": 0,
+        "Б": 1,
+        "В": 2,
+        "Г": 3,
     }
     raw_up = raw.upper().replace("ВАРИАНТ", "").replace("OPTION", "").strip(" .):-—")
     if raw_up in letter_map:
@@ -277,12 +351,12 @@ def _parse_quiz_json(raw: str, *, expected_count: int | None = None) -> list[dic
     """Parse and validate Gemini quiz response into Telegram-ready dicts."""
     if not raw:
         return None
-    text = re.sub(r'^```(?:json)?\s*', '', raw.strip())
-    text = re.sub(r'\s*```$', '', text)
+    text = re.sub(r"^```(?:json)?\s*", "", raw.strip())
+    text = re.sub(r"\s*```$", "", text)
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
-        m = re.search(r'\[.*\]', text, re.DOTALL)
+        m = re.search(r"\[.*\]", text, re.DOTALL)
         if not m:
             return None
         try:
@@ -368,7 +442,10 @@ def _format_ai_context(ai_data: dict | None) -> str:
             parts.append("Термины/тексты/лексика:\n" + "\n".join(term_lines[:18]))
     qs = ai.get("questions") or []
     if isinstance(qs, list) and qs:
-        parts.append("Уже созданные вопросы для размышления (не копировать дословно):\n" + "\n".join(f"- {_safe_trim(q, 220)}" for q in qs[:8]))
+        parts.append(
+            "Уже созданные вопросы для размышления (не копировать дословно):\n"
+            + "\n".join(f"- {_safe_trim(q, 220)}" for q in qs[:8])
+        )
     return "\n\n".join(parts)
 
 
@@ -416,8 +493,7 @@ async def generate_quiz(
             clients_order.remove(existing_client)
             clients_order.insert(0, existing_client)
         domain_by_client_id = {
-            id(client): domain
-            for client, domain in zip(GEMINI_CLIENTS, GEMINI_CLIENT_QUOTA_DOMAINS)
+            id(client): domain for client, domain in zip(GEMINI_CLIENTS, GEMINI_CLIENT_QUOTA_DOMAINS)
         }
         tracker = ProjectQuotaDomainTracker(
             clients_order,
@@ -489,13 +565,28 @@ async def generate_quiz(
                     pass
             last_raw = raw or last_raw
             if not raw:
-                await alog_gemini_response(response=resp, task="quiz_generator", model=GEMINI_MODEL, duration_ms=int((asyncio.get_running_loop().time() - started) * 1000), json_valid=False, error="empty_response")
+                await alog_gemini_response(
+                    response=resp,
+                    task="quiz_generator",
+                    model=GEMINI_MODEL,
+                    duration_ms=int((asyncio.get_running_loop().time() - started) * 1000),
+                    json_valid=False,
+                    error="empty_response",
+                )
                 logger.warning("[Quiz] Gemini returned empty response")
                 continue
             questions = _parse_quiz_json(raw, expected_count=count)
             enough = bool(questions and len(questions) >= count)
             error = "" if enough else ("insufficient_quality" if questions else "parse_failed")
-            await alog_gemini_response(response=resp, task="quiz_generator", model=GEMINI_MODEL, thinking_level="high", duration_ms=int((asyncio.get_running_loop().time() - started) * 1000), json_valid=bool(questions), error=error)
+            await alog_gemini_response(
+                response=resp,
+                task="quiz_generator",
+                model=GEMINI_MODEL,
+                thinking_level="high",
+                duration_ms=int((asyncio.get_running_loop().time() - started) * 1000),
+                json_valid=bool(questions),
+                error=error,
+            )
             if questions and len(questions) > len(best_questions):
                 best_questions = questions
             if enough and questions:
@@ -510,7 +601,14 @@ async def generate_quiz(
         logger.warning("[Quiz] Returning partial quality quiz: %d/%d questions", len(best_questions), count)
         return best_questions[:count]
     except Exception as e:
-        await alog_gemini_run(task="quiz_generator", model=GEMINI_MODEL, thinking_level="high", duration_ms=int((asyncio.get_running_loop().time() - started) * 1000), json_valid=False, error=f"{type(e).__name__}: {str(e)[:240]}")
+        await alog_gemini_run(
+            task="quiz_generator",
+            model=GEMINI_MODEL,
+            thinking_level="high",
+            duration_ms=int((asyncio.get_running_loop().time() - started) * 1000),
+            json_valid=False,
+            error=f"{type(e).__name__}: {str(e)[:240]}",
+        )
         if is_quota_error(e):
             logger.warning("[Quiz] Gemini quota error: %s", str(e)[:120])
         elif is_overload_error(e):
@@ -562,4 +660,5 @@ async def send_quiz_polls(
     if not questions:
         return 0
     from services.quiz_sessions import start_quiz_session
+
     return await start_quiz_session(questions, update, context, title=title)

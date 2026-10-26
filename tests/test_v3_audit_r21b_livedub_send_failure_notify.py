@@ -15,13 +15,12 @@ Request Entity Too Large".
    никакого объяснения, в отличие от соседних веток (превышение размера
    ДО отправки, таймаут генерации), которые уже уведомляют.
 """
+
 from pathlib import Path
 
 SRC = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
 FAILURE_STAGE_SRC = Path("pipelines/livedub_failure_stage.py").read_text(encoding="utf-8")
-DELIVERY_STAGE_SRC = Path("pipelines/livedub_video_delivery_stage.py").read_text(
-    encoding="utf-8"
-)
+DELIVERY_STAGE_SRC = Path("pipelines/livedub_video_delivery_stage.py").read_text(encoding="utf-8")
 
 
 def _send_livedub_result_body() -> str:
@@ -38,23 +37,22 @@ def test_cover_retry_does_not_blindly_swallow_size_errors():
     assert "send_livedub_video_with_cover(" in body
     idx = DELIVERY_STAGE_SRC.find("except Exception as cover_error:")
     assert idx != -1
-    window = DELIVERY_STAGE_SRC[idx:idx + 900]
+    window = DELIVERY_STAGE_SRC[idx : idx + 900]
     assert "entity too large" in window.lower(), (
         "ретрай без cover должен пропускать (raise) ошибки размера payload, "
         "а не слепо повторять отправку — cover тут ни при чём"
     )
-    assert 'if cover is None:\n            raise' in window
+    assert "if cover is None:\n            raise" in window
 
 
 def test_send_failure_notifies_user_instead_of_silent_false():
     body = _send_livedub_result_body()
     idx = body.rfind("except Exception as e:")
     assert idx != -1, "финальный catch-all не найден"
-    window = body[idx:idx + 2000]
+    window = body[idx : idx + 2000]
     assert "notify_livedub_send_failure(" in window
     assert "await bot.send_message" in FAILURE_STAGE_SRC, (
-        "failure stage должна уведомлять юзера о неудачной отправке, "
-        "а не просто возвращать управление молча"
+        "failure stage должна уведомлять юзера о неудачной отправке, а не просто возвращать управление молча"
     )
     assert "return False" in window
 
@@ -62,7 +60,7 @@ def test_send_failure_notifies_user_instead_of_silent_false():
 def test_send_failure_notice_hints_at_local_bot_api_when_size_related():
     body = _send_livedub_result_body()
     idx = body.rfind("except Exception as e:")
-    window = body[idx:idx + 2000]
+    window = body[idx : idx + 2000]
     assert "max_file_size_mb=get_max_file_size_mb" in window
     assert "LOCAL_BOT_API_URL" in FAILURE_STAGE_SRC
     assert "max_file_size_mb() <= 50" in FAILURE_STAGE_SRC

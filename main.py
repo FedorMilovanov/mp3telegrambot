@@ -6,21 +6,36 @@ main.py — run_bot_async, run_bot, main().
     bot_new.py выполняет load_dotenv() и валидацию BOT_TOKEN до импорта
     тяжёлых зависимостей. Прямой запуск main.py это шаг пропускает.
 """
+
 from core.globals import (
-    BOT_TOKEN, LOCAL_BOT_API_URL, flask_app, DB_PATH,
-    GEMINI_CLIENTS, DAILY_LIMIT, COOLDOWN_SECONDS,
+    BOT_TOKEN,
+    LOCAL_BOT_API_URL,
+    flask_app,
+    DB_PATH,
+    GEMINI_CLIENTS,
+    DAILY_LIMIT,
+    COOLDOWN_SECONDS,
     _gemini_proxy_log,
 )
 from core.database import (
-    db_init, asettings_get,
-    GEMINI_MODEL, WHITELIST_IDS, ADMIN_IDS,
+    db_init,
+    asettings_get,
+    GEMINI_MODEL,
+    WHITELIST_IDS,
+    ADMIN_IDS,
     reset_rate_limit_async_state,
     set_effective_max_file_size_mb,
 )
 from telegram import Update
 from telegram.ext import (
-    Application, ApplicationHandlerStop, CommandHandler, MessageHandler, TypeHandler,
-    CallbackQueryHandler, PollAnswerHandler, filters,
+    Application,
+    ApplicationHandlerStop,
+    CommandHandler,
+    MessageHandler,
+    TypeHandler,
+    CallbackQueryHandler,
+    PollAnswerHandler,
+    filters,
 )
 from services.shorts_video import (
     HAS_FASTER_WHISPER,
@@ -30,11 +45,31 @@ from services.shorts_video import (
 from services.audio_cache_maintenance import cleanup_stale_cached_audio
 from services.process_singleton import singleton_lock_path
 from handlers.commands import (
-    start, help_command, handle_message, reset_cache_command, pdf_command,
-    stop_command, metrics_command, archive_command, lastpages_command,
-    search_archive_command, author_archive_command, scripture_archive_command,
-    repairpage_command, repairrecent_command, segments_command, cutseg_command,
-    prompthealth_command, codehealth_command, archivequality_command, archivequalityfile_command, qualityrecords_command, promptrecommend_command, comparevariants_command, archivefile_command, segmentfile_command,
+    start,
+    help_command,
+    handle_message,
+    reset_cache_command,
+    pdf_command,
+    stop_command,
+    metrics_command,
+    archive_command,
+    lastpages_command,
+    search_archive_command,
+    author_archive_command,
+    scripture_archive_command,
+    repairpage_command,
+    repairrecent_command,
+    segments_command,
+    cutseg_command,
+    prompthealth_command,
+    codehealth_command,
+    archivequality_command,
+    archivequalityfile_command,
+    qualityrecords_command,
+    promptrecommend_command,
+    comparevariants_command,
+    archivefile_command,
+    segmentfile_command,
     disk_command,
 )
 from handlers.callbacks import handle_callback, settings_command
@@ -77,6 +112,7 @@ def _pid_is_running(pid: int) -> bool:
         return False
     if os.name == "nt":
         import ctypes
+
         _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
         handle = ctypes.windll.kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
         if handle:
@@ -109,7 +145,9 @@ def _acquire_singleton_lock() -> bool:
             "'Conflict: terminated by other getUpdates request' в бесконечном "
             "цикле, и НИ ОДИН экземпляр не получает сообщений. "
             "Windows: Stop-Process -Id %d -Force",
-            old_pid, _SINGLETON_LOCK_PATH, old_pid,
+            old_pid,
+            _SINGLETON_LOCK_PATH,
+            old_pid,
         )
         return False
     # Лока нет, или PID мёртв (краш прошлого запуска), или это уже наш PID
@@ -124,8 +162,9 @@ def _acquire_singleton_lock() -> bool:
 def _release_singleton_lock() -> None:
     """Убирает lock-файл, только если он всё ещё наш (не перезахвачен кем-то)."""
     try:
-        if (_SINGLETON_LOCK_PATH.exists()
-                and _SINGLETON_LOCK_PATH.read_text(encoding="utf-8").strip() == str(os.getpid())):
+        if _SINGLETON_LOCK_PATH.exists() and _SINGLETON_LOCK_PATH.read_text(encoding="utf-8").strip() == str(
+            os.getpid()
+        ):
             _SINGLETON_LOCK_PATH.unlink()
     except OSError:
         pass
@@ -143,6 +182,7 @@ async def run_bot_async():
     # создания нового event loop старые Lock'и привязаны к мёртвому loop,
     # что в Python 3.10+ даёт RuntimeError при первом параллельном запросе.
     from core.globals import _video_processing_locks, _video_locks_mutex, _video_lock_meta
+
     with _video_locks_mutex:
         _stale = len(_video_processing_locks)
         _video_processing_locks.clear()
@@ -165,8 +205,10 @@ async def run_bot_async():
     # Без ffprobe МОЛЧА деградируют: метаданные видео (превью/стриминг),
     # LUFS-выравнивание pro-микса, тех-проверка перевода, длительность аудио.
     import shutil as _sh
+
     try:
         from services.ffmpeg import _supported_js_runtimes as _yt_js_runtimes
+
         _yt_js_ok = bool(_yt_js_runtimes())
     except Exception:
         _yt_js_ok = False
@@ -179,9 +221,7 @@ async def run_bot_async():
     }
     _optional_tools = {
         "VOT helper (@vot.js/node)": _vot_helper_ok,
-        "vot-cli-live fallback": bool(
-            _sh.which("vot-cli-live") or _sh.which("vot-cli-live.cmd")
-        ),
+        "vot-cli-live fallback": bool(_sh.which("vot-cli-live") or _sh.which("vot-cli-live.cmd")),
     }
     for _tname, _available in _required_tools.items():
         if _available:
@@ -219,11 +259,14 @@ async def run_bot_async():
     try:
         from services.livedub_mix import get_mix_params as _ld_mix_params
         from core.database import current_livedub_file_id_cache_fingerprint as _ld_fingerprint
+
         _ldp = _ld_mix_params()
         logger.info(
             "🎬 LiveDub mix: delay=%dms base_tail=%dms freeze<=%ss vot_duration=floor cache_fp=%s",
-            _ldp.get("delay_ms", 0), _ldp.get("tail_pad_ms", 0),
-            _ldp.get("tail_freeze_max_sec", 0), _ld_fingerprint(),
+            _ldp.get("delay_ms", 0),
+            _ldp.get("tail_pad_ms", 0),
+            _ldp.get("tail_freeze_max_sec", 0),
+            _ld_fingerprint(),
         )
     except Exception as _ld_diag_err:
         logger.info("🎬 LiveDub mix diagnostics unavailable: %s", str(_ld_diag_err)[:120])
@@ -264,19 +307,22 @@ async def run_bot_async():
             # AUDIT: проверяем что есть качественный шрифт для субтитров
             try:
                 from services.shorts_video import _pick_subtitle_font
+
                 _font = _pick_subtitle_font()
                 if _font in ("Arial", "Arial Bold"):
                     logger.warning(
                         "⚠️  Шрифт субтитров: %s (fallback). "
                         "Для красивых субтитров установите Montserrat ExtraBold: "
                         "https://fonts.google.com/specimen/Montserrat → Download family → "
-                        "распакуйте Montserrat-ExtraBold.ttf в C:/Windows/Fonts/", _font
+                        "распакуйте Montserrat-ExtraBold.ttf в C:/Windows/Fonts/",
+                        _font,
                     )
                 else:
                     logger.info(f"🅰️  Шрифт субтитров: {_font}")
             except Exception as _fe:
                 logger.debug(f"font check: {_fe}")
             logger.info(f"💬 Субтитры Shorts: ✅ включены ({_sub_mode})")
+
             # Preload запустим в фоне после старта бота — не блокируем polling
             async def _preload_whisper_bg():
                 try:
@@ -285,6 +331,7 @@ async def run_bot_async():
                     logger.info(f"🎤 Whisper preloaded: {_sub_cfg['model_name']}")
                 except Exception as _e:
                     logger.warning(f"⚠️  Whisper preload не удался: {_e}")
+
             asyncio.create_task(_preload_whisper_bg())
         else:
             logger.info("💬 Субтитры Shorts: ⬜ выключены")
@@ -321,6 +368,7 @@ async def run_bot_async():
         if not raw_url:
             return ""
         from urllib.parse import urlparse
+
         u = urlparse(raw_url)
         scheme = (u.scheme or "").lower()
         if scheme.startswith("socks"):
@@ -334,6 +382,7 @@ async def run_bot_async():
                 safe_url = raw_url
             try:
                 import socksio  # noqa: F401
+
                 return safe_url
             except ImportError:
                 if os.getenv("TELEGRAM_PROXY_HTTP_FALLBACK", "1").strip().lower() not in {"0", "false", "no", "off"}:
@@ -342,15 +391,17 @@ async def run_bot_async():
                         "⚠️ SOCKS proxy задан (%s), но пакет socksio не установлен. "
                         "Пробую HTTP fallback на тот же mixed proxy: %s. "
                         "Для настоящего SOCKS выполните: pip install -r requirements.txt",
-                        raw_url, http_url,
+                        raw_url,
+                        http_url,
                     )
                     return http_url
                 return safe_url
         return raw_url
 
     _cloud_fallback_proxy_url = _proxy_url_for_httpx(_telegram_proxy_url)
-    if (not _cloud_fallback_proxy_url
-            and _local_botapi_proxy_url_for_fallback.lower().startswith(("socks5://", "socks5h://", "http://", "https://"))):
+    if not _cloud_fallback_proxy_url and _local_botapi_proxy_url_for_fallback.lower().startswith(
+        ("socks5://", "socks5h://", "http://", "https://")
+    ):
         _cloud_fallback_proxy_url = _proxy_url_for_httpx(
             _local_botapi_proxy_url_for_fallback.replace("socks5://", "socks5h://", 1)
         )
@@ -379,8 +430,13 @@ async def run_bot_async():
     # concurrent_updates(8): команды отвечают мгновенно; гонки закрыты ранее:
     # video-lock по media_id (_get_video_lock), atomic UPSERT в rate_limit,
     # WAL+busy_timeout в SQLite.
-    builder = (Application.builder().token(BOT_TOKEN)
-               .request(t_request).get_updates_request(get_updates_request).concurrent_updates(8))
+    builder = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .request(t_request)
+        .get_updates_request(get_updates_request)
+        .concurrent_updates(8)
+    )
     if LOCAL_BOT_API_URL:
         _using_local_bot_api = True
         # FIX 2026-06-11 (live log 02:03): сервер не запущен -> ConnectError
@@ -390,12 +446,16 @@ async def run_bot_async():
         import socket
         import subprocess as _sp
         from urllib.parse import urlparse
+
         _u = urlparse(LOCAL_BOT_API_URL)
         _host, _port = _u.hostname or "127.0.0.1", _u.port or 80
         _local_proxy_url_pre = os.getenv("LOCAL_BOT_API_PROXY_URL", "").strip()
         _local_proxy_type_pre = os.getenv("LOCAL_BOT_API_TDLIB_PROXY_TYPE", "").strip().lower()
-        if (_local_proxy_url_pre.lower().startswith(("socks", "mtproto"))
-                or _local_proxy_type_pre in {"socks5", "socks5h", "mtproto"}):
+        if _local_proxy_url_pre.lower().startswith(("socks", "mtproto")) or _local_proxy_type_pre in {
+            "socks5",
+            "socks5h",
+            "mtproto",
+        }:
             logger.warning(
                 "⚠️ LOCAL_BOT_API_URL включён, но SOCKS/MTProto proxy для официального "
                 "telegram-bot-api.exe через CLI не поддерживается. Если нет TUN/VPN, "
@@ -416,8 +476,8 @@ async def run_bot_async():
             _api_id = os.getenv("TELEGRAM_API_ID", "").strip()
             _api_hash = os.getenv("TELEGRAM_API_HASH", "").strip()
             from pathlib import Path as _P
-            _exe = os.getenv("LOCAL_BOT_API_EXE",
-                             r"C:\Program Files\TelegramBotAPI\telegram-bot-api.exe")
+
+            _exe = os.getenv("LOCAL_BOT_API_EXE", r"C:\Program Files\TelegramBotAPI\telegram-bot-api.exe")
             if not (_api_id and _api_hash):
                 logger.warning(
                     "⚠️ Автостарт Bot API: добавьте TELEGRAM_API_ID и TELEGRAM_API_HASH "
@@ -427,8 +487,7 @@ async def run_bot_async():
             if not _P(_exe).exists():
                 logger.warning("⚠️ Автостарт Bot API: exe не найден: %s (LOCAL_BOT_API_EXE)", _exe)
                 return False
-            _data = os.getenv("LOCAL_BOT_API_DATA_DIR",
-                              r"C:\ProgramData\TelegramBotAPI\data")
+            _data = os.getenv("LOCAL_BOT_API_DATA_DIR", r"C:\ProgramData\TelegramBotAPI\data")
             try:
                 _P(_data).mkdir(parents=True, exist_ok=True)
             except OSError:
@@ -452,6 +511,7 @@ async def run_bot_async():
                 • или VPN/TUN для локального telegram-bot-api.exe.
                 """
                 from urllib.parse import urlparse, unquote
+
                 proxy_url = os.getenv("LOCAL_BOT_API_PROXY_URL", "").strip()
                 ptype = os.getenv("LOCAL_BOT_API_TDLIB_PROXY_TYPE", "").strip().lower()
                 server = os.getenv("LOCAL_BOT_API_PROXY_SERVER", "").strip()
@@ -492,9 +552,17 @@ async def run_bot_async():
                 return []
 
             _botapi_proxy_args = _botapi_proxy_args()
-            cmd = [_exe, f"--api-id={_api_id}", f"--api-hash={_api_hash}",
-                   "--local", f"--http-port={_port}", f"--dir={_data}",
-                   f"--log={_srv_log_path}", "--verbosity=2", *_botapi_proxy_args]
+            cmd = [
+                _exe,
+                f"--api-id={_api_id}",
+                f"--api-hash={_api_hash}",
+                "--local",
+                f"--http-port={_port}",
+                f"--dir={_data}",
+                f"--log={_srv_log_path}",
+                "--verbosity=2",
+                *_botapi_proxy_args,
+            ]
             kwargs: dict = {}
             kwargs["env"] = dict(os.environ)
             kwargs["env"].setdefault("PYTHONIOENCODING", "utf-8")
@@ -512,6 +580,7 @@ async def run_bot_async():
                 so the tail is from this attempt, not stale Stats.cpp lines.
                 """
                 import time as _t
+
                 try:
                     _log_path.parent.mkdir(parents=True, exist_ok=True)
                     _safe_cmd = []
@@ -523,9 +592,10 @@ async def run_bot_async():
                         else:
                             _safe_cmd.append(str(part))
                     with _log_path.open("a", encoding="utf-8", errors="replace") as _lf_txt:
-                        _lf_txt.write("\n\n===== mp3bot autostart %s =====\n%s\n" % (
-                            _t.strftime("%Y-%m-%d %H:%M:%S"), " ".join(_safe_cmd)
-                        ))
+                        _lf_txt.write(
+                            "\n\n===== mp3bot autostart %s =====\n%s\n"
+                            % (_t.strftime("%Y-%m-%d %H:%M:%S"), " ".join(_safe_cmd))
+                        )
                     _lf = _log_path.open("ab")
                 except OSError:
                     _lf = _sp.DEVNULL
@@ -548,8 +618,7 @@ async def run_bot_async():
                 return False, _tail
 
             try:
-                logger.info("🚀 Автостарт: запускаю telegram-bot-api.exe (порт %s, лог: %s)...",
-                            _port, _srv_log_path)
+                logger.info("🚀 Автостарт: запускаю telegram-bot-api.exe (порт %s, лог: %s)...", _port, _srv_log_path)
                 ok, _tail = _spawn(cmd, _srv_log_path)
                 if ok:
                     return True
@@ -560,8 +629,11 @@ async def run_bot_async():
                 # Сервер заново авторизует бота на чистом data-dir — это
                 # штатно (логин по токену при первом запросе).
                 if "Access is denied" in _tail or "can't be opened" in _tail:
-                    _user_data = _P(os.environ.get("LOCALAPPDATA",
-                                    str(_P.home() / "AppData" / "Local"))) / "TelegramBotAPI" / "data"
+                    _user_data = (
+                        _P(os.environ.get("LOCALAPPDATA", str(_P.home() / "AppData" / "Local")))
+                        / "TelegramBotAPI"
+                        / "data"
+                    )
                     try:
                         _user_data.mkdir(parents=True, exist_ok=True)
                     except OSError:
@@ -571,13 +643,24 @@ async def run_bot_async():
                         "⚠️ Нет прав на %s (создан от админа). Перезапускаю сервер с "
                         "пользовательской папкой: %s\n"
                         "   Постоянное решение (один раз, от админа):\n"
-                        "   PowerShell: icacls \"%s\" /grant \"${env:USERNAME}:(OI)(CI)F\" /T\n"
-                        "   cmd.exe:    icacls \"%s\" /grant %%USERNAME%%:(OI)(CI)F /T",
-                        _data, _user_data, _data, _data,
+                        '   PowerShell: icacls "%s" /grant "${env:USERNAME}:(OI)(CI)F" /T\n'
+                        '   cmd.exe:    icacls "%s" /grant %%USERNAME%%:(OI)(CI)F /T',
+                        _data,
+                        _user_data,
+                        _data,
+                        _data,
                     )
-                    cmd2 = [_exe, f"--api-id={_api_id}", f"--api-hash={_api_hash}",
-                            "--local", f"--http-port={_port}", f"--dir={_user_data}",
-                            f"--log={_user_log}", "--verbosity=2", *_botapi_proxy_args]
+                    cmd2 = [
+                        _exe,
+                        f"--api-id={_api_id}",
+                        f"--api-hash={_api_hash}",
+                        "--local",
+                        f"--http-port={_port}",
+                        f"--dir={_user_data}",
+                        f"--log={_user_log}",
+                        "--verbosity=2",
+                        *_botapi_proxy_args,
+                    ]
                     ok2, _tail2 = _spawn(cmd2, _user_log)
                     if ok2:
                         # FIX round 37: БЕЗУСЛОВНАЯ перезапись (was setdefault).
@@ -624,14 +707,14 @@ async def run_bot_async():
                         "   Запустите telegram-bot-api.exe (Start Bot.bat делает это сам) или\n"
                         "   проверьте: tasklist | findstr telegram-bot-api\n"
                         "   Жду появления сервера (проверка каждые 5с, до 5 минут)...",
-                        _host, _port,
+                        _host,
+                        _port,
                     )
                     _wait_logged = True
                 await asyncio.sleep(5)
         else:
             raise RuntimeError(
-                f"Локальный Bot API сервер {_host}:{_port} не поднялся за 5 минут. "
-                "Запустите его и перезапустите бота."
+                f"Локальный Bot API сервер {_host}:{_port} не поднялся за 5 минут. Запустите его и перезапустите бота."
             )
         if _wait_logged:
             logger.info("✅ Локальный Bot API сервер появился — продолжаю запуск")
@@ -645,6 +728,7 @@ async def run_bot_async():
             import json as _json
             import urllib.error as _urlerr
             import urllib.request as _urlreq
+
             try:
                 _base = LOCAL_BOT_API_URL.rstrip("/")
                 _url = f"{_base}/bot{BOT_TOKEN}/getMe"
@@ -655,7 +739,7 @@ async def run_bot_async():
                 except Exception:
                     return False, f"getMe вернул не JSON: {_raw[:200]}"
                 if _data.get("ok") is True:
-                    _uname = ((_data.get("result") or {}).get("username") or "?")
+                    _uname = (_data.get("result") or {}).get("username") or "?"
                     return True, f"@{_uname}"
                 return False, str(_data)[:300]
             except _urlerr.HTTPError as e:
@@ -669,7 +753,12 @@ async def run_bot_async():
 
         _getme_ok = False
         _getme_last = ""
-        _fallback_enabled = os.getenv("LOCAL_BOT_API_CLOUD_FALLBACK", "1").strip().lower() not in {"0", "false", "no", "off"}
+        _fallback_enabled = os.getenv("LOCAL_BOT_API_CLOUD_FALLBACK", "1").strip().lower() not in {
+            "0",
+            "false",
+            "no",
+            "off",
+        }
         # AUDIT R24 (живой баг: с TUN+прокси бот всё равно уходил на облако 50 МБ).
         # Быстрый fallback был рассчитан на no-TUN: если задан TELEGRAM_PROXY_URL,
         # бот делал РОВНО ОДНУ проверку getMe (в t=0, сразу после открытия порта)
@@ -694,9 +783,7 @@ async def run_bot_async():
                 _getme_window_sec,
             )
         for _gm_attempt in range(_getme_attempts):  # до ~_getme_window_sec после появления TCP-порта
-            _getme_ok, _getme_last = await asyncio.get_running_loop().run_in_executor(
-                None, _probe_local_botapi_getme
-            )
+            _getme_ok, _getme_last = await asyncio.get_running_loop().run_in_executor(None, _probe_local_botapi_getme)
             if _getme_ok:
                 logger.info("✅ Локальный Bot API getMe OK: %s", _getme_last)
                 break
@@ -716,7 +803,9 @@ async def run_bot_async():
                 # ожидание локального сервера, а не зависание.
                 logger.info(
                     "⏳ Жду локальный /getMe: попытка %d/%d (%s)...",
-                    _gm_attempt + 1, _getme_attempts, _getme_last,
+                    _gm_attempt + 1,
+                    _getme_attempts,
+                    _getme_last,
                 )
             await asyncio.sleep(5)
         if not _getme_ok:
@@ -725,13 +814,19 @@ async def run_bot_async():
                     "☁️ Локальный Bot API порт открыт, но /getMe не работает (%s). "
                     "Авто-fallback: перехожу на облачный Bot API через proxy=%s. "
                     "Большие DUB/MP3 могут упереться в облачные лимиты Telegram; для 2GB нужен TUN/VPN + local Bot API.",
-                    _getme_last, _cloud_fallback_proxy_url,
+                    _getme_last,
+                    _cloud_fallback_proxy_url,
                 )
                 _request_kwargs["proxy"] = _cloud_fallback_proxy_url
                 t_request = HTTPXRequest(**_request_kwargs)
                 get_updates_request = HTTPXRequest(**_request_kwargs)
-                builder = (Application.builder().token(BOT_TOKEN)
-                           .request(t_request).get_updates_request(get_updates_request).concurrent_updates(8))
+                builder = (
+                    Application.builder()
+                    .token(BOT_TOKEN)
+                    .request(t_request)
+                    .get_updates_request(get_updates_request)
+                    .concurrent_updates(8)
+                )
                 _using_local_bot_api = False
             else:
                 raise RuntimeError(
@@ -758,6 +853,7 @@ async def run_bot_async():
     app = builder.build()
 
     from services.dub_studio_runtime import register_dub_studio, start_dub_studio_services
+
     register_dub_studio(app)
 
     # Source-owned polling reliability: inspect every update before normal
@@ -786,14 +882,14 @@ async def run_bot_async():
     # проходят CommandHandler через effective_message, но хендлеры читают
     # update.message (None для edited) → AttributeError. Только новые сообщения.
     _MSG_ONLY = filters.UpdateType.MESSAGE
-    app.add_handler(CommandHandler("start",      start, filters=_MSG_ONLY))
-    app.add_handler(CommandHandler("help",       help_command, filters=_MSG_ONLY))
+    app.add_handler(CommandHandler("start", start, filters=_MSG_ONLY))
+    app.add_handler(CommandHandler("help", help_command, filters=_MSG_ONLY))
     app.add_handler(CommandHandler("resetcache", reset_cache_command, filters=_MSG_ONLY))
-    app.add_handler(CommandHandler("settings",   settings_command, filters=_MSG_ONLY))
-    app.add_handler(CommandHandler("stop",       stop_command, filters=_MSG_ONLY))
-    app.add_handler(CommandHandler("pdf",        pdf_command, filters=_MSG_ONLY))
-    app.add_handler(CommandHandler("metrics",    metrics_command, filters=_MSG_ONLY))
-    app.add_handler(CommandHandler("status",     status_command, filters=_MSG_ONLY))
+    app.add_handler(CommandHandler("settings", settings_command, filters=_MSG_ONLY))
+    app.add_handler(CommandHandler("stop", stop_command, filters=_MSG_ONLY))
+    app.add_handler(CommandHandler("pdf", pdf_command, filters=_MSG_ONLY))
+    app.add_handler(CommandHandler("metrics", metrics_command, filters=_MSG_ONLY))
+    app.add_handler(CommandHandler("status", status_command, filters=_MSG_ONLY))
     app.add_handler(CommandHandler("prompthealth", prompthealth_command, filters=_MSG_ONLY))
     app.add_handler(CommandHandler("codehealth", codehealth_command, filters=_MSG_ONLY))
     app.add_handler(CommandHandler("archivequality", archivequality_command, filters=_MSG_ONLY))
@@ -801,31 +897,29 @@ async def run_bot_async():
     app.add_handler(CommandHandler("qualityrecords", qualityrecords_command, filters=_MSG_ONLY))
     app.add_handler(CommandHandler("promptrecommend", promptrecommend_command, filters=_MSG_ONLY))
     app.add_handler(CommandHandler("comparevariants", comparevariants_command, filters=_MSG_ONLY))
-    app.add_handler(CommandHandler("archive",    archive_command, filters=_MSG_ONLY))
+    app.add_handler(CommandHandler("archive", archive_command, filters=_MSG_ONLY))
     app.add_handler(CommandHandler("archivefile", archivefile_command, filters=_MSG_ONLY))
     app.add_handler(CommandHandler("segmentfile", segmentfile_command, filters=_MSG_ONLY))
-    app.add_handler(CommandHandler("lastpages",  lastpages_command, filters=_MSG_ONLY))
-    app.add_handler(CommandHandler("mode",       mode_command, filters=_MSG_ONLY))
-    app.add_handler(CommandHandler("search",     search_archive_command, filters=_MSG_ONLY))
-    app.add_handler(CommandHandler("author",     author_archive_command, filters=_MSG_ONLY))
-    app.add_handler(CommandHandler("scripture",  scripture_archive_command, filters=_MSG_ONLY))
+    app.add_handler(CommandHandler("lastpages", lastpages_command, filters=_MSG_ONLY))
+    app.add_handler(CommandHandler("mode", mode_command, filters=_MSG_ONLY))
+    app.add_handler(CommandHandler("search", search_archive_command, filters=_MSG_ONLY))
+    app.add_handler(CommandHandler("author", author_archive_command, filters=_MSG_ONLY))
+    app.add_handler(CommandHandler("scripture", scripture_archive_command, filters=_MSG_ONLY))
     app.add_handler(CommandHandler("repairpage", repairpage_command, filters=_MSG_ONLY))
     app.add_handler(CommandHandler("repairrecent", repairrecent_command, filters=_MSG_ONLY))
-    app.add_handler(CommandHandler("segments",   segments_command, filters=_MSG_ONLY))
-    app.add_handler(CommandHandler("cutseg",     cutseg_command, filters=_MSG_ONLY))
-    app.add_handler(CommandHandler("cut",        cutseg_command, filters=_MSG_ONLY))
-    app.add_handler(CommandHandler("disk",       disk_command, filters=_MSG_ONLY))
+    app.add_handler(CommandHandler("segments", segments_command, filters=_MSG_ONLY))
+    app.add_handler(CommandHandler("cutseg", cutseg_command, filters=_MSG_ONLY))
+    app.add_handler(CommandHandler("cut", cutseg_command, filters=_MSG_ONLY))
+    app.add_handler(CommandHandler("disk", disk_command, filters=_MSG_ONLY))
     # FIX 2026-06-10: filters.TEXT матчит И edited_message (update.message=None
     # -> AttributeError в handle_message). Реагируем только на новые сообщения:
     # редактирование старой ссылки не должно перезапускать обработку видео.
-    app.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & filters.UpdateType.MESSAGE, handle_message))
-    app.add_handler(CallbackQueryHandler(
-        handle_mode_callback, pattern=r"^(?:set_mode:|mode_menu:)"
-    ))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.UpdateType.MESSAGE, handle_message))
+    app.add_handler(CallbackQueryHandler(handle_mode_callback, pattern=r"^(?:set_mode:|mode_menu:)"))
     app.add_handler(CallbackQueryHandler(handle_callback))
     # AUDIT R30: последовательная викторина продвигается по ответам пользователя.
     from services.quiz_sessions import handle_quiz_poll_answer
+
     app.add_handler(PollAnswerHandler(handle_quiz_poll_answer))
 
     # FIX 2026-06-10: глобальный error handler. Без него необработанное
@@ -835,8 +929,8 @@ async def run_bot_async():
         err = context.error
         # NetworkError при поллинге — шум, не показываем юзеру
         import telegram.error as _tg_err
-        logger.error("Unhandled handler error: %s: %s", type(err).__name__, err,
-                     exc_info=err)
+
+        logger.error("Unhandled handler error: %s: %s", type(err).__name__, err, exc_info=err)
         if isinstance(err, (_tg_err.NetworkError, _tg_err.TimedOut)):
             return
         try:
@@ -906,10 +1000,11 @@ async def run_bot_async():
 
         # Регистрируем команды — появится кнопка «Menu» слева от поля ввода
         from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
+
         default_commands = [
             BotCommand("start", "▶️ Главная"),
-            BotCommand("help",  "ℹ️ Справка"),
-            BotCommand("mode",  "🎛 Все режимы обработки и дубляжа"),
+            BotCommand("help", "ℹ️ Справка"),
+            BotCommand("mode", "🎛 Все режимы обработки и дубляжа"),
         ]
         try:
             await app.bot.set_my_commands(default_commands, scope=BotCommandScopeDefault())
@@ -923,20 +1018,20 @@ async def run_bot_async():
         for admin_id in ADMIN_IDS:
             try:
                 vip_commands = default_commands + [
-                    BotCommand("dub",        "🎙 Дубляж: Gemini MAX / готовый SRT"),
-                    BotCommand("dubcheck",   "🩺 Проверить Dub Studio"),
-                    BotCommand("settings",   "⚙️ Настройки бота"),
-                    BotCommand("status",     "🩺 Здоровье бота"),
-                    BotCommand("disk",       "💾 Место на диске"),
-                    BotCommand("archive",    "📚 Последние страницы"),
-                    BotCommand("search",     "🔎 Поиск по архиву"),
-                    BotCommand("segments",   "🧩 Сегменты видео"),
-                    BotCommand("cutseg",     "🎬 Вырезать сегмент"),
-                    BotCommand("cut",        "✂️ Вырезать сегмент"),
+                    BotCommand("dub", "🎙 Дубляж: Gemini MAX / готовый SRT"),
+                    BotCommand("dubcheck", "🩺 Проверить Dub Studio"),
+                    BotCommand("settings", "⚙️ Настройки бота"),
+                    BotCommand("status", "🩺 Здоровье бота"),
+                    BotCommand("disk", "💾 Место на диске"),
+                    BotCommand("archive", "📚 Последние страницы"),
+                    BotCommand("search", "🔎 Поиск по архиву"),
+                    BotCommand("segments", "🧩 Сегменты видео"),
+                    BotCommand("cutseg", "🎬 Вырезать сегмент"),
+                    BotCommand("cut", "✂️ Вырезать сегмент"),
                     BotCommand("repairpage", "🛠 Ремонт Telegraph"),
                     BotCommand("archivefile", "📁 Файл архива"),
                     BotCommand("segmentfile", "🧩 Файл сегментов"),
-                    BotCommand("metrics",    "📊 Gemini метрики"),
+                    BotCommand("metrics", "📊 Gemini метрики"),
                     BotCommand("prompthealth", "🧪 Здоровье промптов"),
                     BotCommand("codehealth", "🧰 Regex/code health"),
                     BotCommand("archivequality", "🧪 Качество архива"),
@@ -944,20 +1039,20 @@ async def run_bot_async():
                     BotCommand("qualityrecords", "🧯 Quality records"),
                     BotCommand("promptrecommend", "🧭 Prompt recommend"),
                     BotCommand("comparevariants", "🧪 Сравнить variants"),
-                    BotCommand("pdf",        "📄 PDF из кэша"),
+                    BotCommand("pdf", "📄 PDF из кэша"),
                     BotCommand("resetcache", "🗑 Сбросить кэш видео"),
-                    BotCommand("stop",       "🛑 Остановить бота"),
+                    BotCommand("stop", "🛑 Остановить бота"),
                 ]
-                await app.bot.set_my_commands(
-                    vip_commands, scope=BotCommandScopeChat(chat_id=admin_id)
-                )
+                await app.bot.set_my_commands(vip_commands, scope=BotCommandScopeChat(chat_id=admin_id))
             except Exception:
                 pass
 
         # AUDIT M9: фоновая периодическая чистка временных файлов и БД
         from core.utils import (
-            cleanup_nosub_files, cleanup_stale_downloads,
-            cleanup_botapi_server_files, cleanup_stale_livedub_dirs,
+            cleanup_nosub_files,
+            cleanup_stale_downloads,
+            cleanup_botapi_server_files,
+            cleanup_stale_livedub_dirs,
         )
         from core.database import db_cleanup_old_records, db_backup
         from core.globals import mark_bot_alive
@@ -976,9 +1071,7 @@ async def run_bot_async():
                 return
             interval_hours = 6.0
             try:
-                interval_hours = float(
-                    os.getenv("MAINTENANCE_ALERT_INTERVAL_HOURS", "6").strip() or 6
-                )
+                interval_hours = float(os.getenv("MAINTENANCE_ALERT_INTERVAL_HOURS", "6").strip() or 6)
             except ValueError:
                 pass
             if not runtime_status.alert_is_due(interval_hours):
@@ -1012,6 +1105,7 @@ async def run_bot_async():
                     # Segment export files (JSON/MD) older than 90 days
                     try:
                         from core.generated_pages import cleanup_old_segment_files
+
                         await loop.run_in_executor(None, cleanup_old_segment_files)
                     except Exception as _segment_error:
                         # Раньше здесь стоял `pass`: сломанная очистка была
@@ -1038,9 +1132,7 @@ async def run_bot_async():
                 return
             error = task.exception()
             if error is not None:
-                logger.error(
-                    "фоновая задача обслуживания остановилась: %s", error, exc_info=error
-                )
+                logger.error("фоновая задача обслуживания остановилась: %s", error, exc_info=error)
 
         _maintenance_task = asyncio.create_task(_periodic_maintenance())
         _maintenance_task.add_done_callback(_on_maintenance_done)
@@ -1063,7 +1155,7 @@ async def run_bot_async():
 def run_bot():
     from services.restart_state_runtime import reset_cross_loop_state
 
-    restart_delay = 5   # базовая задержка между перезапусками
+    restart_delay = 5  # базовая задержка между перезапусками
     _net_fail_streak = 0
     while True:
         reset_cross_loop_state()
@@ -1088,14 +1180,19 @@ def run_bot():
             # экспоненциальный backoff до 60с, чтобы не молотить лог и не
             # перегружать Whisper-прелоад на каждом рестарте.
             _emsg = str(e)
-            _is_net = ("ConnectError" in _emsg or "ConnectTimeout" in _emsg
-                       or "NetworkError" in type(e).__name__ or "TimedOut" in type(e).__name__)
+            _is_net = (
+                "ConnectError" in _emsg
+                or "ConnectTimeout" in _emsg
+                or "NetworkError" in type(e).__name__
+                or "TimedOut" in type(e).__name__
+            )
             if _is_net:
                 _net_fail_streak += 1
                 logger.error(
                     "🔌 Сеть/Bot API недоступны (%s). Подряд: %d. "
                     "Если это локальный сервер — проверьте telegram-bot-api.exe.",
-                    _emsg[:120], _net_fail_streak,
+                    _emsg[:120],
+                    _net_fail_streak,
                 )
             else:
                 _net_fail_streak = 0
@@ -1118,6 +1215,7 @@ def main():
         logger.info("🏠 Локальный режим: Flask отключён (DISABLE_HEALTH_CHECK=1)")
         run_bot()
         return
+
     # V3-P1 fix: сигналы работают только в main thread. Регистрируем здесь,
     # ДО старта waitress: Render/Railway шлют SIGTERM при redeploy — без этого
     # процесс убивался мгновенно посреди обработки видео.
@@ -1156,6 +1254,7 @@ def main():
     # waitress: многопоточный, не выдаёт "WARNING: Do not use dev server in production".
     try:
         from waitress import serve
+
         logger.info(f"🌐 HTTP health-check: waitress на порту {port}")
         serve(flask_app, host="0.0.0.0", port=port, threads=4)
     except ImportError:
@@ -1163,10 +1262,7 @@ def main():
             raise RuntimeError("waitress is required in production; install requirements.txt")
         # Fallback на Flask dev-сервер если waitress не установлен.
         # Добавьте waitress в requirements.txt: waitress>=3.0.0,<4.0.0
-        logger.warning(
-            "⚠️  waitress не установлен — используется Flask dev-сервер. "
-            "Установите: pip install waitress"
-        )
+        logger.warning("⚠️  waitress не установлен — используется Flask dev-сервер. Установите: pip install waitress")
         flask_app.run(host="0.0.0.0", port=port)
 
 

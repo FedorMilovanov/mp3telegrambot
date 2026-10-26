@@ -60,13 +60,13 @@ def test_pipeline_honest_degraded_mode_is_wired():
     render = __import__("pathlib").Path("pipelines/telegraph_render.py").read_text(encoding="utf-8")
     assert 'return {"rutube": None, "vk": None}' in render
     assert "plan_study=_feat_study_analysis" in src
-    assert "expect_synopsis=bool(ai_data)" in __import__("pathlib").Path("pipelines/caption_inputs.py").read_text(encoding="utf-8")
+    assert "expect_synopsis=bool(ai_data)" in __import__("pathlib").Path("pipelines/caption_inputs.py").read_text(
+        encoding="utf-8"
+    )
 
 
 def _stage() -> str:
-    return __import__("pathlib").Path(
-        "pipelines/telegraph_repair_stage.py"
-    ).read_text(encoding="utf-8")
+    return __import__("pathlib").Path("pipelines/telegraph_repair_stage.py").read_text(encoding="utf-8")
 
 
 def _pipeline() -> str:
@@ -91,9 +91,7 @@ def test_pipeline_auto_repairs_telegraph_after_publish_by_default():
 def test_pipeline_persists_auto_repair_status_in_generated_pages_archive():
     stage = _stage()
     assert "def changed_count" in stage
-    archive = __import__("pathlib").Path(
-        "pipelines/archive_stage.py"
-    ).read_text(encoding="utf-8")
+    archive = __import__("pathlib").Path("pipelines/archive_stage.py").read_text(encoding="utf-8")
     assert "aupdate_generated_page_repair_status" in archive
     assert "changed_pages=repair.changed_count" in archive
     assert "errors=repair.errors" in archive

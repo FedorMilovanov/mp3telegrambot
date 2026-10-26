@@ -8,6 +8,7 @@ Density-retry (schema отключена для verbatim-режима) верн�
 секцию. Нигде в пайплайне не было проверки на дубли — audit_expanded_sections
 теперь убирает подряд идущие секции с одинаковым title+time.
 """
+
 from core.content_audit import ContentAuditIssue, audit_expanded_sections
 
 
@@ -72,11 +73,13 @@ def test_content_audit_issue_dataclass_accepts_dedup_code():
 
 # ── R15b (скриншот 2026-07-09): мёртвые таймкоды в mini-outline части 2+ ──
 
+
 def test_mini_outline_builds_real_link_not_bare_string():
     """Part [2/2] TOC вставлял таймкод голой строкой без href — курсор не
     менялся, ссылка была мертва. Теперь строится настоящая <a>-нода, как
     и в _build_toc_nodes_v2 для части 1."""
     from pathlib import Path
+
     src = Path(__file__).resolve().parents[1].joinpath("services/telegraph.py").read_text(encoding="utf-8")
     block = src.split("elif total > 1:", 1)[1].split("for sec_idx, sec in enumerate(part_secs):", 1)[0]
     assert '"tag": "a"' in block, "mini-outline части 2+ не строит ссылку — регрессия BUG-5/R15"
@@ -88,9 +91,7 @@ def test_telegraph_imports_link_building_utils():
     import ast
     from pathlib import Path
 
-    source = Path(__file__).resolve().parents[1].joinpath("services/telegraph.py").read_text(
-        encoding="utf-8"
-    )
+    source = Path(__file__).resolve().parents[1].joinpath("services/telegraph.py").read_text(encoding="utf-8")
     imports = {
         (node.module, alias.name)
         for node in ast.walk(ast.parse(source))
@@ -120,11 +121,13 @@ def test_mini_outline_logic_produces_link_children():
             _secs = time_to_seconds(_ps_time)
             if _secs is not None and url:
                 _children.append(" — ⏱ ")
-                _children.append({
-                    "tag": "a",
-                    "attrs": {"href": get_youtube_timestamp_url(url, _secs)},
-                    "children": [_ps_time],
-                })
+                _children.append(
+                    {
+                        "tag": "a",
+                        "attrs": {"href": get_youtube_timestamp_url(url, _secs)},
+                        "children": [_ps_time],
+                    }
+                )
         _mini_outline.append({"tag": "p", "children": _children})
 
     link_node = _mini_outline[0]["children"][-1]

@@ -17,6 +17,7 @@
 
 Здесь правила отделены от HTTP: `PageIO` — это две функции, `fetch` и `edit`.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -162,10 +163,7 @@ def strip_trailing_nav(nodes: list[Any]) -> list[Any]:
 
 def has_nav(nodes: list[Any], tail: int = NAV_TAIL) -> bool:
     """Есть ли блок перелинковки в конце страницы."""
-    return any(
-        isinstance(node, dict) and "Читать также" in str(node.get("children", ""))
-        for node in nodes[-tail:]
-    )
+    return any(isinstance(node, dict) and "Читать также" in str(node.get("children", "")) for node in nodes[-tail:])
 
 
 def find_next_urls(nodes: list[Any]) -> list[str]:
@@ -230,15 +228,12 @@ async def _add_nav_to_page(
                 return
             title = page.title or page_label
             clean_nodes = strip_trailing_nav(page.nodes)
-            ok = await _edit_with_compact_fallback(
-                page_url, title, page.author, clean_nodes, full_nav, compact_nav, io
-            )
+            ok = await _edit_with_compact_fallback(page_url, title, page.author, clean_nodes, full_nav, compact_nav, io)
             if ok:
                 logger.info("Navigation: добавлена навигация на %s", page_url)
             else:
                 logger.warning(
-                    "Navigation: %s у лимита размера Telegraph — "
-                    "навигация не добавлена (страница цела, но без футера)",
+                    "Navigation: %s у лимита размера Telegraph — навигация не добавлена (страница цела, но без футера)",
                     page_url,
                 )
             await _walk_chain(page.nodes, page_url, nav_pages, io)
@@ -254,9 +249,7 @@ async def _add_nav_to_page(
                 )
                 await asyncio.sleep(NAV_RETRY_DELAY)
             else:
-                logger.warning(
-                    "Navigation: не удалось добавить навигацию на %s: %s", page_url, err
-                )
+                logger.warning("Navigation: не удалось добавить навигацию на %s: %s", page_url, err)
 
 
 async def _walk_chain(
@@ -301,9 +294,7 @@ async def _walk_chain(
             if ok:
                 logger.info("Navigation: добавлена навигация на %s (часть 2+)", part_url)
             else:
-                logger.warning(
-                    "Navigation: часть %s у лимита размера — без футера", part_url
-                )
+                logger.warning("Navigation: часть %s у лимита размера — без футера", part_url)
         except Exception as err:  # одна часть не должна отменять остальные
             logger.warning("Navigation: не удалось добавить на часть %s: %s", part_url, err)
 

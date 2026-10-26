@@ -10,6 +10,7 @@ git pull, без установки шрифтов в систему.
 Тест не зависит от fontTools (его нет в проде/CI): проверяем наличие файлов
 и что _build_font_face_css() их подхватывает с верными family/weight.
 """
+
 import re
 from pathlib import Path
 
@@ -81,7 +82,7 @@ def test_bundled_fonts_carry_their_license():
         licenses[family] = text
 
     # Заголовок копирайта обязан называть именно это семейство (частый copy-paste).
-    assert "Reserved Font Name \"Merriweather\"" in licenses["Merriweather"]
+    assert 'Reserved Font Name "Merriweather"' in licenses["Merriweather"]
     assert "Merriweather" not in licenses["Manrope"].split("SIL OPEN FONT")[0]
 
     notice_text = notice.read_text(encoding="utf-8")

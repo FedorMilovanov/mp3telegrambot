@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Cache-hit ссылки и подпись: без внешнего поиска и второй копии обрезки."""
+
 from __future__ import annotations
 
 import asyncio
@@ -277,10 +278,7 @@ def test_caption_source_preserves_page_links_metadata_and_log(
         format_name="sermon",
     )
     assert ai_data is AI_DATA
-    assert (
-        "Кэш caption visible_len=7 format=sermon ts_total=4 "
-        "ts_in_cap=2 stage=timestamps_trimmed"
-    ) in caplog.text
+    assert ("Кэш caption visible_len=7 format=sermon ts_total=4 ts_in_cap=2 stage=timestamps_trimmed") in caplog.text
 
 
 def test_empty_analysis_uses_none_and_default_format(
@@ -334,16 +332,12 @@ def test_main_pipeline_wires_cached_links_and_shared_presentation() -> None:
     assert stage.count("cached_caption = await prepare(") == 1
     assert "caption=cached_caption.caption" in stage
     assert "full_caption=cached_caption.full_caption" in stage
-    assert "synopsis_url=request.links.synopsis_url or \"\"" in stage
+    assert 'synopsis_url=request.links.synopsis_url or ""' in stage
     assert "study_url=request.links.study_url" in stage
     assert "reflection_url=request.links.reflection_url" in stage
     assert "terms_url=request.links.terms_url" in stage
 
-    cache_branch = source[source.index("if cache_decision.hit:"):]
-    assert cache_branch.index("c_links = cached_page_links(cached)") < cache_branch.index(
-        "await load_thumbnail("
-    )
+    cache_branch = source[source.index("if cache_decision.hit:") :]
+    assert cache_branch.index("c_links = cached_page_links(cached)") < cache_branch.index("await load_thumbnail(")
     assert cache_branch.index("await load_thumbnail(") < cache_branch.index("await prepare_audio(")
-    assert cache_branch.index("await prepare_audio(") < cache_branch.index(
-        "return await deliver_cache_hit("
-    )
+    assert cache_branch.index("await prepare_audio(") < cache_branch.index("return await deliver_cache_hit(")

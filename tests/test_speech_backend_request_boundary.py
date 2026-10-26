@@ -30,18 +30,14 @@ def test_control_plane_normalizes_backend_without_loading_synthesis_core() -> No
 
 
 def test_control_plane_resolves_backend_alias() -> None:
-    result = generic_project_runtime.validate_request_payload(
-        _request(speech_backend="OpenBMB")
-    )
+    result = generic_project_runtime.validate_request_payload(_request(speech_backend="OpenBMB"))
 
     assert result["speech_backend"] == "voxcpm2"
 
 
 def test_control_plane_rejects_unknown_backend_before_queueing() -> None:
     with pytest.raises(RuntimeError, match="Некорректный speech_backend"):
-        generic_project_runtime.validate_request_payload(
-            _request(speech_backend="future-neural-engine")
-        )
+        generic_project_runtime.validate_request_payload(_request(speech_backend="future-neural-engine"))
 
 
 def test_control_plane_rejects_backend_without_production_capabilities() -> None:
@@ -64,8 +60,6 @@ def test_control_plane_rejects_backend_without_production_capabilities() -> None
     register_backend(IncompleteBackend())
     try:
         with pytest.raises(RuntimeError, match="production capabilities"):
-            generic_project_runtime.validate_request_payload(
-                _request(speech_backend="incomplete")
-            )
+            generic_project_runtime.validate_request_payload(_request(speech_backend="incomplete"))
     finally:
         unregister_backend("incomplete")

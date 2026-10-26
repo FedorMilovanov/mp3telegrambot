@@ -1,4 +1,5 @@
 """Deterministic non-production backend proving the engine boundary in CI."""
+
 from __future__ import annotations
 
 import math
@@ -43,14 +44,7 @@ class DeterministicSession:
         seed = int(request.seed or 0) + sum(ord(char) for char in request.text)
         frequency = 160.0 + float(seed % 320)
         return [
-            0.08
-            * math.sin(
-                2.0
-                * math.pi
-                * frequency
-                * index
-                / self.audio_spec.output_sample_rate
-            )
+            0.08 * math.sin(2.0 * math.pi * frequency * index / self.audio_spec.output_sample_rate)
             for index in range(total)
         ]
 
@@ -112,9 +106,7 @@ class DeterministicSpeechBackend:
         if not isinstance(audio_spec, BackendAudioSpec):
             raise TypeError("Deterministic planner ожидает BackendAudioSpec.")
         if not isinstance(request, BackendGenerationLengthRequest):
-            raise TypeError(
-                "Deterministic planner ожидает BackendGenerationLengthRequest."
-            )
+            raise TypeError("Deterministic planner ожидает BackendGenerationLengthRequest.")
         return BackendGenerationLengthPlan(
             backend_id=self.backend_id,
             duration_budget=request.duration_budget,
@@ -132,9 +124,7 @@ class DeterministicSpeechBackend:
         request: BackendGenerationProfileRequest,
     ) -> BackendGenerationProfilePlan:
         if not isinstance(request, BackendGenerationProfileRequest):
-            raise TypeError(
-                "Deterministic profile planner ожидает BackendGenerationProfileRequest."
-            )
+            raise TypeError("Deterministic profile planner ожидает BackendGenerationProfileRequest.")
         return BackendGenerationProfilePlan(
             backend_id=self.backend_id,
             attempt=request.attempt,
@@ -163,9 +153,7 @@ class DeterministicSpeechBackend:
     ) -> BackendRuntimePaths:
         repo = Path(repo_root).resolve()
         entrypoint = repo / "services" / "speech_backends" / "deterministic_runtime.py"
-        archive = Path(
-            str(request.get("deterministic_archive") or repo)
-        ).expanduser().resolve()
+        archive = Path(str(request.get("deterministic_archive") or repo)).expanduser().resolve()
         return BackendRuntimePaths(
             backend_id=self.backend_id,
             repo_root=repo,
@@ -205,9 +193,7 @@ class DeterministicSpeechBackend:
         values: dict[str, Any],
     ) -> list[str]:
         del runtime, values
-        raise RuntimeError(
-            "Speech backend больше не владеет media master; используйте services.media_masters."
-        )
+        raise RuntimeError("Speech backend больше не владеет media master; используйте services.media_masters.")
 
 
 __all__ = [

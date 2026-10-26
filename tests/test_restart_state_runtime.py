@@ -59,11 +59,10 @@ def test_process_lifecycle_resets_before_async_runner(monkeypatch) -> None:
     monkeypatch.setattr(
         restart,
         "reset_cross_loop_state",
-        lambda: order.append("reset") or {
-            "audio_inflight": 0, "deferred_source": 0, "companion_marks": 0, "orphan_files": 0
-        },
+        lambda: (
+            order.append("reset")
+            or {"audio_inflight": 0, "deferred_source": 0, "companion_marks": 0, "orphan_files": 0}
+        ),
     )
     assert bot_lifecycle.run_bot_process(stub) == 0
     assert order == ["reset", "run"]
-
-

@@ -7,6 +7,7 @@ Gemini metrics, full AI JSON, temporary IDs. None of that belongs in git.
 This tool extracts only a small allow-list of public metadata and public links
 (YouTube/Rutube/VK/Telegraph) into a Markdown file that is safe to commit.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -148,7 +149,11 @@ def render_markdown(records: list[dict[str, Any]], *, source_db: Path) -> str:
 
     by_day: dict[str, list[dict[str, Any]]] = {}
     for rec in records:
-        day = time.strftime("%Y-%m-%d", time.localtime(int(rec.get("created_at") or 0))) if rec.get("created_at") else "unknown-date"
+        day = (
+            time.strftime("%Y-%m-%d", time.localtime(int(rec.get("created_at") or 0)))
+            if rec.get("created_at")
+            else "unknown-date"
+        )
         by_day.setdefault(day, []).append(rec)
 
     for day in sorted(by_day.keys(), reverse=True):

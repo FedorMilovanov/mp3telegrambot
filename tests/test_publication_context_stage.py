@@ -1,4 +1,5 @@
 """Behavioral contracts for the post-analysis publication context."""
+
 from __future__ import annotations
 
 import asyncio
@@ -35,20 +36,20 @@ def test_analysis_context_preserves_batch_plan_metrics_and_diagnostics(caplog):
     }
 
     with caplog.at_level(logging.INFO):
-        context = asyncio.run(prepare_publication_context(
-            ai_data=ai_data,
-            degraded={"format": "sermon", "timestamps": "ignored"},
-            full_title="Fallback title",
-            performer=None,
-            media_id="media-id",
-            telegraph_url="",
-            settings_get_all=settings_get_all,
-        ))
+        context = asyncio.run(
+            prepare_publication_context(
+                ai_data=ai_data,
+                degraded={"format": "sermon", "timestamps": "ignored"},
+                full_title="Fallback title",
+                performer=None,
+                media_id="media-id",
+                telegraph_url="",
+                settings_get_all=settings_get_all,
+            )
+        )
 
     settings_get_all.assert_awaited_once_with()
-    assert context.search_title == (
-        "Conference - A sufficiently long lecture title - John Smith"
-    )
+    assert context.search_title == ("Conference - A sufficiently long lecture title - John Smith")
     assert context.tg_author == "John Smith"
     assert context.questions is questions
     assert context.terms_data is terms_data
@@ -69,13 +70,15 @@ def test_analysis_context_preserves_batch_plan_metrics_and_diagnostics(caplog):
 
 
 def test_degraded_metrics_do_not_become_ai_pages_or_analysis_sections(caplog):
-    settings_get_all = AsyncMock(return_value={
-        "analytics": True,
-        "questions": True,
-        "terms": True,
-        "study_analysis": True,
-        "reflection_application": True,
-    })
+    settings_get_all = AsyncMock(
+        return_value={
+            "analytics": True,
+            "questions": True,
+            "terms": True,
+            "study_analysis": True,
+            "reflection_application": True,
+        }
+    )
     degraded = {
         "real_author": "Ignored degraded author",
         "questions": {"blocks": [{"text": "Must not leak"}]},
@@ -85,15 +88,17 @@ def test_degraded_metrics_do_not_become_ai_pages_or_analysis_sections(caplog):
     }
 
     with caplog.at_level(logging.INFO):
-        context = asyncio.run(prepare_publication_context(
-            ai_data=None,
-            degraded=degraded,
-            full_title="Fallback title",
-            performer="Fallback Performer",
-            media_id="degraded-media",
-            telegraph_url="https://telegra.ph/synopsis",
-            settings_get_all=settings_get_all,
-        ))
+        context = asyncio.run(
+            prepare_publication_context(
+                ai_data=None,
+                degraded=degraded,
+                full_title="Fallback title",
+                performer="Fallback Performer",
+                media_id="degraded-media",
+                telegraph_url="https://telegra.ph/synopsis",
+                settings_get_all=settings_get_all,
+            )
+        )
 
     settings_get_all.assert_awaited_once_with()
     assert context.search_title == "Fallback title"
@@ -102,13 +107,15 @@ def test_degraded_metrics_do_not_become_ai_pages_or_analysis_sections(caplog):
     assert context.terms_data == {}
     assert context.format_name == "sermon"
     assert context.timestamps_total == 3
-    assert not any((
-        context.plan.analytics,
-        context.plan.questions,
-        context.plan.terms,
-        context.plan.study_analysis,
-        context.plan.reflection_application,
-    ))
+    assert not any(
+        (
+            context.plan.analytics,
+            context.plan.questions,
+            context.plan.terms,
+            context.plan.study_analysis,
+            context.plan.reflection_application,
+        )
+    )
     assert (
         "AI analysis is missing/invalid for degraded-media — skipping "
         "AI-derived Telegraph pages to avoid hallucinated partial publications"

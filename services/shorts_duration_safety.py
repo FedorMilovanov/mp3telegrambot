@@ -4,6 +4,7 @@
 The pipeline calls these helpers directly. This module owns no ContextVar,
 installer, imported-module rebinding or ambient render state.
 """
+
 from __future__ import annotations
 
 import math
@@ -44,11 +45,7 @@ def short_speed_transform_required(speed: Any) -> bool:
 
 def public_short_duration_ok(duration: Any) -> bool:
     value = _finite_float(duration)
-    return bool(
-        value is not None
-        and value > 0.0
-        and value <= PUBLIC_SHORT_MAX_SEC + PUBLIC_DURATION_EPSILON_SEC
-    )
+    return bool(value is not None and value > 0.0 and value <= PUBLIC_SHORT_MAX_SEC + PUBLIC_DURATION_EPSILON_SEC)
 
 
 def plan_short_source_window(
@@ -69,14 +66,7 @@ def plan_short_source_window(
     start = _finite_float(candidate.get("start_seconds"))
     end = _finite_float(candidate.get("end_seconds"))
     speed_value = _finite_float(speed)
-    if (
-        start is None
-        or end is None
-        or speed_value is None
-        or start < 0.0
-        or end <= start
-        or speed_value <= 0.0
-    ):
+    if start is None or end is None or speed_value is None or start < 0.0 or end <= start or speed_value <= 0.0:
         return None
 
     source_limit = _finite_float(source_duration, 0.0) or 0.0
@@ -92,9 +82,7 @@ def plan_short_source_window(
     desired_post = 0.0
     if boundary_padding:
         desired_pre = (
-            _bounded_env_float("SHORTS_PREROLL_SECONDS", 1.5)
-            if pre_roll is None
-            else _nonnegative_optional(pre_roll)
+            _bounded_env_float("SHORTS_PREROLL_SECONDS", 1.5) if pre_roll is None else _nonnegative_optional(pre_roll)
         )
         desired_post = (
             _bounded_env_float("SHORTS_POSTROLL_SECONDS", 2.5)
@@ -147,13 +135,7 @@ def final_public_short_is_safe(probe: Any, *, max_file_size_mb: Any) -> bool:
         return False
     limit = _finite_float(max_file_size_mb)
     size = _finite_float(getattr(probe, "size_mb", None))
-    return bool(
-        limit is not None
-        and limit > 0.0
-        and size is not None
-        and size >= 0.0
-        and size <= limit + 1e-9
-    )
+    return bool(limit is not None and limit > 0.0 and size is not None and size >= 0.0 and size <= limit + 1e-9)
 
 
 __all__ = [

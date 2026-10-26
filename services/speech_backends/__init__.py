@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Public model-independent speech backend and model-profile API."""
+
 from __future__ import annotations
 
 from services.speech_backends.audited_voxcpm2 import (
@@ -128,9 +129,7 @@ for _record in _PROFILE_MANIFEST_RECORDS:
 DEFAULT_MODEL_PROFILE_ID = resolve_model_profile_id(CONFIGURED_DEFAULT_MODEL_PROFILE_ID)
 _DEFAULT_MODEL_PROFILE = get_model_profile(DEFAULT_MODEL_PROFILE_ID)
 if not _DEFAULT_MODEL_PROFILE.production_enabled:
-    raise RuntimeError(
-        f"Default TTS model profile отключён для production: {DEFAULT_MODEL_PROFILE_ID}"
-    )
+    raise RuntimeError(f"Default TTS model profile отключён для production: {DEFAULT_MODEL_PROFILE_ID}")
 # Preserve the legacy revision guard even though the profile is now declarative.
 voxcpm2_production_profile()
 
@@ -152,15 +151,9 @@ def model_profile_manifest_record(
 ) -> ProfileManifestRecord | None:
     """Return repository manifest provenance for one registered profile."""
     canonical = resolve_model_profile_id(value)
-    matches = tuple(
-        record
-        for record in _PROFILE_MANIFEST_RECORDS
-        if record.profile.profile_id == canonical
-    )
+    matches = tuple(record for record in _PROFILE_MANIFEST_RECORDS if record.profile.profile_id == canonical)
     if len(matches) > 1:
-        raise RuntimeError(
-            f"TTS profile {canonical} имеет несколько manifest records."
-        )
+        raise RuntimeError(f"TTS profile {canonical} имеет несколько manifest records.")
     return matches[0] if matches else None
 
 
@@ -175,9 +168,7 @@ def model_profile_source_evidence(value: object) -> dict[str, object]:
         try:
             source = str(source_path.relative_to(root))
         except ValueError as exc:
-            raise RuntimeError(
-                f"TTS manifest source escaped catalog root: {source_path}"
-            ) from exc
+            raise RuntimeError(f"TTS manifest source escaped catalog root: {source_path}") from exc
         return {
             "schema_version": int(record.schema_version),
             "profile_id": canonical,

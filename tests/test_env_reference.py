@@ -7,6 +7,7 @@
 вообще, — тоже. Поэтому перечень генерируется из кода и проверяется на
 актуальность, как каталог моделей.
 """
+
 from __future__ import annotations
 
 import re
@@ -29,8 +30,7 @@ def test_reference_is_in_sync_with_the_code() -> None:
         check=False,
     )
     assert result.returncode == 0, (
-        "docs/env-reference.md устарел: выполните "
-        f"python {SCRIPT.as_posix()}\n{result.stdout}{result.stderr}"
+        f"docs/env-reference.md устарел: выполните python {SCRIPT.as_posix()}\n{result.stdout}{result.stderr}"
     )
 
 
@@ -58,11 +58,7 @@ def test_collection_is_invariant_to_multiline_formatting(tmp_path, monkeypatch) 
 
 def test_every_collected_variable_has_a_row() -> None:
     reference = REFERENCE.read_text(encoding="utf-8")
-    missing = [
-        name
-        for name in collect()
-        if f"| `{name}` |" not in reference
-    ]
+    missing = [name for name in collect() if f"| `{name}` |" not in reference]
     assert not missing, f"в справочнике нет строк для: {sorted(missing)}"
 
 

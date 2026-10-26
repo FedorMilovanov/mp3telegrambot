@@ -14,6 +14,7 @@ It also left glued sentences without a space after removing a leak:
 
 This test pins the corrected behavior.
 """
+
 from core.content_audit import _scrub_prompt_context_leaks
 
 
@@ -28,11 +29,7 @@ def test_leak_scrub_does_not_break_author_speech_with_scripture_abbrev():
 
 
 def test_leak_scrub_removes_channel_leak_but_keeps_neighbors_with_space():
-    text = (
-        "Оправдание — это Божий приговор. "
-        "Наш канал придерживается реформатского взгляда. "
-        "Покаяние — поворот воли."
-    )
+    text = "Оправдание — это Божий приговор. Наш канал придерживается реформатского взгляда. Покаяние — поворот воли."
     out, changed = _scrub_prompt_context_leaks(text)
     assert changed is True
     assert "Наш канал" not in out
@@ -40,19 +37,15 @@ def test_leak_scrub_removes_channel_leak_but_keeps_neighbors_with_space():
     assert "Оправдание — это Божий приговор." in out
     assert "Покаяние — поворот воли." in out
     assert "приговор.Покаяние" not in out  # no glue
-    assert "приговор. Покаяние" in out      # space preserved
+    assert "приговор. Покаяние" in out  # space preserved
 
 
 def test_leak_scrub_restores_space_after_scripture_ref():
-    text = (
-        "Сперджен пишет «трава засыхает» (Ис. 40:6). "
-        "Наш канал занимает позицию цессационизма. "
-        "Дальше идёт разбор."
-    )
+    text = "Сперджен пишет «трава засыхает» (Ис. 40:6). Наш канал занимает позицию цессационизма. Дальше идёт разбор."
     out, changed = _scrub_prompt_context_leaks(text)
     assert changed is True
     assert "Наш канал" not in out
-    assert "(Ис. 40:6).Дальше" not in out   # no glue
+    assert "(Ис. 40:6).Дальше" not in out  # no glue
     assert "Дальше идёт разбор." in out
 
 

@@ -204,10 +204,7 @@ def _context() -> WeightedTTSSmokeAttestationContext:
         commit_sha=COMMIT_SHA,
         ref="refs/heads/main",
         event_name="workflow_dispatch",
-        workflow_ref=(
-            "FedorMilovanov/mp3telegrambot/"
-            ".github/workflows/tts-weighted-smoke.yml@refs/heads/main"
-        ),
+        workflow_ref=("FedorMilovanov/mp3telegrambot/.github/workflows/tts-weighted-smoke.yml@refs/heads/main"),
         run_id=30712648726,
         run_attempt=1,
     )
@@ -254,27 +251,19 @@ def test_attestation_cross_checks_reports_and_writes_only_allowlisted_facts(
     ("mutator", "message"),
     [
         (
-            lambda doctor, smoke: smoke["profile"].update(
-                {"profile_fingerprint": "f" * 64}
-            ),
+            lambda doctor, smoke: smoke["profile"].update({"profile_fingerprint": "f" * 64}),
             "разным TTS profiles",
         ),
         (
-            lambda doctor, smoke: smoke["model"].update(
-                {"config_sha256": "f" * 64}
-            ),
+            lambda doctor, smoke: smoke["model"].update({"config_sha256": "f" * 64}),
             "разным model configs",
         ),
         (
-            lambda doctor, smoke: doctor["runtime"].update(
-                {"session_opened": True}
-            ),
+            lambda doctor, smoke: doctor["runtime"].update({"session_opened": True}),
             "не должен открывать",
         ),
         (
-            lambda doctor, smoke: smoke["output"].update(
-                {"audio_retained": True}
-            ),
+            lambda doctor, smoke: smoke["output"].update({"audio_retained": True}),
             "не подтверждает удаление audio",
         ),
     ],
@@ -298,9 +287,7 @@ def test_attestation_rejects_path_bearing_source_report_key() -> None:
 
 
 def test_attestation_digest_detects_tampering() -> None:
-    attestation = build_weighted_tts_attestation(
-        _doctor_report(), _smoke_report(), _context()
-    )
+    attestation = build_weighted_tts_attestation(_doctor_report(), _smoke_report(), _context())
     tampered = copy.deepcopy(attestation)
     tampered["result"]["output_duration_seconds"] = 9.0
     with pytest.raises(ValueError, match="digest"):
@@ -314,10 +301,7 @@ def test_attestation_context_rejects_non_main_or_wrong_workflow() -> None:
             commit_sha=COMMIT_SHA,
             ref="refs/heads/feature",
             event_name="workflow_dispatch",
-            workflow_ref=(
-                "FedorMilovanov/mp3telegrambot/"
-                ".github/workflows/tts-weighted-smoke.yml@refs/heads/feature"
-            ),
+            workflow_ref=("FedorMilovanov/mp3telegrambot/.github/workflows/tts-weighted-smoke.yml@refs/heads/feature"),
             run_id=1,
             run_attempt=1,
         )

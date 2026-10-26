@@ -10,6 +10,7 @@ Gemini transport remains source-owned here, but all expensive Files/inference
 operations use the shared capacity gate and one initial+2 budget per failure
 domain. API-key count therefore cannot multiply one 503 event.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -112,9 +113,7 @@ def technical_check(dub_path: Path, expected_duration: int) -> list[str]:
     info = _ffprobe_json(dub_path)
     if info is None:
         if shutil.which("ffprobe"):
-            warnings.append(
-                "файл не читается ffprobe — возможно, загрузка оборвалась"
-            )
+            warnings.append("файл не читается ffprobe — возможно, загрузка оборвалась")
         return warnings
 
     try:
@@ -126,9 +125,7 @@ def technical_check(dub_path: Path, expected_duration: int) -> list[str]:
         try:
             from services.livedub_mix import get_mix_params
 
-            allowed_extra = (
-                (get_mix_params().get("tail_pad_ms") or 0) / 1000.0 + 0.75
-            )
+            allowed_extra = (get_mix_params().get("tail_pad_ms") or 0) / 1000.0 + 0.75
         except Exception:
             allowed_extra = 0.0
         delta = dub_duration - expected_duration
@@ -153,17 +150,10 @@ def technical_check(dub_path: Path, expected_duration: int) -> list[str]:
         warnings.append("в файле нет видеопотока")
 
     if has_audio:
-        sample_start = (
-            expected_duration * 0.1
-            if expected_duration and expected_duration > 300
-            else 0.0
-        )
+        sample_start = expected_duration * 0.1 if expected_duration and expected_duration > 300 else 0.0
         mean_db = _mean_volume_db(dub_path, start=sample_start)
         if mean_db is not None and mean_db < -50.0:
-            warnings.append(
-                f"звук почти тишина (средняя громкость {mean_db:.0f} дБ) — "
-                "дубляж мог не наложиться"
-            )
+            warnings.append(f"звук почти тишина (средняя громкость {mean_db:.0f} дБ) — дубляж мог не наложиться")
 
     return warnings
 
@@ -251,11 +241,7 @@ def _extract_audio_for_qa(video_path: Path, out_path: Path) -> Optional[Path]:
             capture_output=True,
             timeout=600,
         )
-        if (
-            proc.returncode == 0
-            and out_path.exists()
-            and out_path.stat().st_size > 1024
-        ):
+        if proc.returncode == 0 and out_path.exists() and out_path.stat().st_size > 1024:
             return out_path
     except Exception as exc:
         logger.warning("[LiveDubQA] audio extract failed: %s", exc)
@@ -298,9 +284,7 @@ async def _upload_and_wait(
         start = loop.time()
         while uf.state == "PROCESSING":
             if loop.time() - start > _QA_UPLOAD_WAIT:
-                raise TimeoutError(
-                    f"Gemini file processing timeout ({_QA_UPLOAD_WAIT}s)"
-                )
+                raise TimeoutError(f"Gemini file processing timeout ({_QA_UPLOAD_WAIT}s)")
             await asyncio.sleep(3)
             uf = await capacity_control.run_heavy_gemini_call(
                 lambda _name=uf.name: client.aio.files.get(name=_name),
@@ -426,17 +410,13 @@ async def _run_translation_qa_base(
         if dub_srt_path and Path(dub_srt_path).exists():
             dub_timed_text = srt_to_timed_text(dub_srt_path)
             if not dub_timed_text:
-                logger.warning(
-                    "[LiveDubQA] SRT перевода пустой/битый — перехожу на аудио дубляжа"
-                )
+                logger.warning("[LiveDubQA] SRT перевода пустой/битый — перехожу на аудио дубляжа")
         _have_srt = bool(dub_timed_text)
         dub_audio = None
         if not _have_srt:
             if dub_audio_path and Path(dub_audio_path).exists():
                 dub_audio = Path(dub_audio_path)
-                logger.info(
-                    "[LiveDubQA] сравниваю по ЧИСТОЙ RU-дорожке (без EN-фона микса)"
-                )
+                logger.info("[LiveDubQA] сравниваю по ЧИСТОЙ RU-дорожке (без EN-фона микса)")
             else:
                 dub_audio = await asyncio.get_running_loop().run_in_executor(
                     None,
@@ -446,15 +426,12 @@ async def _run_translation_qa_base(
                 logger.warning("[LiveDubQA] не удалось извлечь аудио дубляжа")
                 return None
         else:
-            logger.info(
-                "[LiveDubQA] есть SRT перевода — сравниваю EN-аудио с текстом без извлечения дубляжа"
-            )
+            logger.info("[LiveDubQA] есть SRT перевода — сравниваю EN-аудио с текстом без извлечения дубляжа")
 
-        original_path_available = bool(
-            original_audio_path and Path(original_audio_path).exists()
-        )
+        original_path_available = bool(original_audio_path and Path(original_audio_path).exists())
         existing_original_active = bool(
-            existing_audio_part is not None and existing_client is not None
+            existing_audio_part is not None
+            and existing_client is not None
             and "ACTIVE" in str(getattr(existing_audio_part, "state", ""))
         )
         _will_attach_original = original_path_available or existing_original_active
@@ -471,17 +448,14 @@ async def _run_translation_qa_base(
                 elif isinstance(timestamps, str):
                     ref_lines.append(timestamps[:4000])
             if not ref_lines and not _have_srt:
-                logger.info(
-                    "[LiveDubQA] нет ни оригинала, ни анализа — проверка невозможна"
-                )
+                logger.info("[LiveDubQA] нет ни оригинала, ни анализа — проверка невозможна")
                 return None
             if not ref_lines:
                 logger.info("[LiveDubQA] нет эталона оригинала — проверка пропущена")
                 return None
             reference_block = (
                 "Оригинальное аудио недоступно. Вместо него используй этот "
-                "проверенный конспект оригинала как эталон смысла:\n"
-                + "\n".join(ref_lines)
+                "проверенный конспект оригинала как эталон смысла:\n" + "\n".join(ref_lines)
             )
 
         dub_text_block = ""
@@ -489,8 +463,7 @@ async def _run_translation_qa_base(
             dub_text_block = (
                 "\n\nТОЧНЫЙ ТЕКСТ русского дубляжа (официальные субтитры "
                 "перевода Яндекса с таймкодами — цитируй поле heard ИЗ НЕГО, "
-                "таймкоды бери отсюда):\n"
-                + dub_timed_text
+                "таймкоды бери отсюда):\n" + dub_timed_text
             )
             logger.info(
                 "[LiveDubQA] использую текст перевода из SRT (%d строк)",
@@ -499,15 +472,9 @@ async def _run_translation_qa_base(
 
         if reference_block:
             if _have_srt:
-                reference_block += (
-                    "\n\nАудиофайлы НЕ приложены: сравнивай конспект оригинала "
-                    "с текстом дубляжа ниже."
-                )
+                reference_block += "\n\nАудиофайлы НЕ приложены: сравнивай конспект оригинала с текстом дубляжа ниже."
             else:
-                reference_block += (
-                    "\n\nЕдинственный приложенный аудиофайл — русский ДУБЛЯЖ "
-                    "(озвучка перевода)."
-                )
+                reference_block += "\n\nЕдинственный приложенный аудиофайл — русский ДУБЛЯЖ (озвучка перевода)."
         elif _have_srt:
             reference_block = (
                 "Приложен ОДИН аудиофайл — английский ОРИГИНАЛ. Русский дубляж "
@@ -515,10 +482,7 @@ async def _run_translation_qa_base(
                 "сравнивай аудио оригинала с этим текстом."
             )
         else:
-            reference_block = (
-                "Первый файл — ОРИГИНАЛ (англ.), второй — ДУБЛЯЖ (рус.). "
-                "Сравнивай их напрямую."
-            )
+            reference_block = "Первый файл — ОРИГИНАЛ (англ.), второй — ДУБЛЯЖ (рус.). Сравнивай их напрямую."
 
         prompt = _QA_PROMPT.format(reference_block=reference_block + dub_text_block)
 
@@ -527,16 +491,11 @@ async def _run_translation_qa_base(
             client_used = client
             parts = []
             if existing_original_active and existing_client is client:
-                logger.info(
-                    "[LiveDubQA] реюз audio_part основного анализа "
-                    "(без повторной заливки)"
-                )
+                logger.info("[LiveDubQA] реюз audio_part основного анализа (без повторной заливки)")
                 parts.append(existing_audio_part)
             elif original_audio_path and original_path_available:
                 if original_upload_budget.exhausted:
-                    raise RuntimeError(
-                        "LiveDub QA original Files retry budget exhausted"
-                    )
+                    raise RuntimeError("LiveDub QA original Files retry budget exhausted")
                 orig_path = Path(original_audio_path)
                 upload_orig = orig_path
                 if orig_path.suffix.lower() not in {".mp3", ".mpeg", ".mpga"}:
@@ -546,9 +505,7 @@ async def _run_translation_qa_base(
                         lambda: _extract_audio_for_qa(orig_path, tmp_path),
                     )
                     if extracted is None:
-                        logger.warning(
-                            "[LiveDubQA] не удалось извлечь оригинальное аудио для QA"
-                        )
+                        logger.warning("[LiveDubQA] не удалось извлечь оригинальное аудио для QA")
                         return None
                     _temp_original_audio = Path(extracted)
                     upload_orig = _temp_original_audio
@@ -607,17 +564,14 @@ async def _run_translation_qa_base(
                     first_error,
                 )
                 if is_overload_error(first_error):
-                    capacity_control.note_overload(
-                        capacity_control.transient_retry_delay(inference_budget.used)
-                    )
+                    capacity_control.note_overload(capacity_control.transient_retry_delay(inference_budget.used))
                 if _transient_gemini_error(first_error):
                     raise
                 if inference_budget.exhausted:
                     raise
 
                 logger.info(
-                    "[LiveDubQA] JSON-mime недоступен (%s) — один bounded "
-                    "повтор в текстовом режиме",
+                    "[LiveDubQA] JSON-mime недоступен (%s) — один bounded повтор в текстовом режиме",
                     str(first_error)[:120],
                 )
                 inference_budget.claim()
@@ -643,11 +597,7 @@ async def _run_translation_qa_base(
                         fallback_error,
                     )
                     if is_overload_error(fallback_error):
-                        capacity_control.note_overload(
-                            capacity_control.transient_retry_delay(
-                                inference_budget.used
-                            )
-                        )
+                        capacity_control.note_overload(capacity_control.transient_retry_delay(inference_budget.used))
                     raise
 
         last_err = None
@@ -659,16 +609,13 @@ async def _run_translation_qa_base(
 
         if existing_original_active and not original_path_available:
             if existing_client not in _clients_order:
-                logger.warning(
-                    "[LiveDubQA] key-bound original handle owner is unavailable"
-                )
+                logger.warning("[LiveDubQA] key-bound original handle owner is unavailable")
                 return None
             _clients_order = [existing_client] * inference_budget.limit
 
         for client in _clients_order:
             needs_original_upload = bool(
-                original_path_available
-                and not (existing_original_active and existing_client is client)
+                original_path_available and not (existing_original_active and existing_client is client)
             )
             needs_files = bool(needs_original_upload or dub_audio is not None)
             if quota_tracker.should_skip(client, "inference"):
@@ -684,17 +631,13 @@ async def _run_translation_qa_base(
 
             left = _qa_deadline - asyncio.get_running_loop().time()
             if left < 45:
-                logger.warning(
-                    "[LiveDubQA] общий бюджет времени исчерпан — стоп ротации ключей"
-                )
+                logger.warning("[LiveDubQA] общий бюджет времени исчерпан — стоп ротации ключей")
                 break
             try:
                 resp = await asyncio.wait_for(_attempt(client), timeout=left)
                 raw_text = getattr(resp, "text", "") or ""
                 result = _parse_qa_json(raw_text)
-                if isinstance(result, dict) and (
-                    "issues" in result or "score" in result or "verdict" in result
-                ):
+                if isinstance(result, dict) and ("issues" in result or "score" in result or "verdict" in result):
                     result.setdefault("issues", [])
                     if not _will_attach_original:
                         result.setdefault("_low_confidence", True)
@@ -705,8 +648,7 @@ async def _run_translation_qa_base(
                     finish_reason = getattr(candidate, "finish_reason", "?")
                     usage = getattr(resp, "usage_metadata", None)
                     logger.warning(
-                        "[LiveDubQA] не распарсился: finish=%s thoughts=%s "
-                        "out=%s text_head=%r",
+                        "[LiveDubQA] не распарсился: finish=%s thoughts=%s out=%s text_head=%r",
                         finish_reason,
                         getattr(usage, "thoughts_token_count", "?"),
                         getattr(usage, "candidates_token_count", "?"),
@@ -730,9 +672,7 @@ async def _run_translation_qa_base(
                 uploaded.clear()
 
             if last_err is not None and is_overload_error(last_err):
-                capacity_control.note_overload(
-                    capacity_control.transient_retry_delay(max(1, inference_budget.used))
-                )
+                capacity_control.note_overload(capacity_control.transient_retry_delay(max(1, inference_budget.used)))
 
         logger.warning(
             "[LiveDubQA] bounded QA budget exhausted/clients unavailable: %s",
@@ -812,9 +752,7 @@ async def run_translation_qa(
 def _format_qa_report_base(qa: dict, video_url: str = "") -> str:
     score = qa.get("score")
     verdict = str(qa.get("verdict") or "").strip()
-    issues = [
-        issue for issue in (qa.get("issues") or []) if isinstance(issue, dict)
-    ]
+    issues = [issue for issue in (qa.get("issues") or []) if isinstance(issue, dict)]
 
     if isinstance(score, (int, float)) and score >= 95 and not issues:
         head = f"✅ <b>Проверка перевода: {score:.0f}/100</b>"
@@ -927,7 +865,4 @@ def validate_livedub_qa_contract() -> str:
         )
     ):
         raise RuntimeError("source-owned LiveDub QA contract is incomplete")
-    return (
-        "source-owned LiveDub QA: base -> segmented coverage -> "
-        "focused confirmation"
-    )
+    return "source-owned LiveDub QA: base -> segmented coverage -> focused confirmation"

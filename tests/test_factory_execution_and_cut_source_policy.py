@@ -28,7 +28,10 @@ def test_factory_russian_audio_skips_translation_even_with_english_title():
     assert factory_language_needs_translation("ru") is False
 
 
-@pytest.mark.parametrize(("value", "expected"), [("en-US", "en"), ("English", "en"), ("русский", "ru"), ("ukr", "uk"), ("Belarusian", "be"), ("fr-FR", "fr")])
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("en-US", "en"), ("English", "en"), ("русский", "ru"), ("ukr", "uk"), ("Belarusian", "be"), ("fr-FR", "fr")],
+)
 def test_factory_language_normalization(value, expected):
     assert normalize_factory_language(value) == expected
 
@@ -44,18 +47,32 @@ def test_factory_unknown_language_is_fail_closed_without_title_guessing():
 
 
 def test_factory_translation_preflight_requires_route_and_oauth_by_default():
-    assert factory_translation_preflight_issues(oauth_present=False, helper_available=False, cli_available=False, require_oauth=True) == (
+    assert factory_translation_preflight_issues(
+        oauth_present=False, helper_available=False, cli_available=False, require_oauth=True
+    ) == (
         "Yandex LiveDub client route is unavailable",
         "VOT_API_TOKEN/YANDEX_OAUTH_TOKEN is missing",
     )
 
 
 def test_factory_translation_preflight_allows_explicit_cached_only_opt_out():
-    assert factory_translation_preflight_issues(oauth_present=False, helper_available=True, cli_available=False, require_oauth=False) == ()
+    assert (
+        factory_translation_preflight_issues(
+            oauth_present=False, helper_available=True, cli_available=False, require_oauth=False
+        )
+        == ()
+    )
 
 
 def test_factory_preflight_reports_every_missing_runtime_dependency():
-    assert factory_preflight_issues(gemini_available=False, whisper_available=False, ffmpeg_available=False, ffprobe_available=False, free_gb=0.4, min_free_gb=2.0) == (
+    assert factory_preflight_issues(
+        gemini_available=False,
+        whisper_available=False,
+        ffmpeg_available=False,
+        ffprobe_available=False,
+        free_gb=0.4,
+        min_free_gb=2.0,
+    ) == (
         "Gemini API clients are unavailable",
         "faster-whisper is unavailable",
         "ffmpeg is unavailable",

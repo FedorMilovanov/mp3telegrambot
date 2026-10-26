@@ -6,6 +6,7 @@ Canonical project/request identity, implementation/model/runtime-aware cache
 signatures, deterministic child imports, collision-safe reports and worker
 heartbeat are implemented directly here; no shadow package is involved.
 """
+
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -41,7 +42,14 @@ _ACTIONS = {
     "render_custom",
     "repair_audio",
 }
-_MODULES = ('tools.voxcpm2.final_media_qa', 'tools.voxcpm2.examples.john_piper_z20py4yqhyq.master_constant_mix', 'tools.voxcpm2.examples.john_piper_z20py4yqhyq.voxcpm2_cpu_shorts_production', 'voxcpm', 'torch', 'soundfile')
+_MODULES = (
+    "tools.voxcpm2.final_media_qa",
+    "tools.voxcpm2.examples.john_piper_z20py4yqhyq.master_constant_mix",
+    "tools.voxcpm2.examples.john_piper_z20py4yqhyq.voxcpm2_cpu_shorts_production",
+    "voxcpm",
+    "torch",
+    "soundfile",
+)
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -167,9 +175,7 @@ def _project_root(
     except ValueError as exc:
         raise RuntimeError("Project root escaped Dub Studio projects directory.") from exc
     if _normalized_path(root) != _normalized_path(expected):
-        raise RuntimeError(
-            "Preflight: work_root проекта не совпадает с его canonical project ID."
-        )
+        raise RuntimeError("Preflight: work_root проекта не совпадает с его canonical project ID.")
     return root
 
 
@@ -178,7 +184,6 @@ def _path_setting(request: dict[str, Any], key: str, default: str) -> Path:
     if not isinstance(value, str) or not value.strip() or "\x00" in value:
         raise RuntimeError(f"Preflight: request.{key} должен быть непустым путём.")
     return Path(value.strip()).expanduser().resolve()
-
 
 
 def _runtime_paths(
@@ -199,14 +204,12 @@ def _runtime_paths(
     missing_methods = [name for name in required if not callable(getattr(backend, name, None))]
     if missing_methods:
         raise RuntimeError(
-            "Preflight: выбранный speech backend не реализует production contract: "
-            + ", ".join(missing_methods)
+            "Preflight: выбранный speech backend не реализует production contract: " + ", ".join(missing_methods)
         )
     missing = backend.capabilities().missing()
     if missing:
         raise RuntimeError(
-            f"Preflight: backend {backend.backend_id} не проходит production capability gate: "
-            f"{', '.join(missing)}."
+            f"Preflight: backend {backend.backend_id} не проходит production capability gate: {', '.join(missing)}."
         )
     runtime = backend.runtime_paths(repo, request)
     environment_policy = backend.process_environment(
@@ -317,7 +320,7 @@ def _decode_probe_payload(stdout: str) -> tuple[dict[str, Any], str]:
         if not line.startswith(PREFLIGHT_JSON_MARKER):
             continue
         marker_index = index
-        raw = line[len(PREFLIGHT_JSON_MARKER):].strip()
+        raw = line[len(PREFLIGHT_JSON_MARKER) :].strip()
         try:
             candidate = json.loads(raw)
         except json.JSONDecodeError as exc:
@@ -328,19 +331,15 @@ def _decode_probe_payload(stdout: str) -> tuple[dict[str, Any], str]:
             continue
         payload = candidate
         break
-    noise_lines = [
-        line for index, line in enumerate(lines)
-        if index != marker_index and line.strip()
-    ]
+    noise_lines = [line for index, line in enumerate(lines) if index != marker_index and line.strip()]
     noise = "\n".join(noise_lines)[-PREFLIGHT_MAX_DIAGNOSTIC_CHARS:]
     if payload is None:
         detail = f" Последняя ошибка: {parse_error}." if parse_error else ""
         if noise:
             detail += " stdout tail:\n" + noise
-        raise RuntimeError(
-            "Preflight: CPU runtime не вернул маркированный JSON." + detail
-        )
+        raise RuntimeError("Preflight: CPU runtime не вернул маркированный JSON." + detail)
     return payload, noise
+
 
 def _probe_imports(paths: dict[str, Any]) -> dict[str, Any]:
     python = Path(paths["cpu_python"]).resolve()
@@ -376,10 +375,7 @@ def _probe_imports(paths: dict[str, Any]) -> dict[str, Any]:
     )
     if int(process.returncode) != 0:
         tail = (process.stderr or process.stdout or "")[-8000:]
-        raise RuntimeError(
-            "Preflight: CPU runtime/import graph завершился с кодом "
-            f"{process.returncode}:\n{tail}"
-        )
+        raise RuntimeError(f"Preflight: CPU runtime/import graph завершился с кодом {process.returncode}:\n{tail}")
 
     payload, stdout_noise = _decode_probe_payload(process.stdout or "")
     loaded = payload.get("loaded") if isinstance(payload, dict) else None
@@ -414,9 +410,7 @@ def _probe_imports(paths: dict[str, Any]) -> dict[str, Any]:
     if final_qa_module.startswith("tools."):
         expected_final_qa = repo / (final_qa_module.replace(".", "/") + ".py")
         if not expected_final_qa.is_file():
-            raise RuntimeError(
-                f"Preflight: canonical final QA source owner не найден: {expected_final_qa}"
-            )
+            raise RuntimeError(f"Preflight: canonical final QA source owner не найден: {expected_final_qa}")
         if _normalized_path(final_qa) != _normalized_path(expected_final_qa):
             raise RuntimeError("Preflight: final QA загружен не из canonical source owner.")
 
@@ -560,31 +554,33 @@ def run(
         return report
 
 
-__all__ = sorted({
-    "_decode_probe_payload",
-    "PREFLIGHT_JSON_MARKER",
-    "PREFLIGHT_RUNTIME_PATH_POLICY",
-    "PREFLIGHT_JSON_TRANSPORT_POLICY",
-    "POLICY",
-    "PREFLIGHT_HEARTBEAT_SECONDS",
-    "REPORT_SCHEMA",
-    "_ACTIONS",
-    "_MODULES",
-    "_atomic_json",
-    "_cache_hit",
-    "_claimed_job_context",
-    "_implementation_identity",
-    "_preflight_heartbeat",
-    "_probe_imports",
-    "_project_root",
-    "_read_json",
-    "_read_report",
-    "_runtime_paths",
-    "_signature",
-    "os",
-    "repo_root",
-    "run",
-    "shutil",
-    "studio_root",
-    "subprocess",
-})
+__all__ = sorted(
+    {
+        "_decode_probe_payload",
+        "PREFLIGHT_JSON_MARKER",
+        "PREFLIGHT_RUNTIME_PATH_POLICY",
+        "PREFLIGHT_JSON_TRANSPORT_POLICY",
+        "POLICY",
+        "PREFLIGHT_HEARTBEAT_SECONDS",
+        "REPORT_SCHEMA",
+        "_ACTIONS",
+        "_MODULES",
+        "_atomic_json",
+        "_cache_hit",
+        "_claimed_job_context",
+        "_implementation_identity",
+        "_preflight_heartbeat",
+        "_probe_imports",
+        "_project_root",
+        "_read_json",
+        "_read_report",
+        "_runtime_paths",
+        "_signature",
+        "os",
+        "repo_root",
+        "run",
+        "shutil",
+        "studio_root",
+        "subprocess",
+    }
+)

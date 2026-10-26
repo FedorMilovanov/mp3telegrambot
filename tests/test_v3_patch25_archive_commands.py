@@ -132,16 +132,18 @@ def test_archive_formatter_truncates_without_breaking_html_tags():
 
     records = []
     for i in range(40):
-        records.append({
-            "title": "Очень длинное название <с тегами> & сущностями " * 20,
-            "author": "Автор & проверка <HTML>",
-            "publication_status": "complete",
-            "youtube_url": f"https://youtu.be/video{i}?q=<bad>&x=1",
-            "synopsis_url": f"https://telegra.ph/page{i}",
-            "study_url": f"https://telegra.ph/study{i}",
-            "reflection_url": f"https://telegra.ph/refl{i}",
-            "publication_warning": "warning <must escape> & details " * 20,
-        })
+        records.append(
+            {
+                "title": "Очень длинное название <с тегами> & сущностями " * 20,
+                "author": "Автор & проверка <HTML>",
+                "publication_status": "complete",
+                "youtube_url": f"https://youtu.be/video{i}?q=<bad>&x=1",
+                "synopsis_url": f"https://telegra.ph/page{i}",
+                "study_url": f"https://telegra.ph/study{i}",
+                "reflection_url": f"https://telegra.ph/refl{i}",
+                "publication_warning": "warning <must escape> & details " * 20,
+            }
+        )
 
     text = _archive_format_records(records, title="Архив <опасный> & длинный")
 

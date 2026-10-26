@@ -60,9 +60,7 @@ def test_verified_source_cache_reuses_only_same_video(monkeypatch, tmp_path) -> 
     assert download_calls == 2
     assert source.read_bytes()[:8] == b"B" * 8
 
-    manifest = json.loads(
-        source.with_suffix(".mp4.download.json").read_text(encoding="utf-8")
-    )
+    manifest = json.loads(source.with_suffix(".mp4.download.json").read_text(encoding="utf-8"))
     assert manifest["policy"] == source_cache.POLICY
     assert manifest["video_id"] == "video-two"
     assert manifest["size_bytes"] == 120_000
@@ -196,5 +194,3 @@ def test_invalid_metadata_video_id_is_rejected(monkeypatch) -> None:
     )
     with pytest.raises(RuntimeError, match="корректный YouTube video ID"):
         source_cache._metadata("https://youtu.be/AbCdEf12345")
-
-

@@ -19,6 +19,7 @@ Dependabot-бамп lock'а оставлял этот workflow на старой
 Usage:
     python tools/install_from_lock.py [--dry-run] [--lock PATH] NAME [NAME ...]
 """
+
 from __future__ import annotations
 
 import argparse

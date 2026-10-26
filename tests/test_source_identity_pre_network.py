@@ -58,5 +58,3 @@ def test_matching_project_identity_delegates_to_verified_downloader(
     assert calls == [
         ("https://youtube.com/watch?v=AbCdEf12345", source),
     ]
-
-

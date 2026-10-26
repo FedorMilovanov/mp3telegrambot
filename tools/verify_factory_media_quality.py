@@ -12,6 +12,7 @@ never required by the normal test suite; the URL mode exists for explicit live
 verification runs and writes a machine-readable JSON report plus representative
 frames.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -59,8 +60,7 @@ def _run(command: list[str], *, timeout: int = 1800) -> subprocess.CompletedProc
     if result.returncode != 0:
         rendered = " ".join(command)
         raise RuntimeError(
-            f"command failed ({result.returncode}): {rendered}\n"
-            f"{(result.stderr or result.stdout or '')[-2000:]}"
+            f"command failed ({result.returncode}): {rendered}\n{(result.stderr or result.stdout or '')[-2000:]}"
         )
     return result
 
@@ -104,19 +104,11 @@ def _probe(path: Path) -> dict[str, Any]:
     if not isinstance(streams, list):
         streams = []
     video = next(
-        (
-            row
-            for row in streams
-            if isinstance(row, dict) and row.get("codec_type") == "video"
-        ),
+        (row for row in streams if isinstance(row, dict) and row.get("codec_type") == "video"),
         {},
     )
     audio = next(
-        (
-            row
-            for row in streams
-            if isinstance(row, dict) and row.get("codec_type") == "audio"
-        ),
+        (row for row in streams if isinstance(row, dict) and row.get("codec_type") == "audio"),
         {},
     )
     fmt = data.get("format") if isinstance(data.get("format"), dict) else {}
@@ -192,18 +184,22 @@ def _download_live_section(
     start = _timestamp(start_seconds)
     end = _timestamp(start_seconds + duration_seconds)
     template = output_dir / "live_source_1080.%(ext)s"
-    command = list(YTDLP_BASE_ARGS) + _factory_quality_sort_reset() + [
-        "--download-sections",
-        f"*{start}-{end}",
-        "--format",
-        FACTORY_VIDEO_FORMAT,
-        "--merge-output-format",
-        "mkv",
-        "--no-playlist",
-        "--output",
-        str(template),
-        url,
-    ]
+    command = (
+        list(YTDLP_BASE_ARGS)
+        + _factory_quality_sort_reset()
+        + [
+            "--download-sections",
+            f"*{start}-{end}",
+            "--format",
+            FACTORY_VIDEO_FORMAT,
+            "--merge-output-format",
+            "mkv",
+            "--no-playlist",
+            "--output",
+            str(template),
+            url,
+        ]
+    )
     _run(command, timeout=1800)
     candidates = sorted(
         (
@@ -322,19 +318,10 @@ def _ssim(reference: Path, distorted: Path) -> float:
         raise RuntimeError("reference dimensions are unavailable")
     ffmpeg = _which_required("ffmpeg")
     dist_chain = "[0:v]setpts=PTS-STARTPTS"
-    if (
-        dist_probe["width"] != ref_probe["width"]
-        or dist_probe["height"] != ref_probe["height"]
-    ):
-        dist_chain += (
-            f",scale={ref_probe['width']}:{ref_probe['height']}:flags=lanczos"
-        )
+    if dist_probe["width"] != ref_probe["width"] or dist_probe["height"] != ref_probe["height"]:
+        dist_chain += f",scale={ref_probe['width']}:{ref_probe['height']}:flags=lanczos"
     dist_chain += "[dist]"
-    filter_graph = (
-        f"{dist_chain};"
-        "[1:v]setpts=PTS-STARTPTS[ref];"
-        "[dist][ref]ssim"
-    )
+    filter_graph = f"{dist_chain};[1:v]setpts=PTS-STARTPTS[ref];[dist][ref]ssim"
     result = subprocess.run(
         [
             ffmpeg,
@@ -400,13 +387,9 @@ def _assert_quality(report: dict[str, Any]) -> None:
     if short["new_video_encode_stages_pre_subtitle"] >= short["old_video_encode_stages_pre_subtitle"]:
         raise RuntimeError("Factory Short did not remove the redundant video generation")
     if short["new_ssim"] <= short["old_ssim"]:
-        raise RuntimeError(
-            f"Factory Short live quality did not improve: {short['old_ssim']} -> {short['new_ssim']}"
-        )
+        raise RuntimeError(f"Factory Short live quality did not improve: {short['old_ssim']} -> {short['new_ssim']}")
     if long["new_ssim"] <= long["old_ssim"]:
-        raise RuntimeError(
-            f"Factory LONG live quality did not improve: {long['old_ssim']} -> {long['new_ssim']}"
-        )
+        raise RuntimeError(f"Factory LONG live quality did not improve: {long['old_ssim']} -> {long['new_ssim']}")
     new_long = long["new"]
     if new_long["height"] > 1080 or new_long["width"] > 1920:
         raise RuntimeError(f"Factory LONG exceeded the <=1080p publication ceiling: {new_long}")
@@ -424,10 +407,7 @@ def verify(
     os.environ["VIDEO_FORCE_CPU"] = "1"
     source_probe = _probe(source_1080)
     if source_probe["height"] <= 720 or source_probe["height"] > 1080:
-        raise RuntimeError(
-            "evidence source must contain real detail above 720p and remain <=1080p: "
-            f"{source_probe}"
-        )
+        raise RuntimeError(f"evidence source must contain real detail above 720p and remain <=1080p: {source_probe}")
     if not source_probe["audio_codec"]:
         raise RuntimeError("evidence source must contain audio for normalize-only verification")
 
@@ -447,9 +427,7 @@ def verify(
     _encode_short(source_1080, new_short_stage1)
 
     before_copy_hash = _video_stream_hash(new_short_stage1)
-    copy_ok = asyncio.run(
-        normalize_factory_short_audio_copy_video(new_short_stage1, new_short_post)
-    )
+    copy_ok = asyncio.run(normalize_factory_short_audio_copy_video(new_short_stage1, new_short_post))
     if not copy_ok:
         raise RuntimeError("current Factory normalize-only video-copy path failed")
     after_copy_hash = _video_stream_hash(new_short_post)

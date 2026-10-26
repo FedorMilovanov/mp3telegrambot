@@ -8,6 +8,7 @@ endpoint metrics, and leaves speaker similarity/prosody selection to listening.
 It adapts to the installed ``voxcpm`` API by inspecting ``model.generate`` and
 only passing optional arguments such as ``seed`` when they are supported.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -48,11 +49,7 @@ def looks_like_model_dir(path: Path) -> bool:
     return (
         path.is_dir()
         and (path / "config.json").exists()
-        and (
-            (path / "model.safetensors").exists()
-            or any(path.glob("*.safetensors"))
-            or any(path.glob("*.bin"))
-        )
+        and ((path / "model.safetensors").exists() or any(path.glob("*.safetensors")) or any(path.glob("*.bin")))
     )
 
 
@@ -75,14 +72,8 @@ def discover_model(archive_root: Path, explicit: str | None) -> Path:
         raise RuntimeError(f"model path is not a VoxCPM2 snapshot: {path}")
 
     candidates = [
-        archive_root
-        / "models"
-        / "voxcpm2-model-cache"
-        / "models--openbmb--VoxCPM2",
-        archive_root
-        / "models"
-        / "voxcpm2-model-cache"
-        / "models--OpenBMB--VoxCPM2",
+        archive_root / "models" / "voxcpm2-model-cache" / "models--openbmb--VoxCPM2",
+        archive_root / "models" / "voxcpm2-model-cache" / "models--OpenBMB--VoxCPM2",
     ]
     for candidate in candidates:
         if looks_like_model_dir(candidate):
@@ -228,10 +219,7 @@ def main() -> int:
     parser.add_argument("--output-dir", required=True)
     parser.add_argument(
         "--text",
-        default=(
-            "Это движение ничего к нему не добавляет. "
-            "Оно лишь умаляет истину и вносит путаницу."
-        ),
+        default=("Это движение ничего к нему не добавляет. Оно лишь умаляет истину и вносит путаницу."),
     )
     parser.add_argument("--cfg-values", type=parse_csv_floats, default=[1.55, 1.75, 1.95])
     parser.add_argument("--steps-values", type=parse_csv_ints, default=[10])

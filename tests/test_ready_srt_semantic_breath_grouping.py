@@ -24,10 +24,7 @@ def test_short_heading_and_following_thought_become_one_breath() -> None:
     assert len(groups) == 1
     assert groups[0]["grouping_policy"] == "ready-srt-semantic-breath-grouping-v1"
     assert groups[0]["source_cue_count"] == 3
-    assert groups[0]["source"] == (
-        "Двадцать пятый стих: Она облечена силой и достоинством "
-        "и смеётся над грядущим."
-    )
+    assert groups[0]["source"] == ("Двадцать пятый стих: Она облечена силой и достоинством и смеётся над грядущим.")
 
 
 def test_large_source_gap_is_a_hard_breath_boundary() -> None:
@@ -69,9 +66,7 @@ def test_grouping_preserves_every_word_and_outer_anchors() -> None:
 
     assert groups[0]["start"] == 0.20
     assert groups[-1]["end"] == 5.05
-    assert " ".join(item["source"] for item in groups) == (
-        "Раз, два, три и четыре. Следующее предложение здесь."
-    )
+    assert " ".join(item["source"] for item in groups) == ("Раз, два, три и четыре. Следующее предложение здесь.")
 
 
 def test_physically_overloaded_single_cue_fails_closed() -> None:

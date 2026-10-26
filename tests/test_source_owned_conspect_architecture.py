@@ -29,30 +29,37 @@ def test_manifest_has_no_conspect_mutator_feature():
 
 
 def test_word_study_schema_and_normalization_are_source_owned():
-    block = (
-        expanded_page_response_schema()["properties"]["sections"]["items"]
-        ["properties"]["blocks"]["items"]
-    )
+    block = expanded_page_response_schema()["properties"]["sections"]["items"]["properties"]["blocks"]["items"]
     assert "word_study" in block["properties"]["type"]["enum"]
     for field in (
-        "scripture_ref", "russian_quote", "russian_focus", "original_form",
-        "transliteration", "russian_pronunciation", "grammar", "basic_meaning",
-        "meaning_in_context", "limits_of_claim", "source",
+        "scripture_ref",
+        "russian_quote",
+        "russian_focus",
+        "original_form",
+        "transliteration",
+        "russian_pronunciation",
+        "grammar",
+        "basic_meaning",
+        "meaning_in_context",
+        "limits_of_claim",
+        "source",
     ):
         assert field in block["properties"]
 
     dropped = normalize_structured_block({"type": "word_study"})
     assert dropped and dropped.get("_drop_word_study") is True
 
-    rendered = normalize_structured_block({
-        "type": "word_study",
-        "scripture_ref": "Ин. 1:1",
-        "russian_focus": "Слово",
-        "original_form": "λόγος",
-        "lemma": "λόγος",
-        "meaning_in_context": "слово в контексте пролога",
-        "role_in_argument": "уточняет связь тезиса с текстом",
-    })
+    rendered = normalize_structured_block(
+        {
+            "type": "word_study",
+            "scripture_ref": "Ин. 1:1",
+            "russian_focus": "Слово",
+            "original_form": "λόγος",
+            "lemma": "λόγος",
+            "meaning_in_context": "слово в контексте пролога",
+            "role_in_argument": "уточняет связь тезиса с текстом",
+        }
+    )
     assert rendered and rendered["type"] == "paragraph"
     assert "λόγος" in rendered["text"]
 
@@ -82,7 +89,7 @@ def test_content_audit_owns_teacherly_warnings_and_small_time_reconcile():
 def test_telegraph_owns_teacherly_prompt_and_strict_study_retry_improvement():
     src = _src("services/telegraph_pages.py")
     assert "study_synthesis_policy import TEACHERLY_STUDY_PROMPT as STUDY_ANALYSIS_PROMPT" in src
-    assert 'improved = after_warnings < before_warnings' in src
+    assert "improved = after_warnings < before_warnings" in src
     assert 'label != "StudyAnalysis"' in src
 
 

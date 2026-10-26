@@ -180,9 +180,7 @@ async def test_cancellation_stops_child_before_task_finishes(monkeypatch) -> Non
 @pytest.mark.asyncio
 async def test_repeated_cancellation_cannot_cancel_child_cleanup() -> None:
     process = _SlowCleanupProcess()
-    task = asyncio.create_task(
-        async_process._stop_before_returning(process, grace_seconds=1.0)
-    )
+    task = asyncio.create_task(async_process._stop_before_returning(process, grace_seconds=1.0))
     await process.wait_started.wait()
 
     task.cancel()

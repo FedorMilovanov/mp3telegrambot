@@ -6,6 +6,7 @@
 Тексты отказов видит пользователь, поэтому они зафиксированы дословно: правка
 формулировки должна менять и тест, а не проходить незаметно.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -126,8 +127,8 @@ def test_lowest_free_gb_takes_the_worst_disk(monkeypatch: pytest.MonkeyPatch) ->
     [
         (None, 180),
         ("", 180),
-        ("30", 60),      # ниже нижней границы
-        ("5000", 900),   # выше верхней границы
+        ("30", 60),  # ниже нижней границы
+        ("5000", 900),  # выше верхней границы
         ("300", 300),
         ("много", 180),
     ],
@@ -202,9 +203,7 @@ def test_stdout_parsing_of_empty_output() -> None:
 
 
 def test_clean_meta_text_removes_shorts_markers() -> None:
-    cleaned = main_pipeline._clean_livedub_meta_text(
-        "#Shorts Проповедь о вере | YouTube Shorts"
-    )
+    cleaned = main_pipeline._clean_livedub_meta_text("#Shorts Проповедь о вере | YouTube Shorts")
     assert cleaned == "Проповедь о вере"
 
 
@@ -249,9 +248,7 @@ def test_title_line_combines_title_and_author() -> None:
 
 
 def test_title_line_does_not_duplicate_author() -> None:
-    line = main_pipeline._format_livedub_title_line(
-        "Джон МакАртур: Проповедь о вере", "Джон МакАртур"
-    )
+    line = main_pipeline._format_livedub_title_line("Джон МакАртур: Проповедь о вере", "Джон МакАртур")
     assert line.count("МакАртур") == 1
 
 

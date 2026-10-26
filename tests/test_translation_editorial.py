@@ -68,12 +68,8 @@ def _pack(tmp_path: Path, *, russian_text: str = "Вера отдельно от
         original_srt_path=original,
         russian_whisper_srt_path=russian,
         russian_words_path=words,
-        shorts_candidates=[
-            {"title": "Short", "start_seconds": 0.0, "end_seconds": 30.0}
-        ],
-        long_candidates=[
-            {"title": "Long", "start_seconds": 0.0, "end_seconds": 60.0}
-        ],
+        shorts_candidates=[{"title": "Short", "start_seconds": 0.0, "end_seconds": 30.0}],
+        long_candidates=[{"title": "Long", "start_seconds": 0.0, "end_seconds": 60.0}],
         timeline_metadata={
             "original_srt": "source_timeline",
             "russian_whisper": "translated_video_timeline",
@@ -90,9 +86,7 @@ def _keep_candidates() -> list[dict]:
 
 
 def test_parse_srt_supports_long_hours_and_multiline_text() -> None:
-    cues = parse_srt_text(
-        "1\n02:03:04,125 --> 02:03:06,500\nFirst line\nSecond line\n\n"
-    )
+    cues = parse_srt_text("1\n02:03:04,125 --> 02:03:06,500\nFirst line\nSecond line\n\n")
     assert len(cues) == 1
     assert cues[0].start == 7384.125
     assert cues[0].end == 7386.5
@@ -170,9 +164,7 @@ def test_same_voice_donor_search_is_grounded_and_uses_phrase_boundaries(tmp_path
         exclude_start=0.5,
         exclude_end=3.0,
     )
-    assert donors == [
-        {"start": 10.0, "end": 11.0, "text": "Но добрые дела следуют за верой."}
-    ]
+    assert donors == [{"start": 10.0, "end": 11.0, "text": "Но добрые дела следуют за верой."}]
 
 
 def test_review_validation_binds_exact_pack_candidate_ids_and_candidate_spans(tmp_path: Path) -> None:
@@ -264,8 +256,7 @@ def test_candidate_issue_cannot_point_elsewhere_in_sermon(tmp_path: Path) -> Non
     }
 
     assert any(
-        "issue span lies outside reviewed candidate" in item
-        for item in validate_review_document(review, manifest)
+        "issue span lies outside reviewed candidate" in item for item in validate_review_document(review, manifest)
     )
 
 
@@ -320,10 +311,7 @@ def test_borrow_span_overlap_is_rejected(tmp_path: Path) -> None:
         },
         "candidate_reviews": _keep_candidates(),
     }
-    assert any(
-        "donor span overlaps replacement target" in item
-        for item in validate_review_document(review, manifest)
-    )
+    assert any("donor span overlaps replacement target" in item for item in validate_review_document(review, manifest))
 
 
 def test_drop_filter_merges_overlaps_and_remaps_following_time() -> None:

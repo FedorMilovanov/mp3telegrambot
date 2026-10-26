@@ -1,4 +1,5 @@
 """Behavioral contracts for the extracted ENG Quick finalization stage."""
+
 from __future__ import annotations
 
 import asyncio
@@ -66,16 +67,18 @@ def test_success_edits_and_deletes_status_before_cleanup():
     events = []
     status = _Status(events)
 
-    result = asyncio.run(finish_livedub_quick(
-        update=_update(events),
-        status_msg=status,
-        title="Название",
-        send_result=_sender(events, True),
-        silent_errors=False,
-        workdir=None,
-        media_id="media-1",
-        cleanup=_cleanup(events),
-    ))
+    result = asyncio.run(
+        finish_livedub_quick(
+            update=_update(events),
+            status_msg=status,
+            title="Название",
+            send_result=_sender(events, True),
+            silent_errors=False,
+            workdir=None,
+            media_id="media-1",
+            cleanup=_cleanup(events),
+        )
+    )
 
     assert result is True
     assert _kinds(events) == ["edit", "send", "delete", "cleanup"]
@@ -86,16 +89,18 @@ def test_success_edits_and_deletes_status_before_cleanup():
 def test_success_without_status_skips_both_status_operations():
     events = []
 
-    result = asyncio.run(finish_livedub_quick(
-        update=_update(events),
-        status_msg=None,
-        title="Название",
-        send_result=_sender(events, True),
-        silent_errors=False,
-        workdir=None,
-        media_id="media-2",
-        cleanup=_cleanup(events),
-    ))
+    result = asyncio.run(
+        finish_livedub_quick(
+            update=_update(events),
+            status_msg=None,
+            title="Название",
+            send_result=_sender(events, True),
+            silent_errors=False,
+            workdir=None,
+            media_id="media-2",
+            cleanup=_cleanup(events),
+        )
+    )
 
     assert result is True
     assert _kinds(events) == ["send", "cleanup"]
@@ -105,16 +110,18 @@ def test_status_edit_and_delete_failures_are_best_effort():
     events = []
     status = _Status(events, fail_edit=True, fail_delete=True)
 
-    result = asyncio.run(finish_livedub_quick(
-        update=_update(events),
-        status_msg=status,
-        title="Название",
-        send_result=_sender(events, True),
-        silent_errors=False,
-        workdir=None,
-        media_id="media-3",
-        cleanup=_cleanup(events),
-    ))
+    result = asyncio.run(
+        finish_livedub_quick(
+            update=_update(events),
+            status_msg=status,
+            title="Название",
+            send_result=_sender(events, True),
+            silent_errors=False,
+            workdir=None,
+            media_id="media-3",
+            cleanup=_cleanup(events),
+        )
+    )
 
     assert result is True
     assert _kinds(events) == ["edit", "send", "delete", "cleanup"]
@@ -123,16 +130,18 @@ def test_status_edit_and_delete_failures_are_best_effort():
 def test_generic_failure_is_explained_and_returns_false():
     events = []
 
-    result = asyncio.run(finish_livedub_quick(
-        update=_update(events),
-        status_msg=None,
-        title="Название",
-        send_result=_sender(events, False),
-        silent_errors=False,
-        workdir=None,
-        media_id="media-4",
-        cleanup=_cleanup(events),
-    ))
+    result = asyncio.run(
+        finish_livedub_quick(
+            update=_update(events),
+            status_msg=None,
+            title="Название",
+            send_result=_sender(events, False),
+            silent_errors=False,
+            workdir=None,
+            media_id="media-4",
+            cleanup=_cleanup(events),
+        )
+    )
 
     assert result is False
     assert _kinds(events) == ["send", "reply", "cleanup"]
@@ -144,16 +153,18 @@ def test_auth_marker_selects_actionable_hint(tmp_path):
     events = []
     (tmp_path / ".auth_required").write_text("required", encoding="utf-8")
 
-    result = asyncio.run(finish_livedub_quick(
-        update=_update(events),
-        status_msg=None,
-        title="Название",
-        send_result=_sender(events, False),
-        silent_errors=False,
-        workdir=tmp_path,
-        media_id="media-5",
-        cleanup=_cleanup(events),
-    ))
+    result = asyncio.run(
+        finish_livedub_quick(
+            update=_update(events),
+            status_msg=None,
+            title="Название",
+            send_result=_sender(events, False),
+            silent_errors=False,
+            workdir=tmp_path,
+            media_id="media-5",
+            cleanup=_cleanup(events),
+        )
+    )
 
     assert result is False
     assert _kinds(events) == ["send", "reply", "cleanup"]
@@ -166,16 +177,18 @@ def test_auth_marker_selects_actionable_hint(tmp_path):
 def test_playlist_failure_is_silent_but_still_cleans_up():
     events = []
 
-    result = asyncio.run(finish_livedub_quick(
-        update=_update(events),
-        status_msg=None,
-        title="Название",
-        send_result=_sender(events, False),
-        silent_errors=True,
-        workdir=None,
-        media_id="media-6",
-        cleanup=_cleanup(events),
-    ))
+    result = asyncio.run(
+        finish_livedub_quick(
+            update=_update(events),
+            status_msg=None,
+            title="Название",
+            send_result=_sender(events, False),
+            silent_errors=True,
+            workdir=None,
+            media_id="media-6",
+            cleanup=_cleanup(events),
+        )
+    )
 
     assert result is False
     assert _kinds(events) == ["send", "cleanup"]
@@ -191,16 +204,18 @@ def test_marker_oserror_falls_back_to_generic_hint():
 
     events = []
 
-    result = asyncio.run(finish_livedub_quick(
-        update=_update(events),
-        status_msg=None,
-        title="Название",
-        send_result=_sender(events, False),
-        silent_errors=False,
-        workdir=BrokenWorkdir(),
-        media_id="media-7",
-        cleanup=_cleanup(events),
-    ))
+    result = asyncio.run(
+        finish_livedub_quick(
+            update=_update(events),
+            status_msg=None,
+            title="Название",
+            send_result=_sender(events, False),
+            silent_errors=False,
+            workdir=BrokenWorkdir(),
+            media_id="media-7",
+            cleanup=_cleanup(events),
+        )
+    )
 
     assert result is False
     assert "Перевод «Живые голоса» не получился" in events[1][1]
@@ -209,16 +224,18 @@ def test_marker_oserror_falls_back_to_generic_hint():
 def test_reply_failure_does_not_mask_result_or_skip_cleanup():
     events = []
 
-    result = asyncio.run(finish_livedub_quick(
-        update=_update(events, fail_reply=True),
-        status_msg=None,
-        title="Название",
-        send_result=_sender(events, False),
-        silent_errors=False,
-        workdir=None,
-        media_id="media-8",
-        cleanup=_cleanup(events),
-    ))
+    result = asyncio.run(
+        finish_livedub_quick(
+            update=_update(events, fail_reply=True),
+            status_msg=None,
+            title="Название",
+            send_result=_sender(events, False),
+            silent_errors=False,
+            workdir=None,
+            media_id="media-8",
+            cleanup=_cleanup(events),
+        )
+    )
 
     assert result is False
     assert _kinds(events) == ["send", "reply", "cleanup"]
@@ -232,16 +249,18 @@ def test_send_exception_propagates_before_delete_and_cleanup():
         raise RuntimeError("delivery failed")
 
     with pytest.raises(RuntimeError, match="delivery failed"):
-        asyncio.run(finish_livedub_quick(
-            update=_update(events),
-            status_msg=_Status(events),
-            title="Название",
-            send_result=failing_send,
-            silent_errors=False,
-            workdir=None,
-            media_id="media-9",
-            cleanup=_cleanup(events),
-        ))
+        asyncio.run(
+            finish_livedub_quick(
+                update=_update(events),
+                status_msg=_Status(events),
+                title="Название",
+                send_result=failing_send,
+                silent_errors=False,
+                workdir=None,
+                media_id="media-9",
+                cleanup=_cleanup(events),
+            )
+        )
 
     assert _kinds(events) == ["edit", "send"]
 

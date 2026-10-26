@@ -67,9 +67,7 @@ _GEMINI_API_KEY_NAMES = (
     "GEMINI_API_KEY_3",
     "GEMINI_API_KEY_4",
 )
-_gemini_keys_configured = any(
-    os.getenv(name, "").strip() for name in _GEMINI_API_KEY_NAMES
-)
+_gemini_keys_configured = any(os.getenv(name, "").strip() for name in _GEMINI_API_KEY_NAMES)
 
 if not _bot_token:
     print("❌ КРИТИЧЕСКАЯ ОШИБКА: BOT_TOKEN не задан в .env!")
@@ -100,10 +98,7 @@ except RuntimeDependencyLockError as exc:
     print("   На Windows также можно запустить Start Bot.bat.")
     sys.exit(2)
 else:
-    print(
-        "✅ Python dependencies: "
-        f"{_runtime_dependency_status['checked']} locked runtime packages"
-    )
+    print(f"✅ Python dependencies: {_runtime_dependency_status['checked']} locked runtime packages")
 
 # Own the bot process before any child runtime is started. The declarative
 # pre-main manifest invokes this installer again later; acquire_early_singleton

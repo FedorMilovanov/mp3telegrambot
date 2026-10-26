@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Semantic and timing QA without prompt-continuation or nested VoxCPM retries."""
+
 from __future__ import annotations
 
 import hashlib
@@ -129,11 +130,7 @@ def _pre_speech_artifact(
     pre_peak = float(np.max(np.abs(pre))) if len(pre) else 0.0
     pre_step = float(np.max(np.abs(np.diff(pre)))) if len(pre) > 1 else 0.0
     pre_rms = math.sqrt(float(np.mean(pre**2)) + 1e-12) if len(pre) else 0.0
-    pre_zcr = (
-        float(np.mean(np.signbit(pre[1:]) != np.signbit(pre[:-1])))
-        if len(pre) > 1
-        else 0.0
-    )
+    pre_zcr = float(np.mean(np.signbit(pre[1:]) != np.signbit(pre[:-1]))) if len(pre) > 1 else 0.0
     bursts: list[dict[str, Any]] = []
     isolated = False
 
@@ -164,11 +161,7 @@ def _pre_speech_artifact(
             gap_ms = (speech_start - sample_end) * 1000.0 / sample_rate
             peak = float(np.max(np.abs(chunk))) if len(chunk) else 0.0
             max_step = float(np.max(np.abs(np.diff(chunk)))) if len(chunk) > 1 else 0.0
-            zcr = (
-                float(np.mean(np.signbit(chunk[1:]) != np.signbit(chunk[:-1])))
-                if len(chunk) > 1
-                else 0.0
-            )
+            zcr = float(np.mean(np.signbit(chunk[1:]) != np.signbit(chunk[:-1]))) if len(chunk) > 1 else 0.0
             rms = math.sqrt(float(np.mean(chunk**2)) + 1e-12) if len(chunk) else 0.0
             suspicious = bool(
                 gap_ms >= 18.0
@@ -235,11 +228,7 @@ def measure_timing_quality(
     pre_peak = float(artifact["pre_peak"])
     pre_step = float(artifact["pre_max_step"])
     isolated_artifact = bool(artifact["isolated"])
-    passed = bool(
-        onset_ms <= float(max_onset_ms)
-        and trailing_ms >= float(min_trailing_ms)
-        and not isolated_artifact
-    )
+    passed = bool(onset_ms <= float(max_onset_ms) and trailing_ms >= float(min_trailing_ms) and not isolated_artifact)
     return {
         "passed": passed,
         "onset_ms": round(onset_ms, 3),

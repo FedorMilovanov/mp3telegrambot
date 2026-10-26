@@ -5,6 +5,7 @@ This is an admin/readout tool. It does not change generation behavior. The goal
 is to keep the growing deterministic layer honest: useful guardrails are fine,
 but we should see where regex/postprocess complexity accumulates.
 """
+
 from __future__ import annotations
 
 import json
@@ -70,7 +71,7 @@ def _count_tuple_entries(source: str, marker: str) -> int:
     start = source.find(marker)
     if start < 0:
         return 0
-    chunk = source[start:start + 12000]
+    chunk = source[start : start + 12000]
     return chunk.count("(") if "tuple" in marker or "REPLACEMENTS" in marker else chunk.count(":")
 
 
@@ -89,13 +90,17 @@ def collect_code_health(root: Path | str = ".") -> CodeHealthReport:
         regex_count = sum(text.count(m) for m in _REGEX_MARKERS)
         post_count = sum(text.lower().count(m.lower()) for m in _POSTPROCESS_MARKERS)
         if regex_count or post_count:
-            items.append(FileHealthItem(
-                path=str(path.relative_to(root)),
-                regex_markers=regex_count,
-                postprocess_markers=post_count,
-                lines=text.count("\n") + 1,
-            ))
-    top = tuple(sorted(items, key=lambda x: (x.regex_markers + x.postprocess_markers, x.regex_markers), reverse=True)[:10])
+            items.append(
+                FileHealthItem(
+                    path=str(path.relative_to(root)),
+                    regex_markers=regex_count,
+                    postprocess_markers=post_count,
+                    lines=text.count("\n") + 1,
+                )
+            )
+    top = tuple(
+        sorted(items, key=lambda x: (x.regex_markers + x.postprocess_markers, x.regex_markers), reverse=True)[:10]
+    )
 
     source_titles = root / "core" / "source_titles.py"
     source_title_entries = 0
@@ -121,9 +126,11 @@ def collect_code_health(root: Path | str = ".") -> CodeHealthReport:
         typo_replacements=typo_replacements,
         regex_threshold=_regex_threshold(),
         structured_block_normalizer=(root / "core" / "structured_blocks.py").exists(),
-        typed_source_cards=("class SourceCard" in (source_titles.read_text(encoding="utf-8", errors="replace") if source_titles.exists() else "")),
+        typed_source_cards=(
+            "class SourceCard"
+            in (source_titles.read_text(encoding="utf-8", errors="replace") if source_titles.exists() else "")
+        ),
     )
-
 
 
 def code_health_snapshot(report: CodeHealthReport) -> dict[str, Any]:
@@ -187,7 +194,9 @@ def write_code_health_baseline(root: Path | str = ".", baseline_path: str | Path
     if not path.is_absolute():
         path = base / path
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(code_health_snapshot(report), ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(code_health_snapshot(report), ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     return path
 
 
@@ -195,6 +204,7 @@ def _fmt_delta(value: int) -> str:
     if value > 0:
         return f"+{value}"
     return str(value)
+
 
 def format_code_health_report(root: Path | str = ".") -> str:
     report = collect_code_health(root)
@@ -211,16 +221,16 @@ def format_code_health_report(root: Path | str = ".") -> str:
         (
             f"⚠️ regex_markers above soft threshold "
             f"<code>{report.regex_threshold}</code>: add regression tests for every new regex."
-            if report.regex_over_threshold else
-            f"regex_markers below soft threshold <code>{report.regex_threshold}</code>"
+            if report.regex_over_threshold
+            else f"regex_markers below soft threshold <code>{report.regex_threshold}</code>"
         ),
         (
             "baseline_delta: "
             f"regex=<code>{_fmt_delta(delta.total_regex_delta)}</code> "
             f"post=<code>{_fmt_delta(delta.total_postprocess_delta)}</code> "
             f"files=<code>{_fmt_delta(delta.files_scanned_delta)}</code>"
-            if baseline else
-            "baseline_delta: <code>none</code> (create with tools/check_code_health.py --write-baseline)"
+            if baseline
+            else "baseline_delta: <code>none</code> (create with tools/check_code_health.py --write-baseline)"
         ),
         f"structured_blocks=<code>{'yes' if report.structured_block_normalizer else 'no'}</code> "
         f"typed_source_cards=<code>{'yes' if report.typed_source_cards else 'no'}</code>",

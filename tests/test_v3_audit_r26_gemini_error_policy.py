@@ -5,6 +5,7 @@ Clips, Extras) делал бессмысленный «retry legacy JSON config�
 выжигал free-tier лимит (20/сутки/модель). Fallback на legacy JSON
 оправдан ТОЛЬКО при ошибке самой схемы.
 """
+
 from pathlib import Path
 
 from services.gemini_error_policy import (

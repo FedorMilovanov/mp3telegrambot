@@ -6,6 +6,7 @@ AUDIT M11: set_progress теперь корректно обрабатывает
 и BadRequest("message is not modified") вместо тихого `except Exception: pass`.
 Дополнительно — дедупликация по тексту, чтобы не отправлять одинаковые edit'ы.
 """
+
 import asyncio
 import logging
 from collections import OrderedDict
@@ -14,11 +15,11 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 PROGRESS_STEPS = [
-    (10,  "🔍 Получаю информацию..."),
-    (20,  "🖼  Скачиваю обложку..."),
-    (40,  "📥 Скачиваю аудио..."),
-    (60,  "🧠 AI анализирует материал..."),
-    (80,  "📝 Собираю разбор и ссылки..."),
+    (10, "🔍 Получаю информацию..."),
+    (20, "🖼  Скачиваю обложку..."),
+    (40, "📥 Скачиваю аудио..."),
+    (60, "🧠 AI анализирует материал..."),
+    (80, "📝 Собираю разбор и ссылки..."),
     (100, "📤 Отправляю аудиофайл..."),
 ]
 
@@ -84,9 +85,7 @@ async def set_progress(
         _chat = getattr(getattr(status_msg, "chat", None), "id", None)
     # Ключ кэша — пара целых id. Если объект их не отдаёт (фейк в тесте,
     # сторонняя обёртка), просто не кэшируем: поведение отправки не меняется.
-    msg_id: _ProgressKey | None = (
-        (_chat, _mid) if isinstance(_chat, int) and isinstance(_mid, int) else None
-    )
+    msg_id: _ProgressKey | None = (_chat, _mid) if isinstance(_chat, int) and isinstance(_mid, int) else None
 
     # AUDIT M11: дедупликация — Telegram отвечает BadRequest("message is not modified")
     if msg_id is not None and _progress_cache_get(msg_id) == text:

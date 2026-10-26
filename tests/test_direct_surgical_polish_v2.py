@@ -6,7 +6,7 @@ import subprocess
 import sys
 
 
-SCRIPT = r'''
+SCRIPT = r"""
 from __future__ import annotations
 
 import hashlib
@@ -196,7 +196,7 @@ with tempfile.TemporaryDirectory() as raw:
     assert "direct_surgical_guard" not in polish_source
 
 print("source-owned surgical contracts: 9 checks passed")
-'''
+"""
 
 
 def test_second_pass_contracts_in_isolated_process() -> None:

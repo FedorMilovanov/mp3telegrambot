@@ -54,9 +54,7 @@ def test_local_factory_livedub_quality_failure_is_not_reported_as_provider_unava
 
 
 def test_real_provider_unavailable_marker_keeps_provider_error_message():
-    message = _translation_source_error(
-        RuntimeError("LIVEDUB_NOT_AVAILABLE: translation is not ready")
-    )
+    message = _translation_source_error(RuntimeError("LIVEDUB_NOT_AVAILABLE: translation is not ready"))
 
     assert "недоступен для этого источника" in message
     assert "собственный нейроперевод" in message

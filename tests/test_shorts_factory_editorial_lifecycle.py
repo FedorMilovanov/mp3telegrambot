@@ -17,7 +17,7 @@ def test_editorial_runner_has_no_audio_ordering_marker_or_job_context():
 
 def test_editorial_runner_passes_known_duration_into_source_owned_translation():
     source = inspect.getsource(runner.process_translation_editorial_only)
-    assert "prepare_factory_translation_video(url, workdir, duration, \"en\")" in source
+    assert 'prepare_factory_translation_video(url, workdir, duration, "en")' in source
     assert "factory_preflight_issues(" in source
     assert "enforce_factory_translation_preflight()" in source
 
@@ -45,4 +45,3 @@ def test_translation_editorial_runner_is_the_only_standalone_owner():
     assert "services.translation_editorial_runner" in dispatcher
     assert not retired_bridge.exists()
     assert "shorts_factory_editorial_bridge" not in dispatcher
-

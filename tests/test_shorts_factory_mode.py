@@ -57,14 +57,16 @@ def test_translation_backend_defaults_to_yandex_only(monkeypatch):
 
 
 def test_livedub_alignment_snaps_semantic_range_to_proved_ru_speech():
-    candidates = [{
-        "start_seconds": 10,
-        "end_seconds": 100,
-        "duration_seconds": 90,
-        "start": "0:10",
-        "end": "1:40",
-        "title": "Фрагмент",
-    }]
+    candidates = [
+        {
+            "start_seconds": 10,
+            "end_seconds": 100,
+            "duration_seconds": 90,
+            "start": "0:10",
+            "end": "1:40",
+            "title": "Фрагмент",
+        }
+    ]
     aligned = align_candidates_to_ru_speech(
         candidates,
         source_duration=300,
@@ -81,14 +83,16 @@ def test_livedub_alignment_snaps_semantic_range_to_proved_ru_speech():
 
 
 def test_livedub_alignment_uses_proved_ru_speech_near_source_tail():
-    candidates = [{
-        "start_seconds": 860,
-        "end_seconds": 900,
-        "duration_seconds": 40,
-        "start": "14:20",
-        "end": "15:00",
-        "title": "Последняя Фраза",
-    }]
+    candidates = [
+        {
+            "start_seconds": 860,
+            "end_seconds": 900,
+            "duration_seconds": 40,
+            "start": "14:20",
+            "end": "15:00",
+            "title": "Последняя Фраза",
+        }
+    ]
     aligned = align_candidates_to_ru_speech(
         candidates,
         source_duration=903,
@@ -102,12 +106,14 @@ def test_livedub_alignment_uses_proved_ru_speech_near_source_tail():
 
 
 def test_livedub_alignment_rejects_unproved_original_timeline_fallback():
-    candidates = [{
-        "start_seconds": 10,
-        "end_seconds": 100,
-        "duration_seconds": 90,
-        "title": "Без Русского Доказательства",
-    }]
+    candidates = [
+        {
+            "start_seconds": 10,
+            "end_seconds": 100,
+            "duration_seconds": 90,
+            "title": "Без Русского Доказательства",
+        }
+    ]
     with pytest.raises(RuntimeError, match="refusing unverified original-timeline cuts"):
         align_factory_livedub_candidates(candidates, source_duration=300, evidence={})
 

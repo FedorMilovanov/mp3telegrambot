@@ -3,33 +3,46 @@
 Shorts Candidates — create_shorts_candidates, create_clips_candidates.
 Извлечено из bot.py строки 8942–9163, 10907–11168.
 """
+
 from core.globals import (
-    HAS_GEMINI, GEMINI_API_KEY,
-    GEMINI_CLIENTS, gemini_generate,    # FIX shorts_candidates,
+    HAS_GEMINI,
+    GEMINI_API_KEY,
+    GEMINI_CLIENTS,
+    gemini_generate,  # FIX shorts_candidates,
     make_audio_config,
 )
-from core.database import GEMINI_MODEL       # FIX shorts_candidates
+from core.database import GEMINI_MODEL  # FIX shorts_candidates
 from core.json_parser import (
     time_to_seconds,
-    _recover_truncated_json,            # FIX shorts_candidates
+    _recover_truncated_json,  # FIX shorts_candidates
 )
 from core.text_utils import (
-    _clean_field, _scrub_inline, _strip_meta_lines,  # FIX shorts_candidates
+    _clean_field,
+    _scrub_inline,
+    _strip_meta_lines,  # FIX shorts_candidates
     normalize_hashtag,
 )
-from core.utils import format_timestamp      # FIX shorts_candidates
+from core.utils import format_timestamp  # FIX shorts_candidates
 from core.prompts import (
-    SHORTS_PROMPT, EXTRAS_PROMPT, CLIPS_PROMPT, CLIPS_SERMON_PROMPT,
-    CLIPS_MIN_SEC, CLIPS_MAX_SEC, CLIPS_IDEAL_MAX_SEC,  # FIX shorts_candidates
+    SHORTS_PROMPT,
+    EXTRAS_PROMPT,
+    CLIPS_PROMPT,
+    CLIPS_SERMON_PROMPT,
+    CLIPS_MIN_SEC,
+    CLIPS_MAX_SEC,
+    CLIPS_IDEAL_MAX_SEC,  # FIX shorts_candidates
 )
 from core.candidate_schema import (
-    CandidateValidationReport, clips_response_schema, shorts_response_schema,
-    structured_json_config_kwargs, validate_candidate_times,
+    CandidateValidationReport,
+    clips_response_schema,
+    shorts_response_schema,
+    structured_json_config_kwargs,
+    validate_candidate_times,
 )
 from core.observability import alog_gemini_response, alog_gemini_run
 
 import asyncio
-import json      # FIX shorts_candidates
+import json  # FIX shorts_candidates
 import logging
 import re
 import time
@@ -42,6 +55,7 @@ except ImportError:
     types = None
 
 logger = logging.getLogger(__name__)
+
 
 # ── BUG-D01: валидация клипа ──────────────────────────────────────────────
 def _valid_clip(clip: dict, duration: int) -> bool:
@@ -63,13 +77,13 @@ def _remove_overlapping_shorts(clips: list[dict]) -> list[dict]:
     result = [clips[0]]
     for clip in clips[1:]:
         c_start = clip.get("start_seconds", 0)
-        c_end   = clip.get("end_seconds", 0)
-        c_len   = max(1, c_end - c_start)
+        c_end = clip.get("end_seconds", 0)
+        c_len = max(1, c_end - c_start)
         overlaps = False
         for accepted in result:
             a_start = accepted.get("start_seconds", 0)
-            a_end   = accepted.get("end_seconds", 0)
-            a_len   = max(1, a_end - a_start)
+            a_end = accepted.get("end_seconds", 0)
+            a_len = max(1, a_end - a_start)
             overlap = max(0, min(c_end, a_end) - max(c_start, a_start))
             if overlap / min(c_len, a_len) > 0.1:
                 overlaps = True
@@ -94,7 +108,13 @@ def _candidate_audio_config(max_output_tokens: int, schema: dict | None = None):
 
 
 async def _generate_audio_candidate_content(
-    client, *, model: str, contents: list, max_output_tokens: int, schema: dict | None, task: str,
+    client,
+    *,
+    model: str,
+    contents: list,
+    max_output_tokens: int,
+    schema: dict | None,
+    task: str,
     timeout: float = 300.0,
 ):
     """Try Gemini structured JSON first, then fall back to legacy JSON prompt mode."""
@@ -113,12 +133,15 @@ async def _generate_audio_candidate_content(
         # AUDIT R26: legacy-JSON retry оправдан ТОЛЬКО при ошибке самой схемы.
         # При quota/overload/timeout/auth второй запрос лишь жжёт квоту — не делаем.
         from services.gemini_error_policy import classify_gemini_error
+
         _decision = classify_gemini_error(exc)
         if not schema or not _decision.use_legacy_json_fallback:
             raise
         logger.warning(
             "%s: structured output схема отклонена (%s: %s) — retry legacy JSON config",
-            task, type(exc).__name__, str(exc)[:180],
+            task,
+            type(exc).__name__,
+            str(exc)[:180],
         )
         return await asyncio.wait_for(
             client.aio.models.generate_content(
@@ -159,22 +182,22 @@ async def create_shorts_candidates(
         return int((time.perf_counter() - _obs_started) * 1000)
 
     try:
-        format_name      = (ai_data or {}).get("format", "other") or "other"
-        real_author      = (ai_data or {}).get("real_author", "") or performer or ""
-        real_event       = (ai_data or {}).get("real_event", "") or ""
+        format_name = (ai_data or {}).get("format", "other") or "other"
+        real_author = (ai_data or {}).get("real_author", "") or performer or ""
+        real_event = (ai_data or {}).get("real_event", "") or ""
         analysis_summary = (ai_data or {}).get("analysis_summary", "") or ""
-        argument_arc     = (ai_data or {}).get("argument_arc", "") or ""
-        key_categories   = "; ".join((ai_data or {}).get("key_categories", []) or [])
-        timestamps       = (ai_data or {}).get("timestamps", "") or ""
-        questions        = "\n".join((ai_data or {}).get("questions", []) or [])
+        argument_arc = (ai_data or {}).get("argument_arc", "") or ""
+        key_categories = "; ".join((ai_data or {}).get("key_categories", []) or [])
+        timestamps = (ai_data or {}).get("timestamps", "") or ""
+        questions = "\n".join((ai_data or {}).get("questions", []) or [])
 
         # При ускорении максимальная длина исходника масштабируется:
         # итоговый шортс = исходник / speed → можно брать исходник * speed
         # Цель: итоговый шортс до 3 мин (180s) при любой скорости
-        _use_speed   = abs(speed - 1.0) > 0.01
-        _shorts_max  = round(180 * speed)   # исходник → итоговые 180s
-        _ideal_max   = round(120 * speed)   # желательный максимум
-        _shorts_min  = 35                   # минимум не масштабируем
+        _use_speed = abs(speed - 1.0) > 0.01
+        _shorts_max = round(180 * speed)  # исходник → итоговые 180s
+        _ideal_max = round(120 * speed)  # желательный максимум
+        _shorts_min = 35  # минимум не масштабируем
 
         _structured_schema = shorts_response_schema()
 
@@ -191,9 +214,11 @@ async def create_shorts_candidates(
             questions_block=f"- questions:\n{questions}\n" if questions.strip() else "",
             speed_limits=(
                 f"\n\nУСКОРЕНИЕ: видео будет ускорено в {speed}x раз. "
-                f"Выбирай фрагменты до {_shorts_max} секунд — после ускорения это станет {round(_shorts_max/speed)}s. "
+                f"Выбирай фрагменты до {_shorts_max} секунд — после ускорения это станет {round(_shorts_max / speed)}s. "
                 f"Желательный диапазон исходника: 35–{_ideal_max} секунд."
-            ) if _use_speed else "",
+            )
+            if _use_speed
+            else "",
         )
 
         if status_msg:
@@ -208,8 +233,12 @@ async def create_shorts_candidates(
         if existing_audio_part is not None and existing_client is not None:
             try:
                 response = await _generate_audio_candidate_content(
-                    existing_client, model=GEMINI_MODEL, contents=[existing_audio_part, prompt],
-                    max_output_tokens=16000, schema=_structured_schema, task="shorts_candidates",
+                    existing_client,
+                    model=GEMINI_MODEL,
+                    contents=[existing_audio_part, prompt],
+                    max_output_tokens=16000,
+                    schema=_structured_schema,
+                    task="shorts_candidates",
                 )
             except Exception as e:
                 logger.warning(f"Shorts candidates existing_audio_part failed: {e}")
@@ -243,8 +272,12 @@ async def create_shorts_candidates(
                 _uploaded = getattr(audio_part, "name", None) is not None
                 try:
                     return await _generate_audio_candidate_content(
-                        client, model=GEMINI_MODEL, contents=[audio_part, prompt],
-                        max_output_tokens=16000, schema=_structured_schema, task="shorts_candidates",
+                        client,
+                        model=GEMINI_MODEL,
+                        contents=[audio_part, prompt],
+                        max_output_tokens=16000,
+                        schema=_structured_schema,
+                        task="shorts_candidates",
                     )
                 finally:
                     if _uploaded:
@@ -270,9 +303,14 @@ async def create_shorts_candidates(
         if not raw_text.strip():
             logger.warning("Shorts candidates: Gemini вернул пустой ответ")
             await alog_gemini_response(
-                response=response, task="shorts_candidates", video_id=mp3_path.stem,
-                model=GEMINI_MODEL, thinking_level="low", duration_ms=_obs_ms(),
-                json_valid=False, error="empty_response",
+                response=response,
+                task="shorts_candidates",
+                video_id=mp3_path.stem,
+                model=GEMINI_MODEL,
+                thinking_level="low",
+                duration_ms=_obs_ms(),
+                json_valid=False,
+                error="empty_response",
             )
             return []
 
@@ -280,18 +318,23 @@ async def create_shorts_candidates(
         clean = re.sub(r"^```[a-z]*\s*", "", clean)
         clean = re.sub(r"\s*```$", "", clean).strip()
         start = clean.find("{")
-        end   = clean.rfind("}")
+        end = clean.rfind("}")
         if start == -1 or end <= start:
             logger.warning(f"Shorts candidates: JSON не найден | текст: {raw_text[:500]}")
             await alog_gemini_response(
-                response=response, task="shorts_candidates", video_id=mp3_path.stem,
-                model=GEMINI_MODEL, thinking_level="low", duration_ms=_obs_ms(),
-                json_valid=False, error="json_not_found",
+                response=response,
+                task="shorts_candidates",
+                video_id=mp3_path.stem,
+                model=GEMINI_MODEL,
+                thinking_level="low",
+                duration_ms=_obs_ms(),
+                json_valid=False,
+                error="json_not_found",
             )
             return []
 
         try:
-            data = json.loads(clean[start:end + 1])
+            data = json.loads(clean[start : end + 1])
         except json.JSONDecodeError as e:
             logger.warning(f"Shorts candidates JSONDecodeError: {e} | текст: {raw_text[:500]}")
             # Попытка восстановить обрезанный JSON (MAX_TOKENS от Gemini)
@@ -301,18 +344,28 @@ async def create_shorts_candidates(
                 data = _recovered
             else:
                 await alog_gemini_response(
-                    response=response, task="shorts_candidates", video_id=mp3_path.stem,
-                    model=GEMINI_MODEL, thinking_level="low", duration_ms=_obs_ms(),
-                    json_valid=False, error="json_decode_error",
+                    response=response,
+                    task="shorts_candidates",
+                    video_id=mp3_path.stem,
+                    model=GEMINI_MODEL,
+                    thinking_level="low",
+                    duration_ms=_obs_ms(),
+                    json_valid=False,
+                    error="json_decode_error",
                 )
                 return []
 
         candidates_raw = data.get("shorts_candidates", [])
         if not isinstance(candidates_raw, list):
             await alog_gemini_response(
-                response=response, task="shorts_candidates", video_id=mp3_path.stem,
-                model=GEMINI_MODEL, thinking_level="low", duration_ms=_obs_ms(),
-                json_valid=False, error="candidates_not_list",
+                response=response,
+                task="shorts_candidates",
+                video_id=mp3_path.stem,
+                model=GEMINI_MODEL,
+                thinking_level="low",
+                duration_ms=_obs_ms(),
+                json_valid=False,
+                error="candidates_not_list",
             )
             return []
 
@@ -323,20 +376,16 @@ async def create_shorts_candidates(
         for item in candidates_raw[:7]:
             if not isinstance(item, dict):
                 continue
-            start_t    = str(item.get("start", "")).strip()
-            end_t      = str(item.get("end",   "")).strip()
-            clip_title = _scrub_inline(_strip_meta_lines(_clean_field(item.get("title",  ""))))
-            hook       = _scrub_inline(_strip_meta_lines(_clean_field(item.get("hook",   ""))))
-            reason     = _scrub_inline(_strip_meta_lines(_clean_field(item.get("reason", ""))))
-            kind       = str(item.get("kind", "")).strip()
+            start_t = str(item.get("start", "")).strip()
+            end_t = str(item.get("end", "")).strip()
+            clip_title = _scrub_inline(_strip_meta_lines(_clean_field(item.get("title", ""))))
+            hook = _scrub_inline(_strip_meta_lines(_clean_field(item.get("hook", ""))))
+            reason = _scrub_inline(_strip_meta_lines(_clean_field(item.get("reason", ""))))
+            kind = str(item.get("kind", "")).strip()
             # hashtags: список строк без #
-            raw_tags   = item.get("hashtags", [])
+            raw_tags = item.get("hashtags", [])
             if isinstance(raw_tags, list):
-                hashtags = [
-                    _normalize_hashtag(t)
-                    for t in raw_tags
-                    if str(t).strip()
-                ][:4]
+                hashtags = [_normalize_hashtag(t) for t in raw_tags if str(t).strip()][:4]
                 hashtags = [h for h in hashtags if h]  # убираем пустые после нормализации
             else:
                 hashtags = []
@@ -345,7 +394,11 @@ async def create_shorts_candidates(
                 continue
 
             ok_time, reject_reason, start_s, end_s, clip_len = validate_candidate_times(
-                start_t, end_t, duration=duration, min_sec=_shorts_min, max_sec=_shorts_max,
+                start_t,
+                end_t,
+                duration=duration,
+                min_sec=_shorts_min,
+                max_sec=_shorts_max,
                 time_to_seconds=time_to_seconds,
             )
             if not ok_time:
@@ -358,18 +411,20 @@ async def create_shorts_candidates(
             seen_ranges.add(key)
 
             report.accept()
-            out.append({
-                "start":            start_t,
-                "end":              end_t,
-                "title":            clip_title[:120],
-                "hook":             hook[:120],
-                "reason":           reason[:220],
-                "kind":             kind[:40],
-                "hashtags":         hashtags,
-                "start_seconds":    start_s,
-                "end_seconds":      end_s,
-                "duration_seconds": clip_len,
-            })
+            out.append(
+                {
+                    "start": start_t,
+                    "end": end_t,
+                    "title": clip_title[:120],
+                    "hook": hook[:120],
+                    "reason": reason[:220],
+                    "kind": kind[:40],
+                    "hashtags": hashtags,
+                    "start_seconds": start_s,
+                    "end_seconds": end_s,
+                    "duration_seconds": clip_len,
+                }
+            )
 
         logger.info(
             f"Shorts candidates: найдено {len(out)} из {len(candidates_raw)} предложенных; "
@@ -378,21 +433,30 @@ async def create_shorts_candidates(
         # BUG-D02: убираем overlap-клипы (>10% пересечения)
         out = _remove_overlapping_shorts(out)
         await alog_gemini_response(
-            response=response, task="shorts_candidates", video_id=mp3_path.stem,
-            model=GEMINI_MODEL, thinking_level="low", duration_ms=_obs_ms(),
-            json_valid=True, postprocess_fixes=report.rejected, validation_summary=report.to_json(),
+            response=response,
+            task="shorts_candidates",
+            video_id=mp3_path.stem,
+            model=GEMINI_MODEL,
+            thinking_level="low",
+            duration_ms=_obs_ms(),
+            json_valid=True,
+            postprocess_fixes=report.rejected,
+            validation_summary=report.to_json(),
         )
         return out[:5]
 
     except Exception as e:
         logger.warning(f"create_shorts_candidates error: {type(e).__name__}: {e}")
         await alog_gemini_run(
-            task="shorts_candidates", video_id=mp3_path.stem, model=GEMINI_MODEL,
-            thinking_level="low", duration_ms=_obs_ms(), json_valid=False,
+            task="shorts_candidates",
+            video_id=mp3_path.stem,
+            model=GEMINI_MODEL,
+            thinking_level="low",
+            duration_ms=_obs_ms(),
+            json_valid=False,
             error=f"{type(e).__name__}: {str(e)[:300]}",
         )
         return []
-
 
 
 async def create_clips_candidates(
@@ -422,14 +486,14 @@ async def create_clips_candidates(
         return int((time.perf_counter() - _obs_started) * 1000)
 
     try:
-        format_name      = (ai_data or {}).get("format", "other") or "other"
-        real_author      = (ai_data or {}).get("real_author", "") or performer or ""
-        real_event       = (ai_data or {}).get("real_event", "") or ""
+        format_name = (ai_data or {}).get("format", "other") or "other"
+        real_author = (ai_data or {}).get("real_author", "") or performer or ""
+        real_event = (ai_data or {}).get("real_event", "") or ""
         analysis_summary = (ai_data or {}).get("analysis_summary", "") or ""
-        argument_arc     = (ai_data or {}).get("argument_arc", "") or ""
-        key_categories   = "; ".join((ai_data or {}).get("key_categories", []) or [])
-        timestamps       = (ai_data or {}).get("timestamps", "") or ""
-        questions        = "\n".join((ai_data or {}).get("questions", []) or [])
+        argument_arc = (ai_data or {}).get("argument_arc", "") or ""
+        key_categories = "; ".join((ai_data or {}).get("key_categories", []) or [])
+        timestamps = (ai_data or {}).get("timestamps", "") or ""
+        questions = "\n".join((ai_data or {}).get("questions", []) or [])
 
         _qa_formats = ("qa", "interview", "discussion")
         if format_name in _qa_formats:
@@ -471,8 +535,12 @@ async def create_clips_candidates(
         if existing_audio_part is not None and existing_client is not None:
             try:
                 response = await _generate_audio_candidate_content(
-                    existing_client, model=GEMINI_MODEL, contents=[existing_audio_part, prompt],
-                    max_output_tokens=12000, schema=_structured_schema, task="clips_candidates",
+                    existing_client,
+                    model=GEMINI_MODEL,
+                    contents=[existing_audio_part, prompt],
+                    max_output_tokens=12000,
+                    schema=_structured_schema,
+                    task="clips_candidates",
                 )
             except Exception as e:
                 logger.warning(f"Clips candidates existing_audio_part failed: {e}")
@@ -506,8 +574,12 @@ async def create_clips_candidates(
                 _uploaded = getattr(audio_part, "name", None) is not None
                 try:
                     return await _generate_audio_candidate_content(
-                        client, model=GEMINI_MODEL, contents=[audio_part, prompt],
-                        max_output_tokens=12000, schema=_structured_schema, task="clips_candidates",
+                        client,
+                        model=GEMINI_MODEL,
+                        contents=[audio_part, prompt],
+                        max_output_tokens=12000,
+                        schema=_structured_schema,
+                        task="clips_candidates",
                     )
                 finally:
                     if _uploaded:
@@ -533,9 +605,14 @@ async def create_clips_candidates(
         if not raw_text.strip():
             logger.warning("Clips candidates: Gemini вернул пустой ответ")
             await alog_gemini_response(
-                response=response, task="clips_candidates", video_id=mp3_path.stem,
-                model=GEMINI_MODEL, thinking_level="low", duration_ms=_obs_ms(),
-                json_valid=False, error="empty_response",
+                response=response,
+                task="clips_candidates",
+                video_id=mp3_path.stem,
+                model=GEMINI_MODEL,
+                thinking_level="low",
+                duration_ms=_obs_ms(),
+                json_valid=False,
+                error="empty_response",
             )
             return []
 
@@ -543,18 +620,23 @@ async def create_clips_candidates(
         clean = re.sub(r"^```[a-z]*\s*", "", clean)
         clean = re.sub(r"\s*```$", "", clean).strip()
         start = clean.find("{")
-        end   = clean.rfind("}")
+        end = clean.rfind("}")
         if start == -1 or end <= start:
             logger.warning(f"Clips candidates: JSON не найден | текст: {raw_text[:500]}")
             await alog_gemini_response(
-                response=response, task="clips_candidates", video_id=mp3_path.stem,
-                model=GEMINI_MODEL, thinking_level="low", duration_ms=_obs_ms(),
-                json_valid=False, error="json_not_found",
+                response=response,
+                task="clips_candidates",
+                video_id=mp3_path.stem,
+                model=GEMINI_MODEL,
+                thinking_level="low",
+                duration_ms=_obs_ms(),
+                json_valid=False,
+                error="json_not_found",
             )
             return []
 
         try:
-            data = json.loads(clean[start:end + 1])
+            data = json.loads(clean[start : end + 1])
         except json.JSONDecodeError as e:
             logger.warning(f"Clips candidates JSONDecodeError: {e} | текст: {raw_text[:500]}")
             # Попытка восстановить обрезанный JSON (MAX_TOKENS от Gemini)
@@ -564,18 +646,28 @@ async def create_clips_candidates(
                 data = _recovered
             else:
                 await alog_gemini_response(
-                    response=response, task="clips_candidates", video_id=mp3_path.stem,
-                    model=GEMINI_MODEL, thinking_level="low", duration_ms=_obs_ms(),
-                    json_valid=False, error="json_decode_error",
+                    response=response,
+                    task="clips_candidates",
+                    video_id=mp3_path.stem,
+                    model=GEMINI_MODEL,
+                    thinking_level="low",
+                    duration_ms=_obs_ms(),
+                    json_valid=False,
+                    error="json_decode_error",
                 )
                 return []
 
         candidates_raw = data.get("clip_candidates", [])
         if not isinstance(candidates_raw, list):
             await alog_gemini_response(
-                response=response, task="clips_candidates", video_id=mp3_path.stem,
-                model=GEMINI_MODEL, thinking_level="low", duration_ms=_obs_ms(),
-                json_valid=False, error="candidates_not_list",
+                response=response,
+                task="clips_candidates",
+                video_id=mp3_path.stem,
+                model=GEMINI_MODEL,
+                thinking_level="low",
+                duration_ms=_obs_ms(),
+                json_valid=False,
+                error="candidates_not_list",
             )
             return []
 
@@ -586,17 +678,14 @@ async def create_clips_candidates(
         for item in candidates_raw[:5]:
             if not isinstance(item, dict):
                 continue
-            start_t    = str(item.get("start", "")).strip()
-            end_t      = str(item.get("end",   "")).strip()
-            clip_title = _scrub_inline(_strip_meta_lines(_clean_field(item.get("title",  ""))))
-            reason     = _scrub_inline(_strip_meta_lines(_clean_field(item.get("reason", ""))))
-            kind       = str(item.get("kind", "")).strip()
-            raw_tags   = item.get("hashtags", [])
+            start_t = str(item.get("start", "")).strip()
+            end_t = str(item.get("end", "")).strip()
+            clip_title = _scrub_inline(_strip_meta_lines(_clean_field(item.get("title", ""))))
+            reason = _scrub_inline(_strip_meta_lines(_clean_field(item.get("reason", ""))))
+            kind = str(item.get("kind", "")).strip()
+            raw_tags = item.get("hashtags", [])
             if isinstance(raw_tags, list):
-                hashtags = [
-                    _normalize_hashtag(t)
-                    for t in raw_tags if str(t).strip()
-                ][:4]
+                hashtags = [_normalize_hashtag(t) for t in raw_tags if str(t).strip()][:4]
                 hashtags = [h for h in hashtags if h]
             else:
                 hashtags = []
@@ -605,7 +694,11 @@ async def create_clips_candidates(
                 continue
 
             ok_time, reject_reason, start_s, end_s, clip_len = validate_candidate_times(
-                start_t, end_t, duration=duration, min_sec=CLIPS_MIN_SEC, max_sec=CLIPS_MAX_SEC,
+                start_t,
+                end_t,
+                duration=duration,
+                min_sec=CLIPS_MIN_SEC,
+                max_sec=CLIPS_MAX_SEC,
                 time_to_seconds=time_to_seconds,
             )
             if not ok_time:
@@ -628,16 +721,15 @@ async def create_clips_candidates(
             # Детекция пересечений: пропускаем кандидатов с >50% overlap с уже принятыми.
             # Exact-match (start_s, end_s) тоже блокируется через seen_ranges.
             overlaps_existing = False
-            for (ex_start, ex_end) in seen_ranges:
+            for ex_start, ex_end in seen_ranges:
                 overlap_start = max(start_s, ex_start)
-                overlap_end   = min(end_s, ex_end)
-                overlap_len   = max(0, overlap_end - overlap_start)
+                overlap_end = min(end_s, ex_end)
+                overlap_len = max(0, overlap_end - overlap_start)
                 if overlap_len > 0:
                     overlap_ratio = overlap_len / min(clip_len, ex_end - ex_start)
                     if overlap_ratio > 0.5:
                         logger.info(
-                            f"Clips: пропускаю '{clip_title}' — "
-                            f"{overlap_ratio:.0%} пересечения с уже принятым клипом"
+                            f"Clips: пропускаю '{clip_title}' — {overlap_ratio:.0%} пересечения с уже принятым клипом"
                         )
                         overlaps_existing = True
                         break
@@ -646,17 +738,19 @@ async def create_clips_candidates(
 
             seen_ranges.add((start_s, end_s))
             report.accept()
-            out.append({
-                "start":            start_t,
-                "end":              end_t,
-                "title":            clip_title[:140],
-                "reason":           reason[:280],
-                "kind":             kind[:40],
-                "hashtags":         hashtags,
-                "start_seconds":    start_s,
-                "end_seconds":      end_s,
-                "duration_seconds": clip_len,
-            })
+            out.append(
+                {
+                    "start": start_t,
+                    "end": end_t,
+                    "title": clip_title[:140],
+                    "reason": reason[:280],
+                    "kind": kind[:40],
+                    "hashtags": hashtags,
+                    "start_seconds": start_s,
+                    "end_seconds": end_s,
+                    "duration_seconds": clip_len,
+                }
+            )
 
         _durations = [f"{c['duration_seconds']:.0f}s" for c in out]
         logger.info(
@@ -664,19 +758,27 @@ async def create_clips_candidates(
             f"(длины: {_durations}); validation: {report.summary()}"
         )
         await alog_gemini_response(
-            response=response, task="clips_candidates", video_id=mp3_path.stem,
-            model=GEMINI_MODEL, thinking_level="low", duration_ms=_obs_ms(),
-            json_valid=True, postprocess_fixes=report.rejected, validation_summary=report.to_json(),
+            response=response,
+            task="clips_candidates",
+            video_id=mp3_path.stem,
+            model=GEMINI_MODEL,
+            thinking_level="low",
+            duration_ms=_obs_ms(),
+            json_valid=True,
+            postprocess_fixes=report.rejected,
+            validation_summary=report.to_json(),
         )
         return out[:3]
 
     except Exception as e:
         logger.warning(f"create_clips_candidates error: {type(e).__name__}: {e}")
         await alog_gemini_run(
-            task="clips_candidates", video_id=mp3_path.stem, model=GEMINI_MODEL,
-            thinking_level="low", duration_ms=_obs_ms(), json_valid=False,
+            task="clips_candidates",
+            video_id=mp3_path.stem,
+            model=GEMINI_MODEL,
+            thinking_level="low",
+            duration_ms=_obs_ms(),
+            json_valid=False,
             error=f"{type(e).__name__}: {str(e)[:300]}",
         )
         return []
-
-

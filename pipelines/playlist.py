@@ -11,6 +11,7 @@ AUDIT FIX L11: media_url вычисляется через extract_url или с
                domain (RuTube/VK тоже работают через yt-dlp).
 AUDIT FIX L12: PLAYLIST_DELAY_SEC конфигурируется через .env.
 """
+
 import asyncio
 import logging
 import os
@@ -92,9 +93,9 @@ async def handle_playlist(url: str, update: Any, context: Any, user_id: int = 0)
         if not info:
             await safe_edit_text(status_msg, "❌ Не удалось загрузить плейлист.")
             return
-        title   = info.get("title", "Плейлист")
+        title = info.get("title", "Плейлист")
         entries = (info.get("entries") or [])[:MAX_PLAYLIST_SIZE]  # AUDIT R40: entries может быть None
-        total   = len(entries)
+        total = len(entries)
         if not entries:
             await safe_edit_text(status_msg, "❌ Плейлист пуст.")
             return
@@ -124,18 +125,13 @@ async def handle_playlist(url: str, update: Any, context: Any, user_id: int = 0)
                     # FIX AUDIT R4: safe_edit_text — не роняем итоговый статус.
                     await safe_edit_text(
                         status_msg,
-                        f"📋 {title}\n"
-                        f"⏸ Лимит исчерпан после {i-1}/{total}\n"
-                        f"✅ {success}  ❌ {fail}\n\n"
-                        f"{reason}",
+                        f"📋 {title}\n⏸ Лимит исчерпан после {i - 1}/{total}\n✅ {success}  ❌ {fail}\n\n{reason}",
                     )
                     break
 
             prefix = f"[{i}/{total}] "
             try:
-                await safe_edit_text(status_msg,
-                    f"📋 {title}\n🔄 {i}/{total} | ✅ {success} | ❌ {fail}"
-                )
+                await safe_edit_text(status_msg, f"📋 {title}\n🔄 {i}/{total} | ✅ {success} | ❌ {fail}")
             except Exception:
                 pass
 
@@ -150,8 +146,12 @@ async def handle_playlist(url: str, update: Any, context: Any, user_id: int = 0)
                 async with _vlock:
                     # AUDIT M3: silent_errors=True — process_single_video не шлёт reply_text
                     ok = await process_single_video(
-                        media_url, update, status_msg, prefix,
-                        context=context, silent_errors=True,
+                        media_url,
+                        update,
+                        status_msg,
+                        prefix,
+                        context=context,
+                        silent_errors=True,
                     )
             finally:
                 # async with освобождает lock, release чистит registry даже при исключении.
@@ -172,10 +172,7 @@ async def handle_playlist(url: str, update: Any, context: Any, user_id: int = 0)
         if failed_entries:
             # AUDIT M3: показываем первые N упавших ссылок
             preview = "\n".join(failed_entries[:5])
-            more = (
-                f"\n... и ещё {len(failed_entries) - 5}"
-                if len(failed_entries) > 5 else ""
-            )
+            more = f"\n... и ещё {len(failed_entries) - 5}" if len(failed_entries) > 5 else ""
             final += f"\n\nНе удалось:\n{preview}{more}"
         try:
             await status_msg.edit_text(final)

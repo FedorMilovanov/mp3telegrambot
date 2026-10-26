@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Advance exact-input retry state for structured universal early stops."""
+
 from __future__ import annotations
 
 import json
@@ -73,9 +74,7 @@ def run_with_failure_recovery(
     except RuntimeError as exc:
         message = str(exc)
         failure_type = getattr(direct_timing_guard, "RetryableSynthesisFailure", None)
-        structured = bool(
-            isinstance(failure_type, type) and isinstance(exc, failure_type)
-        )
+        structured = bool(isinstance(failure_type, type) and isinstance(exc, failure_type))
         if structured:
             if not bool(exc.advance_retry):
                 raise
@@ -116,16 +115,11 @@ def run_with_failure_recovery(
             )
         except Exception as recovery_error:
             raise RuntimeError(
-                f"{message} Retry-state recovery failed: "
-                f"{type(recovery_error).__name__}: {recovery_error}"
+                f"{message} Retry-state recovery failed: {type(recovery_error).__name__}: {recovery_error}"
             ) from exc
         if not isinstance(result, Mapping):
-            raise RuntimeError(
-                f"{message} Retry-state recovery returned invalid payload."
-            ) from exc
-        raise RuntimeError(
-            f"{message} Retry scope advanced to {_reported_epoch(result)}."
-        ) from exc
+            raise RuntimeError(f"{message} Retry-state recovery returned invalid payload.") from exc
+        raise RuntimeError(f"{message} Retry scope advanced to {_reported_epoch(result)}.") from exc
 
 
 __all__ = ["POLICY", "run_with_failure_recovery"]

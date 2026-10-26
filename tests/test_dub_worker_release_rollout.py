@@ -28,13 +28,9 @@ def test_worker_release_marker_is_shared_and_advanced() -> None:
 
 
 def test_supervisor_and_worker_entrypoint_use_one_release_identity() -> None:
-    supervisor = (ROOT / "services" / "dub_studio_runtime.py").read_text(
-        encoding="utf-8"
-    )
+    supervisor = (ROOT / "services" / "dub_studio_runtime.py").read_text(encoding="utf-8")
     worker = (ROOT / "services" / "dub_worker.py").read_text(encoding="utf-8")
-    entrypoint = (ROOT / "tools" / "voxcpm2" / "dub_worker.py").read_text(
-        encoding="utf-8"
-    )
+    entrypoint = (ROOT / "tools" / "voxcpm2" / "dub_worker.py").read_text(encoding="utf-8")
 
     assert "from services.dub_worker_release import WORKER_RUNTIME" in supervisor
     assert "_WORKER_RUNTIME = WORKER_RUNTIME" in supervisor

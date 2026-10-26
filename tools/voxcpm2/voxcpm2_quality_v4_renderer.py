@@ -6,6 +6,7 @@ It deliberately does not patch VoxCPM.generate. The underlying renderer keeps
 its original min_len=2, retry_badcase=False and requested CFG. This adapter
 scores unstable starts and normalizes candidate edge silence before timeline fit.
 """
+
 from __future__ import annotations
 
 import json
@@ -50,16 +51,12 @@ def log(message: str) -> None:
 def _required_callable(namespace: dict[str, Any], name: str) -> Callable[..., Any]:
     value = namespace.get(name)
     if not callable(value):
-        raise RuntimeError(
-            f"Исходный NoChew renderer не экспортирует обязательную функцию {name!r}."
-        )
+        raise RuntimeError(f"Исходный NoChew renderer не экспортирует обязательную функцию {name!r}.")
     return value
 
 
 def _has_render_hooks(namespace: object) -> bool:
-    return isinstance(namespace, dict) and all(
-        callable(namespace.get(name)) for name in _REQUIRED_RENDER_HOOKS
-    )
+    return isinstance(namespace, dict) and all(callable(namespace.get(name)) for name in _REQUIRED_RENDER_HOOKS)
 
 
 def _execution_globals(namespace: dict[str, Any]) -> dict[str, Any]:
@@ -93,13 +90,8 @@ def _execution_globals(namespace: dict[str, Any]) -> dict[str, Any]:
                 queue.append(captured)
     if _has_render_hooks(namespace):
         return namespace
-    missing = [
-        name for name in _REQUIRED_RENDER_HOOKS if not callable(namespace.get(name))
-    ]
-    raise RuntimeError(
-        "Не найден active renderer namespace с обязательными hooks: "
-        + ", ".join(missing)
-    )
+    missing = [name for name in _REQUIRED_RENDER_HOOKS if not callable(namespace.get(name))]
+    raise RuntimeError("Не найден active renderer namespace с обязательными hooks: " + ", ".join(missing))
 
 
 def _emit_progress(progress: int, stage: str, message: str) -> None:
@@ -192,23 +184,14 @@ def _initial_artifact_score(candidate: dict[str, Any]) -> float:
     pre_peak = float(np.max(np.abs(pre))) if len(pre) else 0.0
     pre_step = float(np.max(np.abs(np.diff(pre)))) if len(pre) > 1 else 0.0
     pre_rms = math.sqrt(float(np.mean(pre**2)) + 1e-12) if len(pre) else 0.0
-    pre_zcr = (
-        float(np.mean(np.signbit(pre[1:]) != np.signbit(pre[:-1])))
-        if len(pre) > 1
-        else 0.0
-    )
+    pre_zcr = float(np.mean(np.signbit(pre[1:]) != np.signbit(pre[:-1]))) if len(pre) > 1 else 0.0
 
     score = 0.0
     if onset > 0.14:
         score += 24.0 + (onset - 0.14) * 95.0
     if pre_step > 0.30 and pre_peak > 0.12:
         score += 95.0 + min(35.0, pre_step * 20.0)
-    elif (
-        onset >= 0.09
-        and pre_rms > 0.006
-        and pre_zcr > 0.22
-        and pre_peak > max(0.08, speech_rms * 1.45)
-    ):
+    elif onset >= 0.09 and pre_rms > 0.006 and pre_zcr > 0.22 and pre_peak > max(0.08, speech_rms * 1.45):
         score += 60.0 + min(30.0, pre_zcr * 50.0)
     return score
 

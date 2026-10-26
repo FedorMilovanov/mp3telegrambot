@@ -9,6 +9,7 @@
 пути или имени пользователя — health-эндпоинт слушают внешние мониторы, а не
 доверенные лица.
 """
+
 from __future__ import annotations
 
 import os
@@ -33,12 +34,7 @@ def _is_windows_drive(text: str) -> bool:
     (`tools/check_code_health.py`), и заводить шаблон ради двух сравнений
     символов незачем.
     """
-    return (
-        len(text) > 2
-        and text[0].isalpha()
-        and text[1] == ":"
-        and text[2] in "\\/"
-    )
+    return len(text) > 2 and text[0].isalpha() and text[1] == ":" and text[2] in "\\/"
 
 
 def readonly_uri(path: str | Path) -> str:
@@ -168,21 +164,13 @@ def build_health(
         "updates": {
             "total": snapshot.get("updates_total", 0),
             "rejected_total": snapshot.get("updates_rejected_total", 0),
-            "last_age_seconds": (
-                None
-                if last_update_age is None
-                else round(float(last_update_age), 1)
-            ),
+            "last_age_seconds": (None if last_update_age is None else round(float(last_update_age), 1)),
         },
         "maintenance": {
             "runs_total": snapshot.get("maintenance_runs_total", 0),
             "failures_total": snapshot.get("maintenance_failures_total", 0),
             "ok": snapshot.get("last_maintenance_ok", True),
-            "last_age_seconds": (
-                None
-                if last_maintenance_age is None
-                else round(float(last_maintenance_age), 1)
-            ),
+            "last_age_seconds": (None if last_maintenance_age is None else round(float(last_maintenance_age), 1)),
             "last_error": snapshot.get("last_maintenance_error", "") or None,
         },
         "database": {"ok": db_ok},
@@ -224,23 +212,24 @@ def render_prometheus(
         gemini_keys_required=keys_configured is not None,
     )
     lines: list[str] = []
+    lines += _metric("mp3bot_up", 0 if problems else 1, "1 if /healthz would answer 200, else 0")
+    lines += _metric("mp3bot_database_ok", 1 if db_ok else 0, "1 if the database header is readable")
     lines += _metric(
-        "mp3bot_up", 0 if problems else 1, "1 if /healthz would answer 200, else 0"
-    )
-    lines += _metric(
-        "mp3bot_database_ok", 1 if db_ok else 0, "1 if the database header is readable"
-    )
-    lines += _metric(
-        "mp3bot_uptime_seconds", round(float(snapshot.get("uptime_seconds", 0.0)), 1),
+        "mp3bot_uptime_seconds",
+        round(float(snapshot.get("uptime_seconds", 0.0)), 1),
         "Process uptime in seconds",
     )
     lines += _metric(
-        "mp3bot_updates_total", snapshot.get("updates_total", 0),
-        "Telegram updates accepted for processing", "counter",
+        "mp3bot_updates_total",
+        snapshot.get("updates_total", 0),
+        "Telegram updates accepted for processing",
+        "counter",
     )
     lines += _metric(
-        "mp3bot_updates_rejected_total", snapshot.get("updates_rejected_total", 0),
-        "Updates dropped before business logic", "counter",
+        "mp3bot_updates_rejected_total",
+        snapshot.get("updates_rejected_total", 0),
+        "Updates dropped before business logic",
+        "counter",
     )
     last_update_age = snapshot.get("last_update_age_seconds")
     lines += _metric(
@@ -249,12 +238,15 @@ def render_prometheus(
         "Seconds since the last processed update, -1 if none yet",
     )
     lines += _metric(
-        "mp3bot_jobs_active", snapshot.get("jobs_active", 0),
+        "mp3bot_jobs_active",
+        snapshot.get("jobs_active", 0),
         "Heavy jobs running right now",
     )
     lines += _metric(
-        "mp3bot_maintenance_failures_total", snapshot.get("maintenance_failures_total", 0),
-        "Hourly maintenance runs that ended with an exception", "counter",
+        "mp3bot_maintenance_failures_total",
+        snapshot.get("maintenance_failures_total", 0),
+        "Hourly maintenance runs that ended with an exception",
+        "counter",
     )
     last_maintenance_age = snapshot.get("last_maintenance_age_seconds")
     lines += _metric(
@@ -268,7 +260,8 @@ def render_prometheus(
         "Free bytes on the data volume, -1 if unknown",
     )
     lines += _metric(
-        "mp3bot_maintenance_last_ok", 1 if snapshot.get("last_maintenance_ok", True) else 0,
+        "mp3bot_maintenance_last_ok",
+        1 if snapshot.get("last_maintenance_ok", True) else 0,
         "1 if the last maintenance run succeeded",
     )
     last_alert_age = snapshot.get("last_alert_age_seconds")

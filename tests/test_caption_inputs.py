@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Данные подписи: приоритет ссылок, статус публикации, покрытие таймкодами."""
+
 from __future__ import annotations
 
 import pytest
@@ -29,9 +30,7 @@ def limit(format_name: str) -> int:
 
 
 def test_new_pages_take_priority_over_legacy() -> None:
-    links = resolve_page_links(
-        study=STUDY, reflection=REFL, analytics=ANALYTICS, questions=QUESTIONS, terms=TERMS
-    )
+    links = resolve_page_links(study=STUDY, reflection=REFL, analytics=ANALYTICS, questions=QUESTIONS, terms=TERMS)
     assert links.quotes == STUDY
     assert links.questions == REFL
     assert links.terms == ""
@@ -79,16 +78,12 @@ def test_long_recording_with_good_coverage_is_complete() -> None:
 
 
 def test_warning_marks_partial_for_long_recording() -> None:
-    data = with_timestamp_coverage(
-        {"timestamps": "29:00 конец", "timestamp_coverage_warning": True}, 1200
-    )
+    data = with_timestamp_coverage({"timestamps": "29:00 конец", "timestamp_coverage_warning": True}, 1200)
     assert data["segments_status"] == "partial"
 
 
 def test_warning_ignored_for_short_recording() -> None:
-    data = with_timestamp_coverage(
-        {"timestamps": "04:00", "timestamp_coverage_warning": True}, 300
-    )
+    data = with_timestamp_coverage({"timestamps": "04:00", "timestamp_coverage_warning": True}, 300)
     assert data["segments_status"] == "complete"
 
 
@@ -101,9 +96,7 @@ def test_source_dict_not_mutated() -> None:
 # ── Данные подписи ───────────────────────────────────────────────────────
 
 OK_STATUS = PublicationStatus(status="complete", missing=(), warning="")
-PARTIAL_STATUS = PublicationStatus(
-    status="partial", missing=("reflection",), warning="Не вышло: размышление."
-)
+PARTIAL_STATUS = PublicationStatus(status="partial", missing=("reflection",), warning="Не вышло: размышление.")
 
 
 def test_trims_timestamp_preview_when_over_limit() -> None:
@@ -158,10 +151,17 @@ def test_degraded_base_receives_preview_but_not_publication_warning() -> None:
 
 
 def test_base_none_when_nothing_known() -> None:
-    assert build_caption_base(
-        ai_data=None, degraded=None, format_name="other",
-        timestamps_total=0, timestamp_limit=limit, publication=OK_STATUS,
-    ) is None
+    assert (
+        build_caption_base(
+            ai_data=None,
+            degraded=None,
+            format_name="other",
+            timestamps_total=0,
+            timestamp_limit=limit,
+            publication=OK_STATUS,
+        )
+        is None
+    )
 
 
 # ── Оркестратор ──────────────────────────────────────────────────────────

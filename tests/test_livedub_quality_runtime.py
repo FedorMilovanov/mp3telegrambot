@@ -1,4 +1,5 @@
 """Regression contracts for Gemini quality policy and explicit LiveDub delivery."""
+
 from __future__ import annotations
 
 from core.model_catalog import MODEL_PRIMARY
@@ -31,7 +32,13 @@ def test_pre_main_manifest_owns_policy_before_core_clients() -> None:
 
 def test_production_policy_keeps_semantic_work_on_38_high() -> None:
     runtime.configure_gemini_policy()
-    for name in ("GEMINI_MODEL", "LIVEDUB_INFO_MODEL", "LIVEDUB_QUICK_QA_MODEL", "LIVEDUB_LONG_QA_MODEL", "LIVEDUB_QA_VERIFY_MODEL"):
+    for name in (
+        "GEMINI_MODEL",
+        "LIVEDUB_INFO_MODEL",
+        "LIVEDUB_QUICK_QA_MODEL",
+        "LIVEDUB_LONG_QA_MODEL",
+        "LIVEDUB_QA_VERIFY_MODEL",
+    ):
         assert runtime.os.environ[name] == MODEL_PRIMARY
     for name in ("LIVEDUB_QUICK_QA_THINKING", "LIVEDUB_LONG_QA_THINKING", "LIVEDUB_QA_VERIFY_THINKING"):
         assert runtime.os.environ[name] == "high"
@@ -63,6 +70,7 @@ def test_user_visible_publication_uses_38_high_not_utility() -> None:
 
 def test_info_owner_refuses_stale_35_semantic_env(monkeypatch) -> None:
     import services.livedub_info as info
+
     monkeypatch.setenv("LIVEDUB_INFO_MODEL", "gemini-3.5-flash-lite")
     monkeypatch.setenv("LIVEDUB_INFO_FALLBACK_MODELS", "gemini-3.5-flash")
     assert info.get_light_model() == MODEL_PRIMARY
@@ -71,16 +79,37 @@ def test_info_owner_refuses_stale_35_semantic_env(monkeypatch) -> None:
 
 def test_info_card_uses_shared_bounded_transport_without_mutating_registry(monkeypatch) -> None:
     import services.livedub_info as info
+
     calls = []
+
     class Models:
-        def __init__(self, name, fail): self.name, self.fail = name, fail
+        def __init__(self, name, fail):
+            self.name, self.fail = name, fail
+
         async def generate_content(self, *, model, contents, config):
             del contents
             calls.append((self.name, model, config["thinking_level"]))
-            if self.fail: raise RuntimeError("unavailable")
-            return SimpleNamespace(text=json.dumps({"telegram_description":"Готово","youtube_title":"Название","youtube_description":"Описание","compact_subtitles":[],"hashtags":[],"key_theological_terms":[],"scripture_references":[]}, ensure_ascii=False))
+            if self.fail:
+                raise RuntimeError("unavailable")
+            return SimpleNamespace(
+                text=json.dumps(
+                    {
+                        "telegram_description": "Готово",
+                        "youtube_title": "Название",
+                        "youtube_description": "Описание",
+                        "compact_subtitles": [],
+                        "hashtags": [],
+                        "key_theological_terms": [],
+                        "scripture_references": [],
+                    },
+                    ensure_ascii=False,
+                )
+            )
+
     class Client:
-        def __init__(self, name, fail): self.aio = SimpleNamespace(models=Models(name, fail))
+        def __init__(self, name, fail):
+            self.aio = SimpleNamespace(models=Models(name, fail))
+
     clients = [Client("first", True), Client("second", False)]
     monkeypatch.setattr(info, "GEMINI_CLIENTS", clients)
     monkeypatch.setattr(info, "get_light_model", lambda: MODEL_PRIMARY)
@@ -99,17 +128,26 @@ def test_singleflight_failure_releases_retry_key() -> None:
     delivery.reset_delivery_runtime_state()
     key = ("new", "failure-test-chat", "failure-test-reply", "failure-test-video")
     attempts = 0
+
     async def scenario():
         nonlocal attempts
+
         async def fail():
-            nonlocal attempts; attempts += 1; raise RuntimeError("telegram send failed")
+            nonlocal attempts
+            attempts += 1
+            raise RuntimeError("telegram send failed")
+
         async def succeed():
-            nonlocal attempts; attempts += 1; return True
+            nonlocal attempts
+            attempts += 1
+            return True
+
         with pytest.raises(RuntimeError, match="telegram send failed"):
             await delivery._singleflight(key, fail)
         assert key not in delivery._COMPANION_INFLIGHT
         assert key not in delivery._COMPANION_SENT
         assert await delivery._singleflight(key, succeed) is True
+
     asyncio.run(scenario())
     assert attempts == 2 and key in delivery._COMPANION_SENT
 
@@ -117,17 +155,27 @@ def test_singleflight_failure_releases_retry_key() -> None:
 def test_singleflight_false_is_not_cached_and_concurrency_coalesces() -> None:
     delivery.reset_delivery_runtime_state()
     false_key = ("new", "chat", "reply", "false")
-    async def false_once(): return False
+
+    async def false_once():
+        return False
+
     assert asyncio.run(delivery._singleflight(false_key, false_once)) is False
     assert false_key not in delivery._COMPANION_SENT
 
     key = ("new", "chat", "reply", "shared")
     attempts = 0
+
     async def scenario():
         nonlocal attempts
         started, release = asyncio.Event(), asyncio.Event()
+
         async def sender():
-            nonlocal attempts; attempts += 1; started.set(); await release.wait(); return True
+            nonlocal attempts
+            attempts += 1
+            started.set()
+            await release.wait()
+            return True
+
         first = asyncio.create_task(delivery._singleflight(key, sender))
         await started.wait()
         second = asyncio.create_task(delivery._singleflight(key, sender))
@@ -135,6 +183,7 @@ def test_singleflight_false_is_not_cached_and_concurrency_coalesces() -> None:
         assert attempts == 1
         release.set()
         assert await asyncio.gather(first, second) == [True, True]
+
     asyncio.run(scenario())
     assert attempts == 1
 

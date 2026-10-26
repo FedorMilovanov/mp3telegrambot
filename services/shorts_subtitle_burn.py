@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Transactional, validated ASS subtitle burn for public Shorts outputs."""
+
 from __future__ import annotations
 
 import asyncio
@@ -95,9 +96,7 @@ async def burn_subtitles_into_short(
             ass_path.write_text(ass_content, encoding="utf-8")
             ass_escaped = str(ass_path).replace("\\", "/").replace(":", "\\:")
 
-            encoder, quality, preset = await await_owned_coroutine(
-                asyncio.to_thread(_get_video_encoder)
-            )
+            encoder, quality, preset = await await_owned_coroutine(asyncio.to_thread(_get_video_encoder))
             command = [
                 ffmpeg,
                 "-i",

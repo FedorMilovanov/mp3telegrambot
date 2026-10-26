@@ -89,7 +89,7 @@ def test_r44_run_bot_async_checks_lock_before_network_work():
 def test_r44_run_bot_stops_without_restart_loop_on_conflict():
     src = open("main.py", encoding="utf-8").read()
     assert 'result == "singleton_conflict"' in src
-    block = src[src.index('result == "singleton_conflict"'):][:500]
+    block = src[src.index('result == "singleton_conflict"') :][:500]
     assert "break" in block
     # must NOT fall through into the retry/backoff path used for real crashes
     assert "_net_fail_streak = 0" not in block.split("break")[0]

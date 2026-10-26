@@ -12,9 +12,19 @@ def test_audio_analysis_response_schema_contract():
     assert schema["type"] == "object"
     required = set(schema["required"])
     for key in [
-        "real_author", "real_title", "format", "main_topic", "timestamps",
-        "hashtags", "analysis_summary", "argument_arc", "key_categories",
-        "questions", "terms_data", "whisper_hints", "hermeneutic_method",
+        "real_author",
+        "real_title",
+        "format",
+        "main_topic",
+        "timestamps",
+        "hashtags",
+        "analysis_summary",
+        "argument_arc",
+        "key_categories",
+        "questions",
+        "terms_data",
+        "whisper_hints",
+        "hermeneutic_method",
     ]:
         assert key in required
     assert schema["properties"]["timestamps"]["items"]["required"] == ["time", "topic"]
@@ -45,7 +55,7 @@ def test_gemini_analyze_uses_schema_with_legacy_fallback():
     assert "from core.candidate_schema import audio_analysis_response_schema" in src
     assert "def _audio_structured_output_enabled" in src
     assert "AUDIO_ANALYSIS_STRUCTURED" in src
-    assert "response_mime_type=\"application/json\"" in src
+    assert 'response_mime_type="application/json"' in src
     assert "response_schema=audio_analysis_response_schema()" in src
     assert "retry legacy JSON config" in src
 
@@ -55,4 +65,11 @@ def test_gemini_analyze_generate_block_has_quota_overload_passthrough():
     ast.parse(src)  # валидируем синтаксис; дерево само не нужно
     # Lightweight structural check: the fallback path must not swallow quota/503.
     assert "if is_quota_error(_schema_err) or is_overload_error(_schema_err):" in src
-    assert "raise" in src[src.find("if is_quota_error(_schema_err)"):src.find("logger.warning", src.find("if is_quota_error(_schema_err)"))]
+    assert (
+        "raise"
+        in src[
+            src.find("if is_quota_error(_schema_err)") : src.find(
+                "logger.warning", src.find("if is_quota_error(_schema_err)")
+            )
+        ]
+    )

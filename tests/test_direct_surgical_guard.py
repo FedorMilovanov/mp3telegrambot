@@ -8,8 +8,6 @@ from tools.voxcpm2 import direct_surgical_polish_v2
 from tools.voxcpm2 import direct_timing_guard as guard
 
 
-
-
 def seg(text="Текст.", **extra):
     return {
         "id": 1,
@@ -60,14 +58,20 @@ def test_marker_repeat_is_strict_and_does_not_mutate_input(tmp_path: Path) -> No
     )
     assert marker["schema_version"] == 3
     assert marker["policy"] == direct_surgical_polish_v2.MARKER_POLICY
-    assert guard.load_matching_timing_block(
-        tmp_path,
-        segment=item,
-        signature_context={"model": "a"},
-    ) is not None
-    assert guard.load_matching_timing_block(
-        tmp_path,
-        segment={**item, "text": "Новый текст."},
-        signature_context={"model": "a"},
-    ) is None
+    assert (
+        guard.load_matching_timing_block(
+            tmp_path,
+            segment=item,
+            signature_context={"model": "a"},
+        )
+        is not None
+    )
+    assert (
+        guard.load_matching_timing_block(
+            tmp_path,
+            segment={**item, "text": "Новый текст."},
+            signature_context={"model": "a"},
+        )
+        is None
+    )
     assert list((tmp_path / "timing_blocks").glob("*.stale-input-changed-*"))

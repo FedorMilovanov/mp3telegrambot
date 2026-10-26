@@ -16,9 +16,7 @@ def test_factory_quality_and_delivery_are_owned_by_source_modules():
     factory_source = Path("pipelines/shorts_factory.py").read_text(encoding="utf-8")
     short_delivery = Path("pipelines/factory_short_delivery.py").read_text(encoding="utf-8")
     source_owner = Path("services/shorts_factory_source.py").read_text(encoding="utf-8")
-    capacity_owner = Path("services/shorts_factory_capacity_runtime.py").read_text(
-        encoding="utf-8"
-    )
+    capacity_owner = Path("services/shorts_factory_capacity_runtime.py").read_text(encoding="utf-8")
     quality_gate = Path("services/shorts_factory_quality_gate.py").read_text(encoding="utf-8")
     timing_source = Path("services/shorts_factory_timing.py").read_text(encoding="utf-8")
 

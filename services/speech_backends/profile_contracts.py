@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Fail-closed contracts between TTS adapters and concrete model profiles."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -70,28 +71,17 @@ class BackendModelProfileContract:
             self.required_backend_config_keys,
             field_name="required_backend_config_keys",
         )
-        unknown_required_options = sorted(
-            set(required_option_keys) - set(option_keys)
-        )
+        unknown_required_options = sorted(set(required_option_keys) - set(option_keys))
         if unknown_required_options:
-            raise ValueError(
-                "required_option_keys отсутствуют в option_keys: "
-                + ", ".join(unknown_required_options)
-            )
-        unknown_required_config = sorted(
-            set(required_backend_config_keys) - set(backend_config_keys)
-        )
+            raise ValueError("required_option_keys отсутствуют в option_keys: " + ", ".join(unknown_required_options))
+        unknown_required_config = sorted(set(required_backend_config_keys) - set(backend_config_keys))
         if unknown_required_config:
             raise ValueError(
-                "required_backend_config_keys отсутствуют в backend_config_keys: "
-                + ", ".join(unknown_required_config)
+                "required_backend_config_keys отсутствуют в backend_config_keys: " + ", ".join(unknown_required_config)
             )
         overlap = sorted(set(option_keys) & set(backend_config_keys))
         if overlap:
-            raise ValueError(
-                "option_keys и backend_config_keys пересекаются: "
-                + ", ".join(overlap)
-            )
+            raise ValueError("option_keys и backend_config_keys пересекаются: " + ", ".join(overlap))
         object.__setattr__(self, "backend_id", backend_id)
         object.__setattr__(self, "option_keys", option_keys)
         object.__setattr__(self, "required_option_keys", required_option_keys)
@@ -104,9 +94,7 @@ class BackendModelProfileContract:
 
     def validate_profile(self, profile: Any) -> None:
         profile_id = str(getattr(profile, "profile_id", "") or "").strip()
-        profile_backend_id = str(
-            getattr(profile, "backend_id", "") or ""
-        ).casefold().strip()
+        profile_backend_id = str(getattr(profile, "backend_id", "") or "").casefold().strip()
         if profile_backend_id != self.backend_id:
             raise ModelProfileContractError(
                 f"TTS profile {profile_id or '—'} принадлежит backend="
@@ -114,8 +102,7 @@ class BackendModelProfileContract:
             )
 
         profile_options = tuple(
-            str(getattr(spec, "name", "") or "").strip()
-            for spec in tuple(getattr(profile, "option_specs", ()) or ())
+            str(getattr(spec, "name", "") or "").strip() for spec in tuple(getattr(profile, "option_specs", ()) or ())
         )
         unknown_options = sorted(set(profile_options) - set(self.option_keys))
         if unknown_options:
@@ -123,38 +110,28 @@ class BackendModelProfileContract:
                 f"TTS profile {profile_id} объявляет options, которые adapter "
                 f"{self.backend_id} не потребляет: {', '.join(unknown_options)}."
             )
-        missing_options = sorted(
-            set(self.required_option_keys) - set(profile_options)
-        )
+        missing_options = sorted(set(self.required_option_keys) - set(profile_options))
         if missing_options:
             raise ModelProfileContractError(
                 f"TTS profile {profile_id} не объявляет обязательные options adapter "
                 f"{self.backend_id}: {', '.join(missing_options)}."
             )
 
-        profile_config = tuple(
-            str(key) for key in dict(getattr(profile, "backend_defaults", {}) or {})
-        )
-        unknown_config = sorted(
-            set(profile_config) - set(self.backend_config_keys)
-        )
+        profile_config = tuple(str(key) for key in dict(getattr(profile, "backend_defaults", {}) or {}))
+        unknown_config = sorted(set(profile_config) - set(self.backend_config_keys))
         if unknown_config:
             raise ModelProfileContractError(
                 f"TTS profile {profile_id} объявляет backend config, который adapter "
                 f"{self.backend_id} не потребляет: {', '.join(unknown_config)}."
             )
-        missing_config = sorted(
-            set(self.required_backend_config_keys) - set(profile_config)
-        )
+        missing_config = sorted(set(self.required_backend_config_keys) - set(profile_config))
         if missing_config:
             raise ModelProfileContractError(
                 f"TTS profile {profile_id} не объявляет обязательный backend config "
                 f"adapter {self.backend_id}: {', '.join(missing_config)}."
             )
 
-        requires_evidence = bool(
-            getattr(profile, "requires_execution_plan_evidence", False)
-        )
+        requires_evidence = bool(getattr(profile, "requires_execution_plan_evidence", False))
         if requires_evidence and not self.execution_plan_evidence_supported:
             raise ModelProfileContractError(
                 f"TTS profile {profile_id} требует execution-plan evidence, но adapter "
@@ -167,12 +144,8 @@ class BackendModelProfileContract:
             "option_keys": list(self.option_keys),
             "required_option_keys": list(self.required_option_keys),
             "backend_config_keys": list(self.backend_config_keys),
-            "required_backend_config_keys": list(
-                self.required_backend_config_keys
-            ),
-            "execution_plan_evidence_supported": bool(
-                self.execution_plan_evidence_supported
-            ),
+            "required_backend_config_keys": list(self.required_backend_config_keys),
+            "execution_plan_evidence_supported": bool(self.execution_plan_evidence_supported),
             "profile_contract_policy": MODEL_PROFILE_CONTRACT_POLICY,
         }
 
@@ -184,15 +157,11 @@ def register_backend_model_contract(
     contract: BackendModelProfileContract,
 ) -> None:
     if not isinstance(contract, BackendModelProfileContract):
-        raise TypeError(
-            "register_backend_model_contract ожидает BackendModelProfileContract."
-        )
+        raise TypeError("register_backend_model_contract ожидает BackendModelProfileContract.")
     existing = _CONTRACTS.get(contract.backend_id)
     if existing is not None and existing is not contract:
         if existing != contract:
-            raise RuntimeError(
-                f"Model profile contract уже зарегистрирован: {contract.backend_id}"
-            )
+            raise RuntimeError(f"Model profile contract уже зарегистрирован: {contract.backend_id}")
         return
     _CONTRACTS[contract.backend_id] = contract
 
@@ -202,10 +171,7 @@ def get_backend_model_contract(value: object) -> BackendModelProfileContract:
     contract = _CONTRACTS.get(backend_id)
     if contract is None:
         available = ", ".join(sorted(_CONTRACTS)) or "—"
-        raise ModelProfileContractError(
-            f"Backend {backend_id} не имеет model-profile contract. "
-            f"Доступно: {available}."
-        )
+        raise ModelProfileContractError(f"Backend {backend_id} не имеет model-profile contract. Доступно: {available}.")
     return contract
 
 

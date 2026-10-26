@@ -4,6 +4,7 @@
 Quality is enforced before ``core.globals`` creates clients/config helpers.  This
 module never scans ``sys.modules`` or rewrites references after import.
 """
+
 from __future__ import annotations
 
 from core.model_catalog import (

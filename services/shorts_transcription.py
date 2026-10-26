@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Owned Shorts transcription with an explicit subtitle profile."""
+
 from __future__ import annotations
 
 import asyncio
@@ -28,14 +29,10 @@ FACTORY_SUBTITLE_PROFILE: dict[str, Any] = {
 
 def factory_subtitle_profile() -> dict[str, Any]:
     """Return the fail-closed Factory profile without global subtitle mutation."""
-    requested = (
-        os.getenv("SHORTS_FACTORY_WHISPER_MODEL", "").strip()
-        or DEFAULT_FACTORY_WHISPER_MODEL
-    )
+    requested = os.getenv("SHORTS_FACTORY_WHISPER_MODEL", "").strip() or DEFAULT_FACTORY_WHISPER_MODEL
     if requested.casefold() != DEFAULT_FACTORY_WHISPER_MODEL:
         raise RuntimeError(
-            "SHORTS FACTORY MAX requires faster-whisper large-v3 exactly; "
-            f"{requested!r} is a quality downgrade"
+            f"SHORTS FACTORY MAX requires faster-whisper large-v3 exactly; {requested!r} is a quality downgrade"
         )
     return dict(FACTORY_SUBTITLE_PROFILE)
 

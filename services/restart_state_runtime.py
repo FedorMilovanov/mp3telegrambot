@@ -4,6 +4,7 @@
 The process lifecycle calls :func:`reset_cross_loop_state` directly before
 ``asyncio.run``.  No bot runner is replaced at runtime.
 """
+
 from __future__ import annotations
 
 import tempfile

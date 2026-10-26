@@ -32,24 +32,22 @@ def test_source_title_registry_contains_official_titles_and_authors():
 
 def test_source_title_registry_corrects_wrong_ru_title_but_prefers_original_card_title():
     assert correct_known_ru_title("Странный огонь") == "Чуждый огонь"
-    assert normalize_source_card_line(
-        "• Джон МакАртур, Странный огонь (John MacArthur, Strange Fire)."
-    ) == "**Чуждый огонь**, Джон МакАртур (Strange Fire, John MacArthur)."
-    assert normalize_source_map_text(
-        "• Джон МакАртур, Чуждый огонь (John MacArthur, Strange Fire)."
-    ) == "**Чуждый огонь**, Джон МакАртур (Strange Fire, John MacArthur)."
+    assert (
+        normalize_source_card_line("• Джон МакАртур, Странный огонь (John MacArthur, Strange Fire).")
+        == "**Чуждый огонь**, Джон МакАртур (Strange Fire, John MacArthur)."
+    )
+    assert (
+        normalize_source_map_text("• Джон МакАртур, Чуждый огонь (John MacArthur, Strange Fire).")
+        == "**Чуждый огонь**, Джон МакАртур (Strange Fire, John MacArthur)."
+    )
 
 
 def test_source_title_registry_dedupes_generic_bilingual_authors():
     line = "• Кевин ДеЯнг, Грег Гилберт, Greg Gilbert, What Is the Mission of the Church?."
-    assert normalize_source_card_line(line).startswith(
-        "**What Is the Mission"
-    )
+    assert normalize_source_card_line(line).startswith("**What Is the Mission")
     assert "Greg Gilbert" not in normalize_source_card_line(line)
 
-    assert dedupe_bilingual_authors("Джон Оуэн, John Owen, The Death of Death") == (
-        "Джон Оуэн, The Death of Death"
-    )
+    assert dedupe_bilingual_authors("Джон Оуэн, John Owen, The Death of Death") == ("Джон Оуэн, The Death of Death")
 
 
 def test_source_title_registry_canonicalizes_english_author_source_cards():

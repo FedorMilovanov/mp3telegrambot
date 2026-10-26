@@ -6,6 +6,7 @@ production contract intentionally changed: the old mode registry, old semantic
 fallbacks, the retired verbose LiveDub info presentation, retired Gemini model
 contracts, and the retired Deno-first yt-dlp runtime policy.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -85,11 +86,7 @@ _REPLACED_CASES = {
 }
 _CASES = runpy.run_path(str(Path(__file__).with_name("livedub_qa_cases.py")))
 globals().update(
-    {
-        name: value
-        for name, value in _CASES.items()
-        if name.startswith("test_") and name not in _REPLACED_CASES
-    }
+    {name: value for name, value in _CASES.items() if name.startswith("test_") and name not in _REPLACED_CASES}
 )
 
 
@@ -220,9 +217,7 @@ def test_livedub_info_message_escapes_only_visible_publication_fields() -> None:
 
 def test_safe_html_trim_is_owned_by_presentation_policy() -> None:
     info = Path("services/livedub_info.py").read_text(encoding="utf-8")
-    presentation = Path("services/livedub_info_presentation_policy.py").read_text(
-        encoding="utf-8"
-    )
+    presentation = Path("services/livedub_info_presentation_policy.py").read_text(encoding="utf-8")
     assert "presentation_policy.format_card_message(card)" in info
     assert "safe_trim_caption" in presentation
     assert "livedub_info_presentation.py" not in info
@@ -278,9 +273,7 @@ def test_cache_mp3_resend_wiring() -> None:
 def test_chat_actions_during_uploads() -> None:
     main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     stage = Path("pipelines/delivery_stage.py").read_text(encoding="utf-8")
-    video_stage = Path("pipelines/livedub_video_delivery_stage.py").read_text(
-        encoding="utf-8"
-    )
+    video_stage = Path("pipelines/livedub_video_delivery_stage.py").read_text(encoding="utf-8")
     assert 'send_action("upload_voice")' in stage
     assert "send_livedub_video_with_cover(" in main
     assert 'action="upload_video"' in video_stage
@@ -288,9 +281,7 @@ def test_chat_actions_during_uploads() -> None:
 
 def test_livedub_file_id_cache_wired() -> None:
     main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    stage = Path("pipelines/livedub_cached_delivery_stage.py").read_text(
-        encoding="utf-8"
-    )
+    stage = Path("pipelines/livedub_cached_delivery_stage.py").read_text(encoding="utf-8")
     assert "_livedub_cached_file_id" in main
     assert "adb_set_livedub_file_id" in main + stage
     assert "current_livedub_file_id_cache_version" in main
@@ -303,11 +294,11 @@ def test_livedub_file_id_cache_wired() -> None:
 
 def test_cached_livedub_uses_unified_publication_card_and_companion_transaction() -> None:
     main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
-    stage = Path("pipelines/livedub_cached_delivery_stage.py").read_text(
-        encoding="utf-8"
-    )
-    helper = main[main.index("async def _send_livedub_result"):main.index("performer, title = parse_title")]
-    cached_block = helper[helper.index("if _livedub_cached_file_id and context:"):helper.index("if not live_dub_task:")]
+    stage = Path("pipelines/livedub_cached_delivery_stage.py").read_text(encoding="utf-8")
+    helper = main[main.index("async def _send_livedub_result") : main.index("performer, title = parse_title")]
+    cached_block = helper[
+        helper.index("if _livedub_cached_file_id and context:") : helper.index("if not live_dub_task:")
+    ]
     assert "format_video_caption(" in cached_block
     assert "deliver_cached_livedub(" in cached_block
     assert "deliver_cached_companions" in stage
@@ -343,7 +334,7 @@ def test_vot_cli_retries_for_long_translations() -> None:
     src = Path("services/yandex_live_dub.py").read_text(encoding="utf-8")
     assert "Перевод ещё готовится у Яндекса" in src
     assert "merge-video повтор" in src
-    audio_fn = src[src.index("def get_live_dub_audio"):src.index("def get_live_dub_video")]
+    audio_fn = src[src.index("def get_live_dub_audio") : src.index("def get_live_dub_video")]
     assert audio_fn.count("LIVEDUB_NOT_AVAILABLE") >= 2
 
 
@@ -362,9 +353,7 @@ def test_merge_video_uses_new_protocol_before_old_vot_merge() -> None:
         return min(
             node.lineno
             for node in ast.walk(function)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == name
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == name
         )
 
     assert call_line("get_live_dub_audio") < call_line("_check_vot_cli")
@@ -378,9 +367,7 @@ def test_pipeline_wires_pro_mix_and_autofix() -> None:
     compact_main = "".join(main.split())
     assert 'asettings_get("livedub_pro_mix")' in compact_main
     assert 'asettings_get("livedub_autofix")' in compact_main
-    background = Path("pipelines/livedub_background_stage.py").read_text(
-        encoding="utf-8"
-    )
+    background = Path("pipelines/livedub_background_stage.py").read_text(encoding="utf-8")
     assert "make_video=make_livedub_video" in main
     assert "pro_mix=_livedub_pro_mix" in main
     full_stage = Path("pipelines/livedub_full_qa_stage.py").read_text(encoding="utf-8")
@@ -425,7 +412,7 @@ def test_eng_full_livedub_failure_is_not_silent() -> None:
     main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     stage = Path("pipelines/livedub_dub_stage.py").read_text(encoding="utf-8")
     failure_stage = Path("pipelines/livedub_failure_stage.py").read_text(encoding="utf-8")
-    helper = main[main.index("async def _send_livedub_result"):main.index("performer, title = parse_title")]
+    helper = main[main.index("async def _send_livedub_result") : main.index("performer, title = parse_title")]
     bg = Path("pipelines/livedub_background_stage.py").read_text(encoding="utf-8")
     assert "_notify_full_livedub_failure" in helper
     assert "send_full_livedub_failure_notice(" in helper
@@ -447,12 +434,10 @@ def test_pipeline_waitfor_covers_retry_budget() -> None:
 def test_pipeline_prepares_human_livedub_filename_before_send() -> None:
     main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     stage = Path("pipelines/livedub_video_assets_stage.py").read_text(encoding="utf-8")
-    helper = main[main.index("async def _send_livedub_result"):main.index("performer, title = parse_title")]
+    helper = main[main.index("async def _send_livedub_result") : main.index("performer, title = parse_title")]
     assert "prepare_livedub_send_path" in helper
     assert "десятки одинаковых pro_dub.mp4" in helper
-    assert helper.index("prepare_livedub_send_path") < helper.index(
-        "prepare_livedub_video_assets"
-    )
+    assert helper.index("prepare_livedub_send_path") < helper.index("prepare_livedub_video_assets")
     assert "probe_video_meta" in stage
 
 
@@ -470,13 +455,11 @@ def test_quick_qa_report_sent_after_video_not_before() -> None:
     main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     stage = Path("pipelines/livedub_video_delivery_stage.py").read_text(encoding="utf-8")
     quick_stage = Path("pipelines/livedub_quick_qa_stage.py").read_text(encoding="utf-8")
-    helper = main[main.index("async def _send_livedub_result"):main.index("performer, title = parse_title")]
+    helper = main[main.index("async def _send_livedub_result") : main.index("performer, title = parse_title")]
     assert "report_html = format_qa_report" in quick_stage
     assert "run_livedub_quick_qa(" in helper
     assert "главный результат режима" in helper
-    assert helper.index("_sent_msg = await send_livedub_video_with_cover") < helper.index(
-        "if _quick_qa_report_html:"
-    )
+    assert helper.index("_sent_msg = await send_livedub_video_with_cover") < helper.index("if _quick_qa_report_html:")
     assert "await bot.send_video" in stage
 
 
@@ -518,9 +501,7 @@ def test_pipeline_passes_existing_part_to_qa() -> None:
 def test_r41_full_qa_and_autofix_run_before_primary_send() -> None:
     main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     full_stage = Path("pipelines/livedub_full_qa_stage.py").read_text(encoding="utf-8")
-    delivery_stage = Path("pipelines/livedub_video_delivery_stage.py").read_text(
-        encoding="utf-8"
-    )
+    delivery_stage = Path("pipelines/livedub_video_delivery_stage.py").read_text(encoding="utf-8")
     i_qa = full_stage.index("qa_result = await run_translation_qa")
     i_fix = full_stage.index("video_path = fixed", i_qa)
     i_send = main.index("_sent_msg = await send_livedub_video_with_cover")

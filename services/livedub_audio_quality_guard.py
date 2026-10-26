@@ -5,6 +5,7 @@ Clean-track selection is now called directly by the owning services/coordinator;
 there is no runtime replacement of ``livedub_mix``, ``yandex_live_dub`` or
 companion functions.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -19,9 +20,7 @@ def is_derived_audio_artifact(path: Path | str) -> bool:
     stem = candidate.stem.casefold()
     if candidate.suffix.casefold() != ".mp3":
         return False
-    return stem.startswith(_DERIVED_PREFIXES) or any(
-        marker in name or marker in stem for marker in _DERIVED_MARKERS
-    )
+    return stem.startswith(_DERIVED_PREFIXES) or any(marker in name or marker in stem for marker in _DERIVED_MARKERS)
 
 
 def select_clean_translation_mp3(workdir: Path | str) -> Path | None:

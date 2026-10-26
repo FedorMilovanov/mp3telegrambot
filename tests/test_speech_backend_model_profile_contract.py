@@ -106,9 +106,7 @@ def test_adapter_contract_rejects_profile_option_it_does_not_consume() -> None:
 def test_adapter_contract_rejects_missing_required_option() -> None:
     profile = _vox_profile(
         "voxcpm2-missing-option-test",
-        option_specs=tuple(
-            spec for spec in _required_vox_options() if spec.name != "cache_length"
-        ),
+        option_specs=tuple(spec for spec in _required_vox_options() if spec.name != "cache_length"),
         backend_defaults={"vox_archive": "archive", "cpu_venv": "venv"},
     )
 

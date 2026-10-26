@@ -42,6 +42,7 @@ def test_json_parser_marks_timestamp_coverage_warning_without_mutating_timestamp
         "hermeneutic_method": "mixed",
     }
     import json
+
     parsed = _parse_gemini_response(json.dumps(raw, ensure_ascii=False), duration=3600)
     assert parsed is not None
     assert "0:00 Начало" in parsed["timestamps"]

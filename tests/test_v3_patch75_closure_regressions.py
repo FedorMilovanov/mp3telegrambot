@@ -74,7 +74,10 @@ def test_safe_public_title_uses_fallback_only_when_it_is_better_aligned():
         "title_topic_warning": "low overlap",
     }
     assert choose_safe_public_title(ai, "Моя ручная обложка") == "Святой Дух Откровения"
-    assert choose_safe_public_title(ai, "Пастырская верность и церковная дисциплина") == "Пастырская верность и церковная дисциплина"
+    assert (
+        choose_safe_public_title(ai, "Пастырская верность и церковная дисциплина")
+        == "Пастырская верность и церковная дисциплина"
+    )
 
 
 def test_archive_url_fields_are_not_truncated_at_800_chars():

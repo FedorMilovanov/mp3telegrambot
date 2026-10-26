@@ -6,6 +6,7 @@ system FFmpeg/FFprobe, generates deterministic local media, executes the real
 Montage renderer, and proves compressed video packets are preserved across the
 final concat and normalize-only stages.
 """
+
 from __future__ import annotations
 
 import asyncio

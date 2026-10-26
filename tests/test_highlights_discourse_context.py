@@ -26,11 +26,13 @@ def test_discourse_marker_without_left_context_is_rejected(marker: str) -> None:
     fragment = {"start_seconds": 12.0, "end_seconds": 17.0}
     refined, evidence = refine_fragment_from_transcript(
         fragment,
-        [_segment(
-            11.5,
-            17.5,
-            f"{marker}, христианин должен бодрствовать и твёрдо стоять в вере.",
-        )],
+        [
+            _segment(
+                11.5,
+                17.5,
+                f"{marker}, христианин должен бодрствовать и твёрдо стоять в вере.",
+            )
+        ],
         window_start=11.5,
         window_end=18.0,
     )
@@ -65,11 +67,13 @@ def test_marker_matching_does_not_use_word_prefixes() -> None:
     fragment = {"start_seconds": 12.0, "end_seconds": 17.0}
     refined, evidence = refine_fragment_from_transcript(
         fragment,
-        [_segment(
-            11.5,
-            17.5,
-            "Напримерный образ не нужен, человек должен твёрдо стоять в вере.",
-        )],
+        [
+            _segment(
+                11.5,
+                17.5,
+                "Напримерный образ не нужен, человек должен твёрдо стоять в вере.",
+            )
+        ],
         window_start=11.5,
         window_end=18.0,
     )
@@ -84,11 +88,13 @@ def test_marker_is_detected_after_leading_punctuation(prefix: str) -> None:
     ending = "»" if prefix == "«" else ""
     refined, evidence = refine_fragment_from_transcript(
         fragment,
-        [_segment(
-            11.5,
-            17.5,
-            f"{prefix}То есть, человек должен бодрствовать и стоять в вере.{ending}",
-        )],
+        [
+            _segment(
+                11.5,
+                17.5,
+                f"{prefix}То есть, человек должен бодрствовать и стоять в вере.{ending}",
+            )
+        ],
         window_start=11.5,
         window_end=18.0,
     )

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Audio-only and segment-only repair controls for completed Dub Studio projects."""
+
 from __future__ import annotations
 
 import asyncio
@@ -60,7 +61,8 @@ def _dubfix_process_lock() -> Iterator[Path]:
     try:
         payload = json.dumps(
             {"pid": os.getpid(), "acquired_unix": time.time()},
-            ensure_ascii=False, allow_nan=False,
+            ensure_ascii=False,
+            allow_nan=False,
         ).encode("utf-8")
         os.write(descriptor, payload)
         os.fsync(descriptor)
@@ -78,9 +80,7 @@ def _strict_ids(values: Any, *, field: str) -> list[int]:
     result: list[int] = []
     seen: set[int] = set()
     for position, value in enumerate(values, start=1):
-        item_id = strict_core._strict_int(
-            value, field=f"{field}[{position}]", low=1, high=2**31 - 1
-        )
+        item_id = strict_core._strict_int(value, field=f"{field}[{position}]", low=1, high=2**31 - 1)
         if item_id in seen:
             raise RuntimeError(f"{field} содержит повторный ID={item_id}.")
         seen.add(item_id)
@@ -108,7 +108,11 @@ def _project_owned_by(project: dict[str, Any], user_id: int) -> bool:
 
 def _resolve_project(store: DubStore, user_id: int, token: str | None) -> dict[str, Any]:
     token = str(token or "").strip().lower()
-    project = store.get_project(token) if token and token not in {"last", "последний"} else store.latest_project(owner_user_id=user_id)
+    project = (
+        store.get_project(token)
+        if token and token not in {"last", "последний"}
+        else store.latest_project(owner_user_id=user_id)
+    )
     if not project:
         raise KeyError("Проект Dub Studio не найден.")
     if not _project_owned_by(project, user_id):
@@ -142,9 +146,7 @@ def _segments_path(project_id: str) -> Path:
 def load_repair_segments(project_id: str) -> list[dict[str, Any]]:
     path = _segments_path(project_id)
     if not path.is_file():
-        raise RuntimeError(
-            "У проекта ещё нет segments_ru_final.json; сначала завершите обычный рендер."
-        )
+        raise RuntimeError("У проекта ещё нет segments_ru_final.json; сначала завершите обычный рендер.")
     try:
         payload = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -155,9 +157,7 @@ def load_repair_segments(project_id: str) -> list[dict[str, Any]]:
     raw_ids: list[Any] = []
     for position, raw in enumerate(payload, start=1):
         if not isinstance(raw, dict):
-            raise RuntimeError(
-                f"segment[{position}] должен быть JSON-объектом, получено {type(raw).__name__}."
-            )
+            raise RuntimeError(f"segment[{position}] должен быть JSON-объектом, получено {type(raw).__name__}.")
         item = dict(raw)
         raw_ids.append(item.get("id"))
         start = strict_core._finite(item.get("start"), field=f"segment[{position}].start")
@@ -167,15 +167,15 @@ def load_repair_segments(project_id: str) -> list[dict[str, Any]]:
         item["start"] = start
         item["end"] = end
         if item.get("source_end") is not None:
-            source_end = strict_core._finite(
-                item.get("source_end"), field=f"segment[{position}].source_end"
-            )
+            source_end = strict_core._finite(item.get("source_end"), field=f"segment[{position}].source_end")
             if source_end < start:
                 raise RuntimeError(f"source_end segment[{position}] раньше start.")
             item["source_end"] = source_end
         item["start_delay_ms"] = strict_core._strict_int(
             item.get("start_delay_ms", 0),
-            field=f"segment[{position}].start_delay_ms", low=0, high=1500,
+            field=f"segment[{position}].start_delay_ms",
+            low=0,
+            high=1500,
         )
         if not str(item.get("text") or "").strip():
             raise RuntimeError(f"segment[{position}] не содержит текста.")
@@ -227,9 +227,7 @@ def _segments_text(project_id: str, segments: list[dict[str, Any]]) -> str:
         start = float(item.get("start") or 0.0) + max(0, int(item.get("start_delay_ms") or 0)) / 1000.0
         source_end = float(item.get("source_end") or item.get("end") or start)
         text = _short(str(item.get("display_text") or item.get("text") or ""), 115)
-        lines.append(
-            f"<code>{segment_id}</code> · {start:.2f}–{source_end:.2f} · {html.escape(text)}"
-        )
+        lines.append(f"<code>{segment_id}</code> · {start:.2f}–{source_end:.2f} · {html.escape(text)}")
     if len(segments) > 60:
         lines.append(f"… ещё {len(segments) - 60} реплик")
     lines.extend(
@@ -255,9 +253,7 @@ def _write_repair_request(
     project_id = str(project.get("id") or "").strip()
     if not project_id:
         raise RuntimeError("Project ID пуст.")
-    owner_id = strict_core._strict_int(
-        requested_by, field="audio_repair.requested_by", low=1, high=2**63 - 1
-    )
+    owner_id = strict_core._strict_int(requested_by, field="audio_repair.requested_by", low=1, high=2**63 - 1)
     all_ids = _strict_ids(
         [item.get("id") if isinstance(item, dict) else None for item in segments],
         field="segments.id",

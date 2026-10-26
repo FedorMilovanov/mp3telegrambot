@@ -65,5 +65,3 @@ def test_non_object_and_duplicate_segments_fail_closed() -> None:
     segments.append(duplicate)
     with pytest.raises(RuntimeError, match="Повторный ID"):
         core._mark_and_validate_segments(segments, duration=3.0)
-
-

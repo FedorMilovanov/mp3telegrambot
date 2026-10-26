@@ -29,10 +29,7 @@ def test_windows_launcher_requires_repository_lock_fail_closed():
     locked_install = '"%VENV_PYTHON%" -m pip install -r "%REQUIREMENTS_FILE%"'
 
     assert 'set "REQUIREMENTS_FILE=requirements-lock.txt"' in source
-    assert (
-        'if not exist "%REQUIREMENTS_FILE%" set "REQUIREMENTS_FILE=requirements.txt"'
-        not in source
-    )
+    assert 'if not exist "%REQUIREMENTS_FILE%" set "REQUIREMENTS_FILE=requirements.txt"' not in source
     assert "Refusing to install unlocked dependencies from requirements.txt." in source
     assert 'if not exist "tools\\check_requirements_lock.py" (' in source
     assert source.count(checker_call) == 2

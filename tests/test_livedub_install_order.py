@@ -8,8 +8,13 @@ def test_livedub_runtime_is_composed_from_explicit_contracts() -> None:
     assert features["livedub-qa-contract"].phase is RuntimePhase.POST_MAIN
     assert features["livedub-delivery-contract"].phase is RuntimePhase.POST_MAIN
     retired = {
-        "livedub-audio-companion", "livedub-audio-cache-recovery", "livedub-audio-quality",
-        "livedub-ru-provenance", "livedub-new-delivery-atomicity",
-        "livedub-cached-delivery-atomicity", "livedub-audio-dedupe", "livedub-deep-audit",
+        "livedub-audio-companion",
+        "livedub-audio-cache-recovery",
+        "livedub-audio-quality",
+        "livedub-ru-provenance",
+        "livedub-new-delivery-atomicity",
+        "livedub-cached-delivery-atomicity",
+        "livedub-audio-dedupe",
+        "livedub-deep-audit",
     }
     assert retired.isdisjoint(features)

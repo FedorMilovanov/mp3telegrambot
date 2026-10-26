@@ -6,7 +6,11 @@ from pathlib import Path
 def test_segment_callback_uses_shared_render_module():
     """segcut callback delegates to render_and_send_segment instead of inline code."""
     src = Path("handlers/callbacks.py").read_text(encoding="utf-8")
-    block = src[src.find('if data.startswith("segcut:")'):src.find("# ── Short trim", src.find('if data.startswith("segcut:")'))]
+    block = src[
+        src.find('if data.startswith("segcut:")') : src.find(
+            "# ── Short trim", src.find('if data.startswith("segcut:")')
+        )
+    ]
     assert "render_and_send_segment" in block
     assert "release_render_lock" in block
 

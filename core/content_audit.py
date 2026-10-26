@@ -8,6 +8,7 @@ This is the professional layer above node-level Telegraph postprocess:
 It mutates only narrow, deterministic classes of defects observed in live runs
 and reports warnings for classes that should be inspected but not guessed.
 """
+
 from __future__ import annotations
 
 import os
@@ -45,9 +46,7 @@ _THIRD_PERSON_RE = re.compile(
 _SOURCE_MAP_HEADING_RE = re.compile(r"карта\s+источников", re.IGNORECASE)
 _TRANSLATION_FORKS_HEADING_RE = re.compile(r"переводческ\w*\s+развил", re.IGNORECASE)
 _BULLET_LINE_RE = re.compile(r"^\s*[•\-]\s+(.+?)\s*$")
-_INLINE_EXPANDED_TS_RE = re.compile(
-    r"⏱️?\s*\*{0,2}(\d{1,2}:\d{2}(?::\d{2})?)\*{0,2}"
-)
+_INLINE_EXPANDED_TS_RE = re.compile(r"⏱️?\s*\*{0,2}(\d{1,2}:\d{2}(?::\d{2})?)\*{0,2}")
 
 
 def _all_inline_expanded_timestamps(section: dict[str, Any]) -> list[str]:
@@ -56,11 +55,8 @@ def _all_inline_expanded_timestamps(section: dict[str, Any]) -> list[str]:
         if not isinstance(block, dict):
             continue
         values.extend(value for value in block.values() if isinstance(value, str))
-    return [
-        match.group(1)
-        for value in values
-        for match in _INLINE_EXPANDED_TS_RE.finditer(value)
-    ]
+    return [match.group(1) for value in values for match in _INLINE_EXPANDED_TS_RE.finditer(value)]
+
 
 # AUDIT R45 (живой скриншот 2026-07-11): промт дважды прямым текстом запрещает
 # пары ❌/✅ в Reflection ("этот формат только для Study Analysis"), но модель
@@ -81,17 +77,57 @@ _FIRST_PERSON_AUTHOR_RE = re.compile(
 # говорящие от первого лица (авторы книг, пророки, патриархи, цари, Сам Бог)
 # — легитимны в цитатах и пересказе, их НЕ трогаем. Проверяем по первому слову
 # имени, чтобы покрыть «Господь Бог», «Иоанн Богослов» и т.п.
-_BIBLICAL_FIRST_PERSON: frozenset[str] = frozenset({
-    "господь", "бог", "христос", "иисус", "яхве", "дух",
-    # НЗ
-    "иоанн", "павел", "пётр", "петр", "иаков", "иуда", "лука", "матфей", "марк",
-    # ВЗ: авторы, пророки, патриархи, цари
-    "моисей", "давид", "соломон", "даниил", "исаия", "иеремия", "иезекииль",
-    "осия", "иоиль", "амос", "авдий", "иона", "михей", "наум", "аввакум",
-    "софония", "аггей", "захария", "малахия", "неемия", "ездра", "иов",
-    "авраам", "иосиф", "самуил", "илия", "елисей", "агур", "екклесиаст",
-    "богослов",  # эпитет: «Иоанн Богослов»
-})
+_BIBLICAL_FIRST_PERSON: frozenset[str] = frozenset(
+    {
+        "господь",
+        "бог",
+        "христос",
+        "иисус",
+        "яхве",
+        "дух",
+        # НЗ
+        "иоанн",
+        "павел",
+        "пётр",
+        "петр",
+        "иаков",
+        "иуда",
+        "лука",
+        "матфей",
+        "марк",
+        # ВЗ: авторы, пророки, патриархи, цари
+        "моисей",
+        "давид",
+        "соломон",
+        "даниил",
+        "исаия",
+        "иеремия",
+        "иезекииль",
+        "осия",
+        "иоиль",
+        "амос",
+        "авдий",
+        "иона",
+        "михей",
+        "наум",
+        "аввакум",
+        "софония",
+        "аггей",
+        "захария",
+        "малахия",
+        "неемия",
+        "ездра",
+        "иов",
+        "авраам",
+        "иосиф",
+        "самуил",
+        "илия",
+        "елисей",
+        "агур",
+        "екклесиаст",
+        "богослов",  # эпитет: «Иоанн Богослов»
+    }
+)
 
 
 _DOUBLE_SLASH_RE = re.compile(r"(?<!:)\s+/\s*/\s+")
@@ -119,7 +155,6 @@ def normalize_generated_markdown_separators(text: str) -> str:
     out = re.sub(r"[ \t]+\n", "\n", out)
     out = re.sub(r"\n{3,}", "\n\n", out)
     return out
-
 
 
 # FIX: триггеры сужены до однозначно "канальных" маркеров утечки промпта.
@@ -154,7 +189,13 @@ _MATERIAL_STYLE_FIXES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\bМатериал\s+разбирает\b", re.IGNORECASE), "Разбирается"),
     (re.compile(r"\bМатериал\s+указывает\b", re.IGNORECASE), "Указывается"),
     (re.compile(r"\bМатериал\s+связывает\b", re.IGNORECASE), "Связывается"),
-    (re.compile(r"[^.?!…]*(?:конфессиональн\w+\s+рамк\w+\s+канал\w*|редакторск\w+\s+позици\w+\s+канал\w*)[^.?!…]*[.!?…]?\s*", re.IGNORECASE), ""),
+    (
+        re.compile(
+            r"[^.?!…]*(?:конфессиональн\w+\s+рамк\w+\s+канал\w*|редакторск\w+\s+позици\w+\s+канал\w*)[^.?!…]*[.!?…]?\s*",
+            re.IGNORECASE,
+        ),
+        "",
+    ),
 )
 
 
@@ -210,7 +251,9 @@ BLOCK_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
 def _validate_block_required_fields(block: dict[str, Any], *, location: str) -> list[ContentAuditIssue]:
     btype = str(block.get("type") or "paragraph").strip().lower()
     if btype in {"quote", "blockquote", "block_quote"}:
-        missing = [] if (str(block.get("quote") or "").strip() or str(block.get("text") or "").strip()) else ["quote/text"]
+        missing = (
+            [] if (str(block.get("quote") or "").strip() or str(block.get("text") or "").strip()) else ["quote/text"]
+        )
     elif btype in {"scripture", "scripture_quote"}:
         missing = [] if (str(block.get("text") or "").strip() or str(block.get("ref") or "").strip()) else ["text/ref"]
     elif btype == "argument_spine":
@@ -220,7 +263,14 @@ def _validate_block_required_fields(block: dict[str, Any], *, location: str) -> 
     elif btype == "application":
         missing = [field for field in ("challenge", "concrete_step") if not str(block.get(field) or "").strip()]
     elif btype in {"source", "source_card", "bibliography"}:
-        missing = [] if (str(block.get("author") or "").strip() and str(block.get("title_original") or block.get("title") or "").strip()) else ["author + title_original/title"]
+        missing = (
+            []
+            if (
+                str(block.get("author") or "").strip()
+                and str(block.get("title_original") or block.get("title") or "").strip()
+            )
+            else ["author + title_original/title"]
+        )
     elif btype in {"lexicon", "term", "lexical_analysis"}:
         missing = [field for field in ("lemma", "role_in_argument") if not str(block.get(field) or "").strip()]
     elif btype in {"theological_line", "historical_line"}:
@@ -230,12 +280,14 @@ def _validate_block_required_fields(block: dict[str, Any], *, location: str) -> 
         missing = [field for field in required if not str(block.get(field) or "").strip()]
     if not missing:
         return []
-    return [ContentAuditIssue(
-        code="block_schema_warning",
-        location=location,
-        message=f"block type {btype!r} missing required fields: {', '.join(missing)}",
-        before=_short(block),
-    )]
+    return [
+        ContentAuditIssue(
+            code="block_schema_warning",
+            location=location,
+            message=f"block type {btype!r} missing required fields: {', '.join(missing)}",
+            before=_short(block),
+        )
+    ]
 
 
 def _block_has_substantial_text(value: str, *, min_len: int = 90) -> bool:
@@ -260,42 +312,53 @@ def _audit_structured_block_semantics(
     if btype == "scripture" and ("study" in label_low or "ключевые текст" in title_low):
         role = str(block.get("role_in_argument") or block.get("why_relevant") or "")
         text = str(block.get("text") or "")
-        if not (_block_has_substantial_text(role, min_len=90) or ("\n\n" in text and _block_has_substantial_text(text.split("\n\n", 1)[1], min_len=90))):
-            issues.append(ContentAuditIssue(
-                code="scripture_role_missing_warning",
-                location=location,
-                message="scripture block needs role_in_argument/explanation, not a bare verse card",
-                before=_short(block),
-            ))
+        if not (
+            _block_has_substantial_text(role, min_len=90)
+            or ("\n\n" in text and _block_has_substantial_text(text.split("\n\n", 1)[1], min_len=90))
+        ):
+            issues.append(
+                ContentAuditIssue(
+                    code="scripture_role_missing_warning",
+                    location=location,
+                    message="scripture block needs role_in_argument/explanation, not a bare verse card",
+                    before=_short(block),
+                )
+            )
 
     if btype == "source" and "study" in label_low:
         why = str(block.get("why_relevant") or "")
         if not _block_has_substantial_text(why, min_len=60):
-            issues.append(ContentAuditIssue(
-                code="source_relevance_missing_warning",
-                location=location,
-                message="source block needs why_relevant for this exact material",
-                before=_short(block),
-            ))
+            issues.append(
+                ContentAuditIssue(
+                    code="source_relevance_missing_warning",
+                    location=location,
+                    message="source block needs why_relevant for this exact material",
+                    before=_short(block),
+                )
+            )
 
     if btype == "lexicon" and "study" in label_low:
         role = str(block.get("role_in_argument") or "")
         if not _block_has_substantial_text(role, min_len=80):
-            issues.append(ContentAuditIssue(
-                code="lexicon_role_thin_warning",
-                location=location,
-                message="lexicon block needs contextual role in the argument, not a dictionary card",
-                before=_short(block),
-            ))
+            issues.append(
+                ContentAuditIssue(
+                    code="lexicon_role_thin_warning",
+                    location=location,
+                    message="lexicon block needs contextual role in the argument, not a dictionary card",
+                    before=_short(block),
+                )
+            )
 
     if btype == "application" and "reflection" in label_low:
         if not str(block.get("anchor_timestamp") or block.get("timestamp") or "").strip():
-            issues.append(ContentAuditIssue(
-                code="application_anchor_missing_warning",
-                location=location,
-                message="application block should be anchored to a concrete sermon timestamp",
-                before=_short(block),
-            ))
+            issues.append(
+                ContentAuditIssue(
+                    code="application_anchor_missing_warning",
+                    location=location,
+                    message="application block should be anchored to a concrete sermon timestamp",
+                    before=_short(block),
+                )
+            )
     return issues
 
 
@@ -317,13 +380,15 @@ def _scrub_mismatched_first_person_author(text: str, expected_author: str = "") 
             return m.group(0)
         if name.lower() in expected_norm or expected_norm in name.lower():
             return m.group(0)
-        issues.append(ContentAuditIssue(
-            code="first_person_author_fixed",
-            location="",
-            message=f"removed mismatched first-person author name: {name}",
-            before=str(m.group(0)),
-            after=str(m.group("prefix") or "") + " ",
-        ))
+        issues.append(
+            ContentAuditIssue(
+                code="first_person_author_fixed",
+                location="",
+                message=f"removed mismatched first-person author name: {name}",
+                before=str(m.group(0)),
+                after=str(m.group("prefix") or "") + " ",
+            )
+        )
         return str(m.group("prefix") or "") + " "
 
     return _FIRST_PERSON_AUTHOR_RE.sub(repl, text), issues
@@ -334,7 +399,9 @@ def _short(value: Any, limit: int = 180) -> str:
     return text[:limit]
 
 
-def _audit_text(value: str, *, location: str, source_map: bool = False, expected_author: str = "", label: str = "") -> tuple[str, list[ContentAuditIssue]]:
+def _audit_text(
+    value: str, *, location: str, source_map: bool = False, expected_author: str = "", label: str = ""
+) -> tuple[str, list[ContentAuditIssue]]:
     """Normalize one title/content string and return issues."""
     original = str(value or "")
     issues: list[ContentAuditIssue] = []
@@ -342,79 +409,95 @@ def _audit_text(value: str, *, location: str, source_map: bool = False, expected
     text = normalize_common_typos(original, source_map=False)
     if text != original:
         _looks_source_fix = bool(re.search(r"[A-Za-z].*,|\([^)]*[A-Za-z]{3,}[^)]*\)", original))
-        issues.append(ContentAuditIssue(
-            code="source_card_fixed" if _looks_source_fix else "typo_fixed",
-            location=location,
-            message="source-card normalization applied" if _looks_source_fix else "common typo normalization applied",
-            before=_short(original),
-            after=_short(text),
-        ))
+        issues.append(
+            ContentAuditIssue(
+                code="source_card_fixed" if _looks_source_fix else "typo_fixed",
+                location=location,
+                message="source-card normalization applied"
+                if _looks_source_fix
+                else "common typo normalization applied",
+                before=_short(original),
+                after=_short(text),
+            )
+        )
 
     sep_before = text
     text = normalize_generated_markdown_separators(text)
     if text != sep_before:
-        issues.append(ContentAuditIssue(
-            code="separator_fixed",
-            location=location,
-            message=(
-                f"removed_double_slash={len(_DOUBLE_SLASH_RE.findall(sep_before))}; "
-                f"paragraphs_before={sep_before.count(chr(10)+chr(10))}; paragraphs_after={text.count(chr(10)+chr(10))}"
-            ),
-            before=_short(sep_before),
-            after=_short(text),
-        ))
+        issues.append(
+            ContentAuditIssue(
+                code="separator_fixed",
+                location=location,
+                message=(
+                    f"removed_double_slash={len(_DOUBLE_SLASH_RE.findall(sep_before))}; "
+                    f"paragraphs_before={sep_before.count(chr(10) + chr(10))}; paragraphs_after={text.count(chr(10) + chr(10))}"
+                ),
+                before=_short(sep_before),
+                after=_short(text),
+            )
+        )
 
     source_before = text
     if source_map:
         text = "\n".join(normalize_source_map_text(line) for line in text.splitlines())
     if text != source_before:
-        issues.append(ContentAuditIssue(
-            code="source_card_fixed",
-            location=location,
-            message="source-card normalization applied",
-            before=_short(source_before),
-            after=_short(text),
-        ))
+        issues.append(
+            ContentAuditIssue(
+                code="source_card_fixed",
+                location=location,
+                message="source-card normalization applied",
+                before=_short(source_before),
+                after=_short(text),
+            )
+        )
 
     leak_before = text
     text, leak_changed = _scrub_prompt_context_leaks(text)
     if leak_changed:
-        issues.append(ContentAuditIssue(
-            code="prompt_context_leak_fixed",
-            location=location,
-            message="removed channel/prompt-context or mechanical material wording",
-            before=_short(leak_before),
-            after=_short(text),
-        ))
+        issues.append(
+            ContentAuditIssue(
+                code="prompt_context_leak_fixed",
+                location=location,
+                message="removed channel/prompt-context or mechanical material wording",
+                before=_short(leak_before),
+                after=_short(text),
+            )
+        )
 
     third_before = text
     # ГЛУБОКИЙ ФИКС: Всегда чистим текст от "МакАртур подчеркивает", даже на Study/Reflection.
     text = scrub_third_person_phrases(text)
     if text != third_before:
-        issues.append(ContentAuditIssue(
-            code="third_person_fixed",
-            location=location,
-            message="third-person analytic wrapper removed",
-            before=_short(third_before),
-            after=_short(text),
-        ))
+        issues.append(
+            ContentAuditIssue(
+                code="third_person_fixed",
+                location=location,
+                message="third-person analytic wrapper removed",
+                before=_short(third_before),
+                after=_short(text),
+            )
+        )
     elif _THIRD_PERSON_RE.search(text):
-        issues.append(ContentAuditIssue(
-            code="third_person_warning",
-            location=location,
-            message="third-person wrapper still present after conservative scrub",
-            before=_short(text),
-        ))
+        issues.append(
+            ContentAuditIssue(
+                code="third_person_warning",
+                location=location,
+                message="third-person wrapper still present after conservative scrub",
+                before=_short(text),
+            )
+        )
 
     text, author_issues = _scrub_mismatched_first_person_author(text, expected_author)
     for issue in author_issues:
-        issues.append(ContentAuditIssue(
-            code=issue.code,
-            location=location,
-            message=issue.message,
-            before=issue.before,
-            after=issue.after,
-        ))
+        issues.append(
+            ContentAuditIssue(
+                code=issue.code,
+                location=location,
+                message=issue.message,
+                before=issue.before,
+                after=issue.after,
+            )
+        )
 
     # AUDIT R45: Reflection-промт дважды прямым текстом запрещает Study-only
     # пары ❌/✅ — модель всё равно иногда их воспроизводит (живой пример).
@@ -424,22 +507,26 @@ def _audit_text(value: str, *, location: str, source_map: bool = False, expected
         pair_before = text
         text, pair_changed = _scrub_forbidden_pair_markers(text)
         if pair_changed:
-            issues.append(ContentAuditIssue(
-                code="reflection_forbidden_marker_scrubbed",
-                location=location,
-                message="Study-only ❌/✅ pair-card marker removed from Reflection text",
-                before=_short(pair_before),
-                after=_short(text),
-            ))
+            issues.append(
+                ContentAuditIssue(
+                    code="reflection_forbidden_marker_scrubbed",
+                    location=location,
+                    message="Study-only ❌/✅ pair-card marker removed from Reflection text",
+                    before=_short(pair_before),
+                    after=_short(text),
+                )
+            )
 
     mixed = find_mixed_greek_cyrillic_tokens(text)
     if mixed:
-        issues.append(ContentAuditIssue(
-            code="mixed_greek_cyrillic_warning",
-            location=location,
-            message="mixed Greek/Cyrillic token(s): " + ", ".join(mixed[:5]),
-            before=_short(text),
-        ))
+        issues.append(
+            ContentAuditIssue(
+                code="mixed_greek_cyrillic_warning",
+                location=location,
+                message="mixed Greek/Cyrillic token(s): " + ", ".join(mixed[:5]),
+                before=_short(text),
+            )
+        )
 
     return text, issues
 
@@ -449,12 +536,14 @@ def _audit_translation_semantics(content: str, *, location: str) -> list[Content
     low = (content or "").lower()
     issues: list[ContentAuditIssue] = []
     if "evil" in low and "лож" in low and "зл" not in low:
-        issues.append(ContentAuditIssue(
-            code="translation_semantic_warning",
-            location=location,
-            message="English 'evil' appears to be rendered as 'ложь' without 'зло'",
-            before=_short(content),
-        ))
+        issues.append(
+            ContentAuditIssue(
+                code="translation_semantic_warning",
+                location=location,
+                message="English 'evil' appears to be rendered as 'ложь' without 'зло'",
+                before=_short(content),
+            )
+        )
     return issues
 
 
@@ -472,12 +561,14 @@ def _audit_translation_forks(content: str, *, location: str) -> list[ContentAudi
         # Require at least one substantial non-bullet analysis paragraph.
         has_analysis = any((not _BULLET_LINE_RE.match(ln)) and len(ln) >= 160 for ln in lines)
         if not has_analysis:
-            return [ContentAuditIssue(
-                code="bare_translation_forks_warning",
-                location=location,
-                message="translation-forks section may contain bare bullet headings without analysis",
-                before=_short(" / ".join(lines[:5])),
-            )]
+            return [
+                ContentAuditIssue(
+                    code="bare_translation_forks_warning",
+                    location=location,
+                    message="translation-forks section may contain bare bullet headings without analysis",
+                    before=_short(" / ".join(lines[:5])),
+                )
+            ]
     return []
 
 
@@ -510,7 +601,9 @@ def audit_expanded_sections(
 
         content = str(sec.get("content") or "")
         source_map = bool(_SOURCE_MAP_HEADING_RE.search(new_title))
-        new_content, got = _audit_text(content, location=f"{base_loc}.content", source_map=source_map, expected_author=expected_author, label=label)
+        new_content, got = _audit_text(
+            content, location=f"{base_loc}.content", source_map=source_map, expected_author=expected_author, label=label
+        )
         issues.extend(got)
         issues.extend(_audit_translation_forks(new_content, location=f"{base_loc}:{new_title}"))
         issues.extend(_audit_translation_semantics(new_content, location=f"{base_loc}:{new_title}"))
@@ -525,19 +618,23 @@ def audit_expanded_sections(
                 block = normalize_structured_block(raw_block) or dict(raw_block)
                 block_loc = f"{base_loc}.blocks[{bidx}]"
                 if block.get("_drop_word_study"):
-                    issues.append(ContentAuditIssue(
-                        code="word_study_dropped",
-                        location=block_loc,
-                        message="incomplete decorative word-study removed; page preserved",
-                    ))
+                    issues.append(
+                        ContentAuditIssue(
+                            code="word_study_dropped",
+                            location=block_loc,
+                            message="incomplete decorative word-study removed; page preserved",
+                        )
+                    )
                     continue
                 issues.extend(_validate_block_required_fields(block, location=block_loc))
-                issues.extend(_audit_structured_block_semantics(
-                    block,
-                    label=label,
-                    section_title=new_title,
-                    location=block_loc,
-                ))
+                issues.extend(
+                    _audit_structured_block_semantics(
+                        block,
+                        label=label,
+                        section_title=new_title,
+                        location=block_loc,
+                    )
+                )
                 for field in ("text", "quote", "why_relevant", "role_in_argument", "challenge", "concrete_step"):
                     if field in block and isinstance(block.get(field), str):
                         block_text, got_block = _audit_text(
@@ -577,11 +674,13 @@ def audit_expanded_sections(
         if deduped_sections and key[0] and _dedup_key(deduped_sections[-1]) == key:
             if _section_richness(sec) > _section_richness(deduped_sections[-1]):
                 deduped_sections[-1] = sec
-            issues.append(ContentAuditIssue(
-                code="duplicate_section_removed",
-                location=f"{label or 'expanded'}.sections[{idx}]",
-                message=f"consecutive duplicate section removed: title={key[0]!r} time={key[1]!r}",
-            ))
+            issues.append(
+                ContentAuditIssue(
+                    code="duplicate_section_removed",
+                    location=f"{label or 'expanded'}.sections[{idx}]",
+                    message=f"consecutive duplicate section removed: title={key[0]!r} time={key[1]!r}",
+                )
+            )
             continue
         deduped_sections.append(sec)
     new_sections = deduped_sections
@@ -592,7 +691,9 @@ def audit_expanded_sections(
             continue
         oi = dict(raw)
         title = str(oi.get("title") or "")
-        new_title, got = _audit_text(title, location=f"{label or 'expanded'}.outline[{idx}].title", expected_author=expected_author, label=label)
+        new_title, got = _audit_text(
+            title, location=f"{label or 'expanded'}.outline[{idx}].title", expected_author=expected_author, label=label
+        )
         issues.extend(got)
         oi["title"] = new_title
         new_outline.append(oi)
@@ -616,22 +717,26 @@ def audit_expanded_sections(
             section["time"] = earliest_stamp
             if sidx < len(new_outline) and isinstance(new_outline[sidx], dict):
                 new_outline[sidx]["time"] = earliest_stamp
-            issues.append(ContentAuditIssue(
-                code="section_time_reconciled",
-                location=f"{label or 'expanded'}.sections[{sidx}].time",
-                message=f"section start moved {delta}s earlier to match inline timestamp",
-                before=old_time,
-                after=earliest_stamp,
-            ))
+            issues.append(
+                ContentAuditIssue(
+                    code="section_time_reconciled",
+                    location=f"{label or 'expanded'}.sections[{sidx}].time",
+                    message=f"section start moved {delta}s earlier to match inline timestamp",
+                    before=old_time,
+                    after=earliest_stamp,
+                )
+            )
 
     if label == "StudyAnalysis":
         for finding in collect_teacherly_study_warnings(new_sections):
-            issues.append(ContentAuditIssue(
-                code=finding["code"],
-                location=finding["location"],
-                message=finding["message"],
-                before=finding.get("before", ""),
-            ))
+            issues.append(
+                ContentAuditIssue(
+                    code=finding["code"],
+                    location=finding["location"],
+                    message=finding["message"],
+                    before=finding.get("before", ""),
+                )
+            )
 
     # Synopsis has two independently generated views of one timeline: section
     # starts and inline anchors.  Reconcile them at the audit boundary so both
@@ -644,16 +749,15 @@ def audit_expanded_sections(
             new_outline,
         )
         for timestamp_issue in timestamp_issues:
-            issues.append(ContentAuditIssue(
-                code=timestamp_issue.code,
-                location=(
-                    f"{label or 'Synopsis'}.sections["
-                    f"{timestamp_issue.section_index}]"
-                ),
-                message=timestamp_issue.message,
-                before=timestamp_issue.before,
-                after=timestamp_issue.after,
-            ))
+            issues.append(
+                ContentAuditIssue(
+                    code=timestamp_issue.code,
+                    location=(f"{label or 'Synopsis'}.sections[{timestamp_issue.section_index}]"),
+                    message=timestamp_issue.message,
+                    before=timestamp_issue.before,
+                    after=timestamp_issue.after,
+                )
+            )
 
     return new_sections, new_outline, issues
 
@@ -687,12 +791,12 @@ def format_content_audit_issues(issues: list[ContentAuditIssue], limit: int = 6)
         return ""
     rendered: list[str] = []
     specific_locations = {
-        i.location for i in issues or []
+        i.location
+        for i in issues or []
         if i.code in {"typo_fixed", "source_card_fixed", "separator_fixed", "whitespace_fixed"}
     }
     display_issues = [
-        i for i in (issues or [])
-        if not (i.code == "normalized_text" and i.location in specific_locations)
+        i for i in (issues or []) if not (i.code == "normalized_text" and i.location in specific_locations)
     ]
     for issue in display_issues[:limit]:
         detail = issue.message

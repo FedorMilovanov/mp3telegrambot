@@ -8,6 +8,7 @@ the encoded Russian-only MP4 and applying the same deterministic cadence and
 late-broadband-tail contracts. Work and memory stay bounded for hour-long video.
 A failed final segment advances its seed epoch before the next render job.
 """
+
 from __future__ import annotations
 
 import json
@@ -198,9 +199,7 @@ def verify_final_encoded_russian(
     )
     duration = end - start
     if start < 0.0 or duration <= 0.0 or duration > MAX_SEGMENT_WINDOW_SECONDS:
-        raise RuntimeError(
-            f"Некорректное окно последней реплики: start={start:.3f}, duration={duration:.3f}."
-        )
+        raise RuntimeError(f"Некорректное окно последней реплики: start={start:.3f}, duration={duration:.3f}.")
     audio = _decode_segment(
         russian_only_video,
         start=start + delay,
