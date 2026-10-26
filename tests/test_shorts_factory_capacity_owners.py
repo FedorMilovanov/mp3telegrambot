@@ -57,13 +57,13 @@ def test_factory_clients_disable_hidden_sdk_retries(monkeypatch):
 
 
 def test_editorial_workflow_has_one_source_runner_without_context_bridge():
-    runner = Path("services/translation_editorial_runner.py").read_text(encoding="utf-8")
+    runner = Path("pipelines/translation_editorial_runner.py").read_text(encoding="utf-8")
     dispatcher = Path("pipelines/video_dispatch.py").read_text(encoding="utf-8")
     factory_pipeline = Path("pipelines/shorts_factory.py").read_text(encoding="utf-8")
 
     assert "ContextVar" not in runner
     assert "JOB_STATE" not in runner
     assert "mark_factory_analysis_audio_skipped" not in runner
-    assert "services.translation_editorial_runner" in dispatcher
+    assert "pipelines.translation_editorial_runner" in dispatcher
     assert "prepare_factory_editorial_review(" in factory_pipeline
     assert "shorts_factory_editorial_bridge" not in dispatcher

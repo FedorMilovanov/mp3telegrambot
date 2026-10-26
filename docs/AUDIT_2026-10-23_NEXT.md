@@ -1306,7 +1306,7 @@ Release run 40240577021 выполнил полный pytest на Python 3.12, �
 **Перепроверка 2026-10-26:** `import-linter 2.15` добавлен в dev-lock,
 `tools/check_import_layers.py` исполняет layers-контракт на реальном графе и
 включён в `verify_repo.py`. Направление: `handlers → pipelines → services →
-converters → core`. После седьмого burn-down остаётся 3 точных legacy-ребра:
+converters → core`. После восьмого burn-down не остаётся legacy-рёбер:
 неиспользуемый `core.utils → ffmpeg` удалён, `QUIZ_PROMPT` перенесён в
 `core.prompts`, caption-link builders — в `converters.caption`, а чистые
 `health_report` и `gemini_quota_domains` — в `core` с compatibility-экспортами
@@ -1318,10 +1318,12 @@ Markdown→nodes и cleaning перенесены в `converters.telegraph_nodes
 Dub Studio registration перенесён в handlers, а reusable delivery — в services;
 все семь обратных runtime → handler импортов удалены. Gemini transport/retry
 router перенесён из process-wide config в `services.gemini_router`, поэтому
-`core.globals` больше не зависит от capacity service. Исключения
-перечислены без wildcards, новые нарушения
-и устаревшие исключения падают. Пункт будет закрыт только при нулевом списке;
-одновременно нужно сделать `_telegraph_post` публичным API.
+`core.globals` больше не зависит от capacity service. Standalone editorial
+orchestration перенесён в pipelines, Factory config возвращён в service-owned
+execution-guard, а неиспользуемый guarded wrapper удалён. Опция `ignore_imports`
+удалена полностью: новые нарушения и повторно добавленные устаревшие исключения
+падают. Reverse-import приёмка P1-6 закрыта; публичный Telegraph API остаётся
+отдельной структурной задачей, а не разрешением обратной зависимости.
 
 ### P1-7. Мелкое, но заметное
 

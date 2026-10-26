@@ -77,12 +77,12 @@ def calls(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[tuple]]:
 
     import pipelines.main_pipeline
     import pipelines.shorts_factory
+    import pipelines.translation_editorial_runner
     import services.shorts_video
-    import services.translation_editorial_runner
 
     monkeypatch.setattr(pipelines.main_pipeline, "process_single_video", main_video)
     monkeypatch.setattr(
-        services.translation_editorial_runner,
+        pipelines.translation_editorial_runner,
         "process_translation_editorial_only",
         editorial,
     )

@@ -58,11 +58,6 @@ _validated_source_duration = validated_factory_source_duration
 _shift_candidates_for_livedub = align_factory_livedub_candidates
 
 
-def _env_bool(name: str, default: bool = True) -> bool:
-    raw = os.getenv(name, "1" if default else "0").strip().lower()
-    return raw in {"1", "true", "yes", "on"}
-
-
 def _factory_source_timeout_seconds() -> int:
     return _factory_livedub_timeout_seconds()
 
@@ -107,16 +102,6 @@ def _media_id(info: dict[str, Any], url: str) -> str:
     if value:
         return re.sub(r"[^A-Za-z0-9_-]", "", value)[:80]
     return str(abs(hash(url)))
-
-
-def _translation_backend() -> str:
-    backend = os.getenv("SHORTS_FACTORY_TRANSLATION_BACKEND", "yandex_live").strip().lower()
-    aliases = {
-        "yandex": "yandex_live",
-        "yandex_live": "yandex_live",
-        "live": "yandex_live",
-    }
-    return aliases.get(backend, backend)
 
 
 def _cleanup_expired_factory_sources() -> None:

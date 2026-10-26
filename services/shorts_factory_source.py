@@ -14,6 +14,7 @@ from core.globals import DOWNLOAD_DIR
 from services.async_process import run_cancellable_process
 from services.ffmpeg import YTDLP_BASE_ARGS
 from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
+from services.shorts_factory_execution_guard import factory_env_bool, factory_translation_backend
 from services.shorts_factory_disk_guard import (
     ensure_factory_audio_space,
     ensure_factory_video_space,
@@ -476,16 +477,15 @@ async def prepare_factory_translation_video(
     source_language: str,
 ) -> Path:
     """Mix Yandex live audio over the unrestricted maximum-quality original."""
-    import pipelines.shorts_factory as factory_pipeline
     from services.livedub_mix import get_mix_params, mix_tracks
     from services.yandex_live_dub import get_live_dub_audio
 
-    backend = factory_pipeline._translation_backend()
+    backend = factory_translation_backend()
     if backend != "yandex_live":
         raise RuntimeError(
             f"SHORTS FACTORY сейчас поддерживает только Яндекс «Живые голоса». Backend {backend!r} ещё не реализован."
         )
-    if not factory_pipeline._env_bool("SHORTS_FACTORY_LIVEDUB", True):
+    if not factory_env_bool("SHORTS_FACTORY_LIVEDUB", True):
         raise RuntimeError(
             "Для иностранного источника SHORTS_FACTORY_LIVEDUB должен быть включён: собственный нейроперевод запрещён."
         )

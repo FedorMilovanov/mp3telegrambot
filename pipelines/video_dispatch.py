@@ -65,7 +65,7 @@ async def process_single_video(
                 silent_errors=silent_errors,
             )
         elif mode == EDITORIAL_MODE:
-            from services.translation_editorial_runner import (
+            from pipelines.translation_editorial_runner import (
                 process_translation_editorial_only,
             )
 

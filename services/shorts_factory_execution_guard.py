@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Pure preflight and spoken-language contract for SHORTS FACTORY MAX.
 
-The Factory pipeline owns orchestration and delivery.  This module contains only
-validation helpers plus a compatibility entry function that delegates directly
-to that owner; it performs no runtime rebinding or import-time installation.
+The Factory pipeline owns orchestration and delivery. This module contains only
+validation and configuration helpers; it performs no runtime rebinding or
+import-time installation.
 """
 
 from __future__ import annotations
@@ -156,9 +156,19 @@ def factory_preflight_issues(
     return tuple(issues)
 
 
-def _env_bool(name: str, default: bool = True) -> bool:
+def factory_env_bool(name: str, default: bool = True) -> bool:
     raw = os.getenv(name, "1" if default else "0").strip().lower()
     return raw in {"1", "true", "yes", "on"}
+
+
+def factory_translation_backend() -> str:
+    backend = os.getenv("SHORTS_FACTORY_TRANSLATION_BACKEND", "yandex_live").strip().lower()
+    aliases = {
+        "yandex": "yandex_live",
+        "yandex_live": "yandex_live",
+        "live": "yandex_live",
+    }
+    return aliases.get(backend, backend)
 
 
 def factory_translation_preflight_issues(
@@ -197,7 +207,7 @@ def enforce_factory_translation_preflight() -> None:
         oauth_present=oauth_present,
         helper_available=helper_available,
         cli_available=cli_available,
-        require_oauth=_env_bool("SHORTS_FACTORY_REQUIRE_VOT_TOKEN", True),
+        require_oauth=factory_env_bool("SHORTS_FACTORY_REQUIRE_VOT_TOKEN", True),
     )
     if issues:
         raise RuntimeError("Factory LiveDub preflight failed: " + "; ".join(issues))
@@ -259,36 +269,15 @@ def _translation_source_error(exc: Exception) -> str:
     )
 
 
-async def process_shorts_factory_guarded(
-    url,
-    update,
-    status_msg=None,
-    progress_prefix="",
-    context=None,
-    silent_errors: bool = False,
-):
-    """Validate local prerequisites, then invoke the real Factory owner."""
-    enforce_factory_preflight()
-    from pipelines.shorts_factory import process_shorts_factory
-
-    return await process_shorts_factory(
-        url,
-        update,
-        status_msg=status_msg,
-        progress_prefix=progress_prefix,
-        context=context,
-        silent_errors=silent_errors,
-    )
-
-
 __all__ = [
     "MIN_FACTORY_FREE_GB",
     "enforce_factory_preflight",
     "enforce_factory_translation_preflight",
+    "factory_env_bool",
     "factory_language_needs_translation",
     "factory_preflight_issues",
+    "factory_translation_backend",
     "factory_translation_preflight_issues",
     "normalize_factory_language",
-    "process_shorts_factory_guarded",
     "resolve_factory_spoken_language",
 ]
