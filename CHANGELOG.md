@@ -112,6 +112,8 @@
   переведены на worker threads; остаётся 191 finding.
 - Async I/O, пятый `ASYNC240` slice: FFmpeg silence/crop probes проверяют
   исходник в worker thread; остаются 189 findings.
+- Async I/O, шестой `ASYNC240` slice: Montage/Highlights проверяют borrowed
+  LiveDub source в worker thread; остаются 187 findings.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

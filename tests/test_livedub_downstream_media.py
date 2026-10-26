@@ -1,8 +1,10 @@
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
+import pipelines.montage as montage
 import services.shorts_factory_media as media
 from services.shorts_factory_media import (
     align_livedub_candidate,
@@ -155,6 +157,61 @@ async def test_livedub_probe_fallback_requires_explicit_degraded_opt_out(
         )
         == 900
     )
+
+
+@pytest.mark.asyncio
+async def test_montage_probes_existing_livedub_before_empty_candidate_return(monkeypatch, tmp_path):
+    source = tmp_path / "livedub.mp4"
+    source.write_bytes(b"borrowed-livedub")
+    probe = AsyncMock(return_value=602.4)
+    monkeypatch.setattr(montage, "probe_livedub_source_duration", probe)
+    message = SimpleNamespace(reply_text=AsyncMock(return_value=SimpleNamespace()))
+
+    await montage.process_and_send_montage(
+        url="https://example.invalid/video",
+        media_id="media",
+        mp3_path=tmp_path / "audio.mp3",
+        title="Title",
+        performer="Author",
+        duration=600,
+        ai_data={},
+        update=SimpleNamespace(message=message),
+        prefetched_candidates=[],
+        livedub_video_path=source,
+    )
+
+    probe.assert_awaited_once_with(source, fallback_duration=600.0)
+    message.reply_text.assert_awaited_once_with("🎬 Montage для этого материала не найден.")
+    assert source.read_bytes() == b"borrowed-livedub"
+
+
+@pytest.mark.asyncio
+async def test_highlights_uses_borrowed_livedub_before_invalid_candidate_return(monkeypatch, tmp_path):
+    source = tmp_path / "livedub.mp4"
+    source.write_bytes(b"borrowed-livedub")
+    probe = AsyncMock(return_value=602.4)
+    download = AsyncMock()
+    monkeypatch.setattr(montage, "probe_livedub_source_duration", probe)
+    monkeypatch.setattr(montage, "download_video_for_shorts", download)
+    message = SimpleNamespace(reply_text=AsyncMock(return_value=SimpleNamespace()))
+
+    await montage.process_and_send_highlights(
+        url="https://example.invalid/video",
+        media_id="media",
+        mp3_path=tmp_path / "audio.mp3",
+        title="Title",
+        performer="Author",
+        duration=600,
+        ai_data={},
+        update=SimpleNamespace(message=message),
+        prefetched_candidates=[{}],
+        livedub_video_path=source,
+    )
+
+    probe.assert_awaited_once_with(source, fallback_duration=600.0)
+    download.assert_not_awaited()
+    message.reply_text.assert_awaited_once_with("🌟 Highlights: данные кандидата повреждены.")
+    assert source.read_bytes() == b"borrowed-livedub"
 
 
 def test_livedub_cut_owners_are_source_owned_without_runtime_rebinding():
