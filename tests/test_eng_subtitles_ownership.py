@@ -117,6 +117,62 @@ async def test_subtitle_audio_discovery_rejects_partial_download(monkeypatch, tm
 
 
 @pytest.mark.asyncio
+async def test_original_video_download_reuses_valid_existing(monkeypatch, tmp_path) -> None:
+    existing = tmp_path / "original_video.mp4"
+    existing.write_bytes(b"v" * 200_000)
+
+    async def unexpected_owner(_command, **_kwargs):
+        pytest.fail("valid existing video must be reused without yt-dlp")
+
+    monkeypatch.setattr(eng_subtitles, "run_cancellable_process", unexpected_owner)
+    monkeypatch.setattr(eng_subtitles, "_has_video_stream", lambda path: path == existing)
+
+    result = await eng_subtitles.download_original_video(
+        "https://example.invalid/video",
+        tmp_path,
+    )
+
+    assert result == existing
+
+
+@pytest.mark.asyncio
+async def test_original_video_download_discovers_post_download_candidate(monkeypatch, tmp_path) -> None:
+    video_path = tmp_path / "original_video.mp4"
+
+    async def fake_owner(command, **kwargs):
+        video_path.write_bytes(b"v" * 200_000)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(eng_subtitles, "run_cancellable_process", fake_owner)
+    monkeypatch.setattr(eng_subtitles, "_has_video_stream", lambda path: path == video_path)
+
+    result = await eng_subtitles.download_original_video(
+        "https://example.invalid/video",
+        tmp_path,
+    )
+
+    assert result == video_path
+
+
+@pytest.mark.asyncio
+async def test_original_video_download_rejects_audio_only_candidate(monkeypatch, tmp_path) -> None:
+    audio_path = tmp_path / "original_video.f140.m4a"
+    audio_path.write_bytes(b"a" * 200_000)
+
+    async def fake_owner(command, **kwargs):
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(eng_subtitles, "run_cancellable_process", fake_owner)
+    monkeypatch.setattr(eng_subtitles, "_has_video_stream", lambda _path: False)
+
+    with pytest.raises(RuntimeError, match="с видеопотоком"):
+        await eng_subtitles.download_original_video(
+            "https://example.invalid/video",
+            tmp_path,
+        )
+
+
+@pytest.mark.asyncio
 async def test_original_video_download_rejects_failed_owner(monkeypatch, tmp_path) -> None:
     async def fake_owner(command, **kwargs):
         return subprocess.CompletedProcess(command, 7, "", "download failed")
