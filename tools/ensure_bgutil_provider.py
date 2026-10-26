@@ -19,7 +19,7 @@ import subprocess
 import sys
 import time
 import uuid
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -389,15 +389,11 @@ def _provision_lock(*, wait_seconds: float = _LOCK_WAIT_SEC):
         yield
     finally:
         if acquired:
-            try:
+            # Closing the descriptor below also releases an OS-held lock.
+            with suppress(OSError):
                 _release_lock(fd)
-            except OSError:
-                # Closing the descriptor below also releases an OS-held lock.
-                pass
-        try:
+        with suppress(OSError):
             os.close(fd)
-        except OSError:
-            pass
 
 
 def _checkout_exact_source(git: str, staging: Path) -> None:

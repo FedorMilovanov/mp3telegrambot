@@ -9,6 +9,7 @@ complete timeline WAV. CUDA is hidden before importing torch.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import gc
 import json
 import math
@@ -319,10 +320,8 @@ def main() -> None:
 
     threads = max(1, int(args.threads))
     torch.set_num_threads(threads)
-    try:
+    with contextlib.suppress(RuntimeError):
         torch.set_num_interop_threads(2)
-    except RuntimeError:
-        pass
 
     archive_root = Path(args.archive_root).expanduser().resolve()
     reference = Path(args.reference_wav).expanduser().resolve()

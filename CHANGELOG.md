@@ -90,6 +90,8 @@
 - Extended Ruff, волна 2e: 10 runtime raises получили явный `from cause`;
   ещё 14 CLI sites используют `from cause` для аргументов и `from None` для
   уже обработанных exits. Все 24 `B904` закрыты, правило включено в gate.
+- Extended Ruff, волна 2f (tools/tests slice): 11 `try/except/pass` заменены
+  `contextlib.suppress`; оставшиеся 134 production findings разбираются по слоям.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

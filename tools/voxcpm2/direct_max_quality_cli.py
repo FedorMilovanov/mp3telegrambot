@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 from collections.abc import Mapping
 import gc
@@ -316,10 +317,8 @@ def _render_main() -> None:
     import torch
 
     torch.set_num_threads(max(1, int(args.threads)))
-    try:
+    with contextlib.suppress(RuntimeError):
         torch.set_num_interop_threads(1)
-    except RuntimeError:
-        pass
 
     source_references = {
         "extended": Path(args.extended_reference).resolve(),

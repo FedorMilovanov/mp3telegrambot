@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import os
 import shutil
 import subprocess
@@ -22,10 +23,8 @@ from pathlib import Path
 def _configure_stdio() -> None:
     """Keep Russian diagnostics/help printable in Windows legacy consoles."""
     for stream in (sys.stdout, sys.stderr):
-        try:
+        with contextlib.suppress(AttributeError, OSError):
             stream.reconfigure(encoding="utf-8", errors="backslashreplace")
-        except (AttributeError, OSError):
-            pass
 
 
 _configure_stdio()

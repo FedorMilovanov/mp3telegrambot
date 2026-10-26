@@ -10,6 +10,7 @@ its declared runtime, and masters mixed/Russian-only upload-ready videos.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import html
 import json
@@ -651,10 +652,8 @@ def _translation_client(api_key: str, timeout_ms: int) -> Any:
 def _close_client(client: Any) -> None:
     closer = getattr(client, "close", None)
     if callable(closer):
-        try:
+        with contextlib.suppress(Exception):
             closer()
-        except Exception:
-            pass
 
 
 def _prompt_label(prompt: str) -> str:
