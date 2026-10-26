@@ -34,6 +34,27 @@ async def test_nosub_invalid_candidate_json_still_sends_saved_video(monkeypatch,
 
 
 @pytest.mark.asyncio
+async def test_nosub_missing_file_has_expiry_response(tmp_path: Path) -> None:
+    query = SimpleNamespace(
+        answer=AsyncMock(),
+        message=SimpleNamespace(reply_video=AsyncMock()),
+    )
+
+    await callbacks._handle_strim_nosub(
+        query,
+        {"video_path_nosub": str(tmp_path / "missing.mp4")},
+        0,
+        10,
+    )
+
+    query.answer.assert_awaited_once_with(
+        "⏳ Файл без субтитров истёк — пришлите видео заново.",
+        show_alert=True,
+    )
+    query.message.reply_video.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_retrim_invalid_json_and_render_failure_still_clean_up(monkeypatch, tmp_path: Path) -> None:
     async def fail_render(**_kwargs):
         raise RuntimeError("synthetic render failure")
