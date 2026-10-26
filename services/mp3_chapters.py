@@ -17,7 +17,6 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +70,7 @@ def embed_chapters(
     duration_sec: int = 0,
     title: str = "",
     performer: str = "",
-    thumb_path: Optional[Path] = None,
+    thumb_path: Path | None = None,
     comment: str = "",
 ) -> bool:
     """Вшивает ID3v2 CHAP/CTOC-главы и базовые метаданные в mp3.

@@ -19,7 +19,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +170,7 @@ def _format_srt_time(milliseconds: int) -> str:
     return f"{hours:02d}:{minutes:02d}:{seconds:02d},{ms:03d}"
 
 
-def _slice_srt(source: Path, start: int, length: int, output: Path) -> Optional[Path]:
+def _slice_srt(source: Path, start: int, length: int, output: Path) -> Path | None:
     try:
         raw = source.read_text(encoding="utf-8", errors="replace")
     except Exception:
@@ -323,16 +323,16 @@ async def _run_long_qa(
     original_run,
     *,
     dub_video_path: Path,
-    original_audio_path: Optional[Path],
-    ai_data: Optional[dict],
+    original_audio_path: Path | None,
+    ai_data: dict | None,
     duration: int,
     model_name: str,
-    dub_srt_path: Optional[Path],
-    dub_audio_path: Optional[Path],
+    dub_srt_path: Path | None,
+    dub_audio_path: Path | None,
     existing_audio_part,
     existing_client,
     thinking_level: str,
-) -> Optional[dict]:
+) -> dict | None:
     original_source = Path(original_audio_path) if original_audio_path and Path(original_audio_path).is_file() else None
     if original_source is None:
         logger.info("[LiveDubLongQA] локального оригинала нет — использую обычную полную QA")
@@ -456,16 +456,16 @@ async def run_long_translation_qa(
     base_runner,
     *,
     dub_video_path: Path,
-    original_audio_path: Optional[Path],
-    ai_data: Optional[dict],
+    original_audio_path: Path | None,
+    ai_data: dict | None,
     duration: int,
     model_name: str = "",
-    dub_srt_path: Optional[Path] = None,
-    dub_audio_path: Optional[Path] = None,
+    dub_srt_path: Path | None = None,
+    dub_audio_path: Path | None = None,
     existing_audio_part=None,
     existing_client=None,
     thinking_level: str = "high",
-) -> Optional[dict]:
+) -> dict | None:
     """Use segmented complete coverage only when the recording crosses the threshold."""
     common = dict(
         dub_video_path=dub_video_path,

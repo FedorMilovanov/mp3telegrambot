@@ -44,7 +44,6 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +102,7 @@ def get_mix_params() -> dict:
 # ── Утилиты ──────────────────────────────────────────────────────
 
 
-def parse_mmss(time_str: str) -> Optional[float]:
+def parse_mmss(time_str: str) -> float | None:
     """'MM:SS' / 'H:MM:SS' → секунды. None при мусоре.
 
     FIX AUDIT R4: минуты до 3 цифр — srt_to_timed_text даёт «[105:22]» для
@@ -139,7 +138,7 @@ _TARGET_LUFS = -16.0
 _loudness_cache: dict = {}
 
 
-def measure_loudness(path: Path, timeout: int = 600) -> Optional[float]:
+def measure_loudness(path: Path, timeout: int = 600) -> float | None:
     """Pass-1 loudnorm: возвращает integrated loudness (LUFS) дорожки.
 
     Используется для выравнивания дорожек ДО микса: громкость у Яндекса
@@ -188,7 +187,7 @@ def measure_loudness(path: Path, timeout: int = 600) -> Optional[float]:
     return None
 
 
-def loudness_gain_db(input_lufs: Optional[float], target: float = _TARGET_LUFS) -> float:
+def loudness_gain_db(input_lufs: float | None, target: float = _TARGET_LUFS) -> float:
     """Линейный gain (дБ) для приведения дорожки к target LUFS.
 
     Линейный gain не качает динамику (в отличие от single-pass loudnorm).
@@ -215,7 +214,7 @@ def _run_ffmpeg(args: list[str], timeout: int = 1800) -> tuple[bool, str]:
         return False, str(e)[:300]
 
 
-def probe_media_duration(path: Path, timeout: int = 60) -> Optional[float]:
+def probe_media_duration(path: Path, timeout: int = 60) -> float | None:
     """Длительность медиафайла через ffprobe. None при любой проблеме."""
     ffprobe = shutil.which("ffprobe")
     if not ffprobe:
@@ -294,7 +293,7 @@ def has_video_stream(path: Path) -> bool:
 
 
 def calculate_tail_pad_ms(
-    delay_ms: int, tail_margin_ms: int, orig_duration: Optional[float], ru_duration: Optional[float]
+    delay_ms: int, tail_margin_ms: int, orig_duration: float | None, ru_duration: float | None
 ) -> int:
     """Сколько хвоста реально нужно после сдвига RU-дорожки.
 
@@ -459,7 +458,7 @@ def build_mix_filter(
 
 async def mix_tracks(
     orig_video: Path, ru_audio: Path, out_path: Path, ru_extra_expr: str = "", en_extra_expr: str = ""
-) -> Optional[Path]:
+) -> Path | None:
     """Миксует оригинальное видео с дорожкой перевода.
 
     Перед миксом обе дорожки измеряются (loudnorm pass-1) и приводятся
@@ -611,7 +610,7 @@ async def mix_tracks(
     return None
 
 
-async def build_pro_dub(video_url: str, workdir: Path, duration: float = 0.0, lang: str = "") -> Optional[Path]:
+async def build_pro_dub(video_url: str, workdir: Path, duration: float = 0.0, lang: str = "") -> Path | None:
     """Полный pro-цикл: чистый RU-перевод + оригинал → собственный микс.
 
     Возвращает путь к готовому видео или None (вызывающий код сделает
@@ -627,8 +626,8 @@ async def build_pro_dub(video_url: str, workdir: Path, duration: float = 0.0, la
     ru_task = asyncio.create_task(get_live_dub_audio(video_url, workdir, duration=duration, lang=lang))
     orig_task = asyncio.create_task(download_original_video(video_url, workdir))
 
-    ru_audio: Optional[Path] = None
-    orig_video: Optional[Path] = None
+    ru_audio: Path | None = None
+    orig_video: Path | None = None
 
     async def _drain(task):
         """Гасим отменённую задачу, чтобы не было 'exception was never retrieved'."""
@@ -698,7 +697,7 @@ async def build_pro_dub(video_url: str, workdir: Path, duration: float = 0.0, la
     return result
 
 
-def find_pro_tracks(workdir: Path) -> tuple[Optional[Path], Optional[Path]]:
+def find_pro_tracks(workdir: Path) -> tuple[Path | None, Path | None]:
     """Return the source video plus the role-correct clean RU translation."""
     workdir = Path(workdir)
     orig = None
@@ -780,7 +779,7 @@ def probe_video_meta(path: Path) -> dict:
     return meta
 
 
-def make_video_thumbnail(video_path: Path, at_sec: float = 3.0) -> Optional[Path]:
+def make_video_thumbnail(video_path: Path, at_sec: float = 3.0) -> Path | None:
     """JPEG-превью <=320px для send_video (Telegram: max 320, max 200KB)."""
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
@@ -878,7 +877,7 @@ def extract_fix_intervals(
     return merged
 
 
-async def apply_qa_audio_fixes(workdir: Path, issues: list[dict]) -> Optional[Path]:
+async def apply_qa_audio_fixes(workdir: Path, issues: list[dict]) -> Path | None:
     """Пересобирает микс с точечными правками: в местах major-искажений
     RU-дубляж по умолчанию полностью вырезается, оригинал выводится в полный голос.
 

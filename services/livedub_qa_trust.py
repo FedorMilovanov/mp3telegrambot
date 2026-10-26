@@ -26,7 +26,7 @@ import os
 import re
 import tempfile
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -221,10 +221,10 @@ async def _verify_candidate_windows(
     *,
     primary: dict[str, Any],
     dub_video_path: Path,
-    original_audio_path: Optional[Path],
+    original_audio_path: Path | None,
     duration: int,
     model_name: str,
-    dub_audio_path: Optional[Path],
+    dub_audio_path: Path | None,
 ) -> dict[str, Any]:
     original_source = _local_path(original_audio_path)
     clean_ru = _local_path(dub_audio_path)
@@ -398,13 +398,13 @@ async def apply_audio_trust(
     *,
     primary: dict[str, Any] | None,
     dub_video_path: Path,
-    original_audio_path: Optional[Path],
+    original_audio_path: Path | None,
     duration: int,
     model_name: str = "",
-    dub_audio_path: Optional[Path] = None,
+    dub_audio_path: Path | None = None,
     existing_audio_part=None,
     existing_client=None,
-) -> Optional[dict]:
+) -> dict | None:
     """Confirm broad-pass candidates against fresh local audio windows."""
     if not isinstance(primary, dict) or not _enabled():
         return primary

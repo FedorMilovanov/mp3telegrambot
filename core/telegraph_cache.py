@@ -7,7 +7,7 @@ import logging
 import os
 import threading
 from collections import OrderedDict
-from typing import Generic, Hashable, Optional, TypeVar
+from typing import Generic, Hashable, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ class _LRUCache(Generic[_KT, _VT]):
         self._max = maxsize
         self._lock = threading.Lock()
 
-    def get_cached(self, key: _KT) -> Optional[_VT]:
+    def get_cached(self, key: _KT) -> _VT | None:
         """Возвращает значение по ключу или None, сдвигая в конец."""
         with self._lock:
             if key in self._data:

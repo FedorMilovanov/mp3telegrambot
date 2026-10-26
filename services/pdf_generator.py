@@ -41,10 +41,6 @@ from pathlib import Path
 from typing import (
     Awaitable,
     Callable,
-    Dict,
-    List,
-    Optional,
-    Tuple,
 )
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
@@ -250,7 +246,7 @@ PDF_SANS_FONT: str = os.environ.get("PDF_SANS_FONT", "Manrope").strip() or "Manr
 #  6. Safe progress callback
 # ══════════════════════════════════════════════════════════════
 
-ProgressCallback = Optional[Callable[[str, int], Awaitable[None]]]
+ProgressCallback = Callable[[str, int], Awaitable[None]] | None
 
 
 async def _safe_progress(
@@ -361,7 +357,7 @@ _font_face_cache: dict[str, str] = {}
 _font_face_lock = threading.Lock()  # FIXED #108: защита от double-compute при параллельных PDF
 
 
-def _build_font_face_css(fonts_dir: Optional[str] = None) -> str:
+def _build_font_face_css(fonts_dir: str | None = None) -> str:
     """Генерирует CSS @font-face для всех шрифтов в директории."""
     if not fonts_dir:
         fonts_dir = os.environ.get("PDF_FONTS_DIR", "").strip()
@@ -931,7 +927,7 @@ def _linkify_timecodes(html_str: str, video_url: str) -> str:
 def _fetch_url(
     url: str,
     retries: int = 1,
-) -> Optional[requests.Response]:
+) -> requests.Response | None:
     """Загружает URL с повторами. Устанавливает encoding явно."""
     for attempt in range(retries + 1):
         try:
@@ -1531,8 +1527,8 @@ def _gen_wkhtmltopdf(
     out: str,
     title: str,
     performer: str,
-    wp: Optional[str] = None,
-) -> Optional[str]:
+    wp: str | None = None,
+) -> str | None:
     """
     Генерирует PDF прямым вызовом wkhtmltopdf.
 
@@ -1552,7 +1548,7 @@ def _gen_wkhtmltopdf(
     if not wp or not Path(wp).exists():
         return None
 
-    tmp: Optional[str] = None
+    tmp: str | None = None
     try:
         opts = _wkhtmltopdf_options(title, performer)
         with tempfile.NamedTemporaryFile(
@@ -1625,7 +1621,7 @@ def _gen_wkhtmltopdf(
                 pass
 
 
-def _gen_weasyprint(html_str: str, out: str) -> Optional[str]:
+def _gen_weasyprint(html_str: str, out: str) -> str | None:
     """
     Генерирует PDF через WeasyPrint.
 
@@ -1666,8 +1662,8 @@ def generate_sermon_pdf(
     performer: str,
     duration_str: str,
     urls: dict[str, str],
-    wkhtmltopdf_path: Optional[str] = None,
-) -> Optional[str]:
+    wkhtmltopdf_path: str | None = None,
+) -> str | None:
     """
     Синхронная генерация PDF.
 
@@ -1730,9 +1726,9 @@ async def generate_sermon_pdf_async(
     performer: str,
     duration_str: str,
     urls: dict[str, str],
-    wkhtmltopdf_path: Optional[str] = None,
+    wkhtmltopdf_path: str | None = None,
     progress_callback: ProgressCallback = None,
-) -> Optional[str]:
+) -> str | None:
     """
     Асинхронная генерация PDF с параллельной загрузкой Telegraph.
 

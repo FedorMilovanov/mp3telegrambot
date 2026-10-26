@@ -12,6 +12,7 @@ Covers the verified fixes:
   * pipeline: outer except flushes an already-ready dub instead of cancelling it.
 """
 
+import inspect
 from pathlib import Path
 
 import pytest
@@ -137,8 +138,9 @@ def test_r42_qa_cleans_uploaded_on_parse_failure():
 
 
 def test_r42_qa_uses_clean_ru_track():
+    parameter = inspect.signature(lq.run_translation_qa).parameters["dub_audio_path"]
+    assert parameter.default is None
     qa_src = Path("services/livedub_qa.py").read_text(encoding="utf-8")
-    assert "dub_audio_path: Optional[Path] = None" in qa_src
     assert "ЧИСТОЙ RU-дорожке" in qa_src
     full = Path("pipelines/livedub_full_qa_stage.py").read_text(encoding="utf-8")
     quick = Path("pipelines/livedub_quick_qa_stage.py").read_text(encoding="utf-8")
