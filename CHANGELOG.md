@@ -120,6 +120,8 @@
   file/size metadata в worker thread; остаются 183 findings.
 - Async I/O, девятый `ASYNC240` slice: Factory long-fit stat/cleanup operations
   переведены в worker threads; остаётся 181 finding.
+- Async I/O, десятый `ASYNC240` slice: Factory editorial optional documents
+  проверяются в worker threads; остаются 179 findings.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

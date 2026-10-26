@@ -1136,8 +1136,9 @@ LiveDub/process slice — 42. `SIM105` = 0 и включён в gate. Затем
 третий — Clips/Shorts delivery, четвёртый — thumbnail/PDF stages, пятый —
 FFmpeg silence/crop probes, шестой — Montage/Highlights LiveDub sources,
 седьмой — Factory full-video file validation, восьмой — Factory RU speech
-proof, девятый — Factory long-fit stat/cleanup. Остаётся 181, другие
-extended-правила и дальнейший ручной async review.
+proof, девятый — Factory long-fit stat/cleanup, десятый — Factory editorial
+optional documents. Остаются 179, другие extended-правила и дальнейший ручной
+async review.
 
 **Решение:**
 
