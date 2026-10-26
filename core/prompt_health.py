@@ -171,9 +171,7 @@ def collect_prompt_health() -> list[PromptHealthItem]:
         analyze_prompt_text("REFLECTION_APPLICATION_PROMPT", getattr(prompts, "REFLECTION_APPLICATION_PROMPT", "")),
     ]
     try:
-        from services.quiz_generator import QUIZ_PROMPT
-
-        items.append(analyze_prompt_text("QUIZ_PROMPT", QUIZ_PROMPT))
+        items.append(analyze_prompt_text("QUIZ_PROMPT", prompts.QUIZ_PROMPT))
     except Exception:
         pass
     # Audio prompt is dynamic; use representative long sermon profile.

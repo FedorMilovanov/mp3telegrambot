@@ -25,14 +25,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from converters.caption import build_caption
+from converters.caption import build_caption, build_platform_links, build_telegraph_links
 from converters.md_telegraph import (
     _trim_timestamps,
     get_caption_timestamp_limit,
     safe_trim_caption,
     visible_length,
 )
-from services.search import build_platform_links, build_telegraph_links
 
 #: Лимит подписи к медиа в Telegram (видимые символы).
 MAX_CAPTION_VISIBLE = 1024
