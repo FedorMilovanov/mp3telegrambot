@@ -83,6 +83,47 @@ async def test_segment_file_success_opens_and_closes_document(monkeypatch, tmp_p
 
 
 @pytest.mark.asyncio
+async def test_segment_file_rebuilds_missing_export_from_cache(monkeypatch, tmp_path: Path) -> None:
+    path = tmp_path / "video_segments.md"
+    update = _update()
+    cache = {
+        "ai_data": {
+            "real_title": "Title",
+            "real_author": "Author",
+            "timestamps": "00:00 Intro",
+            "duration": 42,
+            "format": "sermon",
+        }
+    }
+    saved = []
+    monkeypatch.setattr(commands, "ADMIN_IDS", {123})
+    monkeypatch.setattr(commands, "_resolve_segment_source", AsyncMock(return_value=("video", cache, None)))
+    monkeypatch.setattr(commands, "get_segment_export_paths", lambda video_id: {"md": path})
+
+    async def fake_save(**kwargs):
+        saved.append(kwargs)
+        await asyncio.to_thread(_write_file, path, b"rebuilt")
+
+    monkeypatch.setattr(commands, "asave_segment_plan_export", fake_save)
+
+    await commands.segmentfile_command(update, SimpleNamespace(args=["last", "md"]))
+
+    assert saved == [
+        {
+            "video_id": "video",
+            "title": "Title",
+            "author": "Author",
+            "timestamps": "00:00 Intro",
+            "duration": 42,
+            "format_name": "sermon",
+        }
+    ]
+    kwargs = update.message.reply_document.await_args.kwargs
+    assert kwargs["filename"] == "video_segments.md"
+    assert kwargs["document"].closed
+
+
+@pytest.mark.asyncio
 async def test_pdf_command_success_sends_and_cleans_generated_file(monkeypatch, tmp_path: Path) -> None:
     update = _update()
     status = SimpleNamespace(edit_text=AsyncMock())

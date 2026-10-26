@@ -97,6 +97,10 @@ from pathlib import Path  # FIX #9
 logger = logging.getLogger(__name__)
 
 
+def _path_exists(path: Path) -> bool:
+    return path.exists()
+
+
 def _start_keyboard(is_admin: bool) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton("🎛 Все режимы", callback_data="mode_menu:home")]]
     if is_admin:
@@ -463,7 +467,7 @@ async def archivequalityfile_command(update, context):
     limit = _archive_parse_limit(limit_args, 50)
     paths = await awrite_archive_quality_exports(limit=limit)
     path = Path(paths.get(kind, ""))
-    if not path.exists():
+    if not await asyncio.to_thread(_path_exists, path):
         await update.message.reply_text("⚠️ Archive quality export не создан.")
         return
     with await asyncio.to_thread(path.open, "rb") as f:
@@ -1283,7 +1287,7 @@ async def archivefile_command(update, context):
         return
     kind = context.args[0].strip() if context.args else "latest"
     path = get_archive_export_path(kind)
-    if not path or not path.exists():
+    if not path or not await asyncio.to_thread(_path_exists, path):
         await update.message.reply_text(
             "⚠️ Файл архива не найден. Варианты: <code>latest</code>, <code>all</code>, <code>jsonl</code>, <code>readme</code>, <code>sqlite</code>",
             parse_mode="HTML",
@@ -1319,7 +1323,7 @@ async def segmentfile_command(update, context):
         return
     paths = get_segment_export_paths(video_id)
     path = Path(paths.get(kind, ""))
-    if (not path.exists()) and cache:
+    if (not await asyncio.to_thread(_path_exists, path)) and cache:
         ai = (cache or {}).get("ai_data") or {}
         try:
             await asave_segment_plan_export(
@@ -1332,7 +1336,7 @@ async def segmentfile_command(update, context):
             )
         except Exception as exc:
             logger.warning("segmentfile export rebuild failed: %s", exc)
-    if not path.exists():
+    if not await asyncio.to_thread(_path_exists, path):
         await update.message.reply_text(
             "⚠️ Файл сегментов не найден. Нужен video_cache с ai_data или уже созданный export."
         )
