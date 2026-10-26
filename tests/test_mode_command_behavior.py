@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 from telegram.error import BadRequest
 
+from core import user_modes
 import handlers.dub_health as dub_health
 import handlers.mode_command as mode
 
@@ -80,16 +81,16 @@ def test_safe_edit_sends_html_and_only_ignores_unmodified_message():
 
 
 def test_async_mode_readers_use_executor_and_fall_back_on_errors(monkeypatch):
-    monkeypatch.setattr(mode, "_get_user_mode_raw", lambda user_id: "eng")
-    monkeypatch.setattr(mode, "_get_shorts_factory_full_video_raw", lambda user_id: True)
+    monkeypatch.setattr(user_modes, "_get_user_mode_raw", lambda user_id: "eng")
+    monkeypatch.setattr(user_modes, "_get_shorts_factory_full_video_raw", lambda user_id: True)
     assert _run(mode.get_user_mode, 7) == "eng"
     assert _run(mode.get_shorts_factory_full_video, 7) is True
 
     def fail_read(_user_id):
         raise RuntimeError("database down")
 
-    monkeypatch.setattr(mode, "_get_user_mode_raw", fail_read)
-    monkeypatch.setattr(mode, "_get_shorts_factory_full_video_raw", fail_read)
+    monkeypatch.setattr(user_modes, "_get_user_mode_raw", fail_read)
+    monkeypatch.setattr(user_modes, "_get_shorts_factory_full_video_raw", fail_read)
     assert _run(mode.get_user_mode, 7) == "rus"
     assert _run(mode.get_shorts_factory_full_video, 7) is False
 
@@ -304,7 +305,7 @@ def test_raw_mode_persistence_validates_values_and_falls_back(monkeypatch, tmp_p
         conn.execute("CREATE TABLE IF NOT EXISTS bot_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
         return conn
 
-    monkeypatch.setattr(mode, "_db_conn", connect)
+    monkeypatch.setattr(user_modes, "_db_conn", connect)
     assert mode._get_user_mode_raw(1) == "rus"
     mode._set_user_mode_raw(1, "eng")
     assert mode._get_user_mode_raw(1) == "eng"
@@ -322,6 +323,6 @@ def test_raw_mode_persistence_validates_values_and_falls_back(monkeypatch, tmp_p
     def fail_connect():
         raise RuntimeError("database down")
 
-    monkeypatch.setattr(mode, "_db_conn", fail_connect)
+    monkeypatch.setattr(user_modes, "_db_conn", fail_connect)
     assert mode._get_user_mode_raw(1) == "rus"
     assert mode._get_shorts_factory_full_video_raw(1) is False

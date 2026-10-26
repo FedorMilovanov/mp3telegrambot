@@ -12,6 +12,7 @@ import asyncio
 
 import pytest
 
+from core import user_modes
 from pipelines import video_dispatch
 
 
@@ -74,7 +75,6 @@ def calls(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[tuple]]:
         recorded["factory"].append((url, update, kwargs))
         return True
 
-    import handlers.mode_command as mode_command
     import pipelines.main_pipeline
     import pipelines.shorts_factory
     import services.shorts_video
@@ -88,7 +88,7 @@ def calls(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[tuple]]:
     )
     monkeypatch.setattr(pipelines.shorts_factory, "process_shorts_factory", factory)
     monkeypatch.setattr(services.shorts_video, "HAS_FASTER_WHISPER", True)
-    monkeypatch.setattr(mode_command, "get_user_mode", _mode_reader())
+    monkeypatch.setattr(user_modes, "get_user_mode", _mode_reader())
     return recorded
 
 
@@ -129,18 +129,16 @@ def test_arguments_are_passed_through(calls, traces) -> None:
 
 
 def test_editorial_mode_goes_to_editorial_runner(calls, traces, monkeypatch) -> None:
-    import handlers.mode_command as mode_command
 
-    monkeypatch.setattr(mode_command, "get_user_mode", _mode_reader(mode_command.EDITORIAL_MODE))
+    monkeypatch.setattr(user_modes, "get_user_mode", _mode_reader(user_modes.EDITORIAL_MODE))
     assert _dispatch(_FakeUpdate()) is True
     assert len(calls["editorial"]) == 1
     assert calls["main"] == [] and calls["factory"] == []
 
 
 def test_shorts_max_goes_to_factory(calls, traces, monkeypatch) -> None:
-    import handlers.mode_command as mode_command
 
-    monkeypatch.setattr(mode_command, "get_user_mode", _mode_reader("shorts_max"))
+    monkeypatch.setattr(user_modes, "get_user_mode", _mode_reader("shorts_max"))
     assert _dispatch(_FakeUpdate()) is True
     assert len(calls["factory"]) == 1
     assert calls["main"] == []
@@ -148,10 +146,9 @@ def test_shorts_max_goes_to_factory(calls, traces, monkeypatch) -> None:
 
 def test_shorts_max_without_whisper_is_refused(calls, traces, monkeypatch) -> None:
     """Без faster-whisper фабрика не стартует — пользователь узнаёт почему."""
-    import handlers.mode_command as mode_command
     import services.shorts_video
 
-    monkeypatch.setattr(mode_command, "get_user_mode", _mode_reader("shorts_max"))
+    monkeypatch.setattr(user_modes, "get_user_mode", _mode_reader("shorts_max"))
     monkeypatch.setattr(services.shorts_video, "HAS_FASTER_WHISPER", False)
     update = _FakeUpdate()
 
@@ -162,10 +159,9 @@ def test_shorts_max_without_whisper_is_refused(calls, traces, monkeypatch) -> No
 
 
 def test_shorts_max_refusal_is_silent_in_playlist_mode(calls, traces, monkeypatch) -> None:
-    import handlers.mode_command as mode_command
     import services.shorts_video
 
-    monkeypatch.setattr(mode_command, "get_user_mode", _mode_reader("shorts_max"))
+    monkeypatch.setattr(user_modes, "get_user_mode", _mode_reader("shorts_max"))
     monkeypatch.setattr(services.shorts_video, "HAS_FASTER_WHISPER", False)
     update = _FakeUpdate()
 
@@ -175,10 +171,9 @@ def test_shorts_max_refusal_is_silent_in_playlist_mode(calls, traces, monkeypatc
 
 def test_refusal_survives_broken_telegram(calls, traces, monkeypatch) -> None:
     """Не смогли предупредить — всё равно возвращаем отказ, а не падаем."""
-    import handlers.mode_command as mode_command
     import services.shorts_video
 
-    monkeypatch.setattr(mode_command, "get_user_mode", _mode_reader("shorts_max"))
+    monkeypatch.setattr(user_modes, "get_user_mode", _mode_reader("shorts_max"))
     monkeypatch.setattr(services.shorts_video, "HAS_FASTER_WHISPER", False)
 
     assert _dispatch(_FakeUpdate(message_fail=True)) is False
@@ -221,7 +216,6 @@ def test_cancellation_is_not_swallowed(calls, traces, monkeypatch) -> None:
 
 def test_unknown_user_does_not_read_the_database(calls, traces, monkeypatch) -> None:
     """Служебный апдейт без пользователя не должен ходить в БД за режимом."""
-    import handlers.mode_command as mode_command
 
     asked: list[int] = []
 
@@ -229,7 +223,7 @@ def test_unknown_user_does_not_read_the_database(calls, traces, monkeypatch) -> 
         asked.append(user_id)
         return "rus"
 
-    monkeypatch.setattr(mode_command, "get_user_mode", reader)
+    monkeypatch.setattr(user_modes, "get_user_mode", reader)
     assert _dispatch(_FakeUpdate(user_id=None)) is True
     assert asked == []
     assert len(calls["main"]) == 1

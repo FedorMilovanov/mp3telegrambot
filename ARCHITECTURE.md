@@ -66,9 +66,8 @@ grep'ом.
 |---|---|---|
 | `core → services` | `core/globals.py` (`gemini_capacity_control`) | процесс-wide конфиг исторически знает о capacity-контроллере; чистые health/quota-контракты уже перенесены в `core/` |
 | `converters → services` | `converters/md_telegraph.py` (4× `telegraph`), `md_telegraph.py` (`pdf_generator`) | рендеринг вызывает сетевые публикаторы напрямую |
-| `services → handlers` | `services/dub_studio_runtime.py:325,519–525`, `services/shorts_factory_full_video.py:20` | Dub Studio и Shorts поднимают хендлеры, чтобы переиспользовать меню |
+| `services → handlers` | `services/dub_studio_runtime.py` (7 handler-модулей) | Dub Studio поднимает хендлеры, чтобы переиспользовать меню и регистрацию команд |
 | `services → pipelines` | `services/shorts_factory_execution_guard.py:275`, `services/shorts_factory_source.py:489`, `services/translation_editorial_runner.py:38` | циклическая зависимость Shorts: сервис запускает пайплайн |
-| `pipelines → handlers` | 1 импорт | уточняется при введении контракта |
 
 Исполняемый контракт (`import-linter`) уже подключён через
 `tools/check_import_layers.py`: направление

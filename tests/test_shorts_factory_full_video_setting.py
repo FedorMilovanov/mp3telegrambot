@@ -1,5 +1,6 @@
 import sqlite3
 
+from core import user_modes
 import handlers.mode_command as mode_command
 
 
@@ -11,7 +12,7 @@ def test_factory_full_video_setting_persists_per_user(monkeypatch, tmp_path):
         conn.execute("CREATE TABLE IF NOT EXISTS bot_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
         return conn
 
-    monkeypatch.setattr(mode_command, "_db_conn", connect)
+    monkeypatch.setattr(user_modes, "_db_conn", connect)
 
     assert mode_command._get_shorts_factory_full_video_raw(101) is False
     assert mode_command._get_shorts_factory_full_video_raw(202) is False

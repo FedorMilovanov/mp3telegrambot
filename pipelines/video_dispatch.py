@@ -39,7 +39,7 @@ async def process_single_video(
     silent_errors: bool = False,
 ) -> bool:
     """Dispatch exactly one video according to the persisted user mode."""
-    from handlers.mode_command import EDITORIAL_MODE, get_user_mode
+    from core.user_modes import EDITORIAL_MODE, get_user_mode
 
     user_id = _effective_user_id(update)
     mode = await get_user_mode(user_id) if user_id else "rus"
