@@ -153,6 +153,33 @@ async def test_pdf_command_success_sends_and_cleans_generated_file(monkeypatch, 
 
 
 @pytest.mark.asyncio
+async def test_pdf_command_rejects_undersized_output_and_cleans_file(monkeypatch, tmp_path: Path) -> None:
+    update = _update()
+    status = SimpleNamespace(edit_text=AsyncMock())
+    update.message.reply_text = AsyncMock(return_value=status)
+    monkeypatch.setattr(commands, "ADMIN_IDS", {123})
+    monkeypatch.setattr(commands, "DOWNLOAD_DIR", tmp_path)
+    monkeypatch.setattr(
+        commands,
+        "_resolve_segment_source",
+        AsyncMock(return_value=("video", {"ai_data": {}, "telegraph_url": "https://example.test/synopsis"}, None)),
+    )
+
+    async def fake_generate_pdf(**kwargs) -> str:
+        path = Path(kwargs["output_path"])
+        await asyncio.to_thread(_write_file, path, b"%PDF")
+        return str(path)
+
+    monkeypatch.setattr(pdf_generator, "generate_sermon_pdf_async", fake_generate_pdf)
+
+    await commands.pdf_command(update, SimpleNamespace(args=["video"]))
+
+    update.message.reply_document.assert_not_awaited()
+    status.edit_text.assert_awaited_with("❌ Не удалось создать PDF.")
+    assert _matching_paths(tmp_path, "video_*.pdf") == []
+
+
+@pytest.mark.asyncio
 async def test_eng_subtitles_writes_expected_srt_in_worker_thread(monkeypatch, tmp_path: Path) -> None:
     _write_file(tmp_path / "original_audio.m4a", b"audio")
     segment = SimpleNamespace(start=0.0, end=1.5, text="Hello\nworld")

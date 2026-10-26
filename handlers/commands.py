@@ -101,6 +101,10 @@ def _path_exists(path: Path) -> bool:
     return path.exists()
 
 
+def _pdf_file_is_deliverable(path: Path) -> bool:
+    return path.exists() and 200 < path.stat().st_size < 49 * 1024 * 1024
+
+
 def _start_keyboard(is_admin: bool) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton("🎛 Все режимы", callback_data="mode_menu:home")]]
     if is_admin:
@@ -576,7 +580,7 @@ async def pdf_command(update, context):
     try:
         from services.pdf_generator import generate_sermon_pdf_async
 
-        DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(DOWNLOAD_DIR.mkdir, parents=True, exist_ok=True)
         pdf_path = str(DOWNLOAD_DIR / f"{video_id}_{uuid.uuid4().hex[:6]}.pdf")
 
         async def _pdf_progress(stage: str, pct: int):
@@ -590,7 +594,7 @@ async def pdf_command(update, context):
             urls=urls,
             progress_callback=_pdf_progress,
         )
-        if result and Path(result).exists() and 200 < Path(result).stat().st_size < 49 * 1024 * 1024:
+        if result and await asyncio.to_thread(_pdf_file_is_deliverable, Path(result)):
 
             def _safe_fn(s: str) -> str:
                 return re.sub(r'[\\/:*?"<>|\n\r\t]', "", s).strip()[:80] or "doc"
