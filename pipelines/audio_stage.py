@@ -216,7 +216,7 @@ async def _squeeze(path: Path, download_dir: Path, media_id: str) -> Path | None
     if not converted:
         logger.warning("Проверенное atomic-пережатие MP3 64k не удалось: %s", path.name)
         return None
-    path.unlink(missing_ok=True)
+    await asyncio.to_thread(path.unlink, missing_ok=True)
     return target
 
 

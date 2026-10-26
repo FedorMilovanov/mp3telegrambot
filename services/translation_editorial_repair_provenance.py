@@ -242,7 +242,7 @@ async def verify_repair_provenance(
 ) -> dict[str, Any]:
     """Reload provenance and verify exact clean bytes, allowing an explicit relocation."""
     sidecar_path = Path(sidecar_path)
-    data = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    data = json.loads(await asyncio.to_thread(sidecar_path.read_text, encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError("repair provenance root must be an object")
     errors = validate_repair_provenance_document(data)
@@ -250,12 +250,17 @@ async def verify_repair_provenance(
         raise ValueError("repair provenance validation failed: " + "; ".join(errors))
     output = data["output"]
     stored_output_path = Path(str(output.get("local_path") or ""))
-    output_path = (
-        Path(expected_output_path).resolve(strict=False) if expected_output_path is not None else stored_output_path
-    )
-    if not output_path.is_file() or output_path.stat().st_size <= 1024:
-        raise FileNotFoundError(output_path)
-    if output_path.stat().st_size != int(output.get("bytes") or 0):
+    if expected_output_path is not None:
+        output_path = await asyncio.to_thread(Path(expected_output_path).resolve, strict=False)
+    else:
+        output_path = stored_output_path
+
+    def _output_size() -> int:
+        if not output_path.is_file() or output_path.stat().st_size <= 1024:
+            raise FileNotFoundError(output_path)
+        return output_path.stat().st_size
+
+    if await asyncio.to_thread(_output_size) != int(output.get("bytes") or 0):
         raise RuntimeError("repair provenance output size changed")
     actual_sha = await asyncio.to_thread(sha256_file, output_path)
     if actual_sha != output.get("sha256"):

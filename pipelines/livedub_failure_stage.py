@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -111,7 +112,7 @@ async def reject_oversized_livedub_video(
     flush_source_audio: Callable[[], Awaitable[Any]],
 ) -> bool:
     """Notify and flush before upload when the generated video exceeds the limit."""
-    file_size = livedub_path.stat().st_size / (1024 * 1024)
+    file_size = await asyncio.to_thread(lambda: livedub_path.stat().st_size / (1024 * 1024))
     if file_size > max_file_size_mb():
         logger.warning(f"[LiveDub] Файл слишком большой для отправки: {file_size:.1f}MB (лимит {max_file_size_mb()}MB)")
         hint = (

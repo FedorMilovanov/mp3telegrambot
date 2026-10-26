@@ -55,9 +55,14 @@ async def prepare_livedub_video_assets(
     # Bot API 8.3+: use the already downloaded YouTube cover when it is real.
     cover = None
     try:
-        candidates = sorted(thumbs_dir.glob(f"{media_id}_thumb*"))
-        if candidates and candidates[0].stat().st_size > 1024:
-            cover = candidates[0]
+
+        def _find_cover() -> Path | None:
+            candidates = sorted(thumbs_dir.glob(f"{media_id}_thumb*"))
+            if candidates and candidates[0].stat().st_size > 1024:
+                return candidates[0]
+            return None
+
+        cover = await asyncio.to_thread(_find_cover)
     except Exception:
         pass
     return metadata, thumbnail, cover
