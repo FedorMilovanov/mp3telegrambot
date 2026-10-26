@@ -4,6 +4,7 @@ Markdown → Telegraph nodes конвертер.
 Извлечено из bot.py строки 2913–4213.
 """
 
+from converters.telegraph_nodes import _HEADING_BOLD_STRIP_RE
 from core.structured_blocks import normalize_structured_block
 from core.text_utils import (
     _scrub_inline,
@@ -81,9 +82,6 @@ _VL_DEC_RE = re.compile(r"&#\d+;")
 _VL_HEX_RE = re.compile(r"&#x[0-9a-fA-F]+;")
 
 # ─── Missing regex patterns (BUG FIX: were lost during refactoring) ──────────
-# PATCH v2: убран re.DOTALL — заголовки должны быть однострочными
-_HEADING_BOLD_STRIP_RE = re.compile(r"^\*\*(?!\*)(.*?)(?<!\*)\*\*$")
-
 # FIXED #117: паттерны вынесены на уровень модуля — ранее компилировались
 # при каждом вызове _ensure_trailing_period (сотни раз за прогон).
 # FIX ReDoS: replaced \s*...\s*$ with non-overlapping pattern.
@@ -944,7 +942,7 @@ def _structured_blocks_to_nodes_v2(
     """
     if not isinstance(blocks, list):
         return []
-    from services.telegraph import _md_to_telegraph_nodes as _md_to_nodes_fn  # lazy: telegraph→markdown cycle
+    from converters.telegraph_nodes import _md_to_telegraph_nodes as _md_to_nodes_fn  # shared node conversion
 
     chunks: list[str] = []
     for raw in blocks:
@@ -1600,7 +1598,7 @@ def _section_to_nodes_v2(
         from core.content_audit import _scrub_prompt_context_leaks
 
         content, _leak_changed = _scrub_prompt_context_leaks(content)
-        from services.telegraph import _md_to_telegraph_nodes as _md_to_nodes_fn  # lazy: telegraph→markdown cycle
+        from converters.telegraph_nodes import _md_to_telegraph_nodes as _md_to_nodes_fn  # shared node conversion
 
         content_nodes = _md_to_nodes_fn(content)
 
@@ -2038,7 +2036,7 @@ async def _create_telegraph_page_single(title: str, author: str, nodes: list, lo
     title = fit_telegraph_title(title)
     author = fit_telegraph_author_name(author)
     author_url = fit_telegraph_author_url(author_url)
-    from services.telegraph import _clean_telegraph_nodes as _cln_nodes_fn  # lazy: telegraph→markdown cycle
+    from converters.telegraph_nodes import _clean_telegraph_nodes as _cln_nodes_fn  # shared node conversion
 
     nodes = _cln_nodes_fn(nodes)
     nodes = _postprocess_telegraph_nodes(nodes)  # CONSPECT QUALITY PATCH
@@ -2101,7 +2099,7 @@ async def _edit_telegraph_page(page_url: str, title: str, author: str, nodes: li
     title = fit_telegraph_title(title)
     author = fit_telegraph_author_name(author)
     author_url = fit_telegraph_author_url(author_url)
-    from services.telegraph import _clean_telegraph_nodes as _cln_nodes_fn2  # lazy: telegraph→markdown cycle
+    from converters.telegraph_nodes import _clean_telegraph_nodes as _cln_nodes_fn2  # shared node conversion
 
     nodes = _cln_nodes_fn2(nodes)
     nodes = _postprocess_telegraph_nodes(nodes)  # CONSPECT QUALITY PATCH

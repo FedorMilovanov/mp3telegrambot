@@ -33,7 +33,6 @@ ignore_imports =
     services.shorts_factory_execution_guard -> pipelines.shorts_factory
     services.shorts_factory_source -> pipelines.shorts_factory
     services.translation_editorial_runner -> pipelines.shorts_factory
-    converters.md_telegraph -> services.telegraph
     converters.md_telegraph -> services.pdf_generator
 unmatched_ignore_imports_alerting = error
 broken_contract_guidance =
