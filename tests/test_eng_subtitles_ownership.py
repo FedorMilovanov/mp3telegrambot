@@ -72,6 +72,51 @@ async def test_audio_duration_uses_cancellable_ffprobe(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_subtitle_audio_discovery_uses_downloaded_candidate(monkeypatch, tmp_path) -> None:
+    audio_path = tmp_path / "original_audio.mp3"
+    audio_path.write_bytes(b"audio")
+    duration_inputs = []
+
+    async def fake_owner(command, **kwargs):
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    async def fake_duration(path):
+        duration_inputs.append(path)
+        return eng_subtitles._MAX_SUBTITLE_AUDIO_SECONDS + 1
+
+    monkeypatch.setattr(eng_subtitles, "run_cancellable_process", fake_owner)
+    monkeypatch.setattr(eng_subtitles, "_get_audio_duration", fake_duration)
+
+    result = await eng_subtitles.create_gemini_subtitles(
+        "https://example.invalid/video",
+        tmp_path,
+    )
+
+    assert result is None
+    assert duration_inputs == [audio_path]
+
+
+@pytest.mark.asyncio
+async def test_subtitle_audio_discovery_rejects_partial_download(monkeypatch, tmp_path) -> None:
+    (tmp_path / "original_audio.part").write_bytes(b"partial")
+
+    async def fake_owner(command, **kwargs):
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    async def unexpected_duration(_path):
+        pytest.fail("partial audio must not reach duration probing")
+
+    monkeypatch.setattr(eng_subtitles, "run_cancellable_process", fake_owner)
+    monkeypatch.setattr(eng_subtitles, "_get_audio_duration", unexpected_duration)
+
+    with pytest.raises(RuntimeError, match="Не удалось скачать аудио"):
+        await eng_subtitles.create_gemini_subtitles(
+            "https://example.invalid/video",
+            tmp_path,
+        )
+
+
+@pytest.mark.asyncio
 async def test_original_video_download_rejects_failed_owner(monkeypatch, tmp_path) -> None:
     async def fake_owner(command, **kwargs):
         return subprocess.CompletedProcess(command, 7, "", "download failed")
