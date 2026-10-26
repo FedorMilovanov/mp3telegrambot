@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import html
 import json
 import logging
@@ -65,10 +66,8 @@ def _factory_source_timeout_seconds() -> int:
 async def _safe_status(status_msg: Any, text: str) -> None:
     if not status_msg:
         return
-    try:
+    with contextlib.suppress(Exception):
         await status_msg.edit_text(text)
-    except Exception:
-        pass
 
 
 async def _load_video_info(url: str) -> dict[str, Any]:
@@ -126,10 +125,8 @@ def _persist_factory_source(source_path: Path, media_id: str) -> Path:
         pass
 
     for old in DOWNLOAD_DIR.glob(f"{media_id}_factory_source.*"):
-        try:
+        with contextlib.suppress(OSError):
             old.unlink(missing_ok=True)
-        except OSError:
-            pass
     try:
         shutil.move(str(source_path), str(destination))
     except (OSError, shutil.Error):
@@ -511,20 +508,14 @@ async def process_shorts_factory(
     finally:
         if source_task is not None and not source_task.done():
             source_task.cancel()
-            try:
+            with contextlib.suppress(BaseException):
                 await source_task
-            except BaseException:
-                pass
         if mp3_path is not None:
-            try:
+            with contextlib.suppress(OSError):
                 mp3_path.unlink(missing_ok=True)
-            except OSError:
-                pass
         if persistent_source_path is not None and not keep_source:
-            try:
+            with contextlib.suppress(OSError):
                 persistent_source_path.unlink(missing_ok=True)
-            except OSError:
-                pass
         shutil.rmtree(workdir, ignore_errors=True)
 
 

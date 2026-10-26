@@ -13,6 +13,7 @@ AUDIT FIX L12: PLAYLIST_DELAY_SEC конфигурируется через .env
 """
 
 import asyncio
+import contextlib
 import logging
 import os
 from typing import Any
@@ -130,10 +131,8 @@ async def handle_playlist(url: str, update: Any, context: Any, user_id: int = 0)
                     break
 
             prefix = f"[{i}/{total}] "
-            try:
+            with contextlib.suppress(Exception):
                 await safe_edit_text(status_msg, f"📋 {title}\n🔄 {i}/{total} | ✅ {success} | ❌ {fail}")
-            except Exception:
-                pass
 
             # PART5: тот же per-video lock, что и в single-video handler.
             # Иначе два одинаковых entry в плейлисте или два параллельных плейлиста

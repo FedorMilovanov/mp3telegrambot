@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import Awaitable, Callable, Coroutine
 from pathlib import Path
@@ -95,8 +96,6 @@ async def run_livedub_background(
         for task in inner:
             task.cancel()
         if inner:
-            try:
-                await asyncio.gather(*inner, return_exceptions=True)
-            except BaseException:
+            with contextlib.suppress(BaseException):
                 # Teardown must not replace the result or cancellation reason.
-                pass
+                await asyncio.gather(*inner, return_exceptions=True)

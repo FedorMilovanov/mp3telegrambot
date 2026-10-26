@@ -8,6 +8,7 @@ installer rebinding is required to route Factory or translation-editorial jobs.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from typing import Any
 
 from services.latency_trace import begin_latency_trace, finish_latency_trace
@@ -24,10 +25,8 @@ async def _reply_factory_requirement(update: Any, *, silent_errors: bool) -> Non
     message = getattr(update, "effective_message", None) or getattr(update, "message", None)
     if message is None:
         return
-    try:
+    with contextlib.suppress(Exception):
         await message.reply_text("❌ SHORTS FACTORY MAX требует faster-whisper large-v3.")
-    except Exception:
-        pass
 
 
 async def process_single_video(

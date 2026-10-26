@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from pathlib import Path
 from typing import Any
@@ -17,10 +18,8 @@ async def send_livedub_video_with_cover(
     send_kwargs: dict[str, Any],
 ) -> Any:
     """Send upload action and video, retrying without cover only when safe."""
-    try:
+    with contextlib.suppress(Exception):
         await bot.send_chat_action(chat_id=chat_id, action="upload_video")
-    except Exception:
-        pass
     try:
         if cover is not None:
             return await bot.send_video(cover=cover, **send_kwargs)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from collections.abc import Awaitable
 from pathlib import Path
@@ -64,26 +65,18 @@ async def wait_for_livedub_video(
                 "[LiveDub] Яндекс требует OAuth-токен для живых голосов "
                 "(нет/протух VOT_API_TOKEN в .env — см. .env.example)"
             )
-            try:
+            with contextlib.suppress(OSError):
                 (workdir / ".auth_required").write_text("1", encoding="utf-8")
-            except OSError:
-                pass
         elif "LIVEDUB_NOT_AVAILABLE" in str(exc):
             logger.info("[LiveDub] Перевод недоступен для этого видео")
-            try:
+            with contextlib.suppress(OSError):
                 (workdir / ".not_available").write_text("1", encoding="utf-8")
-            except OSError:
-                pass
         else:
             logger.warning(f"[LiveDub] Ошибка: {exc}")
-            try:
+            with contextlib.suppress(OSError):
                 (workdir / ".livedub_failed").write_text(str(exc)[:500], encoding="utf-8")
-            except OSError:
-                pass
     except Exception as exc:
         logger.warning(f"[LiveDub] Неизвестная ошибка: {exc}")
-        try:
+        with contextlib.suppress(OSError):
             (workdir / ".livedub_failed").write_text(str(exc)[:500], encoding="utf-8")
-        except OSError:
-            pass
     return None

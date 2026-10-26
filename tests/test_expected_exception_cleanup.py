@@ -8,6 +8,8 @@ import pytest
 
 from core import utils as core_utils
 from handlers import callbacks
+from pipelines import factory_short_delivery, shorts_factory
+from pipelines import shorts as shorts_pipeline
 
 
 @pytest.mark.asyncio
@@ -71,3 +73,30 @@ def test_cleanup_files_ignores_locked_media(monkeypatch, tmp_path: Path) -> None
     monkeypatch.setattr(Path, "unlink", locked_unlink)
     core_utils.cleanup_files("media", keep_mp3=False)
     assert locked.read_bytes() == b"video"
+
+
+@pytest.mark.parametrize("remover", [shorts_pipeline._unlink, factory_short_delivery._remove])
+def test_pipeline_unlink_helpers_accept_missing_paths(remover, tmp_path: Path) -> None:
+    remover(tmp_path / "already-removed.mp4")
+
+
+@pytest.mark.asyncio
+async def test_factory_safe_status_delivers_edit() -> None:
+    status = SimpleNamespace(edit_text=AsyncMock())
+    await shorts_factory._safe_status(status, "ready")
+    status.edit_text.assert_awaited_once_with("ready")
+
+
+def test_factory_source_persistence_replaces_stale_variant(monkeypatch, tmp_path: Path) -> None:
+    download_dir = tmp_path / "downloads"
+    download_dir.mkdir()
+    stale = download_dir / "media_factory_source.old"
+    stale.write_bytes(b"stale")
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"x" * 2048)
+    monkeypatch.setattr(shorts_factory, "DOWNLOAD_DIR", download_dir)
+
+    destination = shorts_factory._persist_factory_source(source, "media")
+
+    assert destination.read_bytes() == b"x" * 2048
+    assert not stale.exists()

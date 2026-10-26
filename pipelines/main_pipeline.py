@@ -119,6 +119,7 @@ from pipelines.livedub_title import (
 )
 
 import asyncio
+import contextlib
 import os  # FIX #11
 import logging
 import subprocess  # FIX #11
@@ -392,15 +393,13 @@ async def process_single_video(
             except RuntimeError as _vot_err:
                 logger.warning(f"[LiveDub] нет клиента VOT: {_vot_err}")
                 if not silent_errors:
-                    try:
+                    with contextlib.suppress(Exception):
                         await update.message.reply_text(
                             "⚠️ Режим ENG: нет клиента для Яндекс LiveDub.\n"
                             "Установите Node.js (helper поставит @vot.js/node сам) "
                             "или старый резерв: npm install -g vot-cli-live\n"
                             + ("Продолжаю обычный анализ без перевода." if user_mode == "eng" else "")
                         )
-                    except Exception:
-                        pass
                 if user_mode in ("eng_fast", "eng_fast_qa"):
                     cleanup_files(media_id)
                     return False
@@ -642,10 +641,8 @@ async def process_single_video(
                 else:
                     # round 38: если сработал tts-fallback — честный caption
                     _tts_marker = False
-                    try:
+                    with contextlib.suppress(OSError):
                         _tts_marker = "ld_work" in locals() and (ld_work / ".voice_style_tts").exists()
-                    except OSError:
-                        pass
                     _voice_label = "🎬 Перевод Яндекса (обычные голоса)" if _tts_marker else "🎬 Живые голоса Яндекса"
                     caption = (
                         _title_prefix
@@ -720,7 +717,7 @@ async def process_single_video(
                             str(_companion_err)[:180],
                         )
                         await _source_audio_delivery.flush("LiveDub companion transaction failed")
-                        try:
+                        with contextlib.suppress(Exception):
                             await context.bot.send_message(
                                 chat_id=update.effective_chat.id,
                                 text=(
@@ -730,8 +727,6 @@ async def process_single_video(
                                 ),
                                 reply_to_message_id=update.message.message_id,
                             )
-                        except Exception:
-                            pass
 
                     if _companions_ok:
                         _source_audio_delivery.discard("complete LiveDub video+MP3 set delivered")
@@ -1230,10 +1225,8 @@ async def process_single_video(
             except Exception as _ld_flush_err:
                 logger.warning("[LiveDub] flush в except не удался: %s", str(_ld_flush_err)[:160])
         if not silent_errors:
-            try:
+            with contextlib.suppress(Exception):
                 await update.message.reply_text(f"❌ Ошибка: {_safe[:200]}")
-            except Exception:
-                pass
         if "media_id" in locals():
             try:
                 cleanup_files(media_id)

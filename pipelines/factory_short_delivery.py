@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import math
 from pathlib import Path
@@ -72,10 +73,8 @@ def _final_caption(caption: str) -> str:
 def _remove(path: Path | None) -> None:
     if path is None:
         return
-    try:
+    with contextlib.suppress(OSError):
         path.unlink(missing_ok=True)
-    except OSError:
-        pass
 
 
 async def process_and_send_factory_shorts(

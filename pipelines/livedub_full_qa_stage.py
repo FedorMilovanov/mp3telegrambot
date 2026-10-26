@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -34,14 +35,12 @@ async def run_livedub_full_qa(
     qa_result = None
     autofix_note = ""
     status = None
-    try:
+    with contextlib.suppress(Exception):
         status = await bot.send_message(
             chat_id=chat_id,
             text=("🔍 Проверяю точность перевода перед отправкой (Gemini сравнивает дубляж с оригиналом)…"),
             reply_to_message_id=reply_to,
         )
-    except Exception:
-        pass
 
     try:
         from services.livedub_qa import run_translation_qa
@@ -133,9 +132,7 @@ async def run_livedub_full_qa(
         logger.warning(f"[LiveDubQA] сбой проверки: {exc}")
     finally:
         if status is not None:
-            try:
+            with contextlib.suppress(Exception):
                 await status.delete()
-            except Exception:
-                pass
 
     return video_path, qa_result, autofix_note

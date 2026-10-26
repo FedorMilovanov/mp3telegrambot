@@ -38,6 +38,7 @@ from services.media_delivery_probe import (
 from telegram import InputFile  # AUDIT R25: thumbnail без BufferedReader.name (py3.13)
 
 import json
+import contextlib
 import logging
 import math
 from pathlib import Path
@@ -346,10 +347,8 @@ async def _run_montage_or_highlights_pipeline(
             return False
     finally:
         for path in cleanup_paths:
-            try:
+            with contextlib.suppress(Exception):
                 path.unlink(missing_ok=True)
-            except Exception:
-                pass
 
 
 async def process_and_send_montage(
@@ -390,10 +389,8 @@ async def process_and_send_montage(
                 )
         if not candidates:
             logger.info("Montage: кандидаты не найдены")
-            try:
+            with contextlib.suppress(Exception):
                 await update.message.reply_text("🎬 Montage для этого материала не найден.")
-            except Exception:
-                pass
             return
 
         if livedub_source is not None:
@@ -478,10 +475,8 @@ async def process_and_send_highlights(
         candidates = prefetched_candidates or []
         if not candidates:
             logger.info("Highlights: кандидат не найден")
-            try:
+            with contextlib.suppress(Exception):
                 await update.message.reply_text("🌟 Highlights для этого материала не найден.")
-            except Exception:
-                pass
             return
 
         livedub_source: Path | None = None
@@ -516,10 +511,8 @@ async def process_and_send_highlights(
                 "Highlights: кандидат невалидный (нет fragments/title): %s",
                 list(cand.keys()),
             )
-            try:
+            with contextlib.suppress(Exception):
                 await update.message.reply_text("🌟 Highlights: данные кандидата повреждены.")
-            except Exception:
-                pass
             return
 
         # The extras pass only proposes approximate times from compressed text.
@@ -536,14 +529,12 @@ async def process_and_send_highlights(
                 "Highlights rejected by quality gate: %s",
                 json.dumps(quality_report, ensure_ascii=False)[:5000],
             )
-            try:
+            with contextlib.suppress(Exception):
                 await update.message.reply_text(
                     "🌟 Highlights пропущен: автоматическая проверка не смогла "
                     "доказать целостные границы фраз и единую тему. "
                     "Основные материалы уже готовы."
                 )
-            except Exception:
-                pass
             return
         cand = verified_cand
 
@@ -583,10 +574,8 @@ async def process_and_send_highlights(
         logger.warning("Highlights process_and_send error: %s", exc)
     finally:
         if video_path and owned_video:
-            try:
+            with contextlib.suppress(Exception):
                 video_path.unlink(missing_ok=True)
-            except Exception:
-                pass
 
 
 # Re-export for the main pipeline; candidate generation remains one shared

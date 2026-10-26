@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import contextlib
 import logging
 import shutil
 import time
@@ -88,10 +89,8 @@ def _finalize_short_caption_for_delivery(
 def _unlink(path: Path | None) -> None:
     if path is None:
         return
-    try:
+    with contextlib.suppress(OSError):
         path.unlink(missing_ok=True)
-    except OSError:
-        pass
 
 
 async def process_and_send_shorts(
@@ -506,10 +505,8 @@ async def process_and_send_shorts(
                 )
                 sent += 1
                 if subtitle_fallback_notice:
-                    try:
+                    with contextlib.suppress(Exception):
                         await update.message.reply_text(subtitle_fallback_notice)
-                    except Exception:
-                        pass
             except Exception as exc:
                 logger.warning("Shorts %d/%d send failed: %s", index, total, exc)
                 _unlink(nosub_path)
@@ -518,10 +515,8 @@ async def process_and_send_shorts(
 
     except Exception as exc:
         logger.warning("Shorts process_and_send error: %s", exc)
-        try:
+        with contextlib.suppress(Exception):
             await update.message.reply_text(f"✂️ Ошибка при подготовке Shorts: {str(exc)[:150]}")
-        except Exception:
-            pass
     finally:
         for path in (*short_paths, *poster_paths):
             _unlink(path)
