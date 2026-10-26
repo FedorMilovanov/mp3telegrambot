@@ -55,6 +55,38 @@ async def test_nosub_missing_file_has_expiry_response(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_retrim_missing_source_without_url_warns_before_render(monkeypatch, tmp_path: Path) -> None:
+    source = tmp_path / "missing-source.mp4"
+    monkeypatch.setattr(
+        callbacks,
+        "short_trim_get",
+        lambda _short_id: {
+            "video_path": str(source),
+            "start_seconds": 20,
+            "end_seconds": 40,
+            "source_duration": 60,
+            "candidate_json": "{}",
+            "yt_url": "",
+        },
+    )
+    retrim = AsyncMock()
+    monkeypatch.setattr(callbacks, "_handle_strim_retrim", retrim)
+    query = SimpleNamespace(
+        data="strim:s10:short-id",
+        answer=AsyncMock(),
+        message=SimpleNamespace(reply_text=AsyncMock()),
+    )
+
+    await callbacks.handle_callback(SimpleNamespace(callback_query=query), SimpleNamespace())
+
+    query.answer.assert_awaited_once_with("✂️ Начало расширено -10 сек, перерезаю...")
+    query.message.reply_text.assert_awaited_once_with(
+        "⚠️ Исходное видео удалено и нет ссылки для повторного скачивания."
+    )
+    retrim.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_retrim_invalid_json_and_render_failure_still_clean_up(monkeypatch, tmp_path: Path) -> None:
     async def fail_render(**_kwargs):
         raise RuntimeError("synthetic render failure")
@@ -75,6 +107,54 @@ async def test_retrim_invalid_json_and_render_failure_still_clean_up(monkeypatch
 
     query.message.reply_text.assert_awaited_once()
     assert not list(tmp_path.glob("*_trim.mp4"))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("nosub_available", [False, True])
+async def test_retrim_success_preserves_source_and_conditional_nosub_button(
+    monkeypatch,
+    tmp_path: Path,
+    nosub_available: bool,
+) -> None:
+    source = tmp_path / "source.mp4"
+    nosub = tmp_path / "nosub.mp4"
+    source.write_bytes(b"source")
+    if nosub_available:
+        nosub.write_bytes(b"nosub")
+    monkeypatch.setattr(callbacks, "DOWNLOAD_DIR", tmp_path)
+    rendered = []
+    saved = []
+
+    async def fake_render(**kwargs):
+        output = kwargs["output_path"]
+        output.write_bytes(b"rendered")
+        rendered.append(output)
+        return True
+
+    monkeypatch.setattr(callbacks, "render_short_clip", fake_render)
+    monkeypatch.setattr(callbacks, "short_trim_save", lambda **kwargs: saved.append(kwargs))
+    monkeypatch.setattr(callbacks, "build_short_caption", lambda **_kwargs: "caption")
+    query = SimpleNamespace(message=SimpleNamespace(reply_video=AsyncMock(), reply_text=AsyncMock()))
+
+    await callbacks._handle_strim_retrim(
+        query,
+        {"candidate_json": "{}", "video_path_nosub": str(nosub)},
+        source,
+        0,
+        10,
+        "Trim",
+        30,
+    )
+
+    query.message.reply_video.assert_awaited_once()
+    query.message.reply_text.assert_not_awaited()
+    assert saved[0]["video_path"] == str(source)
+    assert len(rendered) == 1
+    assert not rendered[0].exists()
+    reply_markup = query.message.reply_video.await_args.kwargs["reply_markup"]
+    buttons = [button for row in reply_markup.inline_keyboard for button in row]
+    nosub_buttons = [button for button in buttons if button.callback_data.startswith("strim:nosub:")]
+    assert len(nosub_buttons) == int(nosub_available)
 
 
 def test_cleanup_files_ignores_locked_media(monkeypatch, tmp_path: Path) -> None:
