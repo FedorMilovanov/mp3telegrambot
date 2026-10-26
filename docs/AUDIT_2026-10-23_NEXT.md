@@ -1145,7 +1145,8 @@ workdir/audio discovery, шестнадцатый — ENG original-video reuse/d
 discovery, семнадцатый — MP3 source/path/cache preflight, восемнадцатый —
 no-sub callback file check, девятнадцатый — retrim source/no-sub checks,
 двадцатый — archive/segment export file checks, двадцать первый — PDF output
-preflight, двадцать второй — disk diagnostics. Остаются 145, другие
+preflight, двадцать второй — disk diagnostics, двадцать третий — status
+DB/backup и PDF cleanup (`handlers/commands.py` очищен). Остаются 143, другие
 extended-правила и дальнейший ручной async review.
 
 **Решение:**

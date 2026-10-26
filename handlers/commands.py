@@ -113,6 +113,18 @@ def _file_size(path: str | Path) -> int:
     return Path(path).stat().st_size
 
 
+def _database_status(path: str) -> tuple[int, str]:
+    database = Path(path)
+    size_kb = database.stat().st_size // 1024
+    backups = sorted(database.parent.glob(database.name + ".bak.*"))
+    latest_backup = backups[-1].name.split(".bak.")[-1] if backups else "нет"
+    return size_kb, latest_backup
+
+
+def _unlink_file(path: str | Path) -> None:
+    Path(path).unlink(missing_ok=True)
+
+
 def _start_keyboard(is_admin: bool) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton("🎛 Все режимы", callback_data="mode_menu:home")]]
     if is_admin:
@@ -383,9 +395,7 @@ async def status_command(update, context):
         pass
     # БД и бэкап
     try:
-        _db_kb = Path(DB_PATH).stat().st_size // 1024
-        _baks = sorted(Path(str(DB_PATH)).parent.glob(Path(str(DB_PATH)).name + ".bak.*"))
-        _bak_info = _baks[-1].name.split(".bak.")[-1] if _baks else "нет"
+        _db_kb, _bak_info = await asyncio.to_thread(_database_status, DB_PATH)
         lines.append(f"🗄 БД: {_db_kb} КБ · бэкап: {html_mod.escape(str(_bak_info))}")
     except OSError:
         pass
@@ -628,7 +638,7 @@ async def pdf_command(update, context):
     finally:
         if pdf_path:
             with contextlib.suppress(Exception):
-                Path(pdf_path).unlink(missing_ok=True)
+                await asyncio.to_thread(_unlink_file, pdf_path)
 
 
 async def disk_command(update, context):
