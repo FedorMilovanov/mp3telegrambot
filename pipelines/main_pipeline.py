@@ -3,33 +3,48 @@
 Main Pipeline — process_single_video.
 Извлечено из bot.py строки 12470–13446.
 """
-from services.ffmpeg import YTDLP_BASE_ARGS                   # FIX #23: нужен результат, не функция
+
+from services.ffmpeg import YTDLP_BASE_ARGS  # FIX #23: нужен результат, не функция
 from services.async_process import run_cancellable_process
 from services.async_worker import (
     await_owned_coroutine,
     await_owned_with_soft_timeout,
 )
 from core.globals import (
-    DOWNLOAD_DIR, THUMBS_DIR, HAS_GEMINI, HAS_PILLOW, DB_PATH,
-    GEMINI_CLIENTS, TELEGRAPH_TOKEN,                  # FIX #11
-    html_mod,                                          # FIX #11
+    DOWNLOAD_DIR,
+    THUMBS_DIR,
+    HAS_GEMINI,
+    HAS_PILLOW,
+    DB_PATH,
+    GEMINI_CLIENTS,
+    TELEGRAPH_TOKEN,  # FIX #11
+    html_mod,  # FIX #11
 )
 from core.database import (
     _db_conn,
-    adb_get, adb_save, asettings_get, asettings_get_all,
-    is_cache_valid, db_init,
-    GEMINI_MODEL, CACHE_VERSION,    # FIX #11
+    adb_get,
+    adb_save,
+    asettings_get,
+    asettings_get_all,
+    is_cache_valid,
+    db_init,
+    GEMINI_MODEL,
+    CACHE_VERSION,  # FIX #11
     get_max_file_size_mb,
     current_livedub_file_id_cache_version,
-    get_prompt_fingerprint,                            # FIX #11
+    get_prompt_fingerprint,  # FIX #11
 )
 from core.utils import (
-    cleanup_files, is_media_url, parse_title,
-    check_rate_limit, update_rate_limit, format_timestamp,  # FIX #11
+    cleanup_files,
+    is_media_url,
+    parse_title,
+    check_rate_limit,
+    update_rate_limit,
+    format_timestamp,  # FIX #11
 )
 from converters.md_telegraph import (
-    visible_length,                                    # FIX #11
-    get_caption_timestamp_limit,                       # FIX #11
+    visible_length,  # FIX #11
+    get_caption_timestamp_limit,  # FIX #11
 )
 from pipelines.analysis_stage import AnalysisRequest, run_analysis
 from pipelines.archive_stage import archive_pages
@@ -91,7 +106,8 @@ from pipelines.media_guards import (
 from services.mp3_conversion import reencode_mp3_64k_atomic
 from pipelines.livedub_title import (
     # Compatibility re-exports; new code should import livedub_title directly.
-    _LIVEDUB_TITLE_CACHE, _LIVEDUB_TITLE_CACHE_MAX,
+    _LIVEDUB_TITLE_CACHE,
+    _LIVEDUB_TITLE_CACHE_MAX,
     _clean_livedub_meta_text,
     _replace_known_author_names,
     _split_title_author_line,
@@ -103,9 +119,9 @@ from pipelines.livedub_title import (
 )
 
 import asyncio
-import os       # FIX #11
+import os  # FIX #11
 import logging
-import subprocess # FIX #11
+import subprocess  # FIX #11
 import uuid
 import sqlite3  # LIVEDUB: direct DB read for user mode
 from pathlib import Path
@@ -148,8 +164,18 @@ def _sponsorblock_args() -> list:
     cats = os.getenv("SPONSORBLOCK_REMOVE", "").strip()
     if not cats:
         return []
-    _allowed = {"sponsor", "selfpromo", "interaction", "intro", "outro",
-                "preview", "filler", "music_offtopic", "all", "default"}
+    _allowed = {
+        "sponsor",
+        "selfpromo",
+        "interaction",
+        "intro",
+        "outro",
+        "preview",
+        "filler",
+        "music_offtopic",
+        "all",
+        "default",
+    }
     parts = [c.strip() for c in cats.split(",") if c.strip()]
     if not all(c.lstrip("-") in _allowed for c in parts):
         logger.warning("SPONSORBLOCK_REMOVE: недопустимые категории %r — игнорирую", cats)
@@ -186,7 +212,7 @@ async def _ytdlp_info_inprocess(url: str, timeout: int):
         _flags = list(YTDLP_BASE_ARGS)
         for _i, _tok in enumerate(_flags):
             if _tok in ("yt_dlp", "yt-dlp"):
-                _flags = _flags[_i + 1:]
+                _flags = _flags[_i + 1 :]
                 break
         _parsed = yt_dlp.parse_options(_flags + ["--no-playlist", "--quiet"])
         opts = getattr(_parsed, "ydl_opts", None)
@@ -229,12 +255,14 @@ async def _ytdlp_info_inprocess(url: str, timeout: int):
     return first_entry(info)
 
 
-async def process_single_video(url, update, status_msg=None, progress_prefix="", context=None, silent_errors: bool = False):
+async def process_single_video(
+    url, update, status_msg=None, progress_prefix="", context=None, silent_errors: bool = False
+):
     url = get_youtube_video_url(url)
     thumb_buffer = None
     _pp = progress_prefix  # short alias for progress calls
     used_audio_part = None  # инициализируем здесь — finally обращается к ним безусловно
-    used_client = None       # если исключение до их присвоения внутри try — UnboundLocalError
+    used_client = None  # если исключение до их присвоения внутри try — UnboundLocalError
     try:
         if status_msg:
             await set_progress(status_msg, 1, prefix=_pp)
@@ -243,7 +271,9 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             await set_progress(status_msg, 1, prefix=_pp)
 
         info_cmd = YTDLP_BASE_ARGS + [
-            "--dump-json", "--no-playlist", url,
+            "--dump-json",
+            "--no-playlist",
+            url,
         ]
         _info_timeout = info_timeout_seconds()
 
@@ -255,9 +285,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
 
         if info_dict is None:
             try:
-                info_proc = await run_cancellable_process(
-                    info_cmd, timeout=_info_timeout, text=True
-                )
+                info_proc = await run_cancellable_process(info_cmd, timeout=_info_timeout, text=True)
             except subprocess.TimeoutExpired as _ytdlp_timeout:
                 logger.warning("yt-dlp --dump-json timeout after %ss: %s", _info_timeout, str(_ytdlp_timeout)[:300])
                 raise Exception(
@@ -281,9 +309,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
 
         # AUDIT M10: ограничение по длительности — Gemini обрежет конспект для слишком длинных,
         # пользователь получит обрезанный результат при потраченной квоте.
-        _max_dur = env_int(
-            "MAX_VIDEO_DURATION_SEC", DEFAULT_MAX_DURATION_SEC, minimum=60
-        )  # дефолт 3 часа
+        _max_dur = env_int("MAX_VIDEO_DURATION_SEC", DEFAULT_MAX_DURATION_SEC, minimum=60)  # дефолт 3 часа
         _video_duration_meta = int(info_dict.get("duration") or 0)
         _skip = duration_skip(_video_duration_meta, _max_dur)
         if _skip:
@@ -303,12 +329,12 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             logger.warning("Пропуск: мало места на диске (%s)", _skip.details)
             return False
 
-        full_title   = info_dict.get("title", "audio")
+        full_title = info_dict.get("title", "audio")
         channel_name = info_dict.get("uploader", info_dict.get("channel", ""))
-        source_lang  = str(info_dict.get("language") or "").lower()
+        source_lang = str(info_dict.get("language") or "").lower()
         logger.info(f"YouTube channel_name: '{channel_name}' (lang: {source_lang})")
-        duration     = int(info_dict.get("duration") or 0)
-        media_id     = info_dict.get("id", "media")
+        duration = int(info_dict.get("duration") or 0)
+        media_id = info_dict.get("id", "media")
 
         # --- LIVEDUB: проверяем режим пользователя ---
         user_id = update.effective_user.id if (update.effective_user and update.effective_user.id) else None
@@ -317,8 +343,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             try:
                 with _db_conn() as conn:
                     row = conn.execute(
-                        "SELECT value FROM bot_settings WHERE key = ?",
-                        (f"user_mode_{user_id}",)
+                        "SELECT value FROM bot_settings WHERE key = ?", (f"user_mode_{user_id}",)
                     ).fetchone()
                 if row and row[0] in ("eng", "eng_fast", "eng_fast_qa"):
                     user_mode = row[0]
@@ -340,7 +365,8 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 elif (_ld_cached or {}).get("livedub_file_id"):
                     logger.info(
                         "[LiveDub] кэш file_id устарел (%s != %s) — пересобираю перевод",
-                        _ld_version or "legacy", _ld_expected_version,
+                        _ld_version or "legacy",
+                        _ld_expected_version,
                     )
             except Exception:
                 _livedub_cached_file_id = ""
@@ -352,6 +378,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             from services.yandex_live_dub import get_live_dub_video, _check_vot_cli, _ensure_vot_helper
             from services.eng_subtitles import create_gemini_subtitles, merge_subtitles, download_original_video
             import tempfile
+
             try:
                 # Новый протокол (node + vot_helper) теперь основной. Старый
                 # vot-cli-live больше не обязателен, если helper доступен.
@@ -381,15 +408,18 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         if user_mode in ("eng", "eng_fast", "eng_fast_qa") and live_dub_task is None and not _livedub_cached_file_id:
             ld_work = Path(tempfile.gettempdir()) / f"livedub_{media_id}"
             ld_work.mkdir(exist_ok=True)
-            
+
             # ENG Quick: только перевод — без субтитров и без QA (экономим CPU и квоту)
             eng_subs_enabled = (user_mode == "eng") and await asettings_get("eng_subtitles")
             _livedub_qa_enabled = (user_mode == "eng") and await asettings_get("livedub_qa")
-            _livedub_quick_qa_enabled = (user_mode == "eng_fast_qa")
+            _livedub_quick_qa_enabled = user_mode == "eng_fast_qa"
             _livedub_pro_mix = await asettings_get("livedub_pro_mix")
-            _livedub_autofix = (_livedub_qa_enabled or _livedub_quick_qa_enabled) and await asettings_get("livedub_autofix")
+            _livedub_autofix = (_livedub_qa_enabled or _livedub_quick_qa_enabled) and await asettings_get(
+                "livedub_autofix"
+            )
             try:
                 from services.livedub_info import livedub_info_enabled
+
                 _livedub_info_enabled = (user_mode in ("eng_fast", "eng_fast_qa")) and livedub_info_enabled()
             except Exception:
                 _livedub_info_enabled = False
@@ -403,9 +433,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     duration=duration,
                     subtitles_enabled=eng_subs_enabled,
                     translation_subtitles_enabled=(
-                        _livedub_qa_enabled
-                        or _livedub_info_enabled
-                        or _livedub_quick_qa_enabled
+                        _livedub_qa_enabled or _livedub_info_enabled or _livedub_quick_qa_enabled
                     ),
                     pro_mix=_livedub_pro_mix,
                     create_subtitles=create_gemini_subtitles,
@@ -428,11 +456,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             bot=context.bot if context else None,
             chat_id=update.effective_chat.id if context else None,
             reply_to=update.message.message_id if context else None,
-            enabled=bool(
-                context
-                and user_mode == "eng"
-                and (_livedub_cached_file_id or live_dub_task)
-            ),
+            enabled=bool(context and user_mode == "eng" and (_livedub_cached_file_id or live_dub_task)),
         )
 
         async def _send_livedub_result() -> bool:
@@ -488,16 +512,15 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             if _livedub_cached_file_id and context:
                 _cached_internal_caption = (
                     f"<b>{_livedub_title_html}</b>\n🎬 Живые голоса Яндекса"
-                    if _livedub_title_html else "🎬 Живые голоса Яндекса"
+                    if _livedub_title_html
+                    else "🎬 Живые голоса Яндекса"
                 )
                 await deliver_cached_livedub(
                     context.bot,
                     chat_id=update.effective_chat.id,
                     reply_to=update.message.message_id,
                     video_file_id=_livedub_cached_file_id,
-                    caption=format_video_caption(
-                        _publication_card, _cached_internal_caption
-                    ),
+                    caption=format_video_caption(_publication_card, _cached_internal_caption),
                     publication_card=_publication_card,
                     media_id=media_id,
                     flush_source_audio=_source_audio_delivery.flush,
@@ -549,8 +572,11 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 # пользователь скачивает десятки одинаковых pro_dub.mp4.
                 try:
                     from services.livedub_mix import prepare_livedub_send_path
+
                     livedub_path = prepare_livedub_send_path(
-                        livedub_path, _livedub_title_line, fallback=media_id,
+                        livedub_path,
+                        _livedub_title_line,
+                        fallback=media_id,
                     )
                 except Exception as _name_err:
                     logger.info("[LiveDub] filename prepare skip: %s", str(_name_err)[:120])
@@ -602,24 +628,30 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     chat_id=update.effective_chat.id,
                     reply_to_message_id=update.message.message_id,
                     max_file_size_mb=get_max_file_size_mb,
-                    flush_source_audio=lambda: _source_audio_delivery.flush(
-                        "LiveDub video exceeds Telegram limit"
-                    ),
+                    flush_source_audio=lambda: _source_audio_delivery.flush("LiveDub video exceeds Telegram limit"),
                 ):
                     _livedub_result_sent = True
                     return True
                 _title_prefix = f"<b>{_livedub_title_html}</b>\n" if _livedub_title_html else ""
                 if is_fallback:
-                    caption = _title_prefix + "⚠️ Живой перевод Яндекса недоступен/сломался.\nОтправляю резерв: оригинальное видео" + (" + русские субтитры." if has_subs else ".")
+                    caption = (
+                        _title_prefix
+                        + "⚠️ Живой перевод Яндекса недоступен/сломался.\nОтправляю резерв: оригинальное видео"
+                        + (" + русские субтитры." if has_subs else ".")
+                    )
                 else:
                     # round 38: если сработал tts-fallback — честный caption
                     _tts_marker = False
                     try:
-                        _tts_marker = ("ld_work" in locals() and (ld_work / ".voice_style_tts").exists())
+                        _tts_marker = "ld_work" in locals() and (ld_work / ".voice_style_tts").exists()
                     except OSError:
                         pass
                     _voice_label = "🎬 Перевод Яндекса (обычные голоса)" if _tts_marker else "🎬 Живые голоса Яндекса"
-                    caption = _title_prefix + _voice_label + ("\n💬 Русские субтитры сделаны независимо через Whisper + Gemini" if has_subs else "")
+                    caption = (
+                        _title_prefix
+                        + _voice_label
+                        + ("\n💬 Русские субтитры сделаны независимо через Whisper + Gemini" if has_subs else "")
+                    )
                     if _tech_warnings:
                         caption += "\n⚠️ " + "; ".join(_tech_warnings)[:500]
                     # ENG Full: если QA нашёл major-искажения и мы приглушили дубляж —
@@ -653,7 +685,9 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     thumbnail=_v_thumb,
                     reply_to_message_id=update.message.message_id,
                     supports_streaming=True,
-                    write_timeout=600, read_timeout=600, connect_timeout=60,
+                    write_timeout=600,
+                    read_timeout=600,
+                    connect_timeout=60,
                 )
                 _sent_msg = await send_livedub_video_with_cover(
                     bot=context.bot,
@@ -663,9 +697,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 )
                 # Companion delivery is an explicit transaction. Only a complete
                 # video+MP3 result enters the fast-resend video cache.
-                _video_file_id = str(
-                    getattr(getattr(_sent_msg, "video", None), "file_id", "") or ""
-                ).strip()
+                _video_file_id = str(getattr(getattr(_sent_msg, "video", None), "file_id", "") or "").strip()
                 if is_fallback:
                     await _source_audio_delivery.flush("LiveDub fell back to original video")
                 else:
@@ -706,12 +738,14 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                         if _video_file_id:
                             try:
                                 from core.database import adb_set_livedub_file_id
+
                                 await adb_set_livedub_file_id(media_id, _video_file_id)
                                 logger.info("[LiveDub] complete pair file_id cached (%s)", media_id)
                             except Exception as _fid_save_err:
                                 logger.warning("[LiveDub] complete pair cache save failed: %s", _fid_save_err)
                                 try:
                                     import services.livedub_audio_companion as _companion_cache
+
                                     _companion_cache._cache_drop(_video_file_id)
                                 except Exception:
                                     pass
@@ -736,7 +770,6 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     except Exception as _qrep_err:
                         logger.info("[LiveDubQuickQA] report send failed: %s", str(_qrep_err)[:160])
 
-
                 # ── Отчёт QA (ENG Full): всегда объясняем найденные искажения ──
                 # Проверка и авто-приглушение уже выполнены ДО отправки видео
                 # (блок выше): присланный ролик — уже исправленный. Здесь только
@@ -744,6 +777,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 if _qa_result_full:
                     try:
                         from services.livedub_qa import format_qa_report
+
                         await asyncio.sleep(1.0)
                         await context.bot.send_message(
                             chat_id=update.effective_chat.id,
@@ -772,9 +806,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                     reply_to_message_id=update.message.message_id,
                     error=e,
                     max_file_size_mb=get_max_file_size_mb,
-                    flush_source_audio=lambda: _source_audio_delivery.flush(
-                        "LiveDub send/generation failure"
-                    ),
+                    flush_source_audio=lambda: _source_audio_delivery.flush("LiveDub send/generation failure"),
                     escape=html_mod.escape,
                 )
                 return False
@@ -830,7 +862,12 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 )
             except AudioTooLarge as _too_big:
                 return await fail_audio_too_large(
-                    _too_big, update, _send_livedub_result, media_id, cleanup_files, cache_hit=True,
+                    _too_big,
+                    update,
+                    _send_livedub_result,
+                    media_id,
+                    cleanup_files,
+                    cache_hit=True,
                 )
             mp3_path = _audio.path
             file_size_mb = _audio.size_mb
@@ -871,7 +908,12 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 deliver=deliver_cached_result,
             )
 
-        await set_progress(status_msg, 2, {'title': f'📝 {title}', 'author': f'👤 {performer}  •  {duration//60}:{duration%60:02d}'}, prefix=_pp)
+        await set_progress(
+            status_msg,
+            2,
+            {"title": f"📝 {title}", "author": f"👤 {performer}  •  {duration // 60}:{duration % 60:02d}"},
+            prefix=_pp,
+        )
         thumb_buffer = await load_thumbnail(
             media_id=media_id,
             url=url,
@@ -879,11 +921,25 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             cache_hit=False,
         )
 
-        await set_progress(status_msg, 3, {'title': f'📝 {title}', 'author': f'👤 {performer}  •  {duration//60}:{duration%60:02d}', 'fmt': '🎵 128 kbps  •  MP3'}, prefix=_pp)
+        await set_progress(
+            status_msg,
+            3,
+            {
+                "title": f"📝 {title}",
+                "author": f"👤 {performer}  •  {duration // 60}:{duration % 60:02d}",
+                "fmt": "🎵 128 kbps  •  MP3",
+            },
+            prefix=_pp,
+        )
 
         # Проверяем кэш MP3 — если файл уже есть, скачивание пропускаем
         async def _squeeze_notice(current_mb: float) -> None:
-            await set_progress(status_msg, 3, {"title": f"📝 {title}", "info": f"⚙️ Файл {current_mb:.1f} МБ — пересжимаю в 64 kbps..."}, prefix=_pp)
+            await set_progress(
+                status_msg,
+                3,
+                {"title": f"📝 {title}", "info": f"⚙️ Файл {current_mb:.1f} МБ — пересжимаю в 64 kbps..."},
+                prefix=_pp,
+            )
 
         try:
             _audio = await prepare_audio(
@@ -900,7 +956,12 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             )
         except AudioTooLarge as _too_big:
             return await fail_audio_too_large(
-                _too_big, update, _send_livedub_result, media_id, cleanup_files, cache_hit=False,
+                _too_big,
+                update,
+                _send_livedub_result,
+                media_id,
+                cleanup_files,
+                cache_hit=False,
             )
         mp3_path = _audio.path
         file_size_mb = _audio.size_mb
@@ -928,15 +989,15 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             ),
             enabled=bool(GEMINI_CLIENTS),
         )
-        ai_data          = _analysis.ai_data
+        ai_data = _analysis.ai_data
         synopsis_outline = _analysis.synopsis_outline
-        telegraph_url    = _analysis.telegraph_url
-        used_audio_part  = _analysis.used_audio_part
-        used_client      = _analysis.used_client
+        telegraph_url = _analysis.telegraph_url
+        used_audio_part = _analysis.used_audio_part
+        used_client = _analysis.used_client
         _degraded_caption_data = _analysis.degraded_caption_data
-        _early_alt       = _analysis.early_links
-        _pre_rutube      = _analysis.rutube_url
-        _pre_vk          = _analysis.vk_url
+        _early_alt = _analysis.early_links
+        _pre_rutube = _analysis.rutube_url
+        _pre_vk = _analysis.vk_url
         # НЕ удаляем audio_part здесь — он нужен для Shorts и Clips.
         # Удаление происходит в блоке finally ниже.
 
@@ -957,7 +1018,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         _mat_format = _publication.format_name
         _ts_total = _publication.timestamps_total
         _plan = _publication.plan
-        _feat_study_analysis         = _plan.study_analysis
+        _feat_study_analysis = _plan.study_analysis
         _feat_reflection_application = _plan.reflection_application
 
         # Стадия рендера вынесена в pipelines/telegraph_render.py: пять фабрик,
@@ -984,19 +1045,18 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
                 combined_enabled=combined_study_reflection_enabled(),
             )
         )
-        alt_links                 = _rendered.alt_links
-        quotes_tg                 = _rendered.analytics_url
-        questions_tg              = _rendered.questions_url
-        terms_tg                  = _rendered.terms_url
-        study_analysis_tg         = _rendered.study_analysis_url
+        alt_links = _rendered.alt_links
+        quotes_tg = _rendered.analytics_url
+        questions_tg = _rendered.questions_url
+        terms_tg = _rendered.terms_url
+        study_analysis_tg = _rendered.study_analysis_url
         reflection_application_tg = _rendered.reflection_url
-        _nav_filled               = _rendered.as_nav_pages(telegraph_url or "")
+        _nav_filled = _rendered.as_nav_pages(telegraph_url or "")
 
         # Навигация вынесена в pipelines/telegraph_nav.py: сборка блока,
         # повторный прогон без дублей, компактный вариант у лимита размера,
         # обход частей по «➡ Дальше» и две попытки при сетевом сбое.
         await add_navigation(_nav_filled)
-
 
         # Deterministic post-publish safety repair. This is not a manual
         # operator step and does not call Gemini: after createPage/editPage
@@ -1007,8 +1067,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         # Починка после публикации вынесена в pipelines/telegraph_repair_stage.py:
         # разворот цепочки частей, изоляция страниц, структурный отчёт.
         _repair = await repair_pages(
-            [telegraph_url, study_analysis_tg, reflection_application_tg,
-             quotes_tg, questions_tg, terms_tg],
+            [telegraph_url, study_analysis_tg, reflection_application_tg, quotes_tg, questions_tg, terms_tg],
             enabled=repair_enabled(),
         )
 
@@ -1033,19 +1092,20 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             rutube_url=alt_links.get("rutube"),
             vk_url=alt_links.get("vk"),
         )
-        _q_link     = _caption_inputs.links.quotes
-        _ref_link   = _caption_inputs.links.questions
+        _q_link = _caption_inputs.links.quotes
+        _ref_link = _caption_inputs.links.questions
         _terms_link = _caption_inputs.links.terms
-        rutube_url  = _caption_inputs.rutube_url
-        vk_url      = _caption_inputs.vk_url
-        ai_data     = _caption_inputs.ai_data
+        rutube_url = _caption_inputs.rutube_url
+        vk_url = _caption_inputs.vk_url
+        ai_data = _caption_inputs.ai_data
         _pub_status = _caption_inputs.publication
         if ai_data and _pub_status.warning:
             logger.warning(
                 "Publication status for %s: status=%s missing=%s",
-                media_id, _pub_status.status, ",".join(_pub_status.missing),
+                media_id,
+                _pub_status.status,
+                ",".join(_pub_status.missing),
             )
-
 
         # Стадия подписи: сборка, обрезка до 1024 видимых символов, метрики.
         # Реализация одна на этот путь и на кэш-хит (pipelines/caption_stage.py).
@@ -1143,7 +1203,6 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
             )
         )
 
-
         # --- LIVEDUB: отправка результата (общий хелпер) ---
         await _send_livedub_result()
         if _source_audio_delivery.has_pending:
@@ -1157,6 +1216,7 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
         # AUDIT M15: проверяем media_id через locals() вместо except NameError,
         # который опасно поглощает OSError от cleanup_files.
         from core.utils import mask_api_key as _mask
+
         _safe = _mask(str(e))
         logger.error(f"Ошибка: {_safe}", exc_info=True)
         # AUDIT R42: не теряем УЖЕ ГОТОВЫЙ дубляж, если упали на «extras»
@@ -1191,5 +1251,3 @@ async def process_single_video(url, update, status_msg=None, progress_prefix="",
 
 
 # ─── Обработка плейлиста ─────────────────────────────────────
-
-

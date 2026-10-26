@@ -171,10 +171,6 @@ def test_html_formatter_labels_default_profile_and_truncates_hashes() -> None:
     assert "C:/private" not in rendered
 
 
-
-
-
-
 def test_safe_formatter_never_exposes_exception_message(monkeypatch) -> None:
     monkeypatch.setattr(
         status,

@@ -94,12 +94,8 @@ def test_successful_render_commits_separate_success_marker(monkeypatch, tmp_path
     entrypoint.run(lambda: "done")
 
     work = tmp_path / "work"
-    compatibility = json.loads(
-        (work / "direct_cli_runtime.marker.json").read_text(encoding="utf-8")
-    )
-    completed = json.loads(
-        (work / "direct_cli_runtime.completed.json").read_text(encoding="utf-8")
-    )
+    compatibility = json.loads((work / "direct_cli_runtime.marker.json").read_text(encoding="utf-8"))
+    completed = json.loads((work / "direct_cli_runtime.completed.json").read_text(encoding="utf-8"))
     assert completed["policy"] == entrypoint.SUCCESS_MARKER_POLICY
     assert completed["compatibility"] == compatibility
     assert not (work / "direct_renderer_failure.json").exists()

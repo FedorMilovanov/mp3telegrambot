@@ -8,6 +8,7 @@ prefix. Candidate attempts alternate those forms. Known final-word stress is
 accepted only after duration, energy and periodic-pitch evidence agree; this is
 an acoustic screen, not a universal Russian stress recognizer.
 """
+
 from __future__ import annotations
 
 import math
@@ -47,7 +48,7 @@ def _tier_control(tier: str) -> str:
 
 
 def _is_final_lexical_match(text: str, end: int) -> bool:
-    return not any(char.isalpha() or char.isdigit() for char in str(text)[int(end):])
+    return not any(char.isalpha() or char.isdigit() for char in str(text)[int(end) :])
 
 
 def _dedupe(values: list[str]) -> list[str]:
@@ -72,13 +73,7 @@ def prepare_segment(segment: dict[str, Any]) -> dict[str, Any]:
         forms = [str(value) for value in rule.get("variants") or () if str(value)]
         if not forms:
             forms = [str(rule["spoken_form"]), str(rule["replacement"])]
-        variants = _dedupe(
-            [
-                rule["pattern"].sub(form, existing)
-                for existing in variants
-                for form in forms
-            ]
-        )
+        variants = _dedupe([rule["pattern"].sub(form, existing) for existing in variants for form in forms])
         overrides.append(
             {
                 "name": str(rule["name"]),
@@ -105,9 +100,7 @@ def prepare_segment(segment: dict[str, Any]) -> dict[str, Any]:
         controls.append("Russian pronunciation: stress the final syllable in gryadyot")
     control = ", ".join(_clean_control(item) for item in controls if _clean_control(item))
     controlled = [f"({control}){value}" if control else value for value in variants]
-    evidence_required = any(
-        bool(item.get("acoustic_evidence_required")) for item in overrides
-    )
+    evidence_required = any(bool(item.get("acoustic_evidence_required")) for item in overrides)
     return {
         "policy": POLICY,
         "variant_policy": VARIANT_POLICY,
@@ -178,11 +171,7 @@ def _frame_features(
         chunk = audio[start : start + frame].astype(np.float64)
         rms = math.sqrt(float(np.mean(chunk**2)) + 1e-12)
         levels.append(20.0 * math.log10(max(rms, 1e-9)))
-        zcr.append(
-            float(np.mean(np.signbit(chunk[1:]) != np.signbit(chunk[:-1])))
-            if len(chunk) > 1
-            else 0.0
-        )
+        zcr.append(float(np.mean(np.signbit(chunk[1:]) != np.signbit(chunk[:-1]))) if len(chunk) > 1 else 0.0)
         work = (chunk - float(np.mean(chunk))) * window
         correlation = np.correlate(work, work, mode="full")[frame - 1 :]
         if correlation[0] <= 1e-10 or lag_high <= lag_low:
@@ -237,10 +226,7 @@ def stress_evidence(samples: Any, sample_rate: int, segment: dict[str, Any]) -> 
     overrides = prepared.get("overrides")
     required = bool(
         isinstance(overrides, list)
-        and any(
-            isinstance(item, dict) and item.get("acoustic_evidence_required") is True
-            for item in overrides
-        )
+        and any(isinstance(item, dict) and item.get("acoustic_evidence_required") is True for item in overrides)
     )
     if not required:
         return {
@@ -292,11 +278,7 @@ def stress_evidence(samples: Any, sample_rate: int, segment: dict[str, Any]) -> 
         & (f0 <= 350.0)
         & (levels >= max(-43.0, peak - 23.0))
     )
-    nuclei = [
-        (left, right)
-        for left, right in _runs(vowel_like[search_start : active_end + 1])
-        if right - left >= 2
-    ]
+    nuclei = [(left, right) for left, right in _runs(vowel_like[search_start : active_end + 1]) if right - left >= 2]
     nuclei = [(left + search_start, right + search_start) for left, right in nuclei]
     merged: list[tuple[int, int]] = []
     for left, right in nuclei:
@@ -324,11 +306,7 @@ def stress_evidence(samples: Any, sample_rate: int, segment: dict[str, Any]) -> 
     final_f0 = _median_positive(f0[final[0] : final[1]])
     duration_ratio = final_duration / max(0.01, previous_duration)
     level_delta = final_level - previous_level
-    f0_delta_st = (
-        12.0 * math.log2(final_f0 / previous_f0)
-        if previous_f0 > 0.0 and final_f0 > 0.0
-        else None
-    )
+    f0_delta_st = 12.0 * math.log2(final_f0 / previous_f0) if previous_f0 > 0.0 and final_f0 > 0.0 else None
     final_near_end = bool(final[1] >= active_end - 7)
     strong_cues = sum(
         (

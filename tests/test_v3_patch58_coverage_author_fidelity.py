@@ -7,10 +7,12 @@ from core.prompts import build_audio_analysis_prompt
 
 
 def test_content_audit_removes_mismatched_first_person_author():
-    sections = [{
-        "title": "A",
-        "content": "Для меня, Алексея Коломийцева, огромная радость. Я, Коломийцев, убежден в этом.",
-    }]
+    sections = [
+        {
+            "title": "A",
+            "content": "Для меня, Алексея Коломийцева, огромная радость. Я, Коломийцев, убежден в этом.",
+        }
+    ]
     out, _, issues = audit_expanded_sections(sections, [], label="Synopsis", expected_author="Алекс Монтойя")
     content = out[0]["content"]
     assert "Коломийцев" not in content

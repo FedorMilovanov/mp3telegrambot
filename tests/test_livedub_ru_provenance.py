@@ -17,7 +17,8 @@ def _audio(path: Path, payload: bytes = b"audio" * 500) -> Path:
 def test_atomic_marker_roundtrip_selects_exact_older_vot_file(tmp_path: Path) -> None:
     exact = _audio(tmp_path / "video.live.mp3")
     unrelated = _audio(tmp_path / "newer-unrelated.mp3", b"other" * 500)
-    os.utime(exact, (10, 10)); os.utime(unrelated, (20, 20))
+    os.utime(exact, (10, 10))
+    os.utime(unrelated, (20, 20))
     assert provenance.write_ru_audio_provenance(exact, voice_style="live") is True
     assert provenance.read_ru_audio_provenance(tmp_path) == exact
     assert list(tmp_path.glob(".livedub_ru_audio.json.*.tmp")) == []
@@ -29,7 +30,10 @@ def test_marker_rejects_path_traversal_and_changed_files(tmp_path: Path) -> None
     exact.write_bytes(b"changed" * 600)
     assert provenance.read_ru_audio_provenance(tmp_path) is None
     marker = tmp_path / ".livedub_ru_audio.json"
-    marker.write_text(json.dumps({"schema_version": 1, "filename": "../outside.mp3", "size_bytes": 1, "mtime_ns": 1}), encoding="utf-8")
+    marker.write_text(
+        json.dumps({"schema_version": 1, "filename": "../outside.mp3", "size_bytes": 1, "mtime_ns": 1}),
+        encoding="utf-8",
+    )
     assert provenance.read_ru_audio_provenance(tmp_path) is None
 
 
@@ -65,7 +69,8 @@ def test_mix_consumer_prefers_exact_provenance(tmp_path: Path) -> None:
 
     exact = _audio(tmp_path / "exact.live.mp3")
     fallback = _audio(tmp_path / "fallback.mp3", b"fallback" * 500)
-    os.utime(exact, (10, 10)); os.utime(fallback, (20, 20))
+    os.utime(exact, (10, 10))
+    os.utime(fallback, (20, 20))
     assert provenance.write_ru_audio_provenance(exact)
     _original, selected = mix.find_pro_tracks(tmp_path)
     assert selected == exact

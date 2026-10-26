@@ -8,6 +8,7 @@ accepted only under a fingerprint of the actual renderer modules, selected model
 snapshot and backend runtime. A baseline becomes release-complete only after the
 final encoded AAC files pass media QA.
 """
+
 from __future__ import annotations
 
 import json
@@ -78,9 +79,7 @@ def _validate_groups(groups: list[dict[str, Any]], text_key: str) -> None:
         if start < previous_end - 0.001:
             raise RuntimeError(f"Речевые блоки пересекаются около #{index}.")
         if end - start > MAX_SECONDS + 0.30:
-            raise RuntimeError(
-                f"Речевой блок #{index} слишком длинный: {end - start:.3f} сек."
-            )
+            raise RuntimeError(f"Речевой блок #{index} слишком длинный: {end - start:.3f} сек.")
         previous_end = end
 
 
@@ -151,21 +150,15 @@ def _mark_and_validate_segments(
         effective_start = start + delay
         effective_end = end + delay
         if effective_start < previous_effective_end - 0.001:
-            raise RuntimeError(
-                f"Реплика #{segment_id} пересекается после применения delay."
-            )
+            raise RuntimeError(f"Реплика #{segment_id} пересекается после применения delay.")
         if effective_end > duration_value + 0.02:
             raise RuntimeError(f"Реплика #{segment_id} выходит за конец видео.")
         if end - start > MAX_SECONDS + 0.30:
-            raise RuntimeError(
-                f"Реплика #{segment_id} слишком длинная: {end - start:.3f} сек."
-            )
+            raise RuntimeError(f"Реплика #{segment_id} слишком длинная: {end - start:.3f} сек.")
         words = len(re.findall(r"\w+", text, flags=re.UNICODE))
         rate = words / max(0.35, end - start)
         if rate > 6.2:
-            raise RuntimeError(
-                f"Реплика #{segment_id} физически перегружена: {rate:.2f} слова/с."
-            )
+            raise RuntimeError(f"Реплика #{segment_id} физически перегружена: {rate:.2f} слова/с.")
         previous_end = end
         previous_effective_end = effective_end
 
@@ -254,9 +247,7 @@ def _cpu_python(request: dict[str, Any]) -> Path:
     runtime = backend.runtime_paths(Path(__file__).resolve().parents[2], request)
     python = runtime.cpu_python
     if not python.is_file():
-        raise RuntimeError(
-            f"CPU Python не найден для backend={backend.backend_id}: {python}"
-        )
+        raise RuntimeError(f"CPU Python не найден для backend={backend.backend_id}: {python}")
     return python
 
 
@@ -288,17 +279,13 @@ def _failure_summary(report: dict[str, Any]) -> str:
             parts.append(f"ASR recall={semantic.get('token_recall')}, услышано=«{heard}»")
         timing = item.get("timing")
         if isinstance(timing, dict) and not timing.get("passed", True):
-            parts.append(
-                f"стык onset={timing.get('onset_ms')}ms tail={timing.get('trailing_ms')}ms"
-            )
+            parts.append(f"стык onset={timing.get('onset_ms')}ms tail={timing.get('trailing_ms')}ms")
         continuity = item.get("continuity_v45")
         if isinstance(continuity, dict) and not continuity.get("passed", True):
             parts.append(f"пауза={continuity.get('max_internal_gap')}s")
         voice = item.get("voice_match_v45")
         if isinstance(voice, dict) and not voice.get("passed", True):
-            parts.append(
-                f"голос median×{voice.get('f0_median_ratio')} p90×{voice.get('f0_p90_ratio')}"
-            )
+            parts.append(f"голос median×{voice.get('f0_median_ratio')} p90×{voice.get('f0_p90_ratio')}")
         result.append(f"#{segment_id}: " + ", ".join(parts or ["QA failure"]))
     return "; ".join(result)
 
@@ -387,14 +374,10 @@ def render_and_master(
     marker_current = bool(
         marker.get("policy") == POLICY
         and marker.get("runtime_contract_policy") == clean_runtime_contract.POLICY
-        and marker.get("render_contract_sha256")
-        == fingerprints["render_contract_sha256"]
+        and marker.get("render_contract_sha256") == fingerprints["render_contract_sha256"]
     )
     if existing_checkpoints and not marker_current:
-        log(
-            "checkpoints не соответствуют renderer/model/runtime fingerprint; "
-            "выполняю безопасный fresh render"
-        )
+        log("checkpoints не соответствуют renderer/model/runtime fingerprint; выполняю безопасный fresh render")
         force_fresh = True
     if force_fresh:
         _remove_render_state(segment_work)
@@ -431,15 +414,10 @@ def render_and_master(
                 "base_seed": str(round_seed),
             },
         )
-        log(
-            f"direct NoChew round {round_index + 1}/2; seed={round_seed}; "
-            "без renderer wrappers"
-        )
+        log(f"direct NoChew round {round_index + 1}/2; seed={round_seed}; без renderer wrappers")
         result = _run_child_process(command, cwd=str(repo), env=env, check=False)
         if result.returncode != 0:
-            raise RuntimeError(
-                f"Прямой speech backend renderer завершился с кодом {result.returncode}."
-            )
+            raise RuntimeError(f"Прямой speech backend renderer завершился с кодом {result.returncode}.")
         report_path = timeline.with_suffix(f".clean_qa.round{round_index + 1}.json")
         failed, last_report = professional_audio_qa_v45.verify_timeline_v45(
             timeline,
@@ -508,9 +486,7 @@ def render_and_master(
     )
     result = _run_child_process(master_command, cwd=str(repo), env=env, check=False)
     if result.returncode != 0:
-        raise RuntimeError(
-            f"Прямой speech backend master завершился с кодом {result.returncode}."
-        )
+        raise RuntimeError(f"Прямой speech backend master завершился с кодом {result.returncode}.")
 
     final_media_qa = master_work / "final_media_verification.json"
     if not final_media_qa.is_file():
@@ -524,8 +500,7 @@ def render_and_master(
     release_marker = _read_clean_marker(segment_work)
     if (
         release_marker.get("render_contract_sha256") != fingerprints["render_contract_sha256"]
-        or release_marker.get("release_contract_sha256")
-        != fingerprints["release_contract_sha256"]
+        or release_marker.get("release_contract_sha256") != fingerprints["release_contract_sha256"]
         or release_marker.get("segment_qa_passed") is not True
     ):
         raise RuntimeError("Segment marker изменился до завершения master.")
@@ -579,14 +554,10 @@ __all__ = [
     "render_and_master",
 ]
 
-_BASE_ALL = tuple(globals().get('__all__', ()))
-
-
-
+_BASE_ALL = tuple(globals().get("__all__", ()))
 
 
 import subprocess as _stdlib_subprocess
-
 
 
 from tools.voxcpm2 import final_encoded_delivery_qa
@@ -645,6 +616,7 @@ _NON_RETRYABLE_INFRASTRUCTURE_MARKERS = (
     "http 404",
 )
 
+
 def _child_python_env(value: Any) -> dict[str, str]:
     """Return an isolated environment with the repository import root first."""
     if value is None:
@@ -662,15 +634,13 @@ def _child_python_env(value: Any) -> dict[str, str]:
         parts.insert(0, repo)
     else:
         parts = [repo] + [
-            item
-            for item in parts
-            if os.path.normcase(os.path.abspath(item))
-            != os.path.normcase(os.path.abspath(repo))
+            item for item in parts if os.path.normcase(os.path.abspath(item)) != os.path.normcase(os.path.abspath(repo))
         ]
     env["PYTHONPATH"] = os.pathsep.join(parts)
     env.setdefault("PYTHONUTF8", "1")
     env.setdefault("PYTHONIOENCODING", "utf-8")
     return env
+
 
 def _is_python_script_command(command: Any) -> bool:
     if not isinstance(command, (list, tuple)) or len(command) < 2:
@@ -681,12 +651,13 @@ def _is_python_script_command(command: Any) -> bool:
     script = re.split(r"[\\/]", str(command[1]))[-1].casefold()
     return executable.startswith("python") and script.endswith(".py")
 
+
 def _is_master_command(command: Any) -> bool:
     return bool(
         _is_python_script_command(command)
-        and re.split(r"[\\/]", str(command[1]))[-1].casefold()
-        in MASTER_ENTRYPOINT_NAMES
+        and re.split(r"[\\/]", str(command[1]))[-1].casefold() in MASTER_ENTRYPOINT_NAMES
     )
+
 
 def _is_master_release_command(command: Any) -> bool:
     """Distinguish a real production master from --help/import smoke tests."""
@@ -703,6 +674,7 @@ def _is_master_release_command(command: Any) -> bool:
             return False
     return True
 
+
 def _command_flag(command: Any, flag: str) -> str:
     if not isinstance(command, (list, tuple)):
         raise RuntimeError("Master command должен быть списком аргументов.")
@@ -715,14 +687,13 @@ def _command_flag(command: Any, flag: str) -> str:
         raise RuntimeError(f"Master command не содержит значение после {flag}.")
     return values[index + 1]
 
+
 def _verify_post_aac_master_output(command: Any) -> dict[str, Any]:
     russian_only = Path(_command_flag(command, "--russian-only-video")).resolve()
     work_dir = Path(_command_flag(command, "--work-dir")).resolve()
     output_dir = russian_only.parent
     if output_dir.name.casefold() != "output":
-        raise RuntimeError(
-            "Russian-only MP4 должен находиться в стандартной project/output папке."
-        )
+        raise RuntimeError("Russian-only MP4 должен находиться в стандартной project/output папке.")
     project_root = output_dir.parent
     return final_encoded_delivery_qa.verify_final_encoded_russian(
         russian_only_video=russian_only,
@@ -730,6 +701,7 @@ def _verify_post_aac_master_output(command: Any) -> dict[str, Any]:
         report_path=work_dir / "final_encoded_delivery_qa.json",
         final_media_report_path=work_dir / "final_media_verification.json",
     )
+
 
 def _run_child_process(command: Any, *args: Any, **kwargs: Any):
     """Run child commands with deterministic imports and fail-closed release QA."""
@@ -761,8 +733,7 @@ def _run_child_process(command: Any, *args: Any, **kwargs: Any):
         except Exception as exc:
             _LAST_CHILD_STDERR = str(exc)
             raise RuntimeError(
-                "Прямой master создал файлы, но post-AAC ending/tail QA их отклонил:\n"
-                + str(exc)
+                "Прямой master создал файлы, но post-AAC ending/tail QA их отклонил:\n" + str(exc)
             ) from exc
     return result
 
@@ -778,6 +749,7 @@ def _finite(value: Any, *, field: str) -> float:
         raise RuntimeError(f"{field} должен быть конечным числом.")
     return result
 
+
 def _strict_int(
     value: Any,
     *,
@@ -787,9 +759,7 @@ def _strict_int(
 ) -> int:
     if isinstance(value, bool):
         raise RuntimeError(f"{field} не может быть bool.")
-    if isinstance(value, float) and (
-        not math.isfinite(value) or not value.is_integer()
-    ):
+    if isinstance(value, float) and (not math.isfinite(value) or not value.is_integer()):
         raise RuntimeError(f"{field} должен быть целым числом.")
     try:
         result = int(value)
@@ -798,6 +768,7 @@ def _strict_int(
     if not low <= result <= high:
         raise RuntimeError(f"{field}={result} вне диапазона {low}..{high}.")
     return result
+
 
 def _mark_and_validate_segments(
     segments: list[dict[str, Any]],
@@ -814,10 +785,7 @@ def _mark_and_validate_segments(
     seen_ids: set[int] = set()
     for position, item in enumerate(segments, start=1):
         if not isinstance(item, dict):
-            raise RuntimeError(
-                f"segment[{position}] должен быть JSON-объектом, "
-                f"получено {type(item).__name__}."
-            )
+            raise RuntimeError(f"segment[{position}] должен быть JSON-объектом, получено {type(item).__name__}.")
         segment_id = _strict_int(
             item.get("id"),
             field=f"segment[{position}].id",
@@ -848,9 +816,7 @@ def _mark_and_validate_segments(
         effective_start = start + delay
         effective_end = end + delay
         if effective_start < previous_effective_end - 0.001:
-            raise RuntimeError(
-                f"Реплика #{segment_id} пересекается после применения delay."
-            )
+            raise RuntimeError(f"Реплика #{segment_id} пересекается после применения delay.")
         if effective_end > duration_value + 0.02:
             raise RuntimeError(f"Реплика #{segment_id} выходит за конец видео.")
         segment_limit = (
@@ -859,20 +825,17 @@ def _mark_and_validate_segments(
             else MAX_SECONDS
         )
         if end - start > segment_limit + 0.30:
-            raise RuntimeError(
-                f"Реплика #{segment_id} слишком длинная: {end - start:.3f} сек."
-            )
+            raise RuntimeError(f"Реплика #{segment_id} слишком длинная: {end - start:.3f} сек.")
         words = len(re.findall(r"\w+", text, flags=re.UNICODE))
         rate = words / max(0.35, end - start)
         if rate > 6.2:
-            raise RuntimeError(
-                f"Реплика #{segment_id} физически перегружена: {rate:.2f} слова/с."
-            )
+            raise RuntimeError(f"Реплика #{segment_id} физически перегружена: {rate:.2f} слова/с.")
         item["start"] = start
         item["end"] = end
         item["text"] = text
         previous_end = end
         previous_effective_end = effective_end
+
 
 def build_direct_segments(
     groups: list[dict[str, Any]],
@@ -893,6 +856,7 @@ def build_direct_segments(
         duration=duration,
     )
 
+
 build_direct_segments = build_direct_segments
 
 
@@ -902,6 +866,7 @@ _mark_and_validate_segments = _mark_and_validate_segments
 
 _legacy_render_and_master = render_and_master
 
+
 def _retryable_delivery_failure(detail: str) -> bool:
     """Accept only failures whose quality code already invalidated a checkpoint."""
     normalized = str(detail or "").casefold().replace("ё", "е")
@@ -910,6 +875,7 @@ def _retryable_delivery_failure(detail: str) -> bool:
     if any(marker in normalized for marker in _NON_RETRYABLE_INFRASTRUCTURE_MARKERS):
         return False
     return any(marker in normalized for marker in _RETRYABLE_DELIVERY_MARKERS)
+
 
 def _direct_failure_report(root: Any) -> str:
     try:
@@ -927,6 +893,7 @@ def _direct_failure_report(root: Any) -> str:
     message = str(payload.get("message") or "").strip()
     error_type = str(payload.get("error_type") or "RuntimeError").strip()
     return f"{error_type}: {message}" if message else ""
+
 
 def _delivery_failure_detail(
     exc: RuntimeError,
@@ -960,6 +927,7 @@ def _delivery_failure_detail(
             unique.append(value)
     return "\n".join(unique)
 
+
 def render_and_master(*args: Any, **kwargs: Any) -> Any:
     """Retry quality-only failures in-place while preserving good checkpoints."""
     global _LAST_CHILD_STDERR
@@ -992,6 +960,7 @@ def render_and_master(*args: Any, **kwargs: Any) -> Any:
             )
 
     raise RuntimeError("Недостижимое состояние automatic delivery retry.")
+
 
 __all__ = sorted(
     set(name for name in globals() if not name.startswith("__") and name != "_legacy")

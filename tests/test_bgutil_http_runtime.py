@@ -92,9 +92,7 @@ def test_spawns_pinned_main_once_and_waits_for_versioned_ping(monkeypatch, tmp_p
     monkeypatch.setattr(http_runtime.time, "sleep", lambda _seconds: None)
     monkeypatch.setattr(http_runtime, "_register_cleanup_once", lambda: None)
     probe_ports: list[int] = []
-    monkeypatch.setattr(
-        http_runtime, "require_loopback_binding", probe_ports.append
-    )
+    monkeypatch.setattr(http_runtime, "require_loopback_binding", probe_ports.append)
 
     captured: dict[str, object] = {}
 

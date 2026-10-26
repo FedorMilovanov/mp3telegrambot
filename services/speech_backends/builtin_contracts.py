@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Configuration contracts for built-in speech backend adapters."""
+
 from __future__ import annotations
 
 from services.speech_backends.profile_contracts import BackendModelProfileContract

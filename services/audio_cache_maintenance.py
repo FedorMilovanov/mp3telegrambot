@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Source-owned maintenance for cached MP3 artifacts."""
+
 from __future__ import annotations
 
 import logging
@@ -16,21 +17,14 @@ def _active_video_ids() -> set[str]:
         import core.globals as globals_module
 
         with globals_module._video_locks_mutex:
-            return {
-                str(video_id)
-                for video_id, lock in globals_module._video_processing_locks.items()
-                if lock.locked()
-            }
+            return {str(video_id) for video_id, lock in globals_module._video_processing_locks.items() if lock.locked()}
     except Exception:
         return set()
 
 
 def _belongs_to_active_video(path: Path, active_ids: Iterable[str]) -> bool:
     name = path.name
-    return any(
-        name == f"{video_id}.mp3" or name.startswith(f"{video_id}_")
-        for video_id in active_ids
-    )
+    return any(name == f"{video_id}.mp3" or name.startswith(f"{video_id}_") for video_id in active_ids)
 
 
 def cleanup_stale_cached_audio(max_age_days: int | None = None) -> int:

@@ -54,14 +54,17 @@ def test_factory_audio_mime_type_rejects_unsupported_container():
 def test_factory_audio_probe_requires_real_audio_evidence():
     assert source.factory_audio_probe_is_usable(_audio_probe()) is True
     assert source.factory_audio_probe_is_usable(None) is False
-    assert source.factory_audio_probe_is_usable(
-        SimpleNamespace(
-            duration=120.0,
-            has_audio=False,
-            audio_sample_rate=48000,
-            audio_codec="opus",
+    assert (
+        source.factory_audio_probe_is_usable(
+            SimpleNamespace(
+                duration=120.0,
+                has_audio=False,
+                audio_sample_rate=48000,
+                audio_codec="opus",
+            )
         )
-    ) is False
+        is False
+    )
 
 
 @pytest.mark.asyncio
@@ -340,15 +343,17 @@ async def test_factory_plan_passes_real_prepared_audio_mime(monkeypatch, tmp_pat
     def fake_validate(*args, **kwargs):
         return {
             "metadata": {"language": "en"},
-            "shorts_candidates": [{
-                "title": "Candidate",
-                "hook": "Hook",
-                "reason": "Reason",
-                "quality_score": 99,
-                "boundary_verified": True,
-                "start_seconds": 1.125,
-                "end_seconds": 40.625,
-            }],
+            "shorts_candidates": [
+                {
+                    "title": "Candidate",
+                    "hook": "Hook",
+                    "reason": "Reason",
+                    "quality_score": 99,
+                    "boundary_verified": True,
+                    "start_seconds": 1.125,
+                    "end_seconds": 40.625,
+                }
+            ],
             "long_candidates": [],
         }
 
@@ -380,9 +385,7 @@ async def test_factory_plan_passes_real_prepared_audio_mime(monkeypatch, tmp_pat
 def test_source_policy_is_directly_owned_without_installation():
     source_code = Path("services/shorts_factory_source.py").read_text(encoding="utf-8")
     quality = Path("services/shorts_factory_quality_gate.py").read_text(encoding="utf-8")
-    capacity_runtime = Path("services/shorts_factory_capacity_runtime.py").read_text(
-        encoding="utf-8"
-    )
+    capacity_runtime = Path("services/shorts_factory_capacity_runtime.py").read_text(encoding="utf-8")
 
     assert "height<=720" not in source_code
     assert "height<=1080" not in source_code

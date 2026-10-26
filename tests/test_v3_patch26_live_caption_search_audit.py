@@ -9,14 +9,19 @@ from services.search import _best_match
 def test_page_audit_does_not_flag_translation_forks_as_source_titles():
     nodes = [
         {"tag": "h3", "children": ["Переводческие развилки"]},
-        {"tag": "p", "children": [
-            "Псалом 18:8 — «укрепляет душу» vs «restoring the soul» / «reversing the soul». "
-            "Синодальный перевод сглаживает динамический характер оригинала."
-        ]},
-        {"tag": "p", "children": [
-            "Псалом 18:9 — «заповедь светла» vs «pure» / «radiant». "
-            "Это не библиографическая карточка источника."
-        ]},
+        {
+            "tag": "p",
+            "children": [
+                "Псалом 18:8 — «укрепляет душу» vs «restoring the soul» / «reversing the soul». "
+                "Синодальный перевод сглаживает динамический характер оригинала."
+            ],
+        },
+        {
+            "tag": "p",
+            "children": [
+                "Псалом 18:9 — «заповедь светла» vs «pure» / «radiant». Это не библиографическая карточка источника."
+            ],
+        },
     ]
     issues = audit_telegraph_page("T", nodes, page_type="study")
     assert "source_map_original_title" not in {i.code for i in issues}
@@ -58,11 +63,14 @@ def test_caption_trimming_has_compact_timestamp_fallback():
 def test_page_audit_does_not_flag_doctrinal_concept_with_latin_parenthetical_as_source():
     nodes = [
         {"tag": "h3", "children": ["Карта источников"]},
-        {"tag": "p", "children": [
-            "• Спасение только по благодати, только через веру, только во Христа "
-            "(Sola Gratia, Sola Fide, Solus Christus) — реформатский принцип, "
-            "утверждающий, что спасение не основано на заслугах человека."
-        ]},
+        {
+            "tag": "p",
+            "children": [
+                "• Спасение только по благодати, только через веру, только во Христа "
+                "(Sola Gratia, Sola Fide, Solus Christus) — реформатский принцип, "
+                "утверждающий, что спасение не основано на заслугах человека."
+            ],
+        },
     ]
     issues = audit_telegraph_page("T", nodes, page_type="study")
     assert "source_map_original_title" not in {i.code for i in issues}
@@ -71,10 +79,12 @@ def test_page_audit_does_not_flag_doctrinal_concept_with_latin_parenthetical_as_
 def test_page_audit_allows_registered_official_ru_source_title():
     nodes = [
         {"tag": "h3", "children": ["Карта источников"]},
-        {"tag": "p", "children": [
-            "• Наставление в христианской вере, Жан Кальвин "
-            "(Institutes of the Christian Religion, John Calvin)."
-        ]},
+        {
+            "tag": "p",
+            "children": [
+                "• Наставление в христианской вере, Жан Кальвин (Institutes of the Christian Religion, John Calvin)."
+            ],
+        },
     ]
     issues = audit_telegraph_page("T", nodes, page_type="study")
     assert "source_map_original_title" not in {i.code for i in issues}

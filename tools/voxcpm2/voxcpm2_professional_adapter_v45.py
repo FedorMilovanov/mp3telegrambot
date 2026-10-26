@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Candidate-quality adapter loaded underneath the proven v4 renderer."""
+
 from __future__ import annotations
 
 import os
@@ -27,9 +28,7 @@ def _required_callable(namespace: dict[str, Any], name: str) -> Callable[..., An
     """Resolve the stable renderer hook with a useful contract error."""
     value = namespace.get(name)
     if not callable(value):
-        raise RuntimeError(
-            f"Legacy VoxCPM2 renderer contract is missing callable {name!r}."
-        )
+        raise RuntimeError(f"Legacy VoxCPM2 renderer contract is missing callable {name!r}.")
     return value
 
 
@@ -52,10 +51,7 @@ def _edge(samples: np.ndarray, sr: int) -> dict[str, Any]:
     if len(audio) < frame:
         return {"trailing_ms": 0.0, "cut_risk": True}
     levels = np.array(
-        [
-            np.sqrt(np.mean(audio[pos : pos + frame] ** 2) + 1e-12)
-            for pos in range(0, len(audio) - frame + 1, hop)
-        ]
+        [np.sqrt(np.mean(audio[pos : pos + frame] ** 2) + 1e-12) for pos in range(0, len(audio) - frame + 1, hop)]
     )
     active = levels >= max(10 ** (-42 / 20), float(levels.max()) * 0.055)
     ids = np.where(active)[0]
@@ -94,15 +90,9 @@ def candidate_score(candidate: dict[str, Any], speech_slot: float) -> float:
     activity = professional.activity_stats(samples, sr)
     pitch = professional.pitch_profile(samples, sr)
     edge = _edge(samples, sr)
-    profile_name = (
-        "composite"
-        if "composite" in Path(str(candidate.get("path") or "")).name.casefold()
-        else "extended"
-    )
+    profile_name = "composite" if "composite" in Path(str(candidate.get("path") or "")).name.casefold() else "extended"
     reference = references[profile_name]
-    median_ratio = pitch["f0_median"] / max(
-        1.0, reference.get("f0_median", 0.0)
-    )
+    median_ratio = pitch["f0_median"] / max(1.0, reference.get("f0_median", 0.0))
     p90_ratio = pitch["f0_p90"] / max(1.0, reference.get("f0_p90", 0.0))
     gap = activity["max_internal_gap"]
     penalty = 0.0
@@ -120,12 +110,7 @@ def candidate_score(candidate: dict[str, Any], speech_slot: float) -> float:
         penalty += 180
     if pitch["voiced_ratio"] < 0.12:
         penalty += 80
-    rejected = bool(
-        gap > 0.72
-        or median_ratio > 1.28
-        or p90_ratio > 1.35
-        or edge["cut_risk"]
-    )
+    rejected = bool(gap > 0.72 or median_ratio > 1.28 or p90_ratio > 1.35 or edge["cut_risk"])
     measured_clipping = float(candidate.get("clipping_ratio") or 0.0)
     candidate["professional_quality"] = {
         **activity,
@@ -153,9 +138,7 @@ def fit_without_slowdown(
     target_duration: float,
     tail_guard: float,
 ) -> dict[str, Any]:
-    report = dict(
-        legacy_fit(clean_path, fitted_path, target_duration, tail_guard)
-    )
+    report = dict(legacy_fit(clean_path, fitted_path, target_duration, tail_guard))
     samples, sr = sf.read(fitted_path, dtype="float32")
     audio = np.asarray(samples, np.float32)
     fade = min(int(sr * 0.03), len(audio) // 10)

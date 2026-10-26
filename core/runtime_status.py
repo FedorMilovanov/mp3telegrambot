@@ -14,6 +14,7 @@
 Что не хранится: сами секреты, идентификаторы пользователей, тексты сообщений.
 Метрика не должна становиться источником утечки.
 """
+
 from __future__ import annotations
 
 import threading
@@ -140,9 +141,7 @@ def snapshot(now: float | None = None) -> dict[str, object]:
     now = time.time() if now is None else now
     with _LOCK:
         last_update_age = (now - _state.last_update_at) if _state.last_update_at else None
-        last_maintenance_age = (
-            (now - _state.last_maintenance_at) if _state.last_maintenance_at else None
-        )
+        last_maintenance_age = (now - _state.last_maintenance_at) if _state.last_maintenance_at else None
         return {
             "uptime_seconds": max(0.0, now - _state.started_at),
             "updates_total": _state.updates_total,

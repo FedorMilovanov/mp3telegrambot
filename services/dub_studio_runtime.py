@@ -4,6 +4,7 @@
 The production Application explicitly registers handlers and starts notification
 services. No PTB class methods are replaced at runtime.
 """
+
 from __future__ import annotations
 
 from core.media_title_policy import canonical_media_title
@@ -149,12 +150,7 @@ def _progress_message_ref(
         message_id = int(ref.get("message_id") or 0)
     except (TypeError, ValueError):
         return None
-    if (
-        event_job_id <= 0
-        or ref_job_id != event_job_id
-        or chat_id <= 0
-        or message_id <= 0
-    ):
+    if event_job_id <= 0 or ref_job_id != event_job_id or chat_id <= 0 or message_id <= 0:
         return None
     return chat_id, message_id
 
@@ -341,12 +337,14 @@ async def _notify_generic_success(
             text=text,
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(
-                [[
-                    InlineKeyboardButton(
-                        "📎 Продолжить старый проект",
-                        callback_data=f"dubwiz|translation|{project_id}",
-                    )
-                ]]
+                [
+                    [
+                        InlineKeyboardButton(
+                            "📎 Продолжить старый проект",
+                            callback_data=f"dubwiz|translation|{project_id}",
+                        )
+                    ]
+                ]
             ),
         )
         _sent, failures = await send_project_outputs(application.bot, chat_id, project)
@@ -396,9 +394,7 @@ async def _notify_generic_success(
         await application.bot.send_message(
             chat_id=chat_id,
             text=(
-                "⚠️ Не все результаты отправились:\n"
-                + "\n".join(failures[:6])
-                + f"\n\nПовторить: /dubsend {project_id}"
+                "⚠️ Не все результаты отправились:\n" + "\n".join(failures[:6]) + f"\n\nПовторить: /dubsend {project_id}"
             ),
         )
     return True
@@ -450,10 +446,7 @@ async def _notification_loop(application: Any) -> None:
                         continue
 
                     await _finalize_progress_card(application, event, project)
-                    if (
-                        event_type == "job_succeeded"
-                        and str(project.get("recipe_id")) == _GENERIC_RECIPE
-                    ):
+                    if event_type == "job_succeeded" and str(project.get("recipe_id")) == _GENERIC_RECIPE:
                         delivered = await _notify_generic_success(
                             application,
                             store,
@@ -473,15 +466,8 @@ async def _notification_loop(application: Any) -> None:
                     title = str(event.get("project_title") or project_id)
                     message = str(event.get("message") or "")
                     extra = ""
-                    if (
-                        str(project.get("recipe_id")) == _GENERIC_RECIPE
-                        and event_type == "job_failed"
-                    ):
-                        extra = (
-                            "\nПроверьте точный этап: <code>/dubstatus "
-                            + html.escape(project_id)
-                            + "</code>"
-                        )
+                    if str(project.get("recipe_id")) == _GENERIC_RECIPE and event_type == "job_failed":
+                        extra = "\nПроверьте точный этап: <code>/dubstatus " + html.escape(project_id) + "</code>"
                     text = (
                         f"{icon} <b>Dub Studio</b>\n\n"
                         f"{html.escape(title)}\n"

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Model-independent backend and concrete TTS model selection."""
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -136,14 +137,11 @@ def select_production_backend(
 
     capabilities = backend.capabilities()
     if not isinstance(capabilities, BackendCapabilities):
-        raise BackendCapabilityError(
-            f"speech_backend={backend_id} вернул некорректный capabilities contract."
-        )
+        raise BackendCapabilityError(f"speech_backend={backend_id} вернул некорректный capabilities contract.")
     missing = capabilities.missing(tuple(required_capabilities))
     if missing:
         raise BackendCapabilityError(
-            f"speech_backend={backend_id} не имеет обязательных production capabilities: "
-            f"{', '.join(missing)}."
+            f"speech_backend={backend_id} не имеет обязательных production capabilities: {', '.join(missing)}."
         )
     return BackendSelection(
         backend_id=backend_id,
@@ -172,18 +170,12 @@ def select_production_speech(
     except (RuntimeError, ValueError) as exc:
         raise UnknownSpeechModelProfileError(str(exc)) from exc
     if not profile.production_enabled:
-        raise SpeechModelProfileDisabledError(
-            f"speech_model_profile={profile.profile_id} отключён для production."
-        )
+        raise SpeechModelProfileDisabledError(f"speech_model_profile={profile.profile_id} отключён для production.")
 
     requested_backend = backend_value
-    if requested_backend is None or (
-        isinstance(requested_backend, str) and not requested_backend.strip()
-    ):
+    if requested_backend is None or (isinstance(requested_backend, str) and not requested_backend.strip()):
         requested_backend = profile.backend_id
-    merged_required = tuple(
-        dict.fromkeys((*required_capabilities, *profile.required_capabilities))
-    )
+    merged_required = tuple(dict.fromkeys((*required_capabilities, *profile.required_capabilities)))
     backend_selection = select_production_backend(
         requested_backend,
         default_backend_id=default_backend_id,

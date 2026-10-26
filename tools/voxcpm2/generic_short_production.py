@@ -7,6 +7,7 @@ extracts an English transcript, performs a two-pass literal-literary Russian
 translation, prepares voice references, renders the selected speech backend on
 its declared runtime, and masters mixed/Russian-only upload-ready videos.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -40,7 +41,9 @@ def log(message: str) -> None:
     print(message, flush=True)
 
 
-def run_checked(command: list[str], *, capture: bool = False, timeout: int | None = None) -> subprocess.CompletedProcess[str]:
+def run_checked(
+    command: list[str], *, capture: bool = False, timeout: int | None = None
+) -> subprocess.CompletedProcess[str]:
     proc = subprocess.run(
         command,
         stdout=subprocess.PIPE if capture else None,
@@ -68,9 +71,12 @@ def ffprobe_duration(path: Path) -> float:
     proc = run_checked(
         [
             require_tool("ffprobe"),
-            "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
             str(path),
         ],
         capture=True,
@@ -198,22 +204,26 @@ def group_cues(cues: list[Cue], *, target_seconds: float = 9.0, max_seconds: flo
         previous_text = current[-1].text.rstrip()
         sentence_end = bool(re.search(r"[.!?][\"')\]]?$", previous_text))
         if prospective > max_seconds or (sentence_end and current[-1].end - current[0].start >= target_seconds * 0.68):
-            groups.append({
-                "id": len(groups) + 1,
-                "start": current[0].start,
-                "end": current[-1].end,
-                "english": " ".join(item.text for item in current),
-            })
+            groups.append(
+                {
+                    "id": len(groups) + 1,
+                    "start": current[0].start,
+                    "end": current[-1].end,
+                    "english": " ".join(item.text for item in current),
+                }
+            )
             current = [cue]
         else:
             current.append(cue)
     if current:
-        groups.append({
-            "id": len(groups) + 1,
-            "start": current[0].start,
-            "end": current[-1].end,
-            "english": " ".join(item.text for item in current),
-        })
+        groups.append(
+            {
+                "id": len(groups) + 1,
+                "start": current[0].start,
+                "end": current[-1].end,
+                "english": " ".join(item.text for item in current),
+            }
+        )
 
     if len(groups) >= 2 and groups[-1]["end"] - groups[-1]["start"] < 3.2:
         tail = groups.pop()
@@ -239,15 +249,10 @@ def gemini_json(prompt: str, *, model_name: str) -> Any:
 
     keys = _translation_keys()
     raw_slot_keys = [os.getenv(name, "").strip() for name in _GEMINI_KEY_NAMES]
-    domain_by_key = {
-        key: domain
-        for key, domain in key_domain_entries(raw_slot_keys, deduplicate=True)
-    }
+    domain_by_key = {key: domain for key, domain in key_domain_entries(raw_slot_keys, deduplicate=True)}
     key_entries = [(key, domain_by_key.get(key, "")) for key in keys]
     if not key_entries:
-        raise RuntimeError(
-            "Для редакторского перевода нужен GEMINI_API_KEY в .env."
-        )
+        raise RuntimeError("Для редакторского перевода нужен GEMINI_API_KEY в .env.")
 
     request_timeout, pass_timeout = _translation_timeouts()
     deadline = time.monotonic() + pass_timeout
@@ -278,33 +283,22 @@ def gemini_json(prompt: str, *, model_name: str) -> Any:
         timeout_ms = int(round(effective_timeout * 1000.0))
         client = _translation_client(api_key, timeout_ms)
         started = time.monotonic()
-        log(
-            f"Gemini: «{label}», ключ {index}/{len(key_entries)}, "
-            f"таймаут {timeout_ms / 1000:.0f} сек."
-        )
+        log(f"Gemini: «{label}», ключ {index}/{len(key_entries)}, таймаут {timeout_ms / 1000:.0f} сек.")
         try:
             response = client.models.generate_content(
                 model=model_name,
                 contents=prompt,
                 config=config,
             )
-            payload = _extract_json(
-                getattr(response, "text", "")
-            )
+            payload = _extract_json(getattr(response, "text", ""))
             elapsed = time.monotonic() - started
-            log(
-                f"Gemini: «{label}» завершён ключом {index}/{len(key_entries)} "
-                f"за {elapsed:.1f} сек."
-            )
+            log(f"Gemini: «{label}» завершён ключом {index}/{len(key_entries)} за {elapsed:.1f} сек.")
             return _standardize_title_payload(payload, prompt)
         except Exception as exc:
             if quota_domain and is_project_scoped_quota_error(exc):
                 exhausted_project_domains.add(quota_domain)
             elapsed = time.monotonic() - started
-            errors.append(
-                f"key#{index} {elapsed:.1f}s: {type(exc).__name__}: "
-                f"{str(exc)[:220]}"
-            )
+            errors.append(f"key#{index} {elapsed:.1f}s: {type(exc).__name__}: {str(exc)[:220]}")
             log(
                 f"Gemini: «{label}», ключ {index}/{len(key_entries)} не сработал "
                 f"за {elapsed:.1f} сек.; пробую следующий."
@@ -312,10 +306,7 @@ def gemini_json(prompt: str, *, model_name: str) -> Any:
         finally:
             _close_client(client)
 
-    raise RuntimeError(
-        f"Gemini не завершил «{label}» в пределах {pass_timeout:.0f} сек.: "
-        + " | ".join(errors)
-    )
+    raise RuntimeError(f"Gemini не завершил «{label}» в пределах {pass_timeout:.0f} сек.: " + " | ".join(errors))
 
 
 def validate_translation(payload: Any, source_groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -385,12 +376,14 @@ ID должны остаться прежними и идти один к одн
         available = max(1.0, float(source["end"]) - float(source["start"]))
         words_per_second = len(translated["russian"].split()) / available
         if words_per_second > 3.25:
-            overloaded.append({
-                "id": source["id"],
-                "seconds": round(available, 3),
-                "english": source["english"],
-                "russian": translated["russian"],
-            })
+            overloaded.append(
+                {
+                    "id": source["id"],
+                    "seconds": round(available, 3),
+                    "english": source["english"],
+                    "russian": translated["russian"],
+                }
+            )
     if overloaded:
         compression_prompt = f"""
 Сократи только перечисленные русские реплики до естественной произносимой длины, не теряя ни одного утверждения, отрицания, имени, числа, причины или вывода. Не превращай перевод в конспект. Убирай лишь словесную избыточность и кальки.
@@ -434,30 +427,64 @@ def build_reference(source: Path, intervals: list[tuple[float, float]], output: 
             if duration < 0.75:
                 continue
             part = temp_dir / f"part_{index:02d}.wav"
-            run_checked([
-                ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
-                "-ss", f"{max(0.0, start - 0.08):.3f}",
-                "-t", f"{duration:.3f}",
-                "-i", str(source),
-                "-vn", "-ac", "1", "-ar", "16000",
-                "-af", "highpass=f=65,lowpass=f=7800,loudnorm=I=-20:LRA=7:TP=-2",
-                str(part),
-            ], timeout=180)
+            run_checked(
+                [
+                    ffmpeg,
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-ss",
+                    f"{max(0.0, start - 0.08):.3f}",
+                    "-t",
+                    f"{duration:.3f}",
+                    "-i",
+                    str(source),
+                    "-vn",
+                    "-ac",
+                    "1",
+                    "-ar",
+                    "16000",
+                    "-af",
+                    "highpass=f=65,lowpass=f=7800,loudnorm=I=-20:LRA=7:TP=-2",
+                    str(part),
+                ],
+                timeout=180,
+            )
             parts.append(part)
             accumulated += duration
         if not parts:
             raise RuntimeError("Голосовой референс оказался пустым.")
         concat_list = temp_dir / "concat.txt"
         concat_list.write_text("\n".join(f"file '{part.as_posix()}'" for part in parts) + "\n", encoding="utf-8")
-        run_checked([
-            ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
-            "-f", "concat", "-safe", "0", "-i", str(concat_list),
-            "-af", "loudnorm=I=-20:LRA=7:TP=-2",
-            "-ac", "1", "-ar", "16000", str(output),
-        ], timeout=240)
+        run_checked(
+            [
+                ffmpeg,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(concat_list),
+                "-af",
+                "loudnorm=I=-20:LRA=7:TP=-2",
+                "-ac",
+                "1",
+                "-ar",
+                "16000",
+                str(output),
+            ],
+            timeout=240,
+        )
 
 
-def reference_intervals(cues: list[Cue], duration: float) -> tuple[list[tuple[float, float]], list[tuple[float, float]]]:
+def reference_intervals(
+    cues: list[Cue], duration: float
+) -> tuple[list[tuple[float, float]], list[tuple[float, float]]]:
     candidates = [(cue.start, cue.end) for cue in cues if cue.end - cue.start >= 0.75 and len(cue.text.split()) >= 3]
     if not candidates:
         candidates = [(0.2, min(duration, 24.2))]
@@ -494,6 +521,7 @@ _DEFAULT_PASS_TIMEOUT_SECONDS = 300.0
 
 _MIN_REQUEST_TIMEOUT_SECONDS = 30.0
 
+
 def standardize_russian_title(value: str, *, context: str = "") -> str:
     """Apply the same title casing already used by Shorts and Clips."""
     title = re.sub(r"\s+", " ", str(value or "")).strip(" .—–-")
@@ -524,6 +552,7 @@ def standardize_russian_title(value: str, *, context: str = "") -> str:
 
     return canonical_media_title(title_case_fragment(re.sub(r"\s+", " ", title).strip()))
 
+
 def _standardize_title_payload(payload: Any, prompt: str) -> Any:
     if _TITLE_PROMPT_MARKER not in prompt or not isinstance(payload, dict):
         return payload
@@ -533,6 +562,7 @@ def _standardize_title_payload(payload: Any, prompt: str) -> Any:
         context=prompt,
     )
     return result
+
 
 def _ytdlp_base() -> list[str]:
     try:
@@ -553,6 +583,7 @@ def _ytdlp_base() -> list[str]:
             "ext:mp4:m4a",
         ]
 
+
 def _bounded_env_seconds(
     name: str,
     *,
@@ -569,6 +600,7 @@ def _bounded_env_seconds(
         value = default
     return max(minimum, min(value, maximum))
 
+
 def _translation_timeouts() -> tuple[float, float]:
     request_timeout = _bounded_env_seconds(
         "DUB_GEMINI_REQUEST_TIMEOUT_SEC",
@@ -584,6 +616,7 @@ def _translation_timeouts() -> tuple[float, float]:
     )
     return request_timeout, max(request_timeout, pass_timeout)
 
+
 def _load_dotenv_for_manual_run() -> None:
     """Load project keys for direct CLI use without overriding worker env."""
     try:
@@ -595,6 +628,7 @@ def _load_dotenv_for_manual_run() -> None:
     except Exception:
         return
 
+
 def _translation_keys() -> list[str]:
     _load_dotenv_for_manual_run()
     values: list[str] = []
@@ -604,17 +638,17 @@ def _translation_keys() -> list[str]:
             values.append(key)
     return values
 
+
 def _translation_client(api_key: str, timeout_ms: int) -> Any:
     """Create one request-local client while retaining the environment proxy."""
     try:
         from google import genai
         from google.genai import types
     except ImportError as exc:
-        raise RuntimeError(
-            "Пакет google-genai не установлен в окружении бота."
-        ) from exc
+        raise RuntimeError("Пакет google-genai не установлен в окружении бота.") from exc
     options = types.HttpOptions(timeout=max(30_000, int(timeout_ms)))
     return genai.Client(api_key=api_key, http_options=options)
+
 
 def _close_client(client: Any) -> None:
     closer = getattr(client, "close", None)
@@ -623,6 +657,7 @@ def _close_client(client: Any) -> None:
             closer()
         except Exception:
             pass
+
 
 def _prompt_label(prompt: str) -> str:
     lowered = str(prompt or "").casefold()
@@ -637,6 +672,7 @@ def _prompt_label(prompt: str) -> str:
     if "редактор произносимости" in lowered:
         return "сжатие перегруженных реплик"
     return "Gemini JSON"
+
 
 def _generation_config(model_name: str) -> Any:
     config = None
@@ -664,9 +700,7 @@ def _generation_config(model_name: str) -> Any:
             ),
         )
     except Exception as exc:
-        raise RuntimeError(
-            "Не удалось создать Gemini high-thinking config для перевода."
-        ) from exc
+        raise RuntimeError("Не удалось создать Gemini high-thinking config для перевода.") from exc
 
 
 def download_source(url: str, source: Path) -> dict[str, Any]:
@@ -739,9 +773,7 @@ def download_captions(url: str, source_dir: Path) -> list[Cue]:
             log(f"Использую YouTube captions: {path.name}")
             return cues
     if proc.returncode != 0:
-        log(
-            "YouTube captions недоступны; включаю Whisper fallback."
-        )
+        log("YouTube captions недоступны; включаю Whisper fallback.")
     return []
 
 
@@ -760,7 +792,11 @@ def whisper_transcribe(source: Path, *, model_name: str) -> list[Cue]:
         condition_on_previous_text=True,
         word_timestamps=False,
     )
-    cues = [Cue(float(seg.start), float(seg.end), clean_caption_text(seg.text)) for seg in segments if clean_caption_text(seg.text)]
+    cues = [
+        Cue(float(seg.start), float(seg.end), clean_caption_text(seg.text))
+        for seg in segments
+        if clean_caption_text(seg.text)
+    ]
     log(f"Whisper language={getattr(info, 'language', 'en')}; segments={len(cues)}")
     return cues
 
@@ -782,7 +818,12 @@ def main() -> None:
     parser.add_argument("-Steps", "--steps", dest="steps", type=int, default=16)
     parser.add_argument("-Cfg", "--cfg", dest="cfg", type=float, default=1.80)
     parser.add_argument("-WhisperModel", "--whisper-model", dest="whisper_model", default="large-v3")
-    parser.add_argument("-TranslationModel", "--translation-model", dest="translation_model", default=os.getenv("DUB_TRANSLATION_MODEL", "").strip() or configured_model(ROLE_PRIMARY))
+    parser.add_argument(
+        "-TranslationModel",
+        "--translation-model",
+        dest="translation_model",
+        default=os.getenv("DUB_TRANSLATION_MODEL", "").strip() or configured_model(ROLE_PRIMARY),
+    )
     args = parser.parse_args()
 
     if not 0.0 <= args.original_level <= 1.0:
@@ -840,18 +881,26 @@ def main() -> None:
             cached = json.loads(translation_state.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             cached = None
-    if isinstance(cached, dict) and cached.get("transcript_sha256") == signature and isinstance(cached.get("translations"), list):
+    if (
+        isinstance(cached, dict)
+        and cached.get("transcript_sha256") == signature
+        and isinstance(cached.get("translations"), list)
+    ):
         translations = validate_translation(cached["translations"], groups)
         log("Использую проверенный перевод из translation checkpoint.")
     else:
         translations = translate_groups(groups, model_name=args.translation_model)
         translation_state.write_text(
-            json.dumps({
-                "schema_version": 1,
-                "transcript_sha256": signature,
-                "translation_model": args.translation_model,
-                "translations": translations,
-            }, ensure_ascii=False, indent=2),
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "transcript_sha256": signature,
+                    "translation_model": args.translation_model,
+                    "translations": translations,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
             encoding="utf-8",
         )
     log("Двухпроходная редакторская сверка перевода завершена.")
@@ -865,18 +914,22 @@ def main() -> None:
         source_end = float(source_group["end"])
         render_end = max(source_start + 1.25, source_end - delay_sec)
         profile = "composite" if index == len(groups) or index % 4 == 0 else "extended"
-        render_segments.append({
-            "id": index,
-            "start": round(source_start, 3),
-            "end": round(render_end, 3),
-            "start_delay_ms": int(args.russian_delay_ms),
-            "reference_profile": profile,
-            "tail_guard": 0.36 if profile == "extended" else 0.42,
-            "text": translated["russian"],
-            "source_end": round(source_end, 3),
-            "english": source_group["english"],
-        })
-        subtitle_cues.append(Cue(min(duration, source_start + delay_sec), min(duration, source_end), translated["russian"]))
+        render_segments.append(
+            {
+                "id": index,
+                "start": round(source_start, 3),
+                "end": round(render_end, 3),
+                "start_delay_ms": int(args.russian_delay_ms),
+                "reference_profile": profile,
+                "tail_guard": 0.36 if profile == "extended" else 0.42,
+                "text": translated["russian"],
+                "source_end": round(source_end, 3),
+                "english": source_group["english"],
+            }
+        )
+        subtitle_cues.append(
+            Cue(min(duration, source_start + delay_sec), min(duration, source_end), translated["russian"])
+        )
         translation_lines.append(f"{index}. {translated['russian']}")
     segments_json.write_text(json.dumps(render_segments, ensure_ascii=False, indent=2), encoding="utf-8")
     write_srt(subtitle_cues, russian_srt)
@@ -884,8 +937,12 @@ def main() -> None:
 
     log("=== 4. VOICE REFERENCES ===")
     extended_intervals, composite_intervals = reference_intervals(cues, duration)
-    build_reference(source, extended_intervals, extended_reference, target_seconds=min(24.0, max(12.0, duration * 0.45)))
-    build_reference(source, composite_intervals, composite_reference, target_seconds=min(21.0, max(10.0, duration * 0.38)))
+    build_reference(
+        source, extended_intervals, extended_reference, target_seconds=min(24.0, max(12.0, duration * 0.45))
+    )
+    build_reference(
+        source, composite_intervals, composite_reference, target_seconds=min(21.0, max(10.0, duration * 0.38))
+    )
     log("Extended и composite voice references готовы.")
 
     repo = Path(__file__).resolve().parents[2]
@@ -906,9 +963,7 @@ def main() -> None:
     )
     cpu_python = runtime.cpu_python
     if not cpu_python.is_file():
-        raise RuntimeError(
-            f"CPU Python не найден для backend={backend.backend_id}: {cpu_python}"
-        )
+        raise RuntimeError(f"CPU Python не найден для backend={backend.backend_id}: {cpu_python}")
     env = backend.process_environment(
         {"threads": max(1, args.threads), "speech_backend": backend.backend_id},
         base_environment=os.environ,
@@ -933,9 +988,7 @@ def main() -> None:
     )
     proc = subprocess.run(synth_command, cwd=str(repo), env=env, check=False)
     if proc.returncode != 0:
-        raise RuntimeError(
-            f"Speech backend {backend.backend_id} CPU-синтез завершился с кодом {proc.returncode}."
-        )
+        raise RuntimeError(f"Speech backend {backend.backend_id} CPU-синтез завершился с кодом {proc.returncode}.")
 
     log("=== 6. CONSTANT MIX / FINAL MASTER ===")
     log(f"Оригинал постоянно {args.original_level * 100:.1f}%; русский delay={args.russian_delay_ms} ms.")

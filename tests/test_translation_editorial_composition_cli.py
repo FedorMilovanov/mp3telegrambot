@@ -104,19 +104,11 @@ def test_review_execution_gate_requires_exact_full_sermon_repairs() -> None:
     with pytest.raises(ValueError, match="supply the exact --repair-provenance"):
         cli._enforce_review_execution_gate(review, None)
 
-    wrong = {
-        "repairs": [
-            {"type": "drop_span", "start_seconds": 20.0, "end_seconds": 21.0}
-        ]
-    }
+    wrong = {"repairs": [{"type": "drop_span", "start_seconds": 20.0, "end_seconds": 21.0}]}
     with pytest.raises(ValueError, match="do not exactly match"):
         cli._enforce_review_execution_gate(review, wrong)
 
-    exact = {
-        "repairs": [
-            {"type": "drop_span", "start_seconds": 10.0, "end_seconds": 11.0}
-        ]
-    }
+    exact = {"repairs": [{"type": "drop_span", "start_seconds": 10.0, "end_seconds": 11.0}]}
     cli._enforce_review_execution_gate(review, exact)
 
 

@@ -61,9 +61,7 @@ def test_request_payload_pins_and_normalizes_selected_profile(monkeypatch) -> No
     assert payload["speech_model_profile"] == profile.profile_id
     assert payload["speech_backend"] == profile.backend_id
     assert payload["speech_profile_fingerprint"] == profile.fingerprint()
-    assert payload["speech_options"] == {
-        spec.name: spec.default for spec in profile.option_specs
-    }
+    assert payload["speech_options"] == {spec.name: spec.default for spec in profile.option_specs}
     assert payload["speech_backend_config"] == dict(profile.backend_defaults)
     assert payload["translation_mode"] == "gemini"
 

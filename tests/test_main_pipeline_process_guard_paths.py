@@ -6,6 +6,7 @@
 без Telegram: подменяется только получение метаданных, остальное — настоящий код
 пайплайна. Именно поэтому тест ловит разрыв между гвардом и ответом в чат.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -54,9 +55,7 @@ def _no_progress(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(main_pipeline, "set_progress", noop)
 
 
-def _run(
-    update: _FakeUpdate, *, silent_errors: bool = False, context=None
-) -> bool:
+def _run(update: _FakeUpdate, *, silent_errors: bool = False, context=None) -> bool:
     return asyncio.run(
         main_pipeline.process_single_video(
             VIDEO_URL,
@@ -105,9 +104,7 @@ def test_too_long_video_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "превышает лимит 60 мин" in update.message.replies[0]
 
 
-def test_video_within_limit_is_not_refused_by_duration(
-    monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_video_within_limit_is_not_refused_by_duration(monkeypatch: pytest.MonkeyPatch) -> None:
     """Граница: ровно лимит — ещё можно."""
 
     async def info(_url, _timeout):
@@ -251,6 +248,7 @@ def test_error_reply_masks_gemini_key(monkeypatch: pytest.MonkeyPatch) -> None:
     assert secret not in reply
     assert "***APIKEY***" in reply
 
+
 # ── ENG-режимы: отказ до скачивания ────────────────────────────────────────
 
 
@@ -305,9 +303,7 @@ def _eng_environment(monkeypatch: pytest.MonkeyPatch, mode: str) -> list[str]:
 
 
 @pytest.mark.parametrize("mode", ["eng_fast", "eng_fast_qa"])
-def test_eng_quick_without_vot_client_is_refused_before_download(
-    monkeypatch: pytest.MonkeyPatch, mode: str
-) -> None:
+def test_eng_quick_without_vot_client_is_refused_before_download(monkeypatch: pytest.MonkeyPatch, mode: str) -> None:
     """Quick-режимы без клиента VOT падают сразу, а не после загрузки сотен МБ."""
     cleaned = _eng_environment(monkeypatch, mode)
     update = _FakeUpdate()
@@ -317,9 +313,7 @@ def test_eng_quick_without_vot_client_is_refused_before_download(
     assert cleaned == ["media1"]
 
 
-def test_eng_quick_refusal_is_silent_in_playlist_mode(
-    monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_eng_quick_refusal_is_silent_in_playlist_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     _eng_environment(monkeypatch, "eng_fast")
     update = _FakeUpdate()
 
@@ -383,9 +377,7 @@ def test_eng_quick_empty_background_result_is_an_honest_failure(
     assert "Перевод «Живые голоса» не получился" in update.message.replies[0]
 
 
-def test_eng_quick_qa_executes_stage_before_video_send_failure(
-    monkeypatch: pytest.MonkeyPatch, tmp_path
-) -> None:
+def test_eng_quick_qa_executes_stage_before_video_send_failure(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     """The main wrapper executes real Quick QA before the existing send guard."""
     cleaned = _eng_environment(monkeypatch, "eng_fast_qa")
 
@@ -474,9 +466,7 @@ def test_eng_quick_qa_executes_stage_before_video_send_failure(
     qa_event = next(event for event in events if event[0] == "qa")
     assert qa_event[1]["original_audio_path"] == original
     assert qa_event[1]["model_name"] == "quick-model"
-    assert [event[0] for event in events].index("qa") < [
-        event[0] for event in events
-    ].index("video")
+    assert [event[0] for event in events].index("qa") < [event[0] for event in events].index("video")
 
 
 def test_eng_quick_cached_file_id_delivers_publication_and_companions(
@@ -551,12 +541,14 @@ def test_eng_quick_cached_file_id_delivers_publication_and_companions(
     status = Status()
     bot = Bot()
 
-    result = asyncio.run(main_pipeline.process_single_video(
-        VIDEO_URL,
-        update,
-        status_msg=status,
-        context=SimpleNamespace(bot=bot),
-    ))
+    result = asyncio.run(
+        main_pipeline.process_single_video(
+            VIDEO_URL,
+            update,
+            status_msg=status,
+            context=SimpleNamespace(bot=bot),
+        )
+    )
 
     assert result is True
     assert cleaned == ["media1"]
@@ -567,26 +559,28 @@ def test_eng_quick_cached_file_id_delivers_publication_and_companions(
     assert card_calls == [("Sermon", VIDEO_URL)]
     assert len(caption_calls) == 1
     assert caption_calls[0][0] is card
-    assert caption_calls[0][1] == (
-        "<b>Translated &lt;Title&gt; - Author</b>\n🎬 Живые голоса Яндекса"
-    )
-    assert bot.videos == [{
-        "chat_id": 31337,
-        "video": "cached-video",
-        "caption": "formatted caption",
-        "parse_mode": "HTML",
-        "reply_to_message_id": 777,
-        "supports_streaming": True,
-    }]
-    assert companion_calls == [(
-        bot,
+    assert caption_calls[0][1] == ("<b>Translated &lt;Title&gt; - Author</b>\n🎬 Живые голоса Яндекса")
+    assert bot.videos == [
         {
             "chat_id": 31337,
-            "video_file_id": "cached-video",
-            "publication_card": card,
-            "reply_to": 777,
-        },
-    )]
+            "video": "cached-video",
+            "caption": "formatted caption",
+            "parse_mode": "HTML",
+            "reply_to_message_id": 777,
+            "supports_streaming": True,
+        }
+    ]
+    assert companion_calls == [
+        (
+            bot,
+            {
+                "chat_id": 31337,
+                "video_file_id": "cached-video",
+                "publication_card": card,
+                "reply_to": 777,
+            },
+        )
+    ]
 
 
 def test_cached_file_id_pair_failure_invalidates_and_notifies(
@@ -661,12 +655,14 @@ def test_cached_file_id_pair_failure_invalidates_and_notifies(
     update.effective_chat = SimpleNamespace(id=31337)
     update.message.message_id = 777
 
-    result = asyncio.run(main_pipeline.process_single_video(
-        VIDEO_URL,
-        update,
-        status_msg=_FakeStatus(),
-        context=SimpleNamespace(bot=bot),
-    ))
+    result = asyncio.run(
+        main_pipeline.process_single_video(
+            VIDEO_URL,
+            update,
+            status_msg=_FakeStatus(),
+            context=SimpleNamespace(bot=bot),
+        )
+    )
 
     assert result is True
     assert cleaned == ["media1"]
@@ -931,9 +927,7 @@ def test_eng_quick_background_records_auth_failure_via_extracted_stage(
     assert update.message.replies == ["❌ Ошибка: stop after auth marker"]
 
 
-def _audio_too_large_environment(
-    monkeypatch: pytest.MonkeyPatch, *, cache_hit: bool
-) -> list[str]:
+def _audio_too_large_environment(monkeypatch: pytest.MonkeyPatch, *, cache_hit: bool) -> list[str]:
     """Reach fresh/cache audio preparation without network, files, or Telegram."""
     cleaned: list[str] = []
 
@@ -982,14 +976,10 @@ def test_cache_audio_too_large_executes_shared_early_return(
 
     assert _run(update) is False
     assert cleaned == ["media1"]
-    assert update.message.replies == [
-        "⚠️ Файл слишком большой (60.0 МБ) даже после сжатия."
-    ]
+    assert update.message.replies == ["⚠️ Файл слишком большой (60.0 МБ) даже после сжатия."]
 
 
-def test_cache_hit_delivery_reaches_real_stage_and_returns_success(
-    monkeypatch: pytest.MonkeyPatch, tmp_path
-) -> None:
+def test_cache_hit_delivery_reaches_real_stage_and_returns_success(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     """Main wiring executes the extracted stage with the original cached values."""
     from io import BytesIO
 
@@ -1307,6 +1297,7 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
         elif mode == "eng_video_too_large":
             monkeypatch.setattr(main_pipeline, "get_max_file_size_mb", lambda: 0)
         if mode == "eng_video_send_failure":
+
             async def background_video(*args, **kwargs):
                 livedub_background_calls.append((args, kwargs))
                 translated = tmp_path / "background-translated.mp4"
@@ -1317,9 +1308,7 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
                 return None
 
             monkeypatch.setattr(main_pipeline, "make_livedub_video", background_video)
-            monkeypatch.setattr(
-                live_dub, "get_translation_subtitles", translation_subtitles
-            )
+            monkeypatch.setattr(live_dub, "get_translation_subtitles", translation_subtitles)
         if mode in (
             "eng_video_send_failure",
             "eng_video_cover_retry_failure",
@@ -1327,10 +1316,9 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
         ):
             import services.livedub_qa as qa
 
-            monkeypatch.setattr(
-                qa, "technical_check", lambda *_args: ["tech warning"]
-            )
+            monkeypatch.setattr(qa, "technical_check", lambda *_args: ["tech warning"])
         if mode == "eng_video_send_failure":
+
             async def full_qa(**kwargs):
                 full_qa_calls.append(kwargs)
                 return {"issues": []}
@@ -1368,9 +1356,7 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
     monkeypatch.setattr(main_pipeline, "prepare_audio", audio_ready)
     monkeypatch.setattr(main_pipeline, "run_analysis", analysis_ready)
     monkeypatch.setattr(main_pipeline, "asettings_get_all", batch_settings)
-    monkeypatch.setattr(
-        main_pipeline, "prepare_publication_context", capture_publication
-    )
+    monkeypatch.setattr(main_pipeline, "prepare_publication_context", capture_publication)
     monkeypatch.setattr(main_pipeline, "render_pages", render_ready)
     monkeypatch.setattr(main_pipeline, "add_navigation", navigation_ready)
     monkeypatch.setattr(main_pipeline, "repair_pages", repair_ready)
@@ -1427,9 +1413,7 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
             assert full_qa_calls[0]["dub_audio_path"] is None
             assert "Проверяю точность перевода" in notice_bot.messages[0]["text"]
         if mode in ("eng_video_send_failure", "eng_video_cover_retry_failure"):
-            assert notice_bot.actions == [
-                {"chat_id": 987, "action": "upload_video"}
-            ]
+            assert notice_bot.actions == [{"chat_id": 987, "action": "upload_video"}]
             expected_calls = 2 if mode == "eng_video_cover_retry_failure" else 1
             assert len(notice_bot.video_calls) == expected_calls
             video_call = notice_bot.video_calls[0]
@@ -1458,9 +1442,7 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
     assert publication_kwargs["full_title"] == "Original fallback title"
     assert publication_kwargs["media_id"] == "media1"
     assert publication_kwargs["telegraph_url"] == "https://telegra.ph/synopsis"
-    assert publication.search_title == (
-        "Fresh lecture title with enough detail - John Smith"
-    )
+    assert publication.search_title == ("Fresh lecture title with enough detail - John Smith")
     assert publication.tg_author == "John Smith"
     assert publication.questions is questions
     assert publication.terms_data is terms_data
@@ -1482,21 +1464,25 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
     assert render.author == publication.tg_author
     assert render.full_title == "Original fallback title"
     assert render.synopsis_outline == "outline"
-    assert navigation_calls == [[
-        ("Конспект", "https://telegra.ph/synopsis"),
-        ("Разбор материала", "study"),
-    ]]
-    assert repair_calls == [(
+    assert navigation_calls == [
         [
-            "https://telegra.ph/synopsis",
-            "study",
-            None,
-            None,
-            "questions",
-            "terms",
-        ],
-        True,
-    )]
+            ("Конспект", "https://telegra.ph/synopsis"),
+            ("Разбор материала", "study"),
+        ]
+    ]
+    assert repair_calls == [
+        (
+            [
+                "https://telegra.ph/synopsis",
+                "study",
+                None,
+                None,
+                "questions",
+                "terms",
+            ],
+            True,
+        )
+    ]
     assert len(fit_calls) == 1
     caption_source, caption_base = fit_calls[0]
     assert caption_source.format_name == "lecture"

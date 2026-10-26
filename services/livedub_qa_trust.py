@@ -16,6 +16,7 @@ This guard verifies only candidate regions:
 * a bilingual final mix may still be checked, but all findings are downgraded to
   minor and the report is explicitly marked low-confidence.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -31,10 +32,41 @@ logger = logging.getLogger(__name__)
 
 _TRUE = {"1", "true", "yes", "on"}
 _STOPWORDS = {
-    "была", "было", "были", "быть", "весь", "вместо", "для", "его", "если", "есть",
-    "или", "как", "который", "между", "может", "нужно", "один", "она", "они", "оно",
-    "оригинал", "перевод", "переводе", "перевода", "русский", "своих", "смысл", "слово",
-    "так", "того", "только", "фраза", "что", "это", "этот",
+    "была",
+    "было",
+    "были",
+    "быть",
+    "весь",
+    "вместо",
+    "для",
+    "его",
+    "если",
+    "есть",
+    "или",
+    "как",
+    "который",
+    "между",
+    "может",
+    "нужно",
+    "один",
+    "она",
+    "они",
+    "оно",
+    "оригинал",
+    "перевод",
+    "переводе",
+    "перевода",
+    "русский",
+    "своих",
+    "смысл",
+    "слово",
+    "так",
+    "того",
+    "только",
+    "фраза",
+    "что",
+    "это",
+    "этот",
 }
 
 
@@ -77,11 +109,7 @@ def _issue_tokens(issue: dict[str, Any]) -> set[str]:
     # The proposed correction is excluded deliberately: unrelated findings can
     # receive the same generic should_be wording and must not confirm each other.
     text = " ".join(str(issue.get(key) or "") for key in ("heard", "problem")).casefold()
-    return {
-        token
-        for token in re.findall(r"[a-zа-яё]{4,}", text)
-        if token not in _STOPWORDS
-    }
+    return {token for token in re.findall(r"[a-zа-яё]{4,}", text) if token not in _STOPWORDS}
 
 
 def _issues_match(first: dict[str, Any], second: dict[str, Any]) -> bool:
@@ -98,11 +126,7 @@ def _issues_match(first: dict[str, Any], second: dict[str, Any]) -> bool:
     common = left & right
     union = left | right
     similarity = len(common) / max(1, len(union))
-    return bool(
-        (distance <= 6 and len(common) >= 1)
-        or len(common) >= 2
-        or similarity >= 0.28
-    )
+    return bool((distance <= 6 and len(common) >= 1) or len(common) >= 2 or similarity >= 0.28)
 
 
 def _clean_issues(value: Any) -> list[dict[str, Any]]:
@@ -340,9 +364,7 @@ def _insert_report_notes(text: str, qa: dict[str, Any]) -> str:
         suffix = f" ({checked}/{total} аудиоокон)." if total else "."
         notes.append("✅ Показанные замечания прошли точечную перепроверку" + suffix)
     if qa.get("_qa_verification_partial"):
-        notes.append(
-            "⚠️ Не все проверочные окна завершились; выводы из непроверенных мест отброшены."
-        )
+        notes.append("⚠️ Не все проверочные окна завершились; выводы из непроверенных мест отброшены.")
     if qa.get("_qa_mixed_audio"):
         notes.append(
             "⚠️ Чистой русской дорожки не было: проверялся финальный микс с тихим оригиналом; "
@@ -367,7 +389,6 @@ def _insert_report_notes(text: str, qa: dict[str, Any]) -> str:
         return joined[:3900]
 
 
-
 def audio_trust_enabled() -> bool:
     return _enabled()
 
@@ -389,8 +410,7 @@ async def apply_audio_trust(
         return primary
     result = dict(primary)
     original_available = bool(
-        _local_path(original_audio_path)
-        or (_active_audio_part(existing_audio_part) and existing_client is not None)
+        _local_path(original_audio_path) or (_active_audio_part(existing_audio_part) and existing_client is not None)
     )
     russian_available = bool(_local_path(dub_audio_path) or _local_path(dub_video_path))
     result["_qa_audio_grounded"] = original_available and russian_available

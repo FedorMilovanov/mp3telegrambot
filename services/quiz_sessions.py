@@ -76,8 +76,11 @@ async def _send_next_poll(context, session: dict, reply_to=None) -> bool:
             try:
                 message = await context.bot.send_poll(
                     chat_id=session["chat_id"],
-                    question=p["question"], options=p["options"], type="quiz",
-                    correct_option_id=p["correct"], explanation=p["explanation"],
+                    question=p["question"],
+                    options=p["options"],
+                    type="quiz",
+                    correct_option_id=p["correct"],
+                    explanation=p["explanation"],
                     is_anonymous=False,
                 )
             except Exception as e2:
@@ -149,8 +152,7 @@ async def handle_quiz_poll_answer(update, context) -> None:
             chat_id=session["chat_id"],
             text=(
                 f"{_mark} <b>Викторина окончена</b>\n"
-                f"Правильных ответов: <b>{correct}/{total}</b> ({_pct}%)"
-                + (f"\n«{title[:80]}»" if title else "")
+                f"Правильных ответов: <b>{correct}/{total}</b> ({_pct}%)" + (f"\n«{title[:80]}»" if title else "")
             ),
             parse_mode="HTML",
         )

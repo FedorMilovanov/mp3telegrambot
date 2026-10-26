@@ -1,4 +1,5 @@
 """Contracts for the shared fresh/cache ``AudioTooLarge`` early return."""
+
 from __future__ import annotations
 
 import asyncio
@@ -45,14 +46,16 @@ def _cleanup(events, *, error=None):
 
 
 def _run(events, *, cache_hit, send=None, update=None, cleanup=None):
-    return asyncio.run(fail_audio_too_large(
-        AudioTooLarge(60.0, 50),
-        update or _update(events),
-        send or _sender(events),
-        "media-1",
-        cleanup or _cleanup(events),
-        cache_hit=cache_hit,
-    ))
+    return asyncio.run(
+        fail_audio_too_large(
+            AudioTooLarge(60.0, 50),
+            update or _update(events),
+            send or _sender(events),
+            "media-1",
+            cleanup or _cleanup(events),
+            cache_hit=cache_hit,
+        )
+    )
 
 
 def _kinds(events):

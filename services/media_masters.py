@@ -1,4 +1,5 @@
 """Replaceable media-master and final-validation boundaries for Dub production."""
+
 from __future__ import annotations
 
 import json
@@ -122,22 +123,12 @@ class ConstantMixMediaMaster:
             entrypoint = repo / "tools" / "voxcpm2" / "master_direct_russian_only.py"
             module = "tools.voxcpm2.master_direct_russian_only"
         else:
-            entrypoint = (
-                repo
-                / "tools"
-                / "voxcpm2"
-                / "examples"
-                / "john_piper_z20py4yqhyq"
-                / "master_constant_mix.py"
-            )
-            module = (
-                "tools.voxcpm2.examples.john_piper_z20py4yqhyq."
-                "master_constant_mix"
-            )
+            entrypoint = repo / "tools" / "voxcpm2" / "examples" / "john_piper_z20py4yqhyq" / "master_constant_mix.py"
+            module = "tools.voxcpm2.examples.john_piper_z20py4yqhyq.master_constant_mix"
         explicit = str(request.get("media_python") or "").strip()
-        python = Path(explicit).expanduser().resolve() if explicit else Path(
-            fallback_python or sys.executable
-        ).resolve()
+        python = (
+            Path(explicit).expanduser().resolve() if explicit else Path(fallback_python or sys.executable).resolve()
+        )
         return MediaMasterRuntime(
             master_id=self.master_id,
             python_executable=python,
@@ -204,24 +195,15 @@ class FFprobeFinalMediaValidator:
             errors="replace",
             timeout=60,
             check=False,
-            creationflags=(
-                getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
-            ),
+            creationflags=(getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0),
         )
         if proc.returncode != 0:
-            raise RuntimeError(
-                f"ffprobe отклонил {path.name}: {(proc.stderr or '')[-1200:]}"
-            )
+            raise RuntimeError(f"ffprobe отклонил {path.name}: {(proc.stderr or '')[-1200:]}")
         payload = json.loads(proc.stdout or "{}")
         duration = float((payload.get("format") or {}).get("duration") or 0.0)
-        streams = {
-            str(item.get("codec_type") or "")
-            for item in payload.get("streams") or []
-        }
+        streams = {str(item.get("codec_type") or "") for item in payload.get("streams") or []}
         if duration <= 0 or not {"audio", "video"}.issubset(streams):
-            raise RuntimeError(
-                f"Некорректный AV-контракт {path.name}: duration={duration}, streams={sorted(streams)}"
-            )
+            raise RuntimeError(f"Некорректный AV-контракт {path.name}: duration={duration}, streams={sorted(streams)}")
         return {
             "path": str(path),
             "size_bytes": path.stat().st_size,
@@ -288,8 +270,7 @@ def get_final_validator(value: object = "ffprobe-av-contract") -> FinalMediaVali
         return _VALIDATORS[validator_id]
     except KeyError as exc:
         raise RuntimeError(
-            "Неизвестный final media validator "
-            f"{value!r}; доступно: {', '.join(sorted(_VALIDATORS)) or '—'}"
+            f"Неизвестный final media validator {value!r}; доступно: {', '.join(sorted(_VALIDATORS)) or '—'}"
         ) from exc
 
 

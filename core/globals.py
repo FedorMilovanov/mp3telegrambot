@@ -122,6 +122,7 @@ def metrics() -> Any:
 
 try:
     import PIL  # noqa: F401
+
     HAS_PILLOW = True
 except ImportError:
     HAS_PILLOW = False
@@ -129,6 +130,7 @@ except ImportError:
 try:
     from google import genai
     from google.genai import types
+
     HAS_GEMINI = True
 except ImportError:
     HAS_GEMINI = False
@@ -167,10 +169,7 @@ def configured_gemini_service_tier() -> str:
     value = os.getenv("GEMINI_SERVICE_TIER", "standard").strip().lower()
     value = {"": "standard", "default": "standard"}.get(value, value)
     if value not in {"standard", "priority"}:
-        raise RuntimeError(
-            "GEMINI_SERVICE_TIER must be 'standard' or 'priority'; "
-            f"got {value!r}"
-        )
+        raise RuntimeError(f"GEMINI_SERVICE_TIER must be 'standard' or 'priority'; got {value!r}")
     return value
 
 
@@ -197,10 +196,7 @@ if not _proxy_url:
         if (_u.scheme or "").lower().startswith("socks"):
             _sp = _fallback_proxy.split("://", 1)
             _proxy_url = "http://" + _sp[1] if len(_sp) == 2 else _fallback_proxy
-            _gemini_proxy_log = (
-                f"🌐 Gemini proxy: SOCKS → HTTP fallback: {_proxy_url} "
-                f"(из {_fallback_proxy})"
-            )
+            _gemini_proxy_log = f"🌐 Gemini proxy: SOCKS → HTTP fallback: {_proxy_url} (из {_fallback_proxy})"
         else:
             _proxy_url = _fallback_proxy
             _gemini_proxy_log = f"🌐 Gemini proxy: {_proxy_url}"
@@ -212,9 +208,7 @@ if _proxy_url:
     os.environ["http_proxy"] = _proxy_url
     if _proxy_was_auto:
         _no_proxy = os.environ.get("NO_PROXY", "")
-        _auto_no_proxy = (
-            "rutube.ru,api.vk.com,vk.com,api.telegram.org,127.0.0.1,localhost"
-        )
+        _auto_no_proxy = "rutube.ru,api.vk.com,vk.com,api.telegram.org,127.0.0.1,localhost"
         for _host in _auto_no_proxy.split(","):
             if _host not in _no_proxy:
                 _no_proxy = f"{_no_proxy},{_host}" if _no_proxy else _host
@@ -279,26 +273,16 @@ if HAS_GEMINI and GEMINI_API_KEY_3:
 if HAS_GEMINI and GEMINI_API_KEY_4:
     gemini_client_4 = _make_gemini_client(GEMINI_API_KEY_4)
 
-GEMINI_CLIENTS = [
-    c
-    for c in [gemini_client, gemini_client_2, gemini_client_3, gemini_client_4]
-    if c
-]
+GEMINI_CLIENTS = [c for c in [gemini_client, gemini_client_2, gemini_client_3, gemini_client_4] if c]
 _GEMINI_KEY_SLOTS = (
     GEMINI_API_KEY,
     GEMINI_API_KEY_2,
     GEMINI_API_KEY_3,
     GEMINI_API_KEY_4,
 )
-GEMINI_CLIENT_QUOTA_DOMAINS = (
-    quota_domains.quota_domains_for_keys(_GEMINI_KEY_SLOTS)
-    if HAS_GEMINI
-    else []
-)
+GEMINI_CLIENT_QUOTA_DOMAINS = quota_domains.quota_domains_for_keys(_GEMINI_KEY_SLOTS) if HAS_GEMINI else []
 if len(GEMINI_CLIENT_QUOTA_DOMAINS) != len(GEMINI_CLIENTS):
-    raise RuntimeError(
-        "Gemini client/quota-domain metadata alignment failed during startup"
-    )
+    raise RuntimeError("Gemini client/quota-domain metadata alignment failed during startup")
 
 
 def _is_gemini_3x(model_name: str) -> bool:
@@ -347,9 +331,7 @@ def _build_thinking_config(level: str = "high") -> Any:
             pass
     name = str(level or "").strip().upper()
     try:
-        return types.ThinkingConfig(
-            thinking_budget=_THINKING_BUDGETS.get(name, _DEFAULT_THINKING_BUDGET)
-        )
+        return types.ThinkingConfig(thinking_budget=_THINKING_BUDGETS.get(name, _DEFAULT_THINKING_BUDGET))
     except Exception:
         return None
 
@@ -377,6 +359,7 @@ def make_audio_config(
     if model_name is None:
         try:
             from core.database import GEMINI_MODEL as _m
+
             model_name = _m
         except Exception:
             model_name = ""
@@ -392,10 +375,7 @@ def make_audio_config(
     if response_schema is not None:
         kwargs["response_schema"] = response_schema
     if is_3x:
-        if (
-            (os.getenv("GEMINI_SCHEMA_THINKING", "1") or "1").strip().lower()
-            not in {"0", "false", "no", "off"}
-        ):
+        if (os.getenv("GEMINI_SCHEMA_THINKING", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}:
             tc = _build_thinking_config(thinking_level)
             if tc is not None:
                 kwargs["thinking_config"] = tc
@@ -418,6 +398,7 @@ def make_text_config_smart(
     if model_name is None:
         try:
             from core.database import GEMINI_MODEL as _m
+
             model_name = _m
         except Exception:
             model_name = ""
@@ -433,10 +414,7 @@ def make_text_config_smart(
     if response_schema is not None:
         kwargs["response_schema"] = response_schema
     if is_3x:
-        if (
-            (os.getenv("GEMINI_SCHEMA_THINKING", "1") or "1").strip().lower()
-            not in {"0", "false", "no", "off"}
-        ):
+        if (os.getenv("GEMINI_SCHEMA_THINKING", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}:
             tc = _build_thinking_config(thinking_level)
             if tc is not None:
                 kwargs["thinking_config"] = tc
@@ -460,9 +438,7 @@ _video_processing_locks: dict[str, asyncio.Lock] = {}
 _video_lock_meta: dict[str, float] = {}
 _video_locks_mutex = threading.Lock()
 try:
-    _VIDEO_LOCK_TTL_SEC = float(
-        os.getenv("VIDEO_LOCK_TTL_SEC", "3600").strip() or "3600"
-    )
+    _VIDEO_LOCK_TTL_SEC = float(os.getenv("VIDEO_LOCK_TTL_SEC", "3600").strip() or "3600")
 except ValueError:
     _VIDEO_LOCK_TTL_SEC = 3600.0
 
@@ -496,11 +472,7 @@ def _release_video_lock(video_id: str, lock: asyncio.Lock | None = None) -> None
     video_id = str(video_id or "").strip() or "unknown"
     with _video_locks_mutex:
         current = _video_processing_locks.get(video_id)
-        if (
-            current is not None
-            and (lock is None or current is lock)
-            and not current.locked()
-        ):
+        if current is not None and (lock is None or current is lock) and not current.locked():
             _video_processing_locks.pop(video_id, None)
             _video_lock_meta.pop(video_id, None)
         else:
@@ -531,10 +503,7 @@ def is_overload_error(e: object) -> bool:
 
 def _quota_domains_for_client_list(client_list: list[Any]) -> list[str]:
     """Return privacy-safe domain metadata for known global client objects only."""
-    domain_by_client_id = {
-        id(client): domain
-        for client, domain in zip(GEMINI_CLIENTS, GEMINI_CLIENT_QUOTA_DOMAINS)
-    }
+    domain_by_client_id = {id(client): domain for client, domain in zip(GEMINI_CLIENTS, GEMINI_CLIENT_QUOTA_DOMAINS)}
     return [domain_by_client_id.get(id(client), "") for client in client_list]
 
 
@@ -605,10 +574,7 @@ async def gemini_generate(
                 return result
             except Exception as e:
                 if is_quota_error(e):
-                    project_scoped = bool(
-                        quota_domain
-                        and quota_domains.is_project_scoped_quota_error(e)
-                    )
+                    project_scoped = bool(quota_domain and quota_domains.is_project_scoped_quota_error(e))
                     if project_scoped:
                         exhausted_project_quota_domains.add(quota_domain)
                     logging.getLogger(__name__).warning(
@@ -649,9 +615,7 @@ async def gemini_generate(
                     break
                 raise
 
-    raise last_err or RuntimeError(
-        "Gemini transient retry budget exhausted or no configured client succeeded"
-    )
+    raise last_err or RuntimeError("Gemini transient retry budget exhausted or no configured client succeeded")
 
 
 # AUDIT 2026-10-24: вместо basicConfig — общая настройка проекта.

@@ -37,7 +37,7 @@ def test_telegraph_pages_wires_expanded_structured_output_with_legacy_fallback()
     assert "def _expanded_structured_output_enabled" in src
     assert "EXPANDED_PAGES_STRUCTURED" in src
     assert "_structured_schema = expanded_page_response_schema()" in src
-    assert "response_mime_type=(\"application/json\" if _structured_schema else None)" in src
+    assert 'response_mime_type=("application/json" if _structured_schema else None)' in src
     assert "response_schema=_structured_schema" in src
     assert "structured output failed" in src
     assert "retry legacy JSON config" in src
@@ -49,5 +49,9 @@ def test_expanded_structured_output_routes_all_transients_to_shared_transport():
     assert "is_overload_error(_schema_err)" in src
     assert "_is_internal_error(_schema_err)" in src
     assert "capacity_control.is_timeout_error(_schema_err)" in src
-    transient_guard = src[src.find("except Exception as _schema_err:"):src.find("logger.warning", src.find("except Exception as _schema_err:"))]
+    transient_guard = src[
+        src.find("except Exception as _schema_err:") : src.find(
+            "logger.warning", src.find("except Exception as _schema_err:")
+        )
+    ]
     assert "raise" in transient_guard

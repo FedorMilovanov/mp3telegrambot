@@ -206,9 +206,7 @@ def test_source_audio_deferral_is_request_scoped_and_discardable(monkeypatch, tm
     bot = Bot()
 
     async def scenario():
-        delivery = coordinator.create_source_audio_deferral(
-            bot=bot, chat_id=7, reply_to=9, enabled=True
-        )
+        delivery = coordinator.create_source_audio_deferral(bot=bot, chat_id=7, reply_to=9, enabled=True)
         placeholder = await delivery.send_or_defer(
             message,
             audio=source,
@@ -247,9 +245,7 @@ def test_source_audio_deferral_flushes_once(monkeypatch, tmp_path):
     bot = Bot()
 
     async def scenario():
-        delivery = coordinator.create_source_audio_deferral(
-            bot=bot, chat_id=7, reply_to=9, enabled=True
-        )
+        delivery = coordinator.create_source_audio_deferral(bot=bot, chat_id=7, reply_to=9, enabled=True)
         await delivery.send_or_defer(
             Message(),
             audio=source,

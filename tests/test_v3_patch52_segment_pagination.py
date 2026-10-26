@@ -8,7 +8,9 @@ from handlers.commands import _build_segments_keyboard, _format_segments_page_te
 
 def test_segments_keyboard_paginates_after_eight_items():
     timestamps = "\n".join(f"{i}:00 Segment {i}" for i in range(20))
-    segments = build_segments_from_timestamps(timestamps, duration=25 * 60, format_name="qa", end_padding=0, min_segment=10)
+    segments = build_segments_from_timestamps(
+        timestamps, duration=25 * 60, format_name="qa", end_padding=0, min_segment=10
+    )
     kb1 = _build_segments_keyboard("vid", segments, page=0)
     kb2 = _build_segments_keyboard("vid", segments, page=1)
     assert kb1 is not None and kb2 is not None
@@ -23,7 +25,9 @@ def test_segments_keyboard_paginates_after_eight_items():
 
 def test_segments_page_text_mentions_page_and_navigation():
     timestamps = "\n".join(f"{i}:00 Segment {i}" for i in range(20))
-    segments = build_segments_from_timestamps(timestamps, duration=25 * 60, format_name="qa", end_padding=0, min_segment=10)
+    segments = build_segments_from_timestamps(
+        timestamps, duration=25 * 60, format_name="qa", end_padding=0, min_segment=10
+    )
     text = _format_segments_page_text("vid", "Title", "qa", segments, page=1)
     assert "стр. 2/3" in text
     assert "/cut vid N" in text

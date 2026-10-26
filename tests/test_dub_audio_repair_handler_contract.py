@@ -71,9 +71,7 @@ def test_handler_writer_records_exact_segments_hash(monkeypatch, tmp_path: Path)
     assert payload["segment_ids"] == [1]
     assert payload["repair_all"] is True
     assert payload["requested_by"] == 123
-    assert payload["segments_sha256"] == handler.hashlib.sha256(
-        segments_path.read_bytes()
-    ).hexdigest()
+    assert payload["segments_sha256"] == handler.hashlib.sha256(segments_path.read_bytes()).hexdigest()
     assert not list((tmp_path / "input").glob("audio_repair.json.tmp.*"))
 
 
@@ -178,5 +176,3 @@ def test_concurrent_dubfix_commands_are_serialized(
         ["start-b", "end-b", "start-a", "end-a"],
     )
     assert not (tmp_path / ".dubfix.request.lock").exists()
-
-

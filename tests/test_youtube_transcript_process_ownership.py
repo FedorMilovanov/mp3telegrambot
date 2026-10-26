@@ -24,9 +24,7 @@ async def test_transcript_uses_owned_ytdlp_and_preserves_manual_then_auto_fallba
         calls.append((argv, dict(kwargs)))
         if "--write-auto-subs" in argv:
             (tmp_path / "yt_transcript_fake.en.vtt").write_text(
-                "WEBVTT\n\n"
-                "00:00:00.000 --> 00:00:02.000\n"
-                "hello world\n",
+                "WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nhello world\n",
                 encoding="utf-8",
             )
         return subprocess.CompletedProcess(argv, 0, "", "")

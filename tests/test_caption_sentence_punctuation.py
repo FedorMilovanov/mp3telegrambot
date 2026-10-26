@@ -5,9 +5,10 @@ from converters.caption import (
 
 
 def test_sentence_punctuation_moves_before_trailing_emoji() -> None:
-    assert _polish_caption_sentence_punctuation(
-        "готовности к духовным испытаниям ⚔️."
-    ) == "готовности к духовным испытаниям. ⚔️"
+    assert (
+        _polish_caption_sentence_punctuation("готовности к духовным испытаниям ⚔️.")
+        == "готовности к духовным испытаниям. ⚔️"
+    )
 
 
 def test_question_and_exclamation_move_before_trailing_emoji() -> None:
@@ -29,14 +30,8 @@ def test_caption_polishes_main_topic_and_timestamp_topics() -> None:
         ai_data={
             "real_author": "Пол Вошер",
             "real_title": "Люди Слова",
-            "main_topic": (
-                "Призыв к духовному укомплектованию мужей и готовности "
-                "к духовным испытаниям ⚔️."
-            ),
-            "timestamps": (
-                "0:00 Приветствие и духовное укомплектование мужей\n"
-                "1:10 Бодрствуйте ⚔️!"
-            ),
+            "main_topic": ("Призыв к духовному укомплектованию мужей и готовности к духовным испытаниям ⚔️."),
+            "timestamps": ("0:00 Приветствие и духовное укомплектование мужей\n1:10 Бодрствуйте ⚔️!"),
         },
     )
     assert "духовная подготовка мужчин" in caption

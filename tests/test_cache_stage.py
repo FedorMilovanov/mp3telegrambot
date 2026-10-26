@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Cache-hit — только valid+clean запись; всё остальное безопасно идёт в fresh."""
+
 from __future__ import annotations
 
 import asyncio
@@ -138,9 +139,7 @@ def test_truthy_non_string_metadata_falls_back_instead_of_raising() -> None:
 
 def test_falsey_metadata_keeps_legacy_empty_value_semantics() -> None:
     cached = _cached(questions=[])
-    cached["ai_data"].update(
-        {"main_topic": None, "real_author": 0, "real_title": "", "real_event": None}
-    )
+    cached["ai_data"].update({"main_topic": None, "real_author": 0, "real_title": "", "real_event": None})
 
     decision = _evaluate(cached)
 

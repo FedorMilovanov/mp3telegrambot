@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Local environment preflight for all Dub Studio production actions."""
+
 from __future__ import annotations
 
 import asyncio
@@ -56,6 +57,8 @@ def _worker_snapshot_with_repair() -> dict[str, Any] | None:
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8") if path.is_file() else ""
+
+
 def _quality_contract(repo: Path) -> tuple[bool, str]:
     root = Path(repo)
     voxcpm = root / "tools" / "voxcpm2"
@@ -110,7 +113,7 @@ def _quality_contract(repo: Path) -> tuple[bool, str]:
         failed.append("recipe-routing")
 
     if not (
-        'POLICY = spatial_bed_contract.POLICY' in text["direct_master"]
+        "POLICY = spatial_bed_contract.POLICY" in text["direct_master"]
         and '"source_bed_applied": False' in text["direct_master"]
         and '"applied_original_level": 0.0' in text["direct_master"]
         and "master_monolithic_mix" not in text["direct_master"]
@@ -172,14 +175,12 @@ def _recipe_checks() -> list[dict[str, Any]]:
         return [
             _check(
                 "Recipe: Gemini MAX",
-                "tools.voxcpm2.generic_gemini_runtime" in gemini_text
-                and "-Mode gemini" in gemini_text,
+                "tools.voxcpm2.generic_gemini_runtime" in gemini_text and "-Mode gemini" in gemini_text,
                 gemini_text,
             ),
             _check(
                 "Recipe: готовый SRT",
-                "tools.voxcpm2.generic_direct_runtime" in direct_text
-                and "-Mode direct" in direct_text,
+                "tools.voxcpm2.generic_direct_runtime" in direct_text and "-Mode direct" in direct_text,
                 direct_text,
             ),
             _check(
@@ -206,13 +207,18 @@ def collect_dub_health() -> list[dict[str, Any]]:
     quality_ok, quality_detail = _quality_contract(repo)
     from core.media_title_policy import media_title_policy_contract
     from services.dub_release_health_v64 import _v68_quality_contract
+
     title_ok, title_detail = media_title_policy_contract()
     release_ok, release_detail = _v68_quality_contract(repo)
     checks.append(
         _check(
             "Clean Expressive NoChew + независимый QA",
             quality_ok and title_ok and release_ok,
-            quality_detail + "; " + title_detail + "; " + release_detail
+            quality_detail
+            + "; "
+            + title_detail
+            + "; "
+            + release_detail
             + "; verified YouTube ID + sampled source cache; truthful 0%/0ms settings; "
             "strict unique translation IDs + creator-repeat preservation + actual source language; "
             "runtime v2 complete clean-path fingerprints; direct v3 16→48k; "
@@ -290,8 +296,7 @@ def collect_dub_health() -> list[dict[str, Any]]:
     checks.append(
         _check(
             "Python UTF-8",
-            (sys.stdout.encoding or "").lower().replace("-", "") == "utf8"
-            or os.getenv("PYTHONUTF8") == "1",
+            (sys.stdout.encoding or "").lower().replace("-", "") == "utf8" or os.getenv("PYTHONUTF8") == "1",
             f"stdout={sys.stdout.encoding}; PYTHONUTF8={os.getenv('PYTHONUTF8', '')}",
         )
     )
@@ -320,10 +325,7 @@ async def dubcheck_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     ]
     for item in checks:
         icon = "✅" if item["ok"] else "❌"
-        lines.append(
-            f"{icon} <b>{html.escape(item['label'])}</b>\n"
-            f"<code>{html.escape(item['detail'][:900])}</code>"
-        )
+        lines.append(f"{icon} <b>{html.escape(item['label'])}</b>\n<code>{html.escape(item['detail'][:900])}</code>")
     lines.extend(
         [
             "",

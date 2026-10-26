@@ -53,9 +53,7 @@ def test_matching_report_authorizes_reviewed_baseline(monkeypatch, tmp_path: Pat
     _write(guard.BASELINE, baseline)
     _write(report_path, _report(baseline))
 
-    result = guard.validate_update(
-        (guard.BASELINE.as_posix(), report_path.as_posix())
-    )
+    result = guard.validate_update((guard.BASELINE.as_posix(), report_path.as_posix()))
 
     assert result["baseline_changed"] is True
     assert result["baseline"] == baseline
@@ -70,6 +68,4 @@ def test_report_must_match_new_snapshot(monkeypatch, tmp_path: Path):
     _write(report_path, _report({**baseline, "total_regex_markers": 19}))
 
     with pytest.raises(RuntimeError, match="exactly matches"):
-        guard.validate_update(
-            (guard.BASELINE.as_posix(), report_path.as_posix())
-        )
+        guard.validate_update((guard.BASELINE.as_posix(), report_path.as_posix()))

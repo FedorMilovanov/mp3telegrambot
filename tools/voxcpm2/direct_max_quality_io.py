@@ -7,6 +7,7 @@ patch VoxCPM internals and does not install runtime wrappers. Quality is gained
 through transparent reference preparation, multiple deterministic candidates,
 voice/prosody/timbre diagnostics, durable checkpoints and downstream QA.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -60,19 +61,21 @@ def run_checked(
     )
     if process.returncode != 0:
         tail = (process.stderr or process.stdout or "")[-6000:] if capture else ""
-        raise RuntimeError(
-            "Команда завершилась с ошибкой:\n"
-            + " ".join(command)
-            + ("\n\n" + tail if tail else "")
-        )
+        raise RuntimeError("Команда завершилась с ошибкой:\n" + " ".join(command) + ("\n\n" + tail if tail else ""))
     return process
 
 
 def probe_duration(path: Path) -> float:
     process = run_checked(
         [
-            "ffprobe", "-v", "error", "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1", str(path),
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(path),
         ],
         capture=True,
     )
@@ -141,11 +144,7 @@ def looks_like_model_dir(path: Path) -> bool:
     return (
         path.is_dir()
         and (path / "config.json").is_file()
-        and (
-            (path / "model.safetensors").is_file()
-            or any(path.glob("*.safetensors"))
-            or any(path.glob("*.bin"))
-        )
+        and ((path / "model.safetensors").is_file() or any(path.glob("*.safetensors")) or any(path.glob("*.bin")))
     )
 
 
@@ -179,13 +178,9 @@ def _finite_float(value: Any, *, field: str, segment_id: int) -> float:
     try:
         result = float(value)
     except (TypeError, ValueError) as exc:
-        raise RuntimeError(
-            f"Сегмент #{segment_id}: некорректное значение {field}={value!r}."
-        ) from exc
+        raise RuntimeError(f"Сегмент #{segment_id}: некорректное значение {field}={value!r}.") from exc
     if not math.isfinite(result):
-        raise RuntimeError(
-            f"Сегмент #{segment_id}: {field} должен быть конечным числом."
-        )
+        raise RuntimeError(f"Сегмент #{segment_id}: {field} должен быть конечным числом.")
     return result
 
 
@@ -220,9 +215,7 @@ def read_segments(path: Path) -> list[dict[str, Any]]:
         try:
             start_delay_ms = int(item.get("start_delay_ms", 0))
         except (TypeError, ValueError, OverflowError) as exc:
-            raise RuntimeError(
-                f"Сегмент #{segment_id}: некорректный start_delay_ms."
-            ) from exc
+            raise RuntimeError(f"Сегмент #{segment_id}: некорректный start_delay_ms.") from exc
         item["id"] = segment_id
         item["start"] = start
         item["end"] = end
@@ -235,26 +228,21 @@ def read_segments(path: Path) -> list[dict[str, Any]]:
         if end <= start:
             raise RuntimeError(f"Некорректный сегмент #{segment_id}.")
         if tail_guard < 0.0:
-            raise RuntimeError(
-                f"Сегмент #{segment_id}: tail_guard не может быть отрицательным."
-            )
+            raise RuntimeError(f"Сегмент #{segment_id}: tail_guard не может быть отрицательным.")
         try:
             speech_slot = speech_slot_seconds(end - start, tail_guard)
         except RuntimeError as exc:
             raise RuntimeError(f"Сегмент #{segment_id}: {exc}") from exc
         if not 0 <= start_delay_ms <= MAX_START_DELAY_MS:
             raise RuntimeError(
-                f"Сегмент #{segment_id}: start_delay_ms должен быть в диапазоне "
-                f"0..{MAX_START_DELAY_MS}."
+                f"Сегмент #{segment_id}: start_delay_ms должен быть в диапазоне 0..{MAX_START_DELAY_MS}."
             )
         if start < previous_end - 0.001:
             raise RuntimeError(f"Пересечение у сегмента #{segment_id}.")
         effective_start = start + start_delay_ms / 1000.0
         effective_end = end + start_delay_ms / 1000.0
         if effective_start < previous_effective_end - 0.001:
-            raise RuntimeError(
-                f"Эффективное пересечение после delay у сегмента #{segment_id}."
-            )
+            raise RuntimeError(f"Эффективное пересечение после delay у сегмента #{segment_id}.")
         if not item["text"]:
             raise RuntimeError(f"Пустой текст #{segment_id}.")
         if item["reference_profile"] not in {"extended", "composite"}:

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Backend-neutral weighted TTS smoke with privacy-safe durable evidence."""
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -87,9 +88,7 @@ class WeightedTTSSmokeConfig:
         if not profile_id:
             raise ValueError("profile_id не может быть пустым.")
         if not text or len(text) > _MAX_TEXT_CHARS:
-            raise ValueError(
-                f"Smoke text должен содержать 1..{_MAX_TEXT_CHARS} символов."
-            )
+            raise ValueError(f"Smoke text должен содержать 1..{_MAX_TEXT_CHARS} символов.")
         if not math.isfinite(duration) or not 0.2 <= duration <= 30.0:
             raise ValueError("duration_budget должен быть конечным числом 0.2..30 сек.")
         if isinstance(self.seed, bool):
@@ -164,10 +163,7 @@ def _validate_expected_python(expected: Path | None) -> None:
     except OSError:
         same = current == expected
     if not same:
-        raise RuntimeError(
-            "Weighted smoke запущен не тем Python interpreter, который настроен "
-            "на self-hosted runner."
-        )
+        raise RuntimeError("Weighted smoke запущен не тем Python interpreter, который настроен на self-hosted runner.")
 
 
 def _validate_work_dir(work_dir: Path) -> None:
@@ -241,9 +237,7 @@ def normalize_generated_pcm(value: Any) -> np.ndarray:
         elif 1 <= columns <= 8 and rows > columns:
             mono = np.mean(array, axis=1, dtype=np.float32)
         else:
-            raise RuntimeError(
-                f"TTS backend вернул неоднозначную PCM shape: {array.shape}."
-            )
+            raise RuntimeError(f"TTS backend вернул неоднозначную PCM shape: {array.shape}.")
     else:
         raise RuntimeError(f"TTS backend вернул неподдерживаемую PCM shape: {array.shape}.")
     mono = np.ascontiguousarray(mono, dtype=np.float32)
@@ -265,17 +259,12 @@ def _pcm_metrics(samples: np.ndarray, sample_rate: int) -> dict[str, Any]:
         raise RuntimeError("TTS backend вернул некорректный output sample rate.")
     duration = float(len(samples)) / float(sample_rate)
     if not _MIN_OUTPUT_SECONDS <= duration <= _MAX_OUTPUT_SECONDS:
-        raise RuntimeError(
-            "Weighted TTS output duration вне безопасного диапазона: "
-            f"{duration:.3f} сек."
-        )
+        raise RuntimeError(f"Weighted TTS output duration вне безопасного диапазона: {duration:.3f} сек.")
     peak = float(np.max(np.abs(samples)))
     rms = float(np.sqrt(np.mean(np.square(samples, dtype=np.float64))))
     clipping = float(np.mean(np.abs(samples) >= 0.999))
     if clipping > _MAX_CLIPPING_RATIO:
-        raise RuntimeError(
-            f"Weighted TTS output clipping ratio слишком высокий: {clipping:.6f}."
-        )
+        raise RuntimeError(f"Weighted TTS output clipping ratio слишком высокий: {clipping:.6f}.")
     return {
         "samples": int(len(samples)),
         "sample_rate": int(sample_rate),
@@ -302,9 +291,7 @@ def _write_and_readback(output: Path, samples: np.ndarray, sample_rate: int) -> 
     if int(info.channels) != 1 or int(read_rate) != int(sample_rate):
         raise RuntimeError("Weighted TTS output WAV изменил channels/sample rate.")
     if str(info.subtype or "") != "PCM_24":
-        raise RuntimeError(
-            f"Weighted TTS output subtype должен быть PCM_24, получено {info.subtype}."
-        )
+        raise RuntimeError(f"Weighted TTS output subtype должен быть PCM_24, получено {info.subtype}.")
     readback_mono = normalize_generated_pcm(readback)
     metrics = _pcm_metrics(readback_mono, int(read_rate))
     metrics.update(
@@ -342,8 +329,7 @@ def _ffprobe_output(output: Path) -> dict[str, Any]:
     )
     if process.returncode != 0:
         raise RuntimeError(
-            "ffprobe weighted TTS output завершился с кодом "
-            f"{process.returncode}: {(process.stderr or '')[-500:]}"
+            f"ffprobe weighted TTS output завершился с кодом {process.returncode}: {(process.stderr or '')[-500:]}"
         )
     payload = _strict_json_object(process.stdout or "{}", label="ffprobe")
     streams = payload.get("streams")
@@ -376,10 +362,7 @@ def _merge_backend_options(*sources: Mapping[str, Any]) -> dict[str, Any]:
     for source in sources:
         overlap = sorted(set(merged).intersection(source))
         if overlap:
-            raise RuntimeError(
-                "Weighted smoke backend plans конфликтуют по keys: "
-                + ", ".join(overlap)
-            )
+            raise RuntimeError("Weighted smoke backend plans конфликтуют по keys: " + ", ".join(overlap))
         merged.update(dict(source))
     return merged
 
@@ -431,9 +414,7 @@ def _execution_evidence(path: Path, *, backend_id: str, required: bool) -> dict[
         "accepted_optional_parameters": sorted(
             str(value) for value in payload.get("accepted_optional_parameters") or []
         ),
-        "omitted_optional_parameters": sorted(
-            str(value) for value in payload.get("omitted_optional_parameters") or []
-        ),
+        "omitted_optional_parameters": sorted(str(value) for value in payload.get("omitted_optional_parameters") or []),
     }
 
 
@@ -467,9 +448,7 @@ def _assert_privacy_allowlist(report: Mapping[str, Any], forbidden_values: tuple
             for raw_key, item in value.items():
                 key = str(raw_key).casefold()
                 if key in _REPORT_FORBIDDEN_KEYS or key.endswith("_path"):
-                    raise RuntimeError(
-                        f"Weighted smoke report содержит запрещённый key: {raw_key}"
-                    )
+                    raise RuntimeError(f"Weighted smoke report содержит запрещённый key: {raw_key}")
                 walk(item)
         elif isinstance(value, (list, tuple)):
             for item in value:
@@ -490,13 +469,16 @@ def _assert_privacy_allowlist(report: Mapping[str, Any], forbidden_values: tuple
 
 
 def _atomic_report(path: Path, payload: Mapping[str, Any]) -> None:
-    encoded = json.dumps(
-        dict(payload),
-        ensure_ascii=False,
-        indent=2,
-        sort_keys=True,
-        allow_nan=False,
-    ) + "\n"
+    encoded = (
+        json.dumps(
+            dict(payload),
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+            allow_nan=False,
+        )
+        + "\n"
+    )
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     try:
         with temporary.open("x", encoding="utf-8", newline="\n") as handle:

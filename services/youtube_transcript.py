@@ -6,6 +6,7 @@ an article-like summary. If YouTube captions/auto-captions are available, we fee
 a timed English transcript into Synopsis prompt so the model can produce a much
 more verbatim structured Russian transcript.
 """
+
 from __future__ import annotations
 
 import html
@@ -19,9 +20,7 @@ from services.async_process import run_cancellable_process
 
 logger = logging.getLogger(__name__)
 
-_VTT_TIME_RE = re.compile(
-    r"(?P<h>\d{1,2}):(?P<m>\d{2}):(?P<s>\d{2})(?:[.,](?P<ms>\d{1,3}))?\s*-->"
-)
+_VTT_TIME_RE = re.compile(r"(?P<h>\d{1,2}):(?P<m>\d{2}):(?P<s>\d{2})(?:[.,](?P<ms>\d{1,3}))?\s*-->")
 _TAG_RE = re.compile(r"<[^>]+>")
 _DUP_SPACE_RE = re.compile(r"\s+")
 
@@ -316,9 +315,7 @@ async def download_youtube_transcript_text(
         last_proc = None
         rejected_candidates = 0
         try:
-            min_cov = float(
-                os.getenv("SYNOPSIS_YT_TRANSCRIPT_MIN_COVERAGE", "0.70") or "0.70"
-            )
+            min_cov = float(os.getenv("SYNOPSIS_YT_TRANSCRIPT_MIN_COVERAGE", "0.70") or "0.70")
         except ValueError:
             min_cov = 0.70
         min_cov = max(0.1, min(min_cov, 0.98))
@@ -369,8 +366,7 @@ async def download_youtube_transcript_text(
                     if coverage < min_cov:
                         rejected_candidates += 1
                         logger.info(
-                            "[SynopsisTranscript] rejected %s %s: coverage %.0f%% < %.0f%% "
-                            "(last=%ss duration=%ss)",
+                            "[SynopsisTranscript] rejected %s %s: coverage %.0f%% < %.0f%% (last=%ss duration=%ss)",
                             source_kind,
                             candidate.name,
                             coverage * 100,

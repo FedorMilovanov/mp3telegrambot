@@ -72,10 +72,7 @@ def _install_common(monkeypatch, clients):
 
 def test_livedub_qa_503_does_not_expand_by_four_keys(monkeypatch, tmp_path):
     calls: list[str] = []
-    clients = [
-        _client(f"c{i}", calls, error=RuntimeError("503 UNAVAILABLE: high demand"))
-        for i in range(1, 5)
-    ]
+    clients = [_client(f"c{i}", calls, error=RuntimeError("503 UNAVAILABLE: high demand")) for i in range(1, 5)]
     srt = tmp_path / "dub.srt"
     video = tmp_path / "dub.mp4"
     _write_srt(srt)

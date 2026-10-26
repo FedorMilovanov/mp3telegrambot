@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Independent semantic, timing, continuity and voice-evidence release gate."""
+
 from __future__ import annotations
 
 import json
@@ -58,8 +59,8 @@ def _voice_limits(
     tier = str(item.get("expression_tier") or "")
     score = _number(item.get("expression_score"), 0.0)
     expressive = profile_name == "composite" or tier in {"emphatic", "passionate"}
-    max_median, max_p90 = ((1.48, 1.58) if expressive else (1.35, 1.45))
-    min_median, min_p90 = ((0.55, 0.50) if expressive else (0.62, 0.56))
+    max_median, max_p90 = (1.48, 1.58) if expressive else (1.35, 1.45)
+    min_median, min_p90 = (0.55, 0.50) if expressive else (0.62, 0.56)
     source = item.get("source_prosody") or {}
     if str(item.get("source_prosody_role") or "") == "diagnostic-only-no-cross-language-ranking-v1":
         # Source-language contour is advisory only and cannot widen identity gates.
@@ -107,12 +108,7 @@ def _forced_russian_eligibility(
         return False, "confident_foreign_language", script
     if int(script["letters"]) > 0 and ratio < 0.55:
         return False, "foreign_script", script
-    if (
-        int(script["letters"]) == 0
-        and language
-        and language not in _RUSSIAN_FAMILY
-        and probability >= 0.35
-    ):
+    if int(script["letters"]) == 0 and language and language not in _RUSSIAN_FAMILY and probability >= 0.35:
         return False, "empty_auto_foreign_language", script
     if language and language not in _RUSSIAN_FAMILY and probability >= 0.55 and ratio < 0.80:
         return False, "probable_foreign_language", script
@@ -307,11 +303,15 @@ def verify_timeline_v45(
             semantic = check.get("semantic")
             if isinstance(semantic, dict) and not semantic.get("passed"):
                 spoken, numeric = _numeric_semantic_target(str(item.get("text") or ""), semantic)
-                semantic = numeric if numeric.get("passed") else _forced_russian_fallback(
-                    clip,
-                    spoken,
-                    numeric,
-                    numeric_anchor_groups=numeric.get("numeric_anchor_groups"),
+                semantic = (
+                    numeric
+                    if numeric.get("passed")
+                    else _forced_russian_fallback(
+                        clip,
+                        spoken,
+                        numeric,
+                        numeric_anchor_groups=numeric.get("numeric_anchor_groups"),
+                    )
                 )
                 check["semantic"] = semantic
                 check["passed"] = bool(_base_semantic_acoustic_pass(check) and semantic.get("passed"))
@@ -319,9 +319,7 @@ def verify_timeline_v45(
             activity = activity_stats(audio, int(sample_rate))
             punctuation = bool(re.search(r"[.!?…;:]", str(item.get("text") or "")))
             max_gap = 0.78 if punctuation else 0.58
-            continuity_passed = bool(
-                activity["max_internal_gap"] <= max_gap and activity["active_ratio"] >= 0.20
-            )
+            continuity_passed = bool(activity["max_internal_gap"] <= max_gap and activity["active_ratio"] >= 0.20)
             profile_name = str(item.get("reference_profile") or "extended")
             voice = _voice_evaluation(
                 item,
@@ -337,9 +335,7 @@ def verify_timeline_v45(
             check["voice_match_v45"] = voice
             check["passed"] = bool(check.get("passed") and continuity_passed and voice.get("passed"))
 
-    result = sorted(
-        int(segment_id) for segment_id, check in checks.items() if not bool(check.get("passed"))
-    )
+    result = sorted(int(segment_id) for segment_id, check in checks.items() if not bool(check.get("passed")))
     report.update(
         professional_audio_policy=POLICY,
         semantic_asr_policy=(
@@ -355,13 +351,11 @@ def verify_timeline_v45(
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     return result, report
 
-_BASE_ALL = tuple(globals().get('__all__', ()))
 
+_BASE_ALL = tuple(globals().get("__all__", ()))
 
 
 import types
-
-
 
 
 from tools.voxcpm2 import timeline_onset_repair
@@ -372,15 +366,16 @@ TIMING_RECHECK_POLICY = "repaired-windows-only-no-repeat-asr-v1"
 
 _legacy_verify_timeline_v45 = verify_timeline_v45
 
+
 def _pre_repair_report_path(report_path: Path) -> Path:
     return report_path.with_name(report_path.stem + ".pre_onset_repair.json")
 
+
 def _segment_map(segments: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
     return {
-        int(item["id"]): item
-        for item in segments
-        if isinstance(item, dict) and str(item.get("id") or "").isdigit()
+        int(item["id"]): item for item in segments if isinstance(item, dict) and str(item.get("id") or "").isdigit()
     }
+
 
 def _check_map(report: dict[str, Any]) -> dict[int, dict[str, Any]]:
     return {
@@ -389,12 +384,14 @@ def _check_map(report: dict[str, Any]) -> dict[int, dict[str, Any]]:
         if isinstance(item, dict) and str(item.get("id") or "").isdigit()
     }
 
+
 def _all_non_timing_checks_pass(check: dict[str, Any]) -> bool:
     for name in ("semantic", "acoustic", "continuity_v45", "voice_match_v45"):
         component = check.get(name)
         if isinstance(component, dict) and component.get("passed") is False:
             return False
     return True
+
 
 def _remeasure_repaired_timing(
     timeline: Path,
@@ -436,18 +433,13 @@ def _remeasure_repaired_timing(
         timing["previous_onset_ms"] = previous.get("onset_ms")
         timing["previous_trailing_ms"] = previous.get("trailing_ms")
         check["timing"] = timing
-        check["passed"] = bool(
-            timing.get("passed") and _all_non_timing_checks_pass(check)
-        )
+        check["passed"] = bool(timing.get("passed") and _all_non_timing_checks_pass(check))
 
-    failed = sorted(
-        int(segment_id)
-        for segment_id, check in check_by_id.items()
-        if check.get("passed") is not True
-    )
+    failed = sorted(int(segment_id) for segment_id, check in check_by_id.items() if check.get("passed") is not True)
     report["failed_segment_ids"] = failed
     report["passed"] = not failed
     return failed, report
+
 
 def verify_timeline_v45(
     timeline: Path,
@@ -523,6 +515,7 @@ def verify_timeline_v45(
         encoding="utf-8",
     )
     return repaired_failed, repaired_report
+
 
 verify_timeline_v45 = verify_timeline_v45
 

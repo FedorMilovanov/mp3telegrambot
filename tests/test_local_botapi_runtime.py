@@ -39,8 +39,7 @@ def test_log_tail_redacts_token_hash_and_explicit_proxy_password(tmp_path, monke
     proxy = "http://user:proxy-secret@127.0.0.1:8080"
     log = tmp_path / "botapi-server.log"
     log.write_text(
-        "GET /bot123456:secret-token/getMe\n"
-        "hash=private-api-hash password=proxy-secret",
+        "GET /bot123456:secret-token/getMe\nhash=private-api-hash password=proxy-secret",
         encoding="utf-8",
     )
 

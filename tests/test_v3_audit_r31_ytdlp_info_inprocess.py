@@ -7,6 +7,7 @@ therefore tries the yt-dlp Python API in-process first. If that completed with
 an actual failure, the fallback remains available but must be owned by the
 shared cancellation-safe subprocess lifecycle.
 """
+
 import asyncio
 from pathlib import Path
 import sys
@@ -101,7 +102,9 @@ def test_inprocess_rejects_missing_or_non_dict_options(monkeypatch):
     # No yt-dlp token: the argument-normalization loop runs to exhaustion.
     monkeypatch.setattr(ffmpeg, "YTDLP_BASE_ARGS", ["--quiet"])
     monkeypatch.setattr(
-        yt_dlp, "parse_options", lambda _flags: SimpleNamespace(ydl_opts=None),
+        yt_dlp,
+        "parse_options",
+        lambda _flags: SimpleNamespace(ydl_opts=None),
     )
     assert _run_info() is None
 
@@ -112,7 +115,9 @@ def test_inprocess_success_preserves_options_and_reduces_playlist(monkeypatch):
     captured = {}
     monkeypatch.setattr(ffmpeg, "YTDLP_BASE_ARGS", ["yt-dlp", "--quiet"])
     monkeypatch.setattr(
-        yt_dlp, "parse_options", lambda _flags: SimpleNamespace(ydl_opts={}),
+        yt_dlp,
+        "parse_options",
+        lambda _flags: SimpleNamespace(ydl_opts={}),
     )
     _install_ydl(monkeypatch, {"entries": [{}, {"id": "first"}]}, captured)
 
@@ -135,7 +140,9 @@ def test_inprocess_tuple_options_and_late_result_are_preserved(monkeypatch):
     captured = {}
     monkeypatch.setattr(ffmpeg, "YTDLP_BASE_ARGS", ["yt-dlp"])
     monkeypatch.setattr(
-        yt_dlp, "parse_options", lambda _flags: (None, {"socket_timeout": 12}),
+        yt_dlp,
+        "parse_options",
+        lambda _flags: (None, {"socket_timeout": 12}),
     )
     _install_ydl(monkeypatch, {"id": "late"}, captured)
 
@@ -153,7 +160,9 @@ def test_inprocess_finished_failure_returns_none_after_owned_await(monkeypatch):
     captured = {}
     monkeypatch.setattr(ffmpeg, "YTDLP_BASE_ARGS", ["yt-dlp"])
     monkeypatch.setattr(
-        yt_dlp, "parse_options", lambda _flags: SimpleNamespace(ydl_opts={}),
+        yt_dlp,
+        "parse_options",
+        lambda _flags: SimpleNamespace(ydl_opts={}),
     )
     _install_ydl(monkeypatch, {"id": "unused"}, captured)
 
@@ -171,7 +180,9 @@ def test_inprocess_cancellation_is_not_converted_to_fallback(monkeypatch):
     captured = {}
     monkeypatch.setattr(ffmpeg, "YTDLP_BASE_ARGS", ["yt-dlp"])
     monkeypatch.setattr(
-        yt_dlp, "parse_options", lambda _flags: SimpleNamespace(ydl_opts={}),
+        yt_dlp,
+        "parse_options",
+        lambda _flags: SimpleNamespace(ydl_opts={}),
     )
     _install_ydl(monkeypatch, {"id": "unused"}, captured)
 

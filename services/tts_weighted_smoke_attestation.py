@@ -7,6 +7,7 @@ only a strict allowlist of cross-checked facts, binds them to immutable GitHub
 Actions identity and adds a canonical SHA-256 digest.  It never carries audio,
 reference/model paths, raw backend configuration or source report payloads.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -61,9 +62,7 @@ class WeightedTTSSmokeAttestationContext:
         if ref != _EXPECTED_REF:
             raise ValueError(f"Weighted smoke attestation требует ref {_EXPECTED_REF!r}.")
         if event_name != _EXPECTED_EVENT:
-            raise ValueError(
-                f"Weighted smoke attestation требует event {_EXPECTED_EVENT!r}."
-            )
+            raise ValueError(f"Weighted smoke attestation требует event {_EXPECTED_EVENT!r}.")
         expected_workflow_ref = f"{repository}/{_EXPECTED_WORKFLOW}@{_EXPECTED_REF}"
         if workflow_ref != expected_workflow_ref:
             raise ValueError("workflow_ref не совпадает с trusted weighted smoke workflow.")
@@ -176,9 +175,7 @@ def _profile_facts(report: Mapping[str, Any], label: str) -> dict[str, str]:
     facts = {
         "profile_id": str(_required(profile, "profile_id", f"{label}.profile")),
         "backend_id": str(_required(profile, "backend_id", f"{label}.profile")),
-        "model_revision": str(
-            _required(profile, "model_revision", f"{label}.profile")
-        ),
+        "model_revision": str(_required(profile, "model_revision", f"{label}.profile")),
         "profile_fingerprint": _validate_hex(
             _required(profile, "profile_fingerprint", f"{label}.profile"),
             length=64,
@@ -186,9 +183,7 @@ def _profile_facts(report: Mapping[str, Any], label: str) -> dict[str, str]:
         ),
         "source_kind": str(_required(source, "source_kind", f"{label}.source")),
         "source_sha256": str(source.get("source_sha256") or ""),
-        "manifest_policy": str(
-            _required(source, "manifest_policy", f"{label}.source")
-        ),
+        "manifest_policy": str(_required(source, "manifest_policy", f"{label}.source")),
     }
     if not all(facts[key] for key in ("profile_id", "backend_id", "model_revision")):
         raise ValueError(f"{label}.profile содержит пустую identity.")
@@ -252,9 +247,7 @@ def _validate_source_reports(
     doctor_backend = _object(_required(doctor, "backend", "doctor"), "doctor.backend")
     smoke_backend = _object(_required(smoke, "backend", "smoke"), "smoke.backend")
     backend_id = str(_required(smoke_backend, "backend_id", "smoke.backend"))
-    adapter_policy = str(
-        _required(smoke_backend, "adapter_policy", "smoke.backend")
-    )
+    adapter_policy = str(_required(smoke_backend, "adapter_policy", "smoke.backend"))
     if backend_id != doctor_profile["backend_id"]:
         raise ValueError("Synthesis backend не совпадает с profile backend.")
     if str(doctor_backend.get("backend_id") or "") != backend_id:
@@ -262,9 +255,7 @@ def _validate_source_reports(
     if str(doctor_backend.get("adapter_policy") or "") != adapter_policy:
         raise ValueError("Doctor adapter policy не совпадает с synthesis adapter policy.")
 
-    doctor_runtime = _object(
-        _required(doctor, "runtime", "doctor"), "doctor.runtime"
-    )
+    doctor_runtime = _object(_required(doctor, "runtime", "doctor"), "doctor.runtime")
     if doctor_runtime.get("weights_loaded") is not False:
         raise ValueError("Runner doctor не должен загружать model weights.")
     if doctor_runtime.get("session_opened") is not False:
@@ -277,10 +268,7 @@ def _validate_source_reports(
 
     imports = _object(_required(doctor, "imports", "doctor"), "doctor.imports")
     modules = _list(_required(imports, "modules", "doctor.imports"), "doctor.modules")
-    module_names = sorted(
-        str(_required(_object(item, "doctor.module"), "name", "doctor.module"))
-        for item in modules
-    )
+    module_names = sorted(str(_required(_object(item, "doctor.module"), "name", "doctor.module")) for item in modules)
     if not module_names or any(not name for name in module_names):
         raise ValueError("Runner doctor не подтвердил required runtime modules.")
 
@@ -295,12 +283,8 @@ def _validate_source_reports(
     if output.get("audio_retained") is not False:
         raise ValueError("Weighted smoke report не подтверждает удаление audio.")
     pcm = _object(_required(output, "pcm", "smoke.output"), "smoke.output.pcm")
-    readback = _object(
-        _required(output, "readback", "smoke.output"), "smoke.output.readback"
-    )
-    output_probe = _object(
-        _required(output, "ffprobe", "smoke.output"), "smoke.output.ffprobe"
-    )
+    readback = _object(_required(output, "readback", "smoke.output"), "smoke.output.readback")
+    output_probe = _object(_required(output, "ffprobe", "smoke.output"), "smoke.output.ffprobe")
     duration = _finite_number(
         _required(pcm, "duration_seconds", "smoke.output.pcm"),
         "smoke.output.pcm.duration_seconds",
@@ -314,22 +298,16 @@ def _validate_source_reports(
         raise ValueError("Weighted smoke read-back subtype должен быть PCM_24.")
     if _positive_int(output_probe.get("channels"), "smoke.output.ffprobe.channels") != 1:
         raise ValueError("Weighted smoke output должен быть mono.")
-    if _positive_int(
-        output_probe.get("sample_rate"), "smoke.output.ffprobe.sample_rate"
-    ) != sample_rate:
+    if _positive_int(output_probe.get("sample_rate"), "smoke.output.ffprobe.sample_rate") != sample_rate:
         raise ValueError("PCM и ffprobe sample rate не совпадают.")
 
-    execution = _object(
-        _required(smoke, "execution_plan", "smoke"), "smoke.execution_plan"
-    )
+    execution = _object(_required(smoke, "execution_plan", "smoke"), "smoke.execution_plan")
     execution_required = execution.get("required") is True
     execution_present = execution.get("present") is True
     if execution_required and not execution_present:
         raise ValueError("Required execution-plan evidence отсутствует.")
 
-    synthesis_runtime = _object(
-        _required(smoke, "runtime", "smoke"), "smoke.runtime"
-    )
+    synthesis_runtime = _object(_required(smoke, "runtime", "smoke"), "smoke.runtime")
     synthesis_seconds = _finite_number(
         _required(synthesis_runtime, "synthesis_seconds", "smoke.runtime"),
         "smoke.runtime.synthesis_seconds",
@@ -467,9 +445,7 @@ def validate_weighted_tts_attestation(
     _finite_number(result.get("synthesis_seconds"), "synthesis_seconds", minimum=0.000001)
     _finite_number(result.get("total_seconds"), "total_seconds", minimum=0.000001)
 
-    digest = _validate_hex(
-        attestation.get("digest_sha256"), length=64, label="digest_sha256"
-    )
+    digest = _validate_hex(attestation.get("digest_sha256"), length=64, label="digest_sha256")
     statement = {key: value for key, value in attestation.items() if key != "digest_sha256"}
     if digest != _digest_payload(statement):
         raise ValueError("Attestation digest не совпадает с payload.")

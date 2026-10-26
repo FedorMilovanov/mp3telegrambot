@@ -4,28 +4,32 @@ Clips & Montage rendering — render_clip, create_clip_snapshot,
 build_clip_caption, render_montage_short, create_extras_candidates.
 Извлечено из bot.py строки 11169–11354, 11921–12239.
 """
+
 from core.globals import (
-    DOWNLOAD_DIR, THUMBS_DIR, make_text_config_smart,
-    GEMINI_CLIENTS, HAS_GEMINI,        # FIX render
-    gemini_generate,                    # FIX render
+    DOWNLOAD_DIR,
+    THUMBS_DIR,
+    make_text_config_smart,
+    GEMINI_CLIENTS,
+    HAS_GEMINI,  # FIX render
+    gemini_generate,  # FIX render
 )
-from core.database import GEMINI_MODEL       # FIX render
+from core.database import GEMINI_MODEL  # FIX render
 from services.ffmpeg import _get_video_encoder
-from services.ffmpeg import _find_silence_end    # FIX render
-from services.ffmpeg import _is_static_video     # AUDIT R28
+from services.ffmpeg import _find_silence_end  # FIX render
+from services.ffmpeg import _is_static_video  # AUDIT R28
 from services.async_process import run_cancellable_process
 from services.async_worker import await_owned_coroutine
 from core.utils import cleanup_files, format_timestamp
 from services.shorts_video import _build_links_block  # FIX render
 from core.text_utils import _clean_field, title_case_fragment  # FIX render
-from core.core_utils import time_to_seconds                      # FIX: moved to core_utils (был в json_parser)
-from core.json_parser import _recover_truncated_json                # V3-P0: partial JSON recovery
+from core.core_utils import time_to_seconds  # FIX: moved to core_utils (был в json_parser)
+from core.json_parser import _recover_truncated_json  # V3-P0: partial JSON recovery
 from core.observability import alog_gemini_response, alog_gemini_run
 from core.candidate_schema import extras_response_schema, structured_json_config_kwargs
-from core.prompts import EXTRAS_PROMPT                          # FIX render
+from core.prompts import EXTRAS_PROMPT  # FIX render
 
 import asyncio
-import json       # FIX render
+import json  # FIX render
 import logging
 import re
 import shutil
@@ -93,24 +97,29 @@ async def render_clip(
             logger.warning("render_clip: clip_duration ≤ 0 после коррекции паузы")
             return False
 
-        _enc, _quality, _preset = await await_owned_coroutine(
-            asyncio.to_thread(_get_video_encoder)
-        )
+        _enc, _quality, _preset = await await_owned_coroutine(asyncio.to_thread(_get_video_encoder))
         # Clips: чуть лучше качество чем у shorts — cq/crf 22 вместо 23
         _quality_clip = ["-rc", "vbr", "-cq", "22"] if _enc == "h264_nvenc" else ["-crf", "22"]
         _hwaccel = []  # hwaccel cuda убран: CPU-фильтры несовместимы с CUDA decode
         cmd = [
             ffmpeg,
             *_hwaccel,
-            "-ss", str(start_seconds),
-            "-i", str(source_video_path),
-            "-t", str(clip_duration),
-            "-c:v", _enc,
+            "-ss",
+            str(start_seconds),
+            "-i",
+            str(source_video_path),
+            "-t",
+            str(clip_duration),
+            "-c:v",
+            _enc,
             *_preset,
             *_quality_clip,
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-movflags", "+faststart",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-movflags",
+            "+faststart",
             "-y",
             str(output_path),
         ]
@@ -118,18 +127,18 @@ async def render_clip(
         # AUDIT R29: сериализуем GPU-рендер клипа — именно этот вызов упирался
         # в 15-мин таймаут, когда три видео жарили h264_nvenc одновременно.
         from core.resource_scheduler import scheduler as _sched
+
         async with _sched.gpu_render:
             proc = await run_cancellable_process(cmd, timeout=900, text=True)
         if proc.returncode != 0:
-            stderr_tail = (proc.stderr or '')[-800:]
+            stderr_tail = (proc.stderr or "")[-800:]
             # ffmpeg на Windows иногда завершается с кодом != 0 после "received signal 2"
             # (SIGINT от родительского процесса), но файл при этом уже записан корректно.
             # Если файл существует и не пуст — считаем успехом.
             file_ok = output_path.exists() and output_path.stat().st_size > 0
             if file_ok and "received signal 2" in stderr_tail:
                 logger.info(
-                    f"render_clip: ffmpeg вышел по signal 2, но файл создан — "
-                    f"считаем успехом (rc={proc.returncode})"
+                    f"render_clip: ffmpeg вышел по signal 2, но файл создан — считаем успехом (rc={proc.returncode})"
                 )
             else:
                 logger.warning(f"render_clip ffmpeg error: {stderr_tail}")
@@ -142,8 +151,7 @@ async def render_clip(
 
         size_mb = output_path.stat().st_size / (1024 * 1024)
         logger.info(
-            f"Clip rendered: {output_path.name} "
-            f"({start_seconds}s..{end_seconds}s, {clip_duration}s, {size_mb:.1f}MB)"
+            f"Clip rendered: {output_path.name} ({start_seconds}s..{end_seconds}s, {clip_duration}s, {size_mb:.1f}MB)"
         )
         return True
 
@@ -178,10 +186,14 @@ async def create_clip_snapshot(
         seek_time = max(2.0, clip_duration_seconds * 0.20)
         cmd = [
             ffmpeg,
-            "-ss", str(seek_time),
-            "-i", str(video_path),
-            "-vframes", "1",
-            "-q:v", "2",
+            "-ss",
+            str(seek_time),
+            "-i",
+            str(video_path),
+            "-vframes",
+            "1",
+            "-q:v",
+            "2",
             "-y",
             str(snapshot_path),
         ]
@@ -227,10 +239,10 @@ def build_clip_caption(
     Строит подпись для длинного clip-фрагмента.
     Компактный стиль: заголовок - Автор ✂️ [старт — конец], ссылки с эмодзи, хэштеги.
     """
-    title        = (candidate.get("title") or "").strip()
-    tags         = candidate.get("hashtags") or []
-    start_s      = candidate.get("start_seconds", 0)
-    end_s        = candidate.get("end_seconds", 0)
+    title = (candidate.get("title") or "").strip()
+    tags = candidate.get("hashtags") or []
+    start_s = candidate.get("start_seconds", 0)
+    end_s = candidate.get("end_seconds", 0)
     author_label = real_author or performer or ""
 
     def _fmt(secs: int) -> str:
@@ -240,11 +252,11 @@ def build_clip_caption(
 
     kind = (candidate.get("kind") or "").strip()
     _KIND_EMOJI = {
-        "sermon_highlight":   "🔥",
-        "conviction_appeal":  "⚡",
+        "sermon_highlight": "🔥",
+        "conviction_appeal": "⚡",
         "illustration_story": "📖",
-        "doctrinal_moment":   "💡",
-        "application_block":  "👣",
+        "doctrinal_moment": "💡",
+        "application_block": "👣",
         # QA-типы оставляем ✂️
     }
     clip_emoji = _KIND_EMOJI.get(kind, "✂️")
@@ -262,11 +274,10 @@ def build_clip_caption(
         first_line = range_label
 
     links_block = _build_links_block(yt_url, rutube_url, vk_url)
-    tags_line   = _hashtags_line(tags)
+    tags_line = _hashtags_line(tags)
 
     parts = [p for p in [first_line, links_block, tags_line] if p]
     return "\n\n".join(parts)
-
 
 
 async def render_montage_short(
@@ -279,19 +290,10 @@ async def render_montage_short(
     """Склеивает несколько фрагментов в один Short 9:16 через ffmpeg concat."""
     # FIX AUDIT R4: temp_parts/concat_list_path объявляем ДО try — except ниже
     # их итерирует, и OSError из mkdir превращался в NameError из хендлера.
-    temp_parts = [
-        output_path.parent / f"{output_path.stem}_part{i}.mp4"
-        for i in range(len(fragments))
-    ]
-    concat_list_path: Path | None = (
-        output_path.parent / f"{output_path.stem}_concat.txt"
-    )
-    stale_parts = list(
-        output_path.parent.glob(f"{output_path.stem}_part*.mp4")
-    )
-    _unlink_render_paths(
-        *stale_parts, *temp_parts, concat_list_path, output_path
-    )
+    temp_parts = [output_path.parent / f"{output_path.stem}_part{i}.mp4" for i in range(len(fragments))]
+    concat_list_path: Path | None = output_path.parent / f"{output_path.stem}_concat.txt"
+    stale_parts = list(output_path.parent.glob(f"{output_path.stem}_part*.mp4"))
+    _unlink_render_paths(*stale_parts, *temp_parts, concat_list_path, output_path)
     try:
         ffmpeg = shutil.which("ffmpeg")
         if not ffmpeg or not source_video_path.exists() or not fragments:
@@ -321,38 +323,45 @@ async def render_montage_short(
             )
             _use_fc = True
 
-        _enc, _quality, _preset = await await_owned_coroutine(
-            asyncio.to_thread(_get_video_encoder)
-        )
+        _enc, _quality, _preset = await await_owned_coroutine(asyncio.to_thread(_get_video_encoder))
         _hwaccel = []  # hwaccel cuda убран: CPU-фильтры несовместимы с CUDA decode
         for i, frag in enumerate(fragments):
             part_path = temp_parts[i]
             start_s = frag["start_seconds"]
-            end_s   = frag["end_seconds"]
-            dur     = end_s - start_s
+            end_s = frag["end_seconds"]
+            dur = end_s - start_s
             if dur <= 0:
                 continue
-            _vf_args_m = (
-                ["-filter_complex", vf, "-map", "[out]", "-map", "0:a?"]
-                if _use_fc else ["-vf", vf]
-            )
+            _vf_args_m = ["-filter_complex", vf, "-map", "[out]", "-map", "0:a?"] if _use_fc else ["-vf", vf]
             cmd = [
-                ffmpeg, *_hwaccel,
-                "-ss", str(start_s), "-i", str(source_video_path),
-                "-t", str(dur), *_vf_args_m,
-                "-c:v", _enc, *_preset, *_quality,
-                "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
-                "-y", str(part_path),
+                ffmpeg,
+                *_hwaccel,
+                "-ss",
+                str(start_s),
+                "-i",
+                str(source_video_path),
+                "-t",
+                str(dur),
+                *_vf_args_m,
+                "-c:v",
+                _enc,
+                *_preset,
+                *_quality,
+                "-c:a",
+                "aac",
+                "-b:a",
+                "128k",
+                "-movflags",
+                "+faststart",
+                "-y",
+                str(part_path),
             ]
             # AUDIT R29: сериализуем GPU-рендер фрагмента montage.
             from core.resource_scheduler import scheduler as _sched
+
             async with _sched.gpu_render:
                 proc = await run_cancellable_process(cmd, timeout=120, text=True)
-            if (
-                proc.returncode != 0
-                or not part_path.exists()
-                or part_path.stat().st_size == 0
-            ):
+            if proc.returncode != 0 or not part_path.exists() or part_path.stat().st_size == 0:
                 logger.warning(f"Montage: фрагмент {i} не отрендерен")
                 _unlink_render_paths(*temp_parts, concat_list_path, output_path)
                 return False
@@ -371,22 +380,35 @@ async def render_montage_short(
         # their video streams are concat-compatible. Re-encoding them here only
         # adds generational loss; copy video packets and rebuild audio timing.
         concat_cmd = [
-            ffmpeg, *_hwaccel, "-f", "concat", "-safe", "0", "-i", str(concat_list_path),
-            "-map", "0:v:0", "-map", "0:a:0?",
-            "-c:v", "copy",
-            "-c:a", "aac", "-b:a", "128k",
-            "-af", "aresample=async=1",
-            "-movflags", "+faststart",
-            "-y", str(output_path),
+            ffmpeg,
+            *_hwaccel,
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(concat_list_path),
+            "-map",
+            "0:v:0",
+            "-map",
+            "0:a:0?",
+            "-c:v",
+            "copy",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-af",
+            "aresample=async=1",
+            "-movflags",
+            "+faststart",
+            "-y",
+            str(output_path),
         ]
         proc = await run_cancellable_process(concat_cmd, timeout=300, text=True)
         _unlink_render_paths(*temp_parts, concat_list_path)
 
-        if (
-            proc.returncode != 0
-            or not output_path.exists()
-            or output_path.stat().st_size == 0
-        ):
+        if proc.returncode != 0 or not output_path.exists() or output_path.stat().st_size == 0:
             logger.warning(f"Montage: concat failed: {(proc.stderr or '')[-300:]}")
             _unlink_render_paths(output_path)
             return False
@@ -436,12 +458,14 @@ async def _generate_extras_content(client, *, model: str, prompt: str, max_outpu
         # AUDIT R26: legacy-JSON retry — только при ошибке самой схемы.
         # quota/overload/timeout/auth второй запрос не лечит, лишь жжёт квоту.
         from services.gemini_error_policy import classify_gemini_error
+
         _decision = classify_gemini_error(exc)
         if not schema or not _decision.use_legacy_json_fallback:
             raise
         logger.warning(
             "extras_candidates: structured output схема отклонена (%s: %s) — retry legacy JSON config",
-            type(exc).__name__, str(exc)[:180],
+            type(exc).__name__,
+            str(exc)[:180],
         )
         return await asyncio.wait_for(
             client.aio.models.generate_content(
@@ -476,12 +500,12 @@ async def create_extras_candidates(
         return int((time.perf_counter() - _obs_started) * 1000)
 
     try:
-        format_name      = (ai_data or {}).get("format", "other") or "other"
-        real_author      = (ai_data or {}).get("real_author", "") or performer or ""
+        format_name = (ai_data or {}).get("format", "other") or "other"
+        real_author = (ai_data or {}).get("real_author", "") or performer or ""
         analysis_summary = (ai_data or {}).get("analysis_summary", "") or ""
-        argument_arc     = (ai_data or {}).get("argument_arc", "") or ""
-        key_categories   = "; ".join((ai_data or {}).get("key_categories", []) or [])
-        timestamps       = (ai_data or {}).get("timestamps", "") or ""
+        argument_arc = (ai_data or {}).get("argument_arc", "") or ""
+        key_categories = "; ".join((ai_data or {}).get("key_categories", []) or [])
+        timestamps = (ai_data or {}).get("timestamps", "") or ""
 
         prompt = EXTRAS_PROMPT.format(
             title=title,
@@ -498,8 +522,11 @@ async def create_extras_candidates(
 
         async def _call(client):
             return await _generate_extras_content(
-                client, model=GEMINI_MODEL, prompt=prompt,
-                max_output_tokens=14000, schema=_structured_schema,
+                client,
+                model=GEMINI_MODEL,
+                prompt=prompt,
+                max_output_tokens=14000,
+                schema=_structured_schema,
             )
 
         response = await gemini_generate(GEMINI_CLIENTS, _call)
@@ -515,8 +542,12 @@ async def create_extras_candidates(
 
         if not raw_text.strip():
             await alog_gemini_response(
-                response=response, task="extras_candidates", model=GEMINI_MODEL,
-                thinking_level="low", duration_ms=_obs_ms(), json_valid=False,
+                response=response,
+                task="extras_candidates",
+                model=GEMINI_MODEL,
+                thinking_level="low",
+                duration_ms=_obs_ms(),
+                json_valid=False,
                 error="empty_response",
             )
             return {"montage_candidates": [], "highlights_candidates": []}
@@ -526,21 +557,29 @@ async def create_extras_candidates(
         s, e = clean.find("{"), clean.rfind("}")
         if s == -1 or e <= s:
             await alog_gemini_response(
-                response=response, task="extras_candidates", model=GEMINI_MODEL,
-                thinking_level="low", duration_ms=_obs_ms(), json_valid=False,
+                response=response,
+                task="extras_candidates",
+                model=GEMINI_MODEL,
+                thinking_level="low",
+                duration_ms=_obs_ms(),
+                json_valid=False,
                 error="json_not_found",
             )
             return {"montage_candidates": [], "highlights_candidates": []}
 
         try:
-            data = json.loads(clean[s:e + 1])
+            data = json.loads(clean[s : e + 1])
         except json.JSONDecodeError as exc:
             logger.warning("Extras candidates: JSONDecodeError: %s", exc)
             recovered = _recover_truncated_json(clean[s:])
             if recovered is None:
                 await alog_gemini_response(
-                    response=response, task="extras_candidates", model=GEMINI_MODEL,
-                    thinking_level="low", duration_ms=_obs_ms(), json_valid=False,
+                    response=response,
+                    task="extras_candidates",
+                    model=GEMINI_MODEL,
+                    thinking_level="low",
+                    duration_ms=_obs_ms(),
+                    json_valid=False,
                     error="json_decode_error",
                 )
                 return {"montage_candidates": [], "highlights_candidates": []}
@@ -555,9 +594,7 @@ async def create_extras_candidates(
             clip_title = _clean_field(str(item.get("title", "")))
             raw_tags = item.get("hashtags", [])
             hashtags = [
-                str(t).strip().lstrip("#")
-                for t in (raw_tags if isinstance(raw_tags, list) else [])
-                if str(t).strip()
+                str(t).strip().lstrip("#") for t in (raw_tags if isinstance(raw_tags, list) else []) if str(t).strip()
             ][:4]
 
             frags_raw = item.get("fragments", [])
@@ -580,22 +617,26 @@ async def create_extras_candidates(
                     continue
                 if prev_start is not None and abs(ss - prev_start) < 90:
                     continue
-                parsed_frags.append({
-                    "start_seconds": ss,
-                    "end_seconds": ee,
-                    "summary": _clean_field(str(frag.get("summary", ""))),
-                })
+                parsed_frags.append(
+                    {
+                        "start_seconds": ss,
+                        "end_seconds": ee,
+                        "summary": _clean_field(str(frag.get("summary", ""))),
+                    }
+                )
                 prev_start = ss
                 total_dur += fd
 
             if len(parsed_frags) >= 3 and 45 <= total_dur <= 100:
-                montage_candidates.append({
-                    "theme": theme,
-                    "title": clip_title[:120],
-                    "hashtags": hashtags,
-                    "fragments": parsed_frags,
-                    "total_dur": total_dur,
-                })
+                montage_candidates.append(
+                    {
+                        "theme": theme,
+                        "title": clip_title[:120],
+                        "hashtags": hashtags,
+                        "fragments": parsed_frags,
+                        "total_dur": total_dur,
+                    }
+                )
 
         highlights_candidates = []
         hl = data.get("highlights", {})
@@ -607,9 +648,7 @@ async def create_extras_candidates(
             clip_title = _clean_field(str(hl.get("title", "")))
             raw_tags = hl.get("hashtags", [])
             hashtags = [
-                str(t).strip().lstrip("#")
-                for t in (raw_tags if isinstance(raw_tags, list) else [])
-                if str(t).strip()
+                str(t).strip().lstrip("#") for t in (raw_tags if isinstance(raw_tags, list) else []) if str(t).strip()
             ][:4]
 
             frags_raw = hl.get("fragments", [])
@@ -627,28 +666,33 @@ async def create_extras_candidates(
                     fd = ee - ss
                     if fd < 4 or fd > 18:
                         continue
-                    parsed_frags.append({
-                        "start_seconds": ss,
-                        "end_seconds": ee,
-                        "hook": _clean_field(str(frag.get("hook", ""))),
-                    })
+                    parsed_frags.append(
+                        {
+                            "start_seconds": ss,
+                            "end_seconds": ee,
+                            "hook": _clean_field(str(frag.get("hook", ""))),
+                        }
+                    )
                     total_dur += fd
 
             if len(parsed_frags) >= 4 and 50 <= total_dur <= 100:
-                highlights_candidates.append({
-                    "title": clip_title[:120],
-                    "hashtags": hashtags,
-                    "fragments": parsed_frags,
-                    "total_dur": total_dur,
-                })
+                highlights_candidates.append(
+                    {
+                        "title": clip_title[:120],
+                        "hashtags": hashtags,
+                        "fragments": parsed_frags,
+                        "total_dur": total_dur,
+                    }
+                )
 
-        logger.info(
-            f"Extras candidates: montage={len(montage_candidates)} "
-            f"highlights={len(highlights_candidates)}"
-        )
+        logger.info(f"Extras candidates: montage={len(montage_candidates)} highlights={len(highlights_candidates)}")
         await alog_gemini_response(
-            response=response, task="extras_candidates", model=GEMINI_MODEL,
-            thinking_level="low", duration_ms=_obs_ms(), json_valid=True,
+            response=response,
+            task="extras_candidates",
+            model=GEMINI_MODEL,
+            thinking_level="low",
+            duration_ms=_obs_ms(),
+            json_valid=True,
         )
         return {
             "montage_candidates": montage_candidates,
@@ -658,40 +702,54 @@ async def create_extras_candidates(
     except Exception as e:
         logger.warning(f"create_extras_candidates error: {type(e).__name__}: {e}")
         await alog_gemini_run(
-            task="extras_candidates", model=GEMINI_MODEL, thinking_level="low",
-            duration_ms=_obs_ms(), json_valid=False,
+            task="extras_candidates",
+            model=GEMINI_MODEL,
+            thinking_level="low",
+            duration_ms=_obs_ms(),
+            json_valid=False,
             error=f"{type(e).__name__}: {str(e)[:300]}",
         )
         return {"montage_candidates": [], "highlights_candidates": []}
 
 
 def build_montage_caption(
-    theme: str, title: str, performer: str, real_author: str,
-    format_name: str, fragment_count: int, hashtags: list[str],
-    yt_url: str = "", vk_url: str = "", rutube_url: str = "",
+    theme: str,
+    title: str,
+    performer: str,
+    real_author: str,
+    format_name: str,
+    fragment_count: int,
+    hashtags: list[str],
+    yt_url: str = "",
+    vk_url: str = "",
+    rutube_url: str = "",
 ) -> str:
     author_label = real_author or performer or ""
-    title_tc     = title_case_fragment(title) if title else ""
-    first_line   = f"{title_tc} - {author_label}" if author_label else title_tc
-    context      = f"Тематическая подборка: {theme}" if theme else ""
-    links_block  = _build_links_block(yt_url, rutube_url, vk_url)
-    tags_line    = _hashtags_line(hashtags)
+    title_tc = title_case_fragment(title) if title else ""
+    first_line = f"{title_tc} - {author_label}" if author_label else title_tc
+    context = f"Тематическая подборка: {theme}" if theme else ""
+    links_block = _build_links_block(yt_url, rutube_url, vk_url)
+    tags_line = _hashtags_line(hashtags)
     parts = [p for p in [first_line, context, links_block, tags_line] if p]
     return "\n\n".join(parts)
 
 
 def build_highlights_caption(
-    title: str, performer: str, real_author: str, format_name: str,
-    fragment_count: int, hashtags: list[str],
-    yt_url: str = "", vk_url: str = "", rutube_url: str = "",
+    title: str,
+    performer: str,
+    real_author: str,
+    format_name: str,
+    fragment_count: int,
+    hashtags: list[str],
+    yt_url: str = "",
+    vk_url: str = "",
+    rutube_url: str = "",
 ) -> str:
     author_label = real_author or performer or ""
-    title_tc     = title_case_fragment(title) if title else ""
-    first_line   = f"{title_tc} - {author_label}" if author_label else title_tc
-    context      = f"Лучшие моменты ({fragment_count} фрагментов)"
-    links_block  = _build_links_block(yt_url, rutube_url, vk_url)
-    tags_line    = _hashtags_line(hashtags)
+    title_tc = title_case_fragment(title) if title else ""
+    first_line = f"{title_tc} - {author_label}" if author_label else title_tc
+    context = f"Лучшие моменты ({fragment_count} фрагментов)"
+    links_block = _build_links_block(yt_url, rutube_url, vk_url)
+    tags_line = _hashtags_line(hashtags)
     parts = [p for p in [first_line, context, links_block, tags_line] if p]
     return "\n\n".join(parts)
-
-

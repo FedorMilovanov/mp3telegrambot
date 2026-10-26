@@ -51,9 +51,7 @@ def test_generation_length_request_is_typed_and_serializable() -> None:
         metadata={"reason": "cadence"},
     )
 
-    assert GENERATION_LENGTH_REQUEST_POLICY == (
-        "model-neutral-generation-length-request-v1"
-    )
+    assert GENERATION_LENGTH_REQUEST_POLICY == ("model-neutral-generation-length-request-v1")
     assert request.as_dict() == {
         "duration_budget": 3.5,
         "attempt": 2,
@@ -202,9 +200,9 @@ def test_candidate_loop_and_facade_contain_no_voxcpm2_length_math() -> None:
     assert "backend.plan_generation_length(audio_spec, length_request)" in raw_source
     assert "length_plan.backend_options" in raw_source
 
-    assert "option_int(\"max_len\"" not in facade_source
+    assert 'option_int("max_len"' not in facade_source
     assert "estimated_steps" not in facade_source
     assert "controlled_min_len" not in facade_source
-    assert "backend_options[\"min_len\"]" not in facade_source
+    assert 'backend_options["min_len"]' not in facade_source
     assert "minimum_completion_ratio=minimum_ratio" in facade_source
     assert "backend_options=base_request.backend_options" in facade_source

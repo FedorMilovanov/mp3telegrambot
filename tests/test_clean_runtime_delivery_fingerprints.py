@@ -37,9 +37,7 @@ def test_release_contract_fingerprints_active_final_delivery_gates() -> None:
 
 
 def test_every_runtime_fingerprint_path_exists() -> None:
-    names = tuple(
-        dict.fromkeys((*contract._RENDER_MODULES, *contract._RELEASE_MODULES))
-    )
+    names = tuple(dict.fromkeys((*contract._RENDER_MODULES, *contract._RELEASE_MODULES)))
     missing = [name for name in names if not (ROOT / name).is_file()]
 
     assert missing == []

@@ -17,8 +17,7 @@ def _github_environment(monkeypatch) -> None:
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
     monkeypatch.setenv(
         "GITHUB_WORKFLOW_REF",
-        "FedorMilovanov/mp3telegrambot/"
-        ".github/workflows/tts-weighted-smoke.yml@refs/heads/main",
+        "FedorMilovanov/mp3telegrambot/.github/workflows/tts-weighted-smoke.yml@refs/heads/main",
     )
     monkeypatch.setenv("GITHUB_RUN_ID", "30712648726")
     monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "2")

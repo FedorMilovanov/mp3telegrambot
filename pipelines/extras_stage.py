@@ -10,6 +10,7 @@ Highlights по-прежнему делят один Gemini text-only запро
 остальные дополнения или уже отправленный MP3. Отмена задачи, чтение настроек
 и получение LiveDub остаются критичными, как и в исходном оркестраторе.
 """
+
 from __future__ import annotations
 
 import asyncio

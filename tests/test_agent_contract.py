@@ -32,13 +32,10 @@ def test_all_async_command_handlers_are_registered():
     command_funcs = {
         node.name
         for node in tree.body
-        if isinstance(node, ast.AsyncFunctionDef)
-        and node.name.endswith("_command")
-        and not node.name.startswith("_")
+        if isinstance(node, ast.AsyncFunctionDef) and node.name.endswith("_command") and not node.name.startswith("_")
     }
     registered_funcs = {
-        match.group(1)
-        for match in re.finditer(r'CommandHandler\("[^"]+"\s*,\s*([A-Za-z_][A-Za-z0-9_]*)', main)
+        match.group(1) for match in re.finditer(r'CommandHandler\("[^"]+"\s*,\s*([A-Za-z_][A-Za-z0-9_]*)', main)
     }
 
     missing = command_funcs - registered_funcs

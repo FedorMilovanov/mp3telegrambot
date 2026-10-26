@@ -7,6 +7,7 @@ compares each plausible candidate with the matching source-language window and
 also checks the Russian syntactic ending actually produced. It never changes
 the supplied Russian text and never relaxes the anti-shouting voice limits.
 """
+
 from __future__ import annotations
 
 import math
@@ -44,12 +45,7 @@ def candidate_pitch_evidence_ok(candidate: dict[str, Any]) -> bool:
     voiced = _positive(pitch.get("voiced_ratio"), low=0.12, high=1.0)
     median = _positive(pitch.get("f0_median"), low=45.0, high=420.0)
     p90 = _positive(pitch.get("f0_p90"), low=50.0, high=500.0)
-    return bool(
-        voiced is not None
-        and median is not None
-        and p90 is not None
-        and float(p90) >= float(median) * 0.75
-    )
+    return bool(voiced is not None and median is not None and p90 is not None and float(p90) >= float(median) * 0.75)
 
 
 def _ratio(value: float, target: float) -> float:
@@ -166,10 +162,7 @@ def source_prosody_penalty(
     candidate_p90 = _positive(pitch.get("f0_p90"), low=50.0, high=500.0)
     candidate_active = _positive(activity.get("active_ratio"), low=0.0, high=1.0)
     candidate_gap = _positive(activity.get("max_internal_gap"), low=0.0, high=10.0)
-    if any(
-        value is None
-        for value in (candidate_voiced, candidate_median, candidate_p90)
-    ):
+    if any(value is None for value in (candidate_voiced, candidate_median, candidate_p90)):
         acoustic = _penalize_unavailable_candidate(
             result,
             "невалидные candidate F0/voiced метрики",
@@ -187,9 +180,7 @@ def source_prosody_penalty(
         else 0.0
     )
     gap_delta = (
-        abs(float(candidate_gap) - float(target_gap))
-        if candidate_gap is not None and target_gap is not None
-        else 0.0
+        abs(float(candidate_gap) - float(target_gap)) if candidate_gap is not None and target_gap is not None else 0.0
     )
 
     tier_weight = {
@@ -233,7 +224,7 @@ __all__ = [
     "source_prosody_penalty",
 ]
 
-_BASE_ALL = tuple(globals().get('__all__', ()))
+_BASE_ALL = tuple(globals().get("__all__", ()))
 
 from pathlib import Path
 
@@ -247,6 +238,7 @@ CANDIDATE_CONTINUATION_POLICY = "defer-short-continuation-to-timeline-v1"
 _legacy_evaluate_candidate_cadence = evaluate_candidate_cadence
 
 _legacy_source_prosody_penalty = source_prosody_penalty
+
 
 def _defer_short_continuation(result: dict[str, Any]) -> dict[str, Any]:
     revised = dict(result)
@@ -267,13 +259,13 @@ def _defer_short_continuation(result: dict[str, Any]) -> dict[str, Any]:
     )
     return revised
 
+
 def evaluate_candidate_cadence(
     candidate: dict[str, Any],
     segment: dict[str, Any],
 ) -> dict[str, Any]:
-    return _defer_short_continuation(
-        dict(_legacy_evaluate_candidate_cadence(candidate, segment))
-    )
+    return _defer_short_continuation(dict(_legacy_evaluate_candidate_cadence(candidate, segment)))
+
 
 def source_prosody_penalty(
     candidate: dict[str, Any],
@@ -290,6 +282,7 @@ def source_prosody_penalty(
     diagnostic_only = source_prosody_policy.is_diagnostic_only(segment)
     match["source_prosody_ranking_enabled"] = not diagnostic_only
     return 0.0 if diagnostic_only else diagnostic
+
 
 evaluate_candidate_cadence = evaluate_candidate_cadence
 

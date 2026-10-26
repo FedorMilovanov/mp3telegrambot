@@ -6,6 +6,7 @@ This utility removes conflicting flat TTS keys, writes the canonical nested
 speech profile structure, validates it through the production loader, and
 restores the original request automatically if validation fails.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -147,17 +148,17 @@ def write_project_notes(project_root: Path, request: dict[str, Any]) -> Path:
 
 ```text
 Project ID:      {project_id}
-Backend:         {request.get('speech_backend', '')}
-Model profile:   {request.get('speech_model_profile', '')}
-Model archive:   {backend_config.get('vox_archive', '')}
-CPU venv:        {backend_config.get('cpu_venv', '')}
-Threads:         {options.get('threads', '')}
-Base steps:      {options.get('steps', '')}
-CFG:             {options.get('cfg', '')}
-Cache length:    {options.get('cache_length', '')}
-Base seed:       {options.get('base_seed', '')}
-Original level:  {request.get('original_level', '')}
-Russian delay:   {request.get('russian_delay_ms', '')} ms
+Backend:         {request.get("speech_backend", "")}
+Model profile:   {request.get("speech_model_profile", "")}
+Model archive:   {backend_config.get("vox_archive", "")}
+CPU venv:        {backend_config.get("cpu_venv", "")}
+Threads:         {options.get("threads", "")}
+Base steps:      {options.get("steps", "")}
+CFG:             {options.get("cfg", "")}
+Cache length:    {options.get("cache_length", "")}
+Base seed:       {options.get("base_seed", "")}
+Original level:  {request.get("original_level", "")}
+Russian delay:   {request.get("russian_delay_ms", "")} ms
 GPU:             disabled for this CPU profile
 ```
 
@@ -197,9 +198,7 @@ py -3.13 -m tools.voxcpm2.repair_project_request `
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="Safely repair one Dub Studio VoxCPM2 request.json."
-    )
+    parser = argparse.ArgumentParser(description="Safely repair one Dub Studio VoxCPM2 request.json.")
     parser.add_argument("--project-root", required=True, type=Path)
     parser.add_argument("--threads", type=int, default=10)
     parser.add_argument("--steps", type=int, default=22)
@@ -251,14 +250,20 @@ def main() -> None:
 
     print("=== VOXCPM2 REQUEST REPAIR ===")
     print(f"Project: {project_root}")
-    print(json.dumps({
-        "speech_backend": repaired["speech_backend"],
-        "speech_model_profile": repaired["speech_model_profile"],
-        "speech_options": repaired["speech_options"],
-        "speech_backend_config": repaired["speech_backend_config"],
-        "original_level": repaired["original_level"],
-        "russian_delay_ms": repaired["russian_delay_ms"],
-    }, ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            {
+                "speech_backend": repaired["speech_backend"],
+                "speech_model_profile": repaired["speech_model_profile"],
+                "speech_options": repaired["speech_options"],
+                "speech_backend_config": repaired["speech_backend_config"],
+                "original_level": repaired["original_level"],
+                "russian_delay_ms": repaired["russian_delay_ms"],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
 
     if not args.write:
         print("DRY RUN: request.json не изменён. Добавьте --write для применения.")

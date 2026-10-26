@@ -17,12 +17,7 @@ from handlers.mode_command import (
 
 
 def _callbacks(markup) -> list[str]:
-    return [
-        button.callback_data
-        for row in markup.inline_keyboard
-        for button in row
-        if button.callback_data
-    ]
+    return [button.callback_data for row in markup.inline_keyboard for button in row if button.callback_data]
 
 
 def test_unified_mode_menu_exposes_clear_admin_paths() -> None:
@@ -41,9 +36,7 @@ def test_unified_mode_menu_exposes_clear_admin_paths() -> None:
 
 
 def test_regular_user_sees_only_normal_processing_modes() -> None:
-    assert _callbacks(_mode_home_keyboard("rus", is_admin=False)) == [
-        "mode_menu:analysis"
-    ]
+    assert _callbacks(_mode_home_keyboard("rus", is_admin=False)) == ["mode_menu:analysis"]
 
 
 def test_analysis_menu_is_compact_and_has_back_button() -> None:
@@ -83,21 +76,10 @@ def test_dub_wizard_handlers_run_before_generic_link_handlers() -> None:
     application = ApplicationBuilder().token("123456:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi").build()
     register_dub_wizard_handlers(application)
 
-    callback_handlers = [
-        handler
-        for handler in application.handlers[-60]
-        if isinstance(handler, CallbackQueryHandler)
-    ]
-    assert any(
-        getattr(handler.pattern, "pattern", "") == r"^dubwiz\|"
-        for handler in callback_handlers
-    )
+    callback_handlers = [handler for handler in application.handlers[-60] if isinstance(handler, CallbackQueryHandler)]
+    assert any(getattr(handler.pattern, "pattern", "") == r"^dubwiz\|" for handler in callback_handlers)
 
-    early_message_handlers = [
-        handler
-        for handler in application.handlers[-59]
-        if isinstance(handler, MessageHandler)
-    ]
+    early_message_handlers = [handler for handler in application.handlers[-59] if isinstance(handler, MessageHandler)]
     assert len(early_message_handlers) == 2
 
 

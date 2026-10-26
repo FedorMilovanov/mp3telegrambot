@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Canonical person-name normalization for captions, titles and generated prose."""
+
 from __future__ import annotations
 
 import re

@@ -32,9 +32,14 @@ def test_russian_only_mix_never_uses_source_audio(monkeypatch, tmp_path: Path) -
 def test_backend_points_direct_mode_to_real_owner() -> None:
     backend = get_backend("voxcpm2")
     repo = Path(__file__).resolve().parents[1]
-    path, module = backend._master_contract(repo, {"translation_mode": "direct"}) if hasattr(backend, "_master_contract") else (None, None)
+    path, module = (
+        backend._master_contract(repo, {"translation_mode": "direct"})
+        if hasattr(backend, "_master_contract")
+        else (None, None)
+    )
     if path is None:
         from services.speech_backends import voxcpm2
+
         path, module = voxcpm2._master_contract(repo, {"translation_mode": "direct"})
     assert path.name == "master_direct_russian_only.py"
     assert module == "tools.voxcpm2.master_direct_russian_only"

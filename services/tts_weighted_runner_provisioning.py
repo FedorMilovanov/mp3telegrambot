@@ -8,6 +8,7 @@ three machine-environment bindings consumed by the manual weighted smoke, and
 executes the existing no-weights runner doctor. Only a privacy-allowlisted
 setup report is retained.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
@@ -29,12 +30,8 @@ from services.tts_weighted_smoke_runner import (
     run_weighted_tts_runner_doctor,
 )
 
-TTS_WEIGHTED_RUNNER_PROVISIONING_POLICY = (
-    "windows-weighted-tts-runner-provisioning-v1"
-)
-TTS_WEIGHTED_RUNNER_PROVISIONING_REPORT_POLICY = (
-    "privacy-safe-weighted-tts-runner-provisioning-report-v1"
-)
+TTS_WEIGHTED_RUNNER_PROVISIONING_POLICY = "windows-weighted-tts-runner-provisioning-v1"
+TTS_WEIGHTED_RUNNER_PROVISIONING_REPORT_POLICY = "privacy-safe-weighted-tts-runner-provisioning-report-v1"
 REQUIRED_RUNNER_LABELS = ("self-hosted", "Windows", "X64", "tts-weights")
 REQUIRED_ENVIRONMENT_KEYS = (
     "TTS_SMOKE_PYTHON",
@@ -82,10 +79,7 @@ def _safe_github_slug(value: object, *, field_name: str) -> str:
     text = str(value or "").strip()
     if not 1 <= len(text) <= 100:
         raise ValueError(f"{field_name} имеет недопустимую длину.")
-    if any(
-        not (char.isascii() and (char.isalnum() or char in "-_."))
-        for char in text
-    ):
+    if any(not (char.isascii() and (char.isalnum() or char in "-_.")) for char in text):
         raise ValueError(f"{field_name} содержит запрещённые символы.")
     if text[0] in ".-" or text[-1] in ".-" or ".." in text:
         raise ValueError(f"{field_name} имеет небезопасную форму.")
@@ -103,10 +97,7 @@ def _github_target_parts(value: object) -> tuple[str, ...]:
     parts = tuple(part for part in text.split("/") if part)
     if len(parts) not in {1, 2}:
         raise ValueError("GitHub target должен иметь форму owner или owner/name.")
-    return tuple(
-        _safe_github_slug(part, field_name="GitHub target segment")
-        for part in parts
-    )
+    return tuple(_safe_github_slug(part, field_name="GitHub target segment") for part in parts)
 
 
 def _normalize_repository(value: object) -> str:
@@ -149,9 +140,7 @@ def _strict_json_object(path: Path, *, label: str) -> dict[str, Any]:
 
 def _positive_int(value: object, *, field_name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise RuntimeError(
-            f"Runner config {field_name} должен быть положительным int."
-        )
+        raise RuntimeError(f"Runner config {field_name} должен быть положительным int.")
     return value
 
 
@@ -159,10 +148,7 @@ def _safe_runner_name(value: object) -> str:
     text = str(value or "").strip()
     if not 1 <= len(text) <= 128:
         raise RuntimeError("Runner config agentName имеет недопустимую длину.")
-    if any(
-        not (char.isascii() and (char.isalnum() or char in "-_."))
-        for char in text
-    ):
+    if any(not (char.isascii() and (char.isalnum() or char in "-_.")) for char in text):
         raise RuntimeError("Runner config agentName содержит запрещённые символы.")
     if text[0] in ".-" or text[-1] in ".-" or ".." in text:
         raise RuntimeError("Runner config agentName имеет небезопасную форму.")
@@ -175,9 +161,7 @@ def _safe_work_folder(value: object) -> str:
         raise RuntimeError("Runner config workFolder имеет недопустимую форму.")
     parts = [part for part in text.split("/") if part]
     if not parts or any(part in {".", ".."} for part in parts):
-        raise RuntimeError(
-            "Runner config workFolder содержит небезопасный сегмент."
-        )
+        raise RuntimeError("Runner config workFolder содержит небезопасный сегмент.")
     return text
 
 
@@ -200,39 +184,23 @@ def _service_name(path: Path) -> str:
     if not path.is_file():
         raise RuntimeError("Runner .service descriptor отсутствует.")
     if not 1 <= path.stat().st_size <= _MAX_SERVICE_DESCRIPTOR_BYTES:
-        raise RuntimeError(
-            "Runner .service descriptor имеет недопустимый размер."
-        )
+        raise RuntimeError("Runner .service descriptor имеет недопустимый размер.")
     try:
-        lines = [
-            line.strip()
-            for line in path.read_text(encoding="utf-8-sig").splitlines()
-        ]
+        lines = [line.strip() for line in path.read_text(encoding="utf-8-sig").splitlines()]
     except (OSError, UnicodeError) as exc:
         raise RuntimeError("Runner .service descriptor не читается.") from exc
     lines = [line for line in lines if line]
     if len(lines) != 1:
-        raise RuntimeError(
-            "Runner .service descriptor должен содержать одну строку."
-        )
+        raise RuntimeError("Runner .service descriptor должен содержать одну строку.")
     name = lines[0]
     prefix = "actions.runner."
     suffix = ".service"
     if not name.startswith(prefix) or not name.endswith(suffix):
-        raise RuntimeError(
-            "Runner .service descriptor имеет неизвестный формат."
-        )
+        raise RuntimeError("Runner .service descriptor имеет неизвестный формат.")
     if not 20 <= len(name) <= 240 or ".." in name:
-        raise RuntimeError(
-            "Runner .service descriptor имеет небезопасную длину."
-        )
-    if any(
-        not (char.isascii() and (char.isalnum() or char in "-_."))
-        for char in name
-    ):
-        raise RuntimeError(
-            "Runner .service descriptor содержит запрещённые символы."
-        )
+        raise RuntimeError("Runner .service descriptor имеет небезопасную длину.")
+    if any(not (char.isascii() and (char.isalnum() or char in "-_.")) for char in name):
+        raise RuntimeError("Runner .service descriptor содержит запрещённые символы.")
     return name
 
 
@@ -246,9 +214,7 @@ def _sha256(path: Path) -> str:
 
 def _default_service_probe(service_name: str) -> bool:
     if platform.system() != "Windows":
-        raise RuntimeError(
-            "Проверка Windows runner service запущена не на Windows."
-        )
+        raise RuntimeError("Проверка Windows runner service запущена не на Windows.")
     executable = shutil.which("sc.exe") or shutil.which("sc")
     if not executable:
         raise RuntimeError("Windows Service Controller не найден.")
@@ -292,16 +258,12 @@ def _runner_installation(
     _safe_work_folder(settings.get("workFolder"))
     scope = _runner_scope(settings.get("gitHubUrl"), config.repository)
     if settings.get("ephemeral") is not False:
-        raise RuntimeError(
-            "Weighted TTS runner должен быть persistent, не ephemeral."
-        )
+        raise RuntimeError("Weighted TTS runner должен быть persistent, не ephemeral.")
 
     descriptor = root / ".service"
     service_name = _service_name(descriptor)
     if not service_probe(service_name):
-        raise RuntimeError(
-            "GitHub Actions runner service не находится в Running state."
-        )
+        raise RuntimeError("GitHub Actions runner service не находится в Running state.")
     return {
         "configured": True,
         "persistent": True,
@@ -312,9 +274,7 @@ def _runner_installation(
         "required_files": len(_REQUIRED_RUNNER_FILES),
         "agent_id": agent_id,
         "pool_id": pool_id,
-        "agent_name_sha256": hashlib.sha256(
-            agent_name.encode("utf-8")
-        ).hexdigest(),
+        "agent_name_sha256": hashlib.sha256(agent_name.encode("utf-8")).hexdigest(),
         "runner_config_sha256": _sha256(runner_path),
         "service_descriptor_sha256": _sha256(descriptor),
     }
@@ -331,18 +291,14 @@ def _environment_binding(
     for key, path in expected.items():
         raw = os.environ.get(key, "").strip()
         if not raw:
-            raise RuntimeError(
-                f"Runner environment binding отсутствует: {key}."
-            )
+            raise RuntimeError(f"Runner environment binding отсутствует: {key}.")
         actual = Path(raw).expanduser().resolve()
         try:
             same = os.path.samefile(actual, path)
         except OSError:
             same = actual == path
         if not same:
-            raise RuntimeError(
-                f"Runner environment binding не совпадает: {key}."
-            )
+            raise RuntimeError(f"Runner environment binding не совпадает: {key}.")
     return {
         "verified": True,
         "keys": list(REQUIRED_ENVIRONMENT_KEYS),
@@ -375,64 +331,40 @@ def _doctor_summary(report: Mapping[str, Any]) -> dict[str, Any]:
         environment,
     )
     if not all(isinstance(item, Mapping) for item in sections):
-        raise RuntimeError(
-            "Runner doctor report не содержит обязательные sections."
-        )
-    if (
-        runtime.get("weights_loaded") is not False
-        or runtime.get("session_opened") is not False
-    ):
-        raise RuntimeError(
-            "Runner doctor нарушил no-weights/no-session invariant."
-        )
+        raise RuntimeError("Runner doctor report не содержит обязательные sections.")
+    if runtime.get("weights_loaded") is not False or runtime.get("session_opened") is not False:
+        raise RuntimeError("Runner doctor нарушил no-weights/no-session invariant.")
     storage_keys = ("write", "fsync", "replace", "readback", "cleanup")
     if not all(storage.get(key) is True for key in storage_keys):
-        raise RuntimeError(
-            "Runner doctor не подтвердил atomic storage contract."
-        )
+        raise RuntimeError("Runner doctor не подтвердил atomic storage contract.")
     modules = imports.get("modules")
     if not isinstance(modules, list) or not modules:
         raise RuntimeError("Runner doctor не подтвердил runtime imports.")
     module_names = sorted(
-        str(item.get("name") or "")
-        for item in modules
-        if isinstance(item, Mapping) and str(item.get("name") or "")
+        str(item.get("name") or "") for item in modules if isinstance(item, Mapping) and str(item.get("name") or "")
     )
     source = profile.get("source")
     if not isinstance(source, Mapping):
-        raise RuntimeError(
-            "Runner doctor не содержит model source evidence."
-        )
+        raise RuntimeError("Runner doctor не содержит model source evidence.")
     threads = environment.get("configured_threads")
-    invalid_threads = (
-        threads is not None
-        and (
-            isinstance(threads, bool)
-            or not isinstance(threads, int)
-            or threads <= 0
-        )
+    invalid_threads = threads is not None and (
+        isinstance(threads, bool) or not isinstance(threads, int) or threads <= 0
     )
     if invalid_threads:
-        raise RuntimeError(
-            "Runner doctor вернул некорректный configured_threads."
-        )
+        raise RuntimeError("Runner doctor вернул некорректный configured_threads.")
     return {
         "policy": str(report["policy"]),
         "profile_id": str(profile.get("profile_id") or ""),
         "backend_id": str(backend.get("backend_id") or ""),
         "model_revision": str(profile.get("model_revision") or ""),
-        "profile_fingerprint": str(
-            profile.get("profile_fingerprint") or ""
-        ),
+        "profile_fingerprint": str(profile.get("profile_fingerprint") or ""),
         "manifest_sha256": str(source.get("source_sha256") or ""),
         "model_config_sha256": str(model.get("config_sha256") or ""),
         "runtime_modules": module_names,
         "ffprobe_version": str(ffprobe.get("version") or ""),
         "atomic_storage": True,
         "offline_hf": environment.get("hf_hub_offline") is True,
-        "offline_transformers": (
-            environment.get("transformers_offline") is True
-        ),
+        "offline_transformers": (environment.get("transformers_offline") is True),
         "configured_threads": threads,
         "python_version": str(runtime.get("python_version") or ""),
         "platform_system": str(runtime.get("platform_system") or ""),
@@ -445,9 +377,7 @@ def _doctor_summary(report: Mapping[str, Any]) -> dict[str, Any]:
 def _prepare_work_directory(path: Path) -> None:
     if path.exists():
         if not path.is_dir() or any(path.iterdir()):
-            raise RuntimeError(
-                "Provisioning work directory должна быть пустой директорией."
-            )
+            raise RuntimeError("Provisioning work directory должна быть пустой директорией.")
     else:
         path.mkdir(parents=True, exist_ok=False)
 
@@ -456,19 +386,13 @@ def run_weighted_tts_runner_provisioning_check(
     config: WeightedTTSRunnerProvisioningConfig,
     *,
     service_probe: Callable[[str], bool] = _default_service_probe,
-    doctor_runner: Callable[
-        [WeightedTTSSmokeRunnerConfig], Mapping[str, Any]
-    ] = run_weighted_tts_runner_doctor,
+    doctor_runner: Callable[[WeightedTTSSmokeRunnerConfig], Mapping[str, Any]] = run_weighted_tts_runner_doctor,
 ) -> dict[str, Any]:
     """Validate one configured Windows runner and retain a sanitized report."""
     if not isinstance(config, WeightedTTSRunnerProvisioningConfig):
-        raise TypeError(
-            "config должен быть WeightedTTSRunnerProvisioningConfig."
-        )
+        raise TypeError("config должен быть WeightedTTSRunnerProvisioningConfig.")
     if platform.system() != "Windows" and service_probe is _default_service_probe:
-        raise RuntimeError(
-            "Weighted TTS runner provisioning поддерживает только Windows."
-        )
+        raise RuntimeError("Weighted TTS runner provisioning поддерживает только Windows.")
     if not config.python_executable.is_file():
         raise RuntimeError("Configured trusted Python executable не найден.")
     if not config.model_directory.is_dir():
@@ -497,13 +421,9 @@ def run_weighted_tts_runner_provisioning_check(
         report = {
             "schema_version": 1,
             "policy": TTS_WEIGHTED_RUNNER_PROVISIONING_POLICY,
-            "report_policy": (
-                TTS_WEIGHTED_RUNNER_PROVISIONING_REPORT_POLICY
-            ),
+            "report_policy": (TTS_WEIGHTED_RUNNER_PROVISIONING_REPORT_POLICY),
             "passed": True,
-            "completed_at": datetime.now(timezone.utc).isoformat(
-                timespec="seconds"
-            ),
+            "completed_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "repository": config.repository,
             "required_labels": list(REQUIRED_RUNNER_LABELS),
             "runner": runner,

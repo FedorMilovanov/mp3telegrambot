@@ -13,11 +13,13 @@ async def test_singleflight_runs_one_companion_transaction() -> None:
     delivery._COMPANION_INFLIGHT.clear()
     delivery._COMPANION_SENT.clear()
     calls = 0
+
     async def operation() -> bool:
         nonlocal calls
         calls += 1
         await asyncio.sleep(0)
         return True
+
     key = ("new", "chat", "reply", "video")
     first, second = await asyncio.gather(delivery._singleflight(key, operation), delivery._singleflight(key, operation))
     assert first is True and second is True

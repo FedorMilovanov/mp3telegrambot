@@ -7,6 +7,7 @@ that profile resolution, imports, model discovery, reference audio, ffprobe and
 atomic temporary storage are ready without loading model weights or retaining
 local paths in its report.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -93,8 +94,7 @@ def _probe_imports(identity: BackendIdentity) -> dict[str, Any]:
             # Import exceptions may embed private venv/repository paths. Preserve
             # only the module and exception class in any workflow-visible message.
             raise RuntimeError(
-                "Weighted smoke runner не импортирует required module "
-                f"{name}: {type(exc).__name__}"
+                f"Weighted smoke runner не импортирует required module {name}: {type(exc).__name__}"
             ) from exc
         modules[name] = module
         imported.append({"name": name, "version": _module_version(module)})
@@ -129,9 +129,7 @@ def _probe_ffprobe() -> dict[str, Any]:
     )
     if process.returncode != 0:
         # Do not copy stderr: custom ffprobe wrappers may print private paths.
-        raise RuntimeError(
-            f"ffprobe -version завершился с кодом {process.returncode}."
-        )
+        raise RuntimeError(f"ffprobe -version завершился с кодом {process.returncode}.")
     first_line = (process.stdout or "").splitlines()[0:1]
     line = first_line[0].strip() if first_line else ""
     if not line.casefold().startswith(_FFPROBE_VERSION_PREFIX):
@@ -198,11 +196,7 @@ def _environment_facts(runtime: WeightedTTSSmokeRuntime) -> dict[str, Any]:
     )
     values = dict(environment.set_values)
     thread_value = runtime.resolution.options.get("threads")
-    threads = (
-        int(thread_value)
-        if isinstance(thread_value, int) and not isinstance(thread_value, bool)
-        else None
-    )
+    threads = int(thread_value) if isinstance(thread_value, int) and not isinstance(thread_value, bool) else None
     return {
         "backend_id": environment.backend_id,
         "set_keys": sorted(str(key) for key in values),
@@ -242,9 +236,7 @@ def run_weighted_tts_runner_doctor(
     if not isinstance(config, WeightedTTSSmokeRunnerConfig):
         raise TypeError("config должен быть WeightedTTSSmokeRunnerConfig.")
     _validate_expected_python(config.expected_python)
-    runtime = runtime or resolve_weighted_smoke_runtime(
-        SimpleNamespace(profile_id=config.profile_id)
-    )
+    runtime = runtime or resolve_weighted_smoke_runtime(SimpleNamespace(profile_id=config.profile_id))
     if runtime.profile.profile_id != config.profile_id:
         raise RuntimeError("Runner doctor runtime разрешил другой profile_id.")
     if not runtime.profile.production_enabled:

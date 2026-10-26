@@ -8,6 +8,7 @@ YouTube subtitles, falls back to automatic captions and finally CPU Whisper,
 then either performs a maximum-quality Gemini translation or renders a user
 translation without rewriting it.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -31,7 +32,10 @@ _PROJECT_RE = re.compile(r"^dub-[a-f0-9]{10}$")
 _VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{6,32}$")
 _INVALID_WINDOWS_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _RESERVED_WINDOWS_NAMES = {
-    "con", "prn", "aux", "nul",
+    "con",
+    "prn",
+    "aux",
+    "nul",
     *(f"com{i}" for i in range(1, 10)),
     *(f"lpt{i}" for i in range(1, 10)),
 }
@@ -165,7 +169,14 @@ def parse_manual_vtt(path: Path) -> list[pipeline.Cue]:
     return cues
 
 
-def _download_track(url: str, source_dir: Path, *, kind: str, language: str, manual_vtt_parser: Callable[[Path], list[pipeline.Cue]] | None = None) -> list[pipeline.Cue]:
+def _download_track(
+    url: str,
+    source_dir: Path,
+    *,
+    kind: str,
+    language: str,
+    manual_vtt_parser: Callable[[Path], list[pipeline.Cue]] | None = None,
+) -> list[pipeline.Cue]:
     for old in source_dir.glob("preferred_caption*.vtt"):
         old.unlink(missing_ok=True)
     template = source_dir / "preferred_caption.%(language)s.%(ext)s"
@@ -246,13 +257,25 @@ def acquire_transcript(
     used_kind = preferred_kind
     used_language = preferred_language
     if preferred_kind in {"manual", "automatic"}:
-        cues = _download_track(source_url, source_dir, kind=preferred_kind, language=preferred_language, manual_vtt_parser=manual_vtt_parser)
+        cues = _download_track(
+            source_url,
+            source_dir,
+            kind=preferred_kind,
+            language=preferred_language,
+            manual_vtt_parser=manual_vtt_parser,
+        )
     if not cues and preferred_kind == "manual":
         automatic = metadata.get("automatic_captions") or {}
-        ranked = _language_priority(automatic.keys(), str(metadata.get("language") or "")) if isinstance(automatic, dict) else []
+        ranked = (
+            _language_priority(automatic.keys(), str(metadata.get("language") or ""))
+            if isinstance(automatic, dict)
+            else []
+        )
         if ranked:
             used_kind, used_language = "automatic", ranked[0]
-            cues = _download_track(source_url, source_dir, kind="automatic", language=used_language, manual_vtt_parser=manual_vtt_parser)
+            cues = _download_track(
+                source_url, source_dir, kind="automatic", language=used_language, manual_vtt_parser=manual_vtt_parser
+            )
     if not cues:
         cues, used_language = whisper_transcribe_auto(source, model_name=whisper_model)
         used_kind = "whisper"
@@ -365,12 +388,14 @@ ID строго один к одному. Верни только JSON: {{"segme
         available = max(1.0, float(source["end"]) - float(source["start"]))
         rate = len(translated["russian"].split()) / available
         if rate > 3.25:
-            overloaded.append({
-                "id": source["id"],
-                "seconds": round(available, 3),
-                "source": source.get("source") or source.get("english") or "",
-                "russian": translated["russian"],
-            })
+            overloaded.append(
+                {
+                    "id": source["id"],
+                    "seconds": round(available, 3),
+                    "source": source.get("source") or source.get("english") or "",
+                    "russian": translated["russian"],
+                }
+            )
     if overloaded:
         compression_prompt = f"""
 Сократи только перегруженные русские реплики до естественной произносимой длины.
@@ -409,16 +434,23 @@ def write_translation_template(
         "",
     ]
     for group in groups:
-        lines.extend([
-            f"[{group['id']}] {group['start']:.3f} --> {group['end']:.3f}",
-            f"EN: {group.get('source') or group.get('english') or ''}",
-            "RU:",
-            "",
-        ])
+        lines.extend(
+            [
+                f"[{group['id']}] {group['start']:.3f} --> {group['end']:.3f}",
+                f"EN: {group.get('source') or group.get('english') or ''}",
+                "RU:",
+                "",
+            ]
+        )
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
 
-def parse_custom_translation(text: str, groups: list[dict[str, Any]], *, validator: Callable[[Any, list[dict[str, Any]]], list[dict[str, Any]]] = _validate_translation_payload) -> list[dict[str, Any]]:
+def parse_custom_translation(
+    text: str,
+    groups: list[dict[str, Any]],
+    *,
+    validator: Callable[[Any, list[dict[str, Any]]], list[dict[str, Any]]] = _validate_translation_payload,
+) -> list[dict[str, Any]]:
     raw = str(text or "").strip()
     if not raw:
         raise RuntimeError("Перевод пуст.")
@@ -454,7 +486,9 @@ def parse_custom_translation(text: str, groups: list[dict[str, Any]], *, validat
 
     paragraphs = [re.sub(r"\s+", " ", item).strip() for item in re.split(r"\n\s*\n", raw) if item.strip()]
     if len(paragraphs) == len(groups):
-        return [{"id": int(group["id"]), "russian": paragraph} for group, paragraph in zip(groups, paragraphs, strict=True)]
+        return [
+            {"id": int(group["id"]), "russian": paragraph} for group, paragraph in zip(groups, paragraphs, strict=True)
+        ]
     raise RuntimeError(
         f"Не удалось сопоставить перевод: нужно {len(groups)} блоков. "
         "Используйте присланный шаблон с метками [1], [2] и строками RU:."
@@ -524,20 +558,20 @@ def _build_render_segments(
         source_end = min(duration, float(source["end"]))
         render_end = max(start + 1.25, source_end - delay)
         profile = "composite" if index == len(groups) or index % 4 == 0 else "extended"
-        render_segments.append({
-            "id": index,
-            "start": round(start, 3),
-            "end": round(render_end, 3),
-            "start_delay_ms": delay_ms,
-            "reference_profile": profile,
-            "tail_guard": 0.36 if profile == "extended" else 0.42,
-            "text": translated["russian"],
-            "source_end": round(source_end, 3),
-            "source": source.get("source") or "",
-        })
-        subtitles.append(
-            pipeline.Cue(min(duration, start + delay), source_end, translated["russian"])
+        render_segments.append(
+            {
+                "id": index,
+                "start": round(start, 3),
+                "end": round(render_end, 3),
+                "start_delay_ms": delay_ms,
+                "reference_profile": profile,
+                "tail_guard": 0.36 if profile == "extended" else 0.42,
+                "text": translated["russian"],
+                "source_end": round(source_end, 3),
+                "source": source.get("source") or "",
+            }
         )
+        subtitles.append(pipeline.Cue(min(duration, start + delay), source_end, translated["russian"]))
     return render_segments, subtitles
 
 
@@ -562,22 +596,22 @@ def _run_voxcpm_and_master(
     extended_reference = reference_dir / "extended_reference.wav"
     composite_reference = reference_dir / "composite_reference.wav"
     extended_intervals, composite_intervals = pipeline.reference_intervals(cues, duration)
-    pipeline.build_reference(source, extended_intervals, extended_reference, target_seconds=min(24.0, max(12.0, duration * 0.45)))
-    pipeline.build_reference(source, composite_intervals, composite_reference, target_seconds=min(21.0, max(10.0, duration * 0.38)))
+    pipeline.build_reference(
+        source, extended_intervals, extended_reference, target_seconds=min(24.0, max(12.0, duration * 0.45))
+    )
+    pipeline.build_reference(
+        source, composite_intervals, composite_reference, target_seconds=min(21.0, max(10.0, duration * 0.38))
+    )
 
     repo = Path(__file__).resolve().parents[2]
     backend = get_backend(request.get("speech_backend") or DEFAULT_BACKEND_ID)
     missing = backend.capabilities().missing()
     if missing:
-        raise RuntimeError(
-            f"Speech backend {backend.backend_id} lacks production capabilities: {', '.join(missing)}."
-        )
+        raise RuntimeError(f"Speech backend {backend.backend_id} lacks production capabilities: {', '.join(missing)}.")
     runtime = backend.runtime_paths(repo, request)
     cpu_python = runtime.cpu_python
     if not cpu_python.is_file():
-        raise RuntimeError(
-            f"CPU Python не найден для backend={backend.backend_id}: {cpu_python}"
-        )
+        raise RuntimeError(f"CPU Python не найден для backend={backend.backend_id}: {cpu_python}")
 
     threads = max(1, int(request.get("threads") or 10))
     steps = max(1, int(request.get("steps") or 16))
@@ -609,10 +643,7 @@ def _run_voxcpm_and_master(
     )
     result = subprocess.run(synth, cwd=str(repo), env=env, check=False)
     if result.returncode != 0:
-        raise RuntimeError(
-            f"Speech backend {backend.backend_id} CPU-синтез завершился "
-            f"с кодом {result.returncode}."
-        )
+        raise RuntimeError(f"Speech backend {backend.backend_id} CPU-синтез завершился с кодом {result.returncode}.")
 
     log("=== CONSTANT MIX / FINAL MASTER ===")
     master = backend.build_master_command(
@@ -673,6 +704,7 @@ def default_project_route() -> ProjectRoute:
         delay_ms=_default_delay_ms,
         finalize=_no_finalize,
     )
+
 
 def main(route: ProjectRoute | None = None) -> None:
     route = route or default_project_route()
@@ -775,14 +807,26 @@ def main(route: ProjectRoute | None = None) -> None:
 
     if args.prepare_only:
         manifest_path = output_dir / "manifest.json"
-        base_manifest.update({
-            "phase": "awaiting_custom_translation",
-            "telegram_outputs": [
-                _telegram_entry(template, filename=f"{russian_title} — шаблон перевода.txt", label="Шаблон для вашего перевода"),
-                _telegram_entry(source_txt, filename=f"{russian_title} — точная расшифровка.txt", label=f"Исходная расшифровка ({caption_origin})"),
-                _telegram_entry(source_srt, filename=f"{russian_title} — исходные субтитры.srt", label="Исходные субтитры с таймкодами"),
-            ],
-        })
+        base_manifest.update(
+            {
+                "phase": "awaiting_custom_translation",
+                "telegram_outputs": [
+                    _telegram_entry(
+                        template, filename=f"{russian_title} — шаблон перевода.txt", label="Шаблон для вашего перевода"
+                    ),
+                    _telegram_entry(
+                        source_txt,
+                        filename=f"{russian_title} — точная расшифровка.txt",
+                        label=f"Исходная расшифровка ({caption_origin})",
+                    ),
+                    _telegram_entry(
+                        source_srt,
+                        filename=f"{russian_title} — исходные субтитры.srt",
+                        label="Исходные субтитры с таймкодами",
+                    ),
+                ],
+            }
+        )
         save_json(manifest_path, base_manifest)
         route.finalize(root, request)
         log("=== ПОДГОТОВКА ГОТОВА: ОЖИДАЕТСЯ ПЕРЕВОД ПОЛЬЗОВАТЕЛЯ ===")
@@ -810,7 +854,9 @@ def main(route: ProjectRoute | None = None) -> None:
                 groups,
             )
         elif custom_txt.is_file():
-            translations = parse_custom_translation(custom_txt.read_text(encoding="utf-8-sig"), groups, validator=route.validate_translation)
+            translations = parse_custom_translation(
+                custom_txt.read_text(encoding="utf-8-sig"), groups, validator=route.validate_translation
+            )
         else:
             raise RuntimeError("Не загружен пользовательский перевод. Используйте /dubtranslation.")
         timing_warnings = validate_custom_timing(translations, groups)
@@ -819,9 +865,7 @@ def main(route: ProjectRoute | None = None) -> None:
             encoding="utf-8",
         )
         if timing_warnings:
-            raise RuntimeError(
-                "Пользовательский перевод не помещается в тайминг:\n" + "\n".join(timing_warnings[:12])
-            )
+            raise RuntimeError("Пользовательский перевод не помещается в тайминг:\n" + "\n".join(timing_warnings[:12]))
 
     translation_json = root / "translation_final.json"
     translation_txt = output_dir / "russian_translation.txt"
@@ -866,29 +910,49 @@ def main(route: ProjectRoute | None = None) -> None:
     _hardlink_or_copy(translation_txt, named_translation)
 
     manifest_path = output_dir / "manifest.json"
-    base_manifest.update({
-        "phase": "completed",
-        "translation_model": translation_model if mode == "gemini" else "user",
-        "translation_passes": 3 if mode == "gemini" else 0,
-        "segments": len(render_segments),
-        "outputs": {
-            "mixed": str(named_mixed),
-            "russian_only": str(named_russian),
-            "russian_srt": str(named_srt),
-            "source_srt": str(source_srt),
-            "translation": str(named_translation),
-            "qa": str(qa_path),
-            "russian_timeline": str(russian_timeline),
-        },
-        "telegram_outputs": [
-            _telegram_entry(named_mixed, filename=named_mixed.name, label="Готовый ролик: оригинал 18%, русский с задержкой", primary=True, video=True),
-            _telegram_entry(named_russian, filename=named_russian.name, label="Версия только с русским голосом", video=True, send_default=False),
-            _telegram_entry(named_srt, filename=named_srt.name, label="Русские субтитры"),
-            _telegram_entry(named_translation, filename=named_translation.name, label="Итоговый русский перевод"),
-            _telegram_entry(source_srt, filename=f"{russian_title} — исходные субтитры.srt", label=f"Исходные субтитры ({caption_origin})"),
-            _telegram_entry(qa_path, filename=f"{russian_title} — проверка перевода.txt", label="Отчёт контроля перевода"),
-        ],
-    })
+    base_manifest.update(
+        {
+            "phase": "completed",
+            "translation_model": translation_model if mode == "gemini" else "user",
+            "translation_passes": 3 if mode == "gemini" else 0,
+            "segments": len(render_segments),
+            "outputs": {
+                "mixed": str(named_mixed),
+                "russian_only": str(named_russian),
+                "russian_srt": str(named_srt),
+                "source_srt": str(source_srt),
+                "translation": str(named_translation),
+                "qa": str(qa_path),
+                "russian_timeline": str(russian_timeline),
+            },
+            "telegram_outputs": [
+                _telegram_entry(
+                    named_mixed,
+                    filename=named_mixed.name,
+                    label="Готовый ролик: оригинал 18%, русский с задержкой",
+                    primary=True,
+                    video=True,
+                ),
+                _telegram_entry(
+                    named_russian,
+                    filename=named_russian.name,
+                    label="Версия только с русским голосом",
+                    video=True,
+                    send_default=False,
+                ),
+                _telegram_entry(named_srt, filename=named_srt.name, label="Русские субтитры"),
+                _telegram_entry(named_translation, filename=named_translation.name, label="Итоговый русский перевод"),
+                _telegram_entry(
+                    source_srt,
+                    filename=f"{russian_title} — исходные субтитры.srt",
+                    label=f"Исходные субтитры ({caption_origin})",
+                ),
+                _telegram_entry(
+                    qa_path, filename=f"{russian_title} — проверка перевода.txt", label="Отчёт контроля перевода"
+                ),
+            ],
+        }
+    )
     save_json(manifest_path, base_manifest)
     route.finalize(root, request)
     log("=== ГОТОВО ===")
@@ -899,11 +963,10 @@ def main(route: ProjectRoute | None = None) -> None:
 if __name__ == "__main__":
     main()
 
-_BASE_ALL = tuple(globals().get('__all__', ()))
+_BASE_ALL = tuple(globals().get("__all__", ()))
 
 
 import math
-
 
 
 import threading
@@ -938,12 +1001,11 @@ _PATH_LOCKS_GUARD = threading.Lock()
 
 _PATH_LOCKS: dict[str, threading.Lock] = {}
 
+
 def _strict_schema_int(value: Any, *, field: str, low: int, high: int) -> int:
     if isinstance(value, bool):
         raise RuntimeError(f"{field} не может быть bool.")
-    if isinstance(value, float) and (
-        not math.isfinite(value) or not value.is_integer()
-    ):
+    if isinstance(value, float) and (not math.isfinite(value) or not value.is_integer()):
         raise RuntimeError(f"{field} должен быть целым числом.")
     try:
         result = int(value)
@@ -952,6 +1014,7 @@ def _strict_schema_int(value: Any, *, field: str, low: int, high: int) -> int:
     if not low <= result <= high:
         raise RuntimeError(f"{field}={result} вне диапазона {low}..{high}.")
     return result
+
 
 def project_root(project_id: str | None = None) -> Path:
     value = str(project_id or current_project_id()).strip().lower()
@@ -965,6 +1028,7 @@ def project_root(project_id: str | None = None) -> Path:
         raise RuntimeError("Project root escaped Dub Studio projects directory.") from exc
     root.mkdir(parents=True, exist_ok=True)
     return root
+
 
 def validate_request_payload(payload: Any) -> dict[str, Any]:
     if not isinstance(payload, dict):
@@ -989,8 +1053,7 @@ def validate_request_payload(payload: Any) -> dict[str, Any]:
         raise RuntimeError("request.json содержит неканонический YouTube source_url.")
     if url_video_id != video_id:
         raise RuntimeError(
-            "request.json source_url и video_id указывают на разные ролики: "
-            f"url={url_video_id}, video_id={video_id}."
+            f"request.json source_url и video_id указывают на разные ролики: url={url_video_id}, video_id={video_id}."
         )
     mode = str(result.get("translation_mode") or "").strip().lower()
     if mode not in _ALLOWED_TRANSLATION_MODES:
@@ -1006,21 +1069,16 @@ def validate_request_payload(payload: Any) -> dict[str, Any]:
             default_model_profile_id=DEFAULT_MODEL_PROFILE_ID,
         )
     except UnknownSpeechBackendError as exc:
-        raise RuntimeError(
-            "Некорректный speech_backend в request.json: " + str(exc)
-        ) from exc
+        raise RuntimeError("Некорректный speech_backend в request.json: " + str(exc)) from exc
     except SpeechBackendSelectionError as exc:
-        raise RuntimeError(
-            "Некорректная TTS-конфигурация в request.json: " + str(exc)
-        ) from exc
+        raise RuntimeError("Некорректная TTS-конфигурация в request.json: " + str(exc)) from exc
 
-    result["media_master"] = str(
-        result.get("media_master") or "constant-mix"
-    ).casefold().strip()
-    result["final_media_validator"] = str(
-        result.get("final_media_validator") or "ffprobe-av-contract"
-    ).casefold().strip()
+    result["media_master"] = str(result.get("media_master") or "constant-mix").casefold().strip()
+    result["final_media_validator"] = (
+        str(result.get("final_media_validator") or "ffprobe-av-contract").casefold().strip()
+    )
     return result
+
 
 def load_request(root: Path) -> dict[str, Any]:
     root = Path(root).expanduser().resolve()
@@ -1033,10 +1091,12 @@ def load_request(root: Path) -> dict[str, Any]:
         raise RuntimeError(f"Повреждён request.json проекта: {path}") from exc
     return validate_request_payload(payload)
 
+
 def _path_lock(path: Path) -> threading.Lock:
     key = os.path.normcase(str(Path(path).resolve()))
     with _PATH_LOCKS_GUARD:
         return _PATH_LOCKS.setdefault(key, threading.Lock())
+
 
 def _replace_atomic(temporary: Path, destination: Path) -> None:
     """Replace one file atomically, retrying only transient Windows sharing errors."""
@@ -1046,13 +1106,10 @@ def _replace_atomic(temporary: Path, destination: Path) -> None:
             return
         except PermissionError as exc:
             winerror = getattr(exc, "winerror", None)
-            if (
-                os.name != "nt"
-                or winerror not in {5, 32}
-                or attempt + 1 >= _REPLACE_ATTEMPTS
-            ):
+            if os.name != "nt" or winerror not in {5, 32} or attempt + 1 >= _REPLACE_ATTEMPTS:
                 raise
             time.sleep(min(0.005 * (2**attempt), 0.160))
+
 
 def save_json(path: Path, payload: Any) -> None:
     path = Path(path).expanduser()
@@ -1064,9 +1121,7 @@ def save_json(path: Path, payload: Any) -> None:
         allow_nan=False,
     )
     with _path_lock(path):
-        temporary = path.with_name(
-            path.name + f".tmp.{os.getpid()}.{uuid.uuid4().hex}"
-        )
+        temporary = path.with_name(path.name + f".tmp.{os.getpid()}.{uuid.uuid4().hex}")
         try:
             with temporary.open("w", encoding="utf-8", newline="\n") as handle:
                 handle.write(encoded)
@@ -1076,9 +1131,11 @@ def save_json(path: Path, payload: Any) -> None:
         finally:
             temporary.unlink(missing_ok=True)
 
+
 def _run_speech_and_master(**kwargs: Any) -> Path:
     """Route production through separated application-layer components."""
     return run_speech_master_validation(**kwargs)
+
 
 project_root = project_root
 

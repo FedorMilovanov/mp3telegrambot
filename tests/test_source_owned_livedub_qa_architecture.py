@@ -73,19 +73,23 @@ def test_public_qa_owner_forces_audio_truth_then_calls_long_and_trust(monkeypatc
     monkeypatch.setattr(trust, "apply_audio_trust", fake_trust)
     monkeypatch.setattr(trust, "audio_trust_enabled", lambda: True)
     monkeypatch.setattr(hardening, "prepare_exact_timeline_inputs", lambda options: (dict(options), None))
-    monkeypatch.setattr(hardening, "annotate_qa_availability", lambda result, options, exact: dict(result, audited=True))
+    monkeypatch.setattr(
+        hardening, "annotate_qa_availability", lambda result, options, exact: dict(result, audited=True)
+    )
 
     video = tmp_path / "dub.mp4"
     video.write_bytes(b"x")
 
-    result = asyncio.run(qa.run_translation_qa(
-        dub_video_path=video,
-        original_audio_path=None,
-        ai_data=None,
-        duration=600,
-        dub_srt_path=tmp_path / "untrusted.srt",
-        dub_audio_path=None,
-    ))
+    result = asyncio.run(
+        qa.run_translation_qa(
+            dub_video_path=video,
+            original_audio_path=None,
+            ai_data=None,
+            duration=600,
+            dub_srt_path=tmp_path / "untrusted.srt",
+            dub_audio_path=None,
+        )
+    )
     assert result and result["trusted"] is True
     assert seen["long_base"] is base
     assert seen["trust_base"] is base

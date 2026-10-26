@@ -8,9 +8,12 @@ import services.shorts_factory_publication as publication
 
 
 def test_canonical_public_hashtags_follow_repository_rule():
-    assert publication.canonical_public_hashtags(
-        ["евангелие", "#бытие", "искупление", "спроул"]
-    ) == ["#Евангелие", "#Бытие", "#Искупление", "#Спроул"]
+    assert publication.canonical_public_hashtags(["евангелие", "#бытие", "искупление", "спроул"]) == [
+        "#Евангелие",
+        "#Бытие",
+        "#Искупление",
+        "#Спроул",
+    ]
 
 
 def test_light_model_route_is_exact_lite_only_and_not_env_driven(monkeypatch):
@@ -30,12 +33,9 @@ def test_caption_wrapper_inserts_human_paragraph_before_links_and_normalizes_tag
 
     wrapped = publication.wrap_factory_caption_builder(original)
     candidate = {
-        "hashtags": publication.canonical_public_hashtags(
-            ["евангелие", "бытие", "искупление", "спроул"]
-        ),
+        "hashtags": publication.canonical_public_hashtags(["евангелие", "бытие", "искупление", "спроул"]),
         publication._DESCRIPTION_FIELD: (
-            "Первая попытка человека скрыть свой стыд не решает проблему "
-            "греха: необходимое покрытие даёт Сам Бог."
+            "Первая попытка человека скрыть свой стыд не решает проблему греха: необходимое покрытие даёт Сам Бог."
         ),
     }
     caption = wrapped(candidate=candidate)
@@ -100,11 +100,7 @@ def test_enrichment_sets_only_private_factory_description_field(monkeypatch):
         }
 
     monkeypatch.setattr(publication, "_generate_descriptions", one_description)
-    result = asyncio.run(
-        publication.enrich_factory_candidates(
-            [{"title": "Тема", "hashtags": ["евангелие"]}]
-        )
-    )
+    result = asyncio.run(publication.enrich_factory_candidates([{"title": "Тема", "hashtags": ["евангелие"]}]))
 
     assert publication._DESCRIPTION_FIELD in result[0]
     assert "publication_description" not in result[0]
@@ -183,7 +179,7 @@ def test_description_generation_retries_lite_across_clients_and_pattern_prompt(m
     assert all(cfg["thinking_level"] == "minimal" for cfg in configs)
     assert all("temperature" not in cfg for cfg in configs)
     assert all("top_p" not in cfg and "top_k" not in cfg for cfg in configs)
-    assert not any("3.7" in model or "3.6" in model or "3.5-flash\"" in model for _client, model in calls)
+    assert not any("3.7" in model or "3.6" in model or '3.5-flash"' in model for _client, model in calls)
     assert all("В этом видео" not in prompt for prompt in prompts)
     assert all("В этом ролике" not in prompt for prompt in prompts)
     assert all("Автор рассматривает" not in prompt for prompt in prompts)
@@ -192,9 +188,12 @@ def test_description_generation_retries_lite_across_clients_and_pattern_prompt(m
 
 
 def test_description_cleaner_rejects_ai_or_provider_meta_text():
-    assert publication._clean_description(
-        "В этом видео нейросеть кратко объясняет содержание фрагмента и перевод Яндекса."
-    ) == ""
+    assert (
+        publication._clean_description(
+            "В этом видео нейросеть кратко объясняет содержание фрагмента и перевод Яндекса."
+        )
+        == ""
+    )
     assert publication._clean_description(
         "Человек пытается прикрыть последствия греха своими средствами, но окончательное покрытие приходит от Бога."
     ).endswith(".")

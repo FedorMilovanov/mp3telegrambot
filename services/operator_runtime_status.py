@@ -7,6 +7,7 @@ strings may contain paths or configuration fragments.  This module deliberately
 publishes only aggregate states and stable identifiers.  TTS is reported as the
 production *default* because each Dub project durably pins its own profile.
 """
+
 from __future__ import annotations
 
 import html
@@ -86,9 +87,7 @@ def operator_runtime_status_payload(
 
         profile = profile or default_model_profile()
         backend = backend or default_backend()
-        source_evidence = source_evidence or model_profile_source_evidence(
-            profile.profile_id
-        )
+        source_evidence = source_evidence or model_profile_source_evidence(profile.profile_id)
         registered_profiles = registered_profiles or registered_model_profiles()
     if contract is None:
         from services.speech_backends import get_backend_model_contract
@@ -96,9 +95,7 @@ def operator_runtime_status_payload(
         contract = get_backend_model_contract(profile.backend_id)
 
     contract.validate_profile(profile)
-    if str(getattr(backend, "backend_id", "") or "").strip() != str(
-        getattr(profile, "backend_id", "") or ""
-    ).strip():
+    if str(getattr(backend, "backend_id", "") or "").strip() != str(getattr(profile, "backend_id", "") or "").strip():
         raise RuntimeError("Default TTS backend не совпадает с default profile.")
 
     source = _mapping(source_evidence, "TTS profile source evidence")
@@ -110,16 +107,12 @@ def operator_runtime_status_payload(
         raise RuntimeError("TTS source evidence принадлежит другому backend.")
 
     fingerprint = str(profile.fingerprint()).casefold()
-    if len(fingerprint) != 64 or any(
-        character not in "0123456789abcdef" for character in fingerprint
-    ):
+    if len(fingerprint) != 64 or any(character not in "0123456789abcdef" for character in fingerprint):
         raise RuntimeError("TTS profile fingerprint имеет неверный формат.")
 
     contract_payload = _mapping(contract.as_dict(), "TTS profile contract")
     execution_supported = contract_payload.get("execution_plan_evidence_supported") is True
-    execution_required = bool(
-        getattr(profile, "requires_execution_plan_evidence", False)
-    )
+    execution_required = bool(getattr(profile, "requires_execution_plan_evidence", False))
     if execution_required and not execution_supported:
         raise RuntimeError("Default TTS profile требует неподдерживаемую execution evidence.")
 
@@ -135,29 +128,17 @@ def operator_runtime_status_payload(
         },
         "tts": {
             "profile_id": profile_id,
-            "display_name": _safe_id(
-                getattr(profile, "display_name", ""), "profile display_name"
-            ),
+            "display_name": _safe_id(getattr(profile, "display_name", ""), "profile display_name"),
             "backend_id": backend_id,
-            "model_family": _safe_id(
-                getattr(profile, "model_family", ""), "model_family"
-            ),
-            "model_revision": _safe_id(
-                getattr(profile, "model_revision", ""), "model_revision"
-            ),
+            "model_family": _safe_id(getattr(profile, "model_family", ""), "model_family"),
+            "model_revision": _safe_id(getattr(profile, "model_revision", ""), "model_revision"),
             "profile_fingerprint": fingerprint,
-            "production_enabled": bool(
-                getattr(profile, "production_enabled", False)
-            ),
+            "production_enabled": bool(getattr(profile, "production_enabled", False)),
             "registered_profile_count": len(tuple(registered_profiles)),
             "source_kind": _safe_id(source.get("source_kind"), "source_kind"),
             "source_sha256": str(source.get("source_sha256") or ""),
-            "manifest_policy": _safe_id(
-                source.get("manifest_policy"), "manifest_policy"
-            ),
-            "adapter_policy": _safe_id(
-                getattr(backend, "adapter_policy", ""), "adapter_policy"
-            ),
+            "manifest_policy": _safe_id(source.get("manifest_policy"), "manifest_policy"),
+            "adapter_policy": _safe_id(getattr(backend, "adapter_policy", ""), "adapter_policy"),
             "profile_contract_policy": _safe_id(
                 contract_payload.get("profile_contract_policy"),
                 "profile_contract_policy",
@@ -198,9 +179,7 @@ def operator_runtime_status_html_lines(
         )
     elif optional_degraded:
         lines.append(
-            "⚠️ Optional runtime: <code>"
-            + html.escape(", ".join(str(value) for value in optional_degraded))
-            + "</code>"
+            "⚠️ Optional runtime: <code>" + html.escape(", ".join(str(value) for value in optional_degraded)) + "</code>"
         )
 
     profile_id = html.escape(str(tts.get("profile_id") or "—"))
@@ -233,20 +212,14 @@ def operator_runtime_status_html_lines(
         if evidence_supported
         else "not-supported"
     )
-    lines.append(
-        f"🛡 TTS adapter: <code>{adapter_policy}</code> · evidence={evidence}"
-    )
+    lines.append(f"🛡 TTS adapter: <code>{adapter_policy}</code> · evidence={evidence}")
     if include_build_identity:
         try:
             from services.runtime_build_identity import runtime_build_identity_html_lines
 
             lines.extend(runtime_build_identity_html_lines())
         except Exception as exc:
-            lines.append(
-                "🧾 Build diagnostics: ❌ <code>"
-                + html.escape(type(exc).__name__)
-                + "</code>"
-            )
+            lines.append("🧾 Build diagnostics: ❌ <code>" + html.escape(type(exc).__name__) + "</code>")
     return tuple(lines)
 
 
@@ -255,11 +228,7 @@ def safe_operator_runtime_status_html_lines() -> tuple[str, ...]:
     try:
         return operator_runtime_status_html_lines()
     except Exception as exc:
-        return (
-            "🧩 Runtime/TTS diagnostics: ❌ <code>"
-            + html.escape(type(exc).__name__)
-            + "</code>",
-        )
+        return ("🧩 Runtime/TTS diagnostics: ❌ <code>" + html.escape(type(exc).__name__) + "</code>",)
 
 
 __all__ = [

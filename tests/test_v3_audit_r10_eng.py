@@ -12,6 +12,7 @@
 5. _find_latest_file мог выдать original_audio/оригинал за перевод.
 6. lang исходника не доезжал до vot-merge/tts-fallback путей.
 """
+
 import os
 import time
 from pathlib import Path
@@ -25,11 +26,10 @@ def _read(rel: str) -> str:
 
 # ── 1-2. run_translation_qa: SRT прежде извлечения + честный промт ──
 
+
 def _qa_fn_src() -> str:
     src = _read("services/livedub_qa.py")
-    return src.split("async def _run_translation_qa_base", 1)[1].split(
-        "\n\nasync def run_translation_qa", 1
-    )[0]
+    return src.split("async def _run_translation_qa_base", 1)[1].split("\n\nasync def run_translation_qa", 1)[0]
 
 
 def test_qa_parses_srt_before_deciding_dub_audio():
@@ -37,9 +37,7 @@ def test_qa_parses_srt_before_deciding_dub_audio():
     parse_idx = fn.index("dub_timed_text = srt_to_timed_text")
     extract_idx = fn.index("_extract_audio_for_qa(dub_video_path")
     assert parse_idx < extract_idx, "SRT должен парситься ДО решения об извлечении аудио дубляжа"
-    assert "_have_srt = bool(dub_timed_text)" in fn, (
-        "«есть SRT» = «есть распарсенный ТЕКСТ», а не «файл существует»"
-    )
+    assert "_have_srt = bool(dub_timed_text)" in fn, "«есть SRT» = «есть распарсенный ТЕКСТ», а не «файл существует»"
 
 
 def test_qa_prompt_attachment_description_matches_reality():
@@ -56,17 +54,17 @@ def test_qa_prompt_attachment_description_matches_reality():
 
 # ── 3. thinking_level в текстовом fallback ───────────────────────
 
+
 def test_qa_text_fallback_respects_thinking_level_param():
     fn = _qa_fn_src()
     fallback = fn.split("JSON-mime недоступен", 1)[1]
     head = fallback[:900]
     assert "thinking_level=thinking_level" in head
-    assert 'thinking_level="high"' not in head, (
-        "fallback должен наследовать thinking_level вызова (Quick QA = minimal)"
-    )
+    assert 'thinking_level="high"' not in head, "fallback должен наследовать thinking_level вызова (Quick QA = minimal)"
 
 
 # ── 4. Quick QA не требует SRT и честно сообщает о пропуске ──────
+
 
 def test_quick_qa_gate_no_longer_requires_srt():
     src = _read("pipelines/livedub_quick_qa_stage.py")
@@ -90,6 +88,7 @@ def test_quick_qa_skip_note_reaches_caption():
 
 # ── 5. _find_latest_file не выдаёт оригинал за перевод ───────────
 
+
 def test_find_latest_file_skips_service_artifacts(tmp_path):
     from services.yandex_live_dub import _find_latest_file
 
@@ -98,8 +97,7 @@ def test_find_latest_file_skips_service_artifacts(tmp_path):
     old = time.time() - 600
     os.utime(real, (old, old))
     # служебные файлы СВЕЖЕЕ настоящего перевода
-    for name in ("original_audio.mp3", "original_video.mp3", "clip_qa.mp3",
-                 "clip_qa_original.mp3", "pro_dub.mp3"):
+    for name in ("original_audio.mp3", "original_video.mp3", "clip_qa.mp3", "clip_qa_original.mp3", "pro_dub.mp3"):
         p = tmp_path / name
         p.write_bytes(b"y" * 10)
 
@@ -109,11 +107,13 @@ def test_find_latest_file_skips_service_artifacts(tmp_path):
 
 def test_find_latest_file_returns_none_when_only_artifacts(tmp_path):
     from services.yandex_live_dub import _find_latest_file
+
     (tmp_path / "original_audio.mp3").write_bytes(b"y")
     assert _find_latest_file(tmp_path, "*.mp3") is None
 
 
 # ── 5b. find_pro_tracks выбирает файл С видеопотоком ─────────────
+
 
 def test_find_pro_tracks_prefers_real_video(tmp_path, monkeypatch):
     import services.livedub_mix as lm
@@ -132,6 +132,7 @@ def test_find_pro_tracks_prefers_real_video(tmp_path, monkeypatch):
 
 # ── 6. lang доезжает до всех путей перевода ──────────────────────
 
+
 def test_lang_passthrough_video_and_tts_paths():
     yl = _read("services/yandex_live_dub.py")
     video_fn = yl.split("async def get_live_dub_video", 1)[1]
@@ -139,9 +140,7 @@ def test_lang_passthrough_video_and_tts_paths():
     assert "duration=duration, lang=lang" in video_fn
 
     mix = _read("services/livedub_mix.py")
-    assert 'voice_style="tts", duration=duration, lang=lang' in mix, (
-        "tts-fallback терял язык исходника"
-    )
+    assert 'voice_style="tts", duration=duration, lang=lang' in mix, "tts-fallback терял язык исходника"
 
     mp = _read("pipelines/main_pipeline.py")
     dub_stage = _read("pipelines/livedub_dub_stage.py")
@@ -155,6 +154,7 @@ def test_dead_env_int_removed_from_yandex_live_dub():
 
 
 # ── 7. Живой лог 2026-07-06: обрезание Reflection и дубль автора ─
+
 
 def test_reflection_budgets_survive_high_thinking():
     """thoughts+output делят ОДИН бюджет: на high thinking съедает 15-20K
@@ -180,14 +180,12 @@ def test_search_title_does_not_duplicate_author():
     часто уже с автором — второй раз автора не приклеиваем."""
     from services.search import _build_search_title
 
-    ai = {"real_title": "Пол Вошер. Свидетельство. Трус и лжец",
-          "real_author": "Пол Вошер", "real_event": ""}
+    ai = {"real_title": "Пол Вошер. Свидетельство. Трус и лжец", "real_author": "Пол Вошер", "real_event": ""}
     t = _build_search_title(ai, "fallback")
     assert t.lower().count("пол вошер") == 1, f"дубль автора в запросе: {t!r}"
 
     # автор, которого в названии нет, по-прежнему добавляется
-    ai2 = {"real_title": "Что есть настоящий евангелизм",
-           "real_author": "Джон МакАртур", "real_event": ""}
+    ai2 = {"real_title": "Что есть настоящий евангелизм", "real_author": "Джон МакАртур", "real_event": ""}
     t2 = _build_search_title(ai2, "fallback")
     assert "МакАртур" in t2 and "евангелизм" in t2.lower()
 

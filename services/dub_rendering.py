@@ -1,4 +1,5 @@
 """Backend-neutral orchestration of speech synthesis, media mastering and QA."""
+
 from __future__ import annotations
 
 import json
@@ -75,9 +76,7 @@ def _run(
             timeout=timeout_seconds,
         )
     except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(
-            f"{label} превысил лимит {timeout_seconds} секунд и был остановлен."
-        ) from exc
+        raise RuntimeError(f"{label} превысил лимит {timeout_seconds} секунд и был остановлен.") from exc
     if result.returncode != 0:
         raise RuntimeError(f"{label} завершился с кодом {result.returncode}.")
 
@@ -105,9 +104,7 @@ def _renderer_values(
             value = str(raw_value)
             existing = values.get(key)
             if existing is not None and existing != value:
-                raise RuntimeError(
-                    f"TTS model profile option {key} конфликтует с orchestration value."
-                )
+                raise RuntimeError(f"TTS model profile option {key} конфликтует с orchestration value.")
             values[key] = value
     return values
 
@@ -178,10 +175,7 @@ def run_speech_master_validation(
     )
     runtime = backend.runtime_paths(repo, request)
     if not runtime.cpu_python.is_file():
-        raise RuntimeError(
-            f"CPU Python не найден для backend={backend.backend_id}: "
-            f"{runtime.cpu_python}"
-        )
+        raise RuntimeError(f"CPU Python не найден для backend={backend.backend_id}: {runtime.cpu_python}")
 
     video_id = str(request["video_id"])
     russian_timeline = audio_dir / f"{video_id}_ru_timeline.wav"
@@ -207,19 +201,12 @@ def run_speech_master_validation(
         synth,
         cwd=repo,
         env=env,
-        label=(
-            f"Speech backend {backend.backend_id} "
-            f"profile {model_profile.profile_id}"
-        ),
+        label=(f"Speech backend {backend.backend_id} profile {model_profile.profile_id}"),
         timeout_seconds=speech_timeout_seconds,
     )
-    if (
-        model_profile.requires_execution_plan_evidence
-        and not execution_plan_log.is_file()
-    ):
+    if model_profile.requires_execution_plan_evidence and not execution_plan_log.is_file():
         raise RuntimeError(
-            f"TTS profile {model_profile.profile_id} завершил synthesis без "
-            "exact execution-plan evidence."
+            f"TTS profile {model_profile.profile_id} завершил synthesis без exact execution-plan evidence."
         )
 
     master = get_media_master(request.get("media_master") or "constant-mix")
@@ -248,9 +235,7 @@ def run_speech_master_validation(
         timeout_seconds=master_timeout_seconds,
     )
 
-    validator = get_final_validator(
-        request.get("final_media_validator") or "ffprobe-av-contract"
-    )
+    validator = get_final_validator(request.get("final_media_validator") or "ffprobe-av-contract")
     validation = validator.validate(
         mixed_video=Path(final_mixed),
         russian_only_video=Path(final_russian),
@@ -273,9 +258,7 @@ def run_speech_master_validation(
             "speech": speech_timeout_seconds,
             "master": master_timeout_seconds,
         },
-        "execution_plan_log": (
-            str(execution_plan_log) if execution_plan_log.is_file() else ""
-        ),
+        "execution_plan_log": (str(execution_plan_log) if execution_plan_log.is_file() else ""),
         "timeline": str(russian_timeline),
     }
     _atomic_json(output_dir / "render_architecture.json", report)

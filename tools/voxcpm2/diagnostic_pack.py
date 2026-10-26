@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Build a reproducible VoxCPM2 diagnostic ZIP without source video by default."""
+
 from __future__ import annotations
 
 import argparse

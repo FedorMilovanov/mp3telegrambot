@@ -13,15 +13,17 @@ Changes:
 
 def test_run_expanded_pipeline_has_thinking_level_param():
     src = open("services/telegraph_pages.py", encoding="utf-8").read()
-    assert 'thinking_level: str = "high"' in src, \
+    assert 'thinking_level: str = "high"' in src, (
         "_run_expanded_pipeline must have thinking_level parameter with default high"
+    )
 
 
 def test_run_expanded_pipeline_passes_thinking_level():
     src = open("services/telegraph_pages.py", encoding="utf-8").read()
     # Both Gemini calls inside must use the parameter, not hardcoded "high"
-    assert 'thinking_level=thinking_level,' in src, \
+    assert "thinking_level=thinking_level," in src, (
         "_run_expanded_pipeline must pass thinking_level to _gemini_text_request"
+    )
 
 
 def test_reflection_reverted_to_high_quality():
@@ -31,10 +33,9 @@ def test_reflection_reverted_to_high_quality():
     src = open("services/telegraph_pages.py", encoding="utf-8").read()
     refl_pos = src.find('label="ReflectionApplication"')
     assert refl_pos != -1
-    refl_block = src[max(0, refl_pos - 20):refl_pos + 1500]
-    assert 'thinking_level="medium"' not in refl_block, \
-        "Reflection must use default high, not medium"
-    assert 'thinking_level=' not in refl_block or 'thinking_level="high"' in refl_block
+    refl_block = src[max(0, refl_pos - 20) : refl_pos + 1500]
+    assert 'thinking_level="medium"' not in refl_block, "Reflection must use default high, not medium"
+    assert "thinking_level=" not in refl_block or 'thinking_level="high"' in refl_block
 
 
 def test_study_keeps_default_high():
@@ -43,12 +44,12 @@ def test_study_keeps_default_high():
     # Find the StudyAnalysis _run_expanded_pipeline call
     study_pos = src.find('label="StudyAnalysis"')
     assert study_pos != -1
-    study_block = src[study_pos:study_pos+500]
+    study_block = src[study_pos : study_pos + 500]
     # Must NOT have thinking_level in the call (uses default high)
     import re
+
     has_explicit_tl = re.search(r'thinking_level\s*=\s*["\']', study_block)
-    assert not has_explicit_tl, \
-        "StudyAnalysis must use default thinking_level (high) — don't override"
+    assert not has_explicit_tl, "StudyAnalysis must use default thinking_level (high) — don't override"
 
 
 def test_reflection_cost_optimization_documented():
@@ -56,11 +57,7 @@ def test_reflection_cost_optimization_documented():
     src = open("services/telegraph_pages.py", encoding="utf-8").read()
     # Count how many times hardcoded "high" appears in _gemini_text_request calls
     import re
-    # These should now use thinking_level=thinking_level, not hardcoded
-    hardcoded = re.findall(
-        r'_gemini_text_request\s*\([^)]*thinking_level\s*=\s*"high"[^)]*\)',
-        src, re.DOTALL
-    )
-    assert not hardcoded, \
-        f"Found hardcoded thinking_level='high' in _gemini_text_request: {hardcoded}"
 
+    # These should now use thinking_level=thinking_level, not hardcoded
+    hardcoded = re.findall(r'_gemini_text_request\s*\([^)]*thinking_level\s*=\s*"high"[^)]*\)', src, re.DOTALL)
+    assert not hardcoded, f"Found hardcoded thinking_level='high' in _gemini_text_request: {hardcoded}"

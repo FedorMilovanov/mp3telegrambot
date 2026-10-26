@@ -5,6 +5,7 @@ Installation happens after the existing maximum-quality source policy and before
 the disk guard/long-fit wrappers. That order is deliberate: disk accounting and
 oversize fitting continue to own the final Factory source/render functions.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -24,10 +25,7 @@ from services.media_delivery_probe import media_probe_is_deliverable, probe_medi
 
 logger = logging.getLogger(__name__)
 
-FACTORY_VIDEO_FORMAT = (
-    "bestvideo[height<=1080]+bestaudio/"
-    "best[height<=1080]"
-)
+FACTORY_VIDEO_FORMAT = "bestvideo[height<=1080]+bestaudio/best[height<=1080]"
 _H264_NVENC_AVAILABLE: bool | None = None
 
 
@@ -53,10 +51,7 @@ async def _ffprobe_evidence(path: Path) -> dict[str, Any]:
         "-v",
         "error",
         "-show_entries",
-        (
-            "format=duration,size,bit_rate:"
-            "stream=codec_type,codec_name,width,height,avg_frame_rate,r_frame_rate"
-        ),
+        ("format=duration,size,bit_rate:stream=codec_type,codec_name,width,height,avg_frame_rate,r_frame_rate"),
         "-of",
         "json",
         str(path),
@@ -97,11 +92,7 @@ async def log_factory_media_evidence(
     streams = data.get("streams") if isinstance(data, dict) else None
     streams = streams if isinstance(streams, list) else []
     video = next(
-        (
-            row
-            for row in streams
-            if isinstance(row, dict) and row.get("codec_type") == "video"
-        ),
+        (row for row in streams if isinstance(row, dict) and row.get("codec_type") == "video"),
         {},
     )
     fmt = data.get("format") if isinstance(data, dict) else {}
@@ -115,11 +106,7 @@ async def log_factory_media_evidence(
     except (TypeError, ValueError):
         bitrate = 0
     size = path.stat().st_size if path.is_file() else 0
-    stages = (
-        f" video_encode_stages={video_encode_stages}"
-        if video_encode_stages is not None
-        else ""
-    )
+    stages = f" video_encode_stages={video_encode_stages}" if video_encode_stages is not None else ""
     logger.info(
         "Factory media evidence [%s]: file=%s resolution=%sx%s codec=%s fps=%s "
         "duration=%.3fs size=%.1fMB avg_bitrate=%.2fMbps%s",
@@ -149,16 +136,20 @@ async def download_factory_video_1080(
     prefix = f"{media_id}_factory_max_source"
     source._remove_paths(target_dir.glob(f"{prefix}.*"))
     output_template = target_dir / f"{prefix}.%(ext)s"
-    command = list(YTDLP_BASE_ARGS) + source._factory_quality_sort_reset() + [
-        "--format",
-        FACTORY_VIDEO_FORMAT,
-        "--merge-output-format",
-        "mkv",
-        "--no-playlist",
-        "--output",
-        str(output_template),
-        url,
-    ]
+    command = (
+        list(YTDLP_BASE_ARGS)
+        + source._factory_quality_sort_reset()
+        + [
+            "--format",
+            FACTORY_VIDEO_FORMAT,
+            "--merge-output-format",
+            "mkv",
+            "--no-playlist",
+            "--output",
+            str(output_template),
+            url,
+        ]
+    )
     try:
         process = await run_cancellable_process(
             command,
@@ -166,16 +157,9 @@ async def download_factory_video_1080(
             text=True,
         )
         if process.returncode != 0:
-            raise RuntimeError(
-                "yt-dlp Factory <=1080p source download failed: "
-                + source._stderr_tail(process)
-            )
+            raise RuntimeError("yt-dlp Factory <=1080p source download failed: " + source._stderr_tail(process))
         candidates = sorted(
-            (
-                path
-                for path in target_dir.glob(f"{prefix}.*")
-                if path.is_file() and not source._partial_media(path)
-            ),
+            (path for path in target_dir.glob(f"{prefix}.*") if path.is_file() and not source._partial_media(path)),
             key=lambda path: path.stat().st_mtime,
             reverse=True,
         )
@@ -192,9 +176,7 @@ async def download_factory_video_1080(
                 video_encode_stages=0,
             )
             return path
-        raise RuntimeError(
-            "yt-dlp completed without a verified Factory video+audio master <=1080p"
-        )
+        raise RuntimeError("yt-dlp completed without a verified Factory video+audio master <=1080p")
     except BaseException:
         source._remove_paths(target_dir.glob(f"{prefix}.*"))
         raise
@@ -252,8 +234,7 @@ async def normalize_factory_short_audio_copy_video(
         output_path.unlink(missing_ok=True)
         return False
     logger.info(
-        "Factory Short normalize-only: -c:v copy; video encode stages are "
-        "crop/scale + subtitle burn (2 total, not 3)"
+        "Factory Short normalize-only: -c:v copy; video encode stages are crop/scale + subtitle burn (2 total, not 3)"
     )
     return True
 
@@ -328,9 +309,7 @@ async def _factory_h264_encoder(
 ) -> tuple[str, list[str], list[str]]:
     from services.async_worker import await_owned_coroutine
 
-    has_nvenc = await await_owned_coroutine(
-        asyncio.to_thread(_h264_nvenc_available_sync, ffmpeg)
-    )
+    has_nvenc = await await_owned_coroutine(asyncio.to_thread(_h264_nvenc_available_sync, ffmpeg))
     if has_nvenc:
         quality, preset = factory_h264_nvenc_quality_args()
         return "h264_nvenc", quality, preset
@@ -341,10 +320,7 @@ async def _factory_h264_encoder(
 def _long_scale_filter(width: int, height: int) -> str:
     if width <= 1920 and height <= 1080:
         return ""
-    return (
-        "scale=w='min(iw,1920)':h='min(ih,1080)':"
-        "force_original_aspect_ratio=decrease:force_divisible_by=2"
-    )
+    return "scale=w='min(iw,1920)':h='min(ih,1080)':force_original_aspect_ratio=decrease:force_divisible_by=2"
 
 
 def _factory_long_command(

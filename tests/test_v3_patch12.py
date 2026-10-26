@@ -11,27 +11,27 @@ from services.telegraph_edit import TelegraphEditResult, telegraph_retry_delay
 
 def test_edit_telegraph_page_logs_api_error():
     src = open("converters/md_telegraph.py", encoding="utf-8").read()
-    assert "API returned ok=False, error=" in src, \
+    assert "API returned ok=False, error=" in src, (
         "md_telegraph must log Telegraph API error message on editPage failure"
+    )
 
 
 def test_edit_telegraph_page_logs_url_on_failure():
     src = open("converters/md_telegraph.py", encoding="utf-8").read()
-    assert "_edit_telegraph_page: API returned ok=False" in src, \
+    assert "_edit_telegraph_page: API returned ok=False" in src, (
         "md_telegraph must include structured log for editPage failure"
+    )
 
 
 def test_telegraph_pages_exponential_backoff():
     src = open("services/telegraph_pages.py", encoding="utf-8").read()
     compact_src = "".join(src.split())
-    assert "3*(2**retry_attempt)" in compact_src, \
-        "telegraph_pages editPage retry must use exponential backoff"
+    assert "3*(2**retry_attempt)" in compact_src, "telegraph_pages editPage retry must use exponential backoff"
 
 
 def test_telegraph_pages_backoff_logged():
     src = open("services/telegraph_pages.py", encoding="utf-8").read()
-    assert "жду %dс" in src or "жду {" in src, \
-        "telegraph_pages must log backoff duration"
+    assert "жду %dс" in src or "жду {" in src, "telegraph_pages must log backoff duration"
 
 
 def test_synopsis_retry_policy_is_centralized_and_exponential_for_transient_failures():

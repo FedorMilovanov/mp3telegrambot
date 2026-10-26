@@ -5,6 +5,7 @@ TYPE-6 leakage into synopsis prompts, author-catalog cut, block-field
 contracts, synopsis grounding for Study/Reflection, thinking-overflow retry,
 quiz prompt/validator alignment, prompt_health coverage.
 """
+
 from pathlib import Path
 
 from core import prompts as P
@@ -13,8 +14,12 @@ from core import prompts as P
 def test_no_dying_models_in_default_chains():
     """gemini-3.1-flash-lite-preview выключен 09.07.2026,
     gemini-2.5-flash-lite — ~22.07.2026."""
-    for f in ("services/gemini_analyze.py", "services/telegraph.py",
-              "services/telegraph_pages.py", "services/livedub_info.py"):
+    for f in (
+        "services/gemini_analyze.py",
+        "services/telegraph.py",
+        "services/telegraph_pages.py",
+        "services/livedub_info.py",
+    ):
         src = Path(f).read_text(encoding="utf-8")
         for line in src.splitlines():
             stripped = line.strip()
@@ -72,16 +77,17 @@ def test_simple_prompt_shows_valid_json():
     src = Path("services/telegraph.py").read_text(encoding="utf-8")
     idx = src.find("simple_prompt = (")
     assert idx != -1
-    block = src[idx:idx + 700]
-    assert "'{{" not in block and "}}'" not in block, \
+    block = src[idx : idx + 700]
+    assert "'{{" not in block and "}}'" not in block, (
         "не format-строка: двойные скобки показывали модели невалидный JSON"
+    )
 
 
 def test_synopsis_grounding_flows_to_study_and_reflection():
     """Study/Reflection — text-only вызовы; verbatim-стенограмма конспекта
     теперь передаётся как источник цитат (главная защита от выдуманных цитат)."""
     tg = Path("services/telegraph.py").read_text(encoding="utf-8")
-    assert '_synopsis_grounding"] = ' in tg.replace("ai_data[\"", '"')
+    assert '_synopsis_grounding"] = ' in tg.replace('ai_data["', '"')
     pages = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
     assert pages.count('_ai.get("_synopsis_grounding")') >= 2, "study + reflection"
     assert "ФРАГМЕНТЫ ДОСЛОВНОЙ СТЕНОГРАММЫ" in pages
@@ -99,12 +105,14 @@ def test_gemini_thinking_overflow_retry():
 
 def test_quiz_prompt_matches_validator_rules():
     from services.quiz_generator import QUIZ_PROMPT
+
     assert "минимум из 2 значимых слов" in QUIZ_PROMPT
     assert "8 символов" in QUIZ_PROMPT
 
 
 def test_prompt_health_monitors_default_synopsis_prompt():
     from core.prompt_health import collect_prompt_health
+
     items = collect_prompt_health()
     names = [i.name for i in items]
     assert "SYNOPSIS_VERBATIM_PROMPT" in names
@@ -119,4 +127,5 @@ def test_no_named_copyable_examples_left():
         assert "о чём говорил Вошер" not in prompt
         assert "как молился Мюллер" not in prompt
     from core.prompt_rules import FEW_SHOT_FIRST_SECTION
+
     assert "МакАртур рассматривает" not in FEW_SHOT_FIRST_SECTION

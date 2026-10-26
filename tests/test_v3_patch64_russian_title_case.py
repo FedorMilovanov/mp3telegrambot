@@ -9,8 +9,10 @@ def test_russian_title_case_is_operator_title_case():
     assert title_case_fragment("Вопросы и Ответы") == "Вопросы и Ответы"
     assert title_case_fragment("Как проповедовать пламенно") == "Как Проповедовать Пламенно"
     assert title_case_fragment("Трус и лжец") == "Трус и Лжец"
-    assert title_case_fragment("Трусливый лжец: история радикального обращения") == \
-        "Трусливый Лжец: История Радикального Обращения"
+    assert (
+        title_case_fragment("Трусливый лжец: история радикального обращения")
+        == "Трусливый Лжец: История Радикального Обращения"
+    )
 
 
 def test_russian_title_case_preserves_divine_biblical_and_internal_caps():

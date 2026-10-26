@@ -13,6 +13,7 @@ These tests keep three independent controls true:
    runtime fails closed when the port turns out to be reachable from a
    non-loopback address.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -94,17 +95,13 @@ def test_no_workflow_hardcodes_the_pin() -> None:
                 offenders.append(f"{path.name}: {literal}")
     assert offenders == []
 
-    preflight = (ROOT / ".github" / "workflows" / "cut-policy-ci.yml").read_text(
-        encoding="utf-8"
-    )
+    preflight = (ROOT / ".github" / "workflows" / "cut-policy-ci.yml").read_text(encoding="utf-8")
     assert "from core.bgutil_pin import BGUTIL_VERSION" in preflight
     assert "== BGUTIL_VERSION" in preflight
 
 
 def test_cut_policy_workflow_reacts_to_pin_changes() -> None:
-    workflow = (ROOT / ".github" / "workflows" / "cut-policy-ci.yml").read_text(
-        encoding="utf-8"
-    )
+    workflow = (ROOT / ".github" / "workflows" / "cut-policy-ci.yml").read_text(encoding="utf-8")
     assert workflow.count('"core/bgutil_pin.py"') == 2, "both push and PR filters"
 
 
@@ -117,9 +114,7 @@ def test_provisioner_refuses_an_unpatched_pin(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_marker_text_matches_gate_expectation() -> None:
-    assert bgutil_pin.marker_text() == (
-        f"{po.BGUTIL_EXPECTED_VERSION}@{po.BGUTIL_EXPECTED_COMMIT}"
-    )
+    assert bgutil_pin.marker_text() == (f"{po.BGUTIL_EXPECTED_VERSION}@{po.BGUTIL_EXPECTED_COMMIT}")
 
 
 def test_server_is_spawned_with_an_explicit_loopback_host() -> None:

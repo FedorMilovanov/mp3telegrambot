@@ -3,6 +3,7 @@
 These tests assert *catalog behaviour*, never a hardcoded literal: bumping the
 model in ``core/model_catalog.py`` must not require editing this file.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -29,9 +30,7 @@ def test_empty_roles_have_no_free_tier_model_to_offer() -> None:
     assert catalog.ROLE_MODELS[catalog.ROLE_REASONING] == ""
     paid_only = catalog.paid_only_models()
     assert "gemini-4-argon" in paid_only
-    assert not any(
-        model in paid_only for model in catalog.ROLE_MODELS.values() if model
-    )
+    assert not any(model in paid_only for model in catalog.ROLE_MODELS.values() if model)
 
 
 def test_role_routes_are_free_tier_only() -> None:
@@ -97,9 +96,7 @@ def test_normalization_is_idempotent_and_keeps_unknown_models() -> None:
     for alias in catalog.deprecated_aliases():
         once = catalog.normalize_model_id(alias)
         assert catalog.normalize_model_id(once) == once
-    assert catalog.normalize_model_id("gemini-custom-audio-model") == (
-        "gemini-custom-audio-model"
-    )
+    assert catalog.normalize_model_id("gemini-custom-audio-model") == ("gemini-custom-audio-model")
     assert catalog.normalize_model_id("") == ""
 
 
@@ -177,7 +174,7 @@ def test_catalog_snapshot_is_dated_and_matches_policy() -> None:
 
 def test_module_has_no_repository_imports() -> None:
     """Pre-main policy imports this module before ``core.globals`` exists."""
-    source = (catalog.__file__ or "")
+    source = catalog.__file__ or ""
     text = open(source, encoding="utf-8").read()
     assert "from core.globals" not in text
     assert "import core.globals" not in text
@@ -205,11 +202,7 @@ def test_upgrade_drill_touches_exactly_one_line() -> None:
     )
     swapped = drill._swap_catalog(source, target)
 
-    diff = [
-        (before, after)
-        for before, after in zip(source.splitlines(), swapped.splitlines())
-        if before != after
-    ]
+    diff = [(before, after) for before, after in zip(source.splitlines(), swapped.splitlines()) if before != after]
     assert len(diff) == 1
     assert "ROLE_PRIMARY" in diff[0][0]
     assert target in diff[0][1]
@@ -238,6 +231,4 @@ def test_migration_targets_are_free_tier_models() -> None:
         target = spec.replacement
         if not target or target not in catalog.all_model_ids():
             continue
-        assert catalog.is_free_tier(target), (
-            f"{model} migrates to paid-only {target}"
-        )
+        assert catalog.is_free_tier(target), f"{model} migrates to paid-only {target}"

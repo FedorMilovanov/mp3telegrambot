@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Model-independent contracts for speech synthesis engines."""
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -99,24 +100,15 @@ class BackendAudioSpec:
             if value is not None and (isinstance(value, bool) or int(value) <= 0):
                 raise ValueError(f"{name} должен быть положительным целым числом или None.")
         if self.seconds_per_step is not None and (
-            not math.isfinite(float(self.seconds_per_step))
-            or float(self.seconds_per_step) <= 0.0
+            not math.isfinite(float(self.seconds_per_step)) or float(self.seconds_per_step) <= 0.0
         ):
             raise ValueError("seconds_per_step должен быть конечным числом > 0 или None.")
 
     def as_dict(self) -> dict[str, Any]:
         return {
-            "encode_sample_rate": (
-                int(self.encode_sample_rate)
-                if self.encode_sample_rate is not None
-                else None
-            ),
+            "encode_sample_rate": (int(self.encode_sample_rate) if self.encode_sample_rate is not None else None),
             "output_sample_rate": int(self.output_sample_rate),
-            "seconds_per_step": (
-                float(self.seconds_per_step)
-                if self.seconds_per_step is not None
-                else None
-            ),
+            "seconds_per_step": (float(self.seconds_per_step) if self.seconds_per_step is not None else None),
             "cache_length": int(self.cache_length) if self.cache_length is not None else None,
         }
 
@@ -143,17 +135,13 @@ class BackendGenerationLengthRequest:
                 raise ValueError("previous_output_durations не может содержать bool.")
             number = float(value)
             if not math.isfinite(number) or number < 0.0:
-                raise ValueError(
-                    "previous_output_durations должен содержать конечные числа >= 0."
-                )
+                raise ValueError("previous_output_durations должен содержать конечные числа >= 0.")
             previous.append(number)
         minimum_ratio = self.minimum_completion_ratio
         if minimum_ratio is not None:
             minimum_ratio = float(minimum_ratio)
             if not math.isfinite(minimum_ratio) or not 0.0 <= minimum_ratio < 1.0:
-                raise ValueError(
-                    "minimum_completion_ratio должен быть конечным числом в диапазоне 0..1."
-                )
+                raise ValueError("minimum_completion_ratio должен быть конечным числом в диапазоне 0..1.")
         object.__setattr__(self, "duration_budget", budget)
         object.__setattr__(self, "attempt", int(self.attempt))
         object.__setattr__(self, "previous_output_durations", tuple(previous))
@@ -285,8 +273,7 @@ class BackendGenerationRequest:
         if self.seed is not None:
             int(self.seed)
         if self.duration_budget is not None and (
-            not math.isfinite(float(self.duration_budget))
-            or float(self.duration_budget) <= 0.0
+            not math.isfinite(float(self.duration_budget)) or float(self.duration_budget) <= 0.0
         ):
             raise ValueError("duration_budget должен быть конечным числом > 0 или None.")
         object.__setattr__(self, "text", text)

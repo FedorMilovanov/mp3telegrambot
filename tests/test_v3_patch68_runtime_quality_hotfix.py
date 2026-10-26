@@ -1,4 +1,5 @@
 """Regression tests for v3 patch 68/69 runtime quality hotfixes."""
+
 import json
 import sqlite3
 
@@ -28,7 +29,13 @@ def test_search_rejects_one_word_author_only_rutube_false_positive():
 
 
 def test_search_caps_long_video_duration_mismatch_for_vk():
-    results = [{"url": "https://vk.example/bad", "title": "Shepherds Conference 2025 - GS7 - Пение и Проповедь", "duration": 5408}]
+    results = [
+        {
+            "url": "https://vk.example/bad",
+            "title": "Shepherds Conference 2025 - GS7 - Пение и Проповедь",
+            "duration": 5408,
+        }
+    ]
     url, score = _best_match(
         results,
         "Shepherds Conference - Суверенитет и Спасение - Джозайя Грауман",

@@ -69,7 +69,7 @@ def test_powershell_failure_output_does_not_echo_exception_or_paths() -> None:
     source = _source()
     catch_block = source.split("catch {", 1)[1]
     assert "$_.Exception.GetType().Name" in catch_block
-    assert "Write-Error \"TTS_WEIGHTS_RUNNER_SETUP_FAILED $FailureType\"" in catch_block
+    assert 'Write-Error "TTS_WEIGHTS_RUNNER_SETUP_FAILED $FailureType"' in catch_block
     assert "$_.Exception.Message" not in catch_block
     assert "Write-Host $Resolved" not in source
     assert "Write-Output $Resolved" not in source

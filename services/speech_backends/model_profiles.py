@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Typed catalog separating TTS adapters from concrete model deployments."""
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -211,10 +212,7 @@ class SpeechModelProfile:
         override_keys = tuple(_option_name(key) for key in self.backend_override_keys)
         unknown_overrides = sorted(set(override_keys) - set(backend_defaults))
         if unknown_overrides:
-            raise ValueError(
-                "backend_override_keys не объявлены в backend_defaults: "
-                + ", ".join(unknown_overrides)
-            )
+            raise ValueError("backend_override_keys не объявлены в backend_defaults: " + ", ".join(unknown_overrides))
 
         allowed_capabilities = {
             "voice_cloning",
@@ -229,9 +227,7 @@ class SpeechModelProfile:
         required_capabilities = tuple(dict.fromkeys(self.required_capabilities))
         unknown_capabilities = sorted(set(required_capabilities) - allowed_capabilities)
         if unknown_capabilities:
-            raise ValueError(
-                "Неизвестные required_capabilities: " + ", ".join(unknown_capabilities)
-            )
+            raise ValueError("Неизвестные required_capabilities: " + ", ".join(unknown_capabilities))
 
         object.__setattr__(self, "profile_id", profile_id)
         object.__setattr__(self, "backend_id", backend_id)
@@ -257,9 +253,7 @@ class SpeechModelProfile:
             "option_specs": [spec.as_dict() for spec in self.option_specs],
             "backend_defaults": dict(self.backend_defaults),
             "backend_override_keys": list(self.backend_override_keys),
-            "requires_execution_plan_evidence": bool(
-                self.requires_execution_plan_evidence
-            ),
+            "requires_execution_plan_evidence": bool(self.requires_execution_plan_evidence),
             "profile_policy": MODEL_PROFILE_POLICY,
         }
 
@@ -288,8 +282,7 @@ class SpeechModelProfile:
         unknown_options = sorted(set(raw_options) - known_options)
         if unknown_options:
             raise ValueError(
-                f"TTS profile {self.profile_id} не поддерживает speech_options: "
-                + ", ".join(unknown_options)
+                f"TTS profile {self.profile_id} не поддерживает speech_options: " + ", ".join(unknown_options)
             )
 
         effective_options: dict[str, Any] = {}
@@ -299,9 +292,7 @@ class SpeechModelProfile:
             nested_value = spec.coerce(raw_options[spec.name]) if nested_present else None
             flat_value = spec.coerce(payload[spec.name]) if flat_present else None
             if nested_present and flat_present and nested_value != flat_value:
-                raise ValueError(
-                    f"Конфликт speech_options.{spec.name} и request.{spec.name}."
-                )
+                raise ValueError(f"Конфликт speech_options.{spec.name} и request.{spec.name}.")
             value = nested_value if nested_present else flat_value if flat_present else spec.default
             if (nested_present or flat_present) and not spec.overridable and value != spec.default:
                 raise ValueError(f"TTS option {spec.name} запрещено переопределять.")
@@ -316,8 +307,7 @@ class SpeechModelProfile:
         unknown_config = sorted(set(raw_backend_config) - set(self.backend_defaults))
         if unknown_config:
             raise ValueError(
-                f"TTS profile {self.profile_id} не поддерживает speech_backend_config: "
-                + ", ".join(unknown_config)
+                f"TTS profile {self.profile_id} не поддерживает speech_backend_config: " + ", ".join(unknown_config)
             )
 
         effective_backend_config: dict[str, Any] = {}
@@ -325,15 +315,17 @@ class SpeechModelProfile:
         for key, default in self.backend_defaults.items():
             nested_present = key in raw_backend_config
             flat_present = key in payload
-            nested_value = _scalar(
-                raw_backend_config[key],
-                field_name=f"speech_backend_config.{key}",
-            ) if nested_present else None
+            nested_value = (
+                _scalar(
+                    raw_backend_config[key],
+                    field_name=f"speech_backend_config.{key}",
+                )
+                if nested_present
+                else None
+            )
             flat_value = _scalar(payload[key], field_name=f"request.{key}") if flat_present else None
             if nested_present and flat_present and nested_value != flat_value:
-                raise ValueError(
-                    f"Конфликт speech_backend_config.{key} и request.{key}."
-                )
+                raise ValueError(f"Конфликт speech_backend_config.{key} и request.{key}.")
             value = nested_value if nested_present else flat_value if flat_present else default
             if (nested_present or flat_present) and key not in override_keys and value != default:
                 raise ValueError(f"TTS backend config {key} запрещено переопределять.")
@@ -382,9 +374,7 @@ def resolve_model_profile_id(value: object) -> str:
     profile_id = _ALIASES.get(alias)
     if profile_id is None:
         available = ", ".join(model_profile_ids()) or "—"
-        raise RuntimeError(
-            f"Неизвестный TTS model profile: {value!r}. Доступно: {available}."
-        )
+        raise RuntimeError(f"Неизвестный TTS model profile: {value!r}. Доступно: {available}.")
     return profile_id
 
 

@@ -11,6 +11,7 @@
 Дешёвые проверки идут раньше скачивания, поэтому пользователь узнаёт причину
 отказа за секунды, а не после трёхминутной загрузки.
 """
+
 from __future__ import annotations
 
 import json
@@ -98,10 +99,7 @@ def live_skip(info: dict[str, Any] | None) -> Skip | None:
         return None
     return Skip(
         reason="live-stream",
-        message=(
-            "⚠️ Live-трансляции не поддерживаются. "
-            "Дождитесь окончания и загрузите запись."
-        ),
+        message=("⚠️ Live-трансляции не поддерживаются. Дождитесь окончания и загрузите запись."),
         details=str((info or {}).get("live_status") or "is_live"),
     )
 
@@ -120,10 +118,7 @@ def duration_skip(duration_sec: float | None, max_sec: int) -> Skip | None:
         return None
     return Skip(
         reason="too-long",
-        message=(
-            f"⚠️ Видео {duration // 60} мин — превышает лимит "
-            f"{max_sec // 60} мин. Скиньте видео покороче."
-        ),
+        message=(f"⚠️ Видео {duration // 60} мин — превышает лимит {max_sec // 60} мин. Скиньте видео покороче."),
         details=f"{duration}s > {max_sec}s",
     )
 
@@ -140,10 +135,7 @@ def disk_skip(free_gb: float | None, min_gb: float = DEFAULT_MIN_FREE_GB) -> Ski
         return None
     return Skip(
         reason="disk-low",
-        message=(
-            f"⚠️ Мало места на диске ({free_gb:.1f} ГБ свободно). "
-            "Освободите место и повторите."
-        ),
+        message=(f"⚠️ Мало места на диске ({free_gb:.1f} ГБ свободно). Освободите место и повторите."),
         details=f"{free_gb:.1f} GB < {min_gb:.1f} GB",
     )
 

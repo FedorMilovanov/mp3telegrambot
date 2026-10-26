@@ -24,9 +24,7 @@ def _payload(**overrides):
         "speech_backend": profile.backend_id,
         "speech_model_profile": profile.profile_id,
         "speech_profile_fingerprint": profile.fingerprint(),
-        "speech_options": {
-            spec.name: spec.default for spec in profile.option_specs
-        },
+        "speech_options": {spec.name: spec.default for spec in profile.option_specs},
         "speech_backend_config": dict(profile.backend_defaults),
         "media_master": "constant-mix",
         "final_media_validator": "ffprobe-av-contract",
@@ -50,9 +48,7 @@ def test_source_owned_writer_persists_validated_request(tmp_path: Path) -> None:
     assert saved["speech_backend"] == profile.backend_id
     assert saved["speech_model_profile"] == profile.profile_id
     assert saved["speech_profile_fingerprint"] == profile.fingerprint()
-    assert saved["speech_options"] == {
-        spec.name: spec.default for spec in profile.option_specs
-    }
+    assert saved["speech_options"] == {spec.name: spec.default for spec in profile.option_specs}
     assert saved["speech_backend_config"] == dict(profile.backend_defaults)
     assert not list(path.parent.glob(".request.json.*.tmp"))
 

@@ -47,9 +47,7 @@ def test_factory_quality_gate_requires_verified_boundaries_and_reason():
     unverified = _candidate("Без проверки", 100)
     unverified["boundary_verified"] = False
     no_reason = _candidate("Без причины", 100, reason="")
-    gated = gate.apply_factory_quality_gate(
-        {"shorts_candidates": [unverified, no_reason], "long_candidates": []}
-    )
+    gated = gate.apply_factory_quality_gate({"shorts_candidates": [unverified, no_reason], "long_candidates": []})
     assert gated["shorts_candidates"] == []
 
 
@@ -114,9 +112,7 @@ def test_factory_quality_thresholds_reject_nonfinite_environment_values(monkeypa
 
 
 def test_factory_plan_language_is_normalized_and_nonsense_rejected():
-    assert gate.validated_factory_plan_language(
-        {"metadata": {"language": "English"}}
-    ) == "en"
+    assert gate.validated_factory_plan_language({"metadata": {"language": "English"}}) == "en"
     for value in ("", "unknown", "mixed", "foo"):
         with __import__("pytest").raises(RuntimeError, match="доминирующий язык речи"):
             gate.validated_factory_plan_language({"metadata": {"language": value}})

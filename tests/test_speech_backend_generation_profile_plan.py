@@ -43,9 +43,7 @@ def test_generation_profile_request_and_plan_are_typed_and_serializable() -> Non
         metadata={"reason": "backend"},
     )
 
-    assert GENERATION_PROFILE_REQUEST_POLICY == (
-        "model-neutral-generation-profile-request-v1"
-    )
+    assert GENERATION_PROFILE_REQUEST_POLICY == ("model-neutral-generation-profile-request-v1")
     assert GENERATION_PROFILE_POLICY == "model-neutral-generation-profile-plan-v1"
     assert request.as_dict() == {
         "attempt": 2,
@@ -72,9 +70,7 @@ def test_voxcpm2_backend_owns_all_five_active_retry_profiles() -> None:
     backend = default_backend()
     plans = [backend.plan_generation_profile(_request(attempt)) for attempt in range(1, 6)]
 
-    assert VOXCPM2_GENERATION_PROFILE_POLICY == (
-        "voxcpm2-adaptive-generation-profile-v1"
-    )
+    assert VOXCPM2_GENERATION_PROFILE_POLICY == ("voxcpm2-adaptive-generation-profile-v1")
     assert plans[0].backend_options == {"cfg": 1.9, "steps": 16}
     assert plans[1].backend_options["cfg"] == pytest.approx(1.98)
     assert plans[1].backend_options["steps"] == 22

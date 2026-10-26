@@ -7,7 +7,7 @@ import sys
 import pytest
 
 
-BASE_STUB = r'''
+BASE_STUB = r"""
 from __future__ import annotations
 import json
 from datetime import datetime, timezone
@@ -41,7 +41,7 @@ def advance_retry_epoch(work_dir,segment_id,*,reason,evidence=None):
 def invalidate_segment_for_retry(work_dir,segment,*,reason,fitted_path=None,evidence=None):
     return advance_retry_epoch(work_dir,segment["id"],reason=reason,evidence=evidence)
 __all__=[]
-'''
+"""
 
 
 def load_wrapper(tmp_path: Path):
@@ -79,7 +79,9 @@ def test_new_text_scope_starts_from_zero(tmp_path: Path) -> None:
     first = "a" * 64
     second = "b" * 64
     module.advance_retry_epoch(
-        work, 1, reason="raw_candidate_hard_failure",
+        work,
+        1,
+        reason="raw_candidate_hard_failure",
         evidence={"failure_scope_fingerprint": first},
     )
     assert module.load_retry_epoch(work, 1, scope_fingerprint=first) == 1
@@ -93,12 +95,16 @@ def test_exact_scope_is_capped_after_three_failed_epochs(tmp_path: Path) -> None
     scope = "c" * 64
     for expected in (1, 2, 3):
         module.advance_retry_epoch(
-            work, 1, reason="raw_candidate_hard_failure",
+            work,
+            1,
+            reason="raw_candidate_hard_failure",
             evidence={"failure_scope_fingerprint": scope},
         )
         assert module.load_retry_epoch(work, 1, scope_fingerprint=scope) == expected
     with pytest.raises(RuntimeError, match="исчерпан безопасный retry-бюджет"):
         module.advance_retry_epoch(
-            work, 1, reason="raw_candidate_hard_failure",
+            work,
+            1,
+            reason="raw_candidate_hard_failure",
             evidence={"failure_scope_fingerprint": scope},
         )

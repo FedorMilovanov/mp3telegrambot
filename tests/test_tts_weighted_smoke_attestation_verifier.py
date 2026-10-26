@@ -31,10 +31,7 @@ def _attestation() -> dict:
             "commit_sha": COMMIT,
             "ref": "refs/heads/main",
             "event_name": "workflow_dispatch",
-            "workflow_ref": (
-                f"{REPOSITORY}/.github/workflows/"
-                "tts-weighted-smoke.yml@refs/heads/main"
-            ),
+            "workflow_ref": (f"{REPOSITORY}/.github/workflows/tts-weighted-smoke.yml@refs/heads/main"),
             "run_id": RUN_ID,
             "run_attempt": RUN_ATTEMPT,
         },

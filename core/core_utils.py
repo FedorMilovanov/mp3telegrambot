@@ -15,12 +15,14 @@ core_utils.py — Общие утилиты без зависимостей от
 
 Правило: этот модуль не должен импортировать ничего из других модулей проекта.
 """
+
 import re
 from typing import Any
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Время / таймкоды
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def time_to_seconds(t: str) -> int | None:
     """Конвертирует M:SS или H:MM:SS в секунды.
@@ -50,6 +52,7 @@ def time_to_seconds(t: str) -> int | None:
 # RTL / BiDi утилиты
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _fix_rtl_in_text(text: str) -> str:
     """Чистит bidi-мусор от Gemini и обеспечивает корректный рендер RTL-слов
     (иврит, арабский) в Telegraph.
@@ -58,26 +61,27 @@ def _fix_rtl_in_text(text: str) -> str:
     чтобы браузер не переключал выравнивание всей строки вправо.
     """
     # Убираем bidi-изоляторы Gemini (НО не LTR/RTL Mark — убираем ниже отдельно)
-    text = re.sub(r'[⁦-⁩‪-‮]', '', text)
+    text = re.sub(r"[⁦-⁩‪-‮]", "", text)
     # Убираем старые наши LTR Mark чтобы не дублировать при повторном вызове
-    text = text.replace('‎', '').replace('‏', '')
+    text = text.replace("‎", "").replace("‏", "")
 
     _LTR = "‎"  # FIX: Python 3.13 запрещает \u в raw replacement string
 
     # LTR Mark + NBSP перед скобкой после RTL-слова
     text = re.sub(
-        r'([֐-׿؀-ۿ][^\s,;)]*?)\s*\(',
-        r'\1 ' + _LTR + '(',
+        r"([֐-׿؀-ۿ][^\s,;)]*?)\s*\(",
+        r"\1 " + _LTR + "(",
         text,
     )
     # LTR Mark после RTL-слова перед пробелом/пунктуацией —
     # предотвращает «улёт» следующего символа вправо
     text = re.sub(
         r'([֐-׿؀-ۿ][^\s,;(.!?:]*?)([\s,;.!?:»"\)\]])',
-        r'\1' + _LTR + r'\2',
+        r"\1" + _LTR + r"\2",
         text,
     )
     return text
+
 
 def _fix_unclosed_bold(text: str) -> str:
     """Страховка перед парсером: исправляет незакрытые ** в тексте.
@@ -86,23 +90,23 @@ def _fix_unclosed_bold(text: str) -> str:
     - Если ** открыт посередине строки без закрытия — закрываем в конце строки.
     - Корректный текст не трогаем.
     """
-    lines = text.split('\n')
+    lines = text.split("\n")
     result: list[str] = []
     for line in lines:
         # Считаем **, не трогая ***
-        tmp = line.replace('***', '\x00\x00\x00')
-        count = tmp.count('**')
+        tmp = line.replace("***", "\x00\x00\x00")
+        count = tmp.count("**")
         if count % 2 == 0:
             result.append(line)
             continue
         stripped = line.rstrip()
-        if stripped.endswith('**'):
+        if stripped.endswith("**"):
             # Висящий ** в конце — убираем
             result.append(stripped[:-2].rstrip())
         else:
             # Открытый ** посередине — закрываем
-            result.append(line + '**')
-    return '\n'.join(result)
+            result.append(line + "**")
+    return "\n".join(result)
 
 
 def _is_emphasis_node(node: object) -> bool:
@@ -122,7 +126,7 @@ def _fix_inline_spacing(
         return nodes
 
     _PUNCT_START = (" ", "\n", ".", ",", ";", ":", "!", "?", ")", "\u00bb", "\u2014", "\u2013")
-    _PUNCT_END   = (" ", "\n", "(", "\u00ab", "\u2014", "\u2013", "-", "/")
+    _PUNCT_END = (" ", "\n", "(", "\u00ab", "\u2014", "\u2013", "-", "/")
 
     result: list[str | dict[str, Any]] = []
     for i, node in enumerate(nodes):
@@ -143,9 +147,7 @@ def _fix_inline_spacing(
         elif isinstance(node, str):
             # Случай 4: предыдущий dict(b/i), текущий str без пробела — добавляем пробел
             previous = result[-1] if result else None
-            if (_is_emphasis_node(previous)
-                    and node
-                    and not node.startswith(_PUNCT_START)):
+            if _is_emphasis_node(previous) and node and not node.startswith(_PUNCT_START):
                 result.append(" ")
             result.append(node)
         else:
@@ -166,15 +168,15 @@ def unescape_markdown_markers(text: str) -> str:
 
 def _md_parse_inline_inner(text: str) -> list[str | dict[str, Any]]:
     """Парсит только *курсив* и _курсив_ внутри уже жирного блока."""
-    if re.search(r'[\u0590-\u05FF\u0600-\u06FF]', text):
+    if re.search(r"[\u0590-\u05FF\u0600-\u06FF]", text):
         text = _fix_rtl_in_text(text)
     nodes: list[str | dict[str, Any]] = []
     # #49: убран re.DOTALL — не захватываем переносы строк
-    pattern = re.compile(r'(\*([^\n]+?)\*|_([^\n]+?)_)')
+    pattern = re.compile(r"(\*([^\n]+?)\*|_([^\n]+?)_)")
     last = 0
     for m in pattern.finditer(text):
         if m.start() > last:
-            nodes.append(text[last:m.start()])
+            nodes.append(text[last : m.start()])
         nodes.append({"tag": "i", "children": [m.group(2) or m.group(3)]})
         last = m.end()
     if last < len(text):
@@ -226,17 +228,17 @@ def _polish_timestamps_in_text(text: str) -> str:
 
     # FIX 4: пробел между .!?:; и **bold-лидером**
     # Не трогаем уже корректные: '. **' остаётся '. **'
-    text = re.sub(r'([\.\!\?\:\;])(\*\*[^\*\n])', r'\1 \2', text)
+    text = re.sub(r"([\.\!\?\:\;])(\*\*[^\*\n])", r"\1 \2", text)
 
     # FIX 4b: пробел между ** и ** если идут вплотную (закрывающий + открывающий)
-    text = re.sub(r'(\*\*)(\*\*[^\*\n])', r'\1 \2', text)
+    text = re.sub(r"(\*\*)(\*\*[^\*\n])", r"\1 \2", text)
 
     # FIX 2: пробел перед эмодзи-таймкодом если его нет
     # Маркеры таймкодов: ⏱, 📌, 🎯, 🔔
-    text = re.sub(r'([а-яА-ЯёЁa-zA-Z0-9\)\]\»\"])([⏱📌🎯🔔])', r'\1 \2', text)
+    text = re.sub(r"([а-яА-ЯёЁa-zA-Z0-9\)\]\»\"])([⏱📌🎯🔔])", r"\1 \2", text)
     # FIX 2026-05-24: пробел между закрывающим ** и ⏱
-    text = text.replace('**⏱', '** ⏱')
-    text = text.replace('**\u00a0⏱', '** \u00a0⏱')
+    text = text.replace("**⏱", "** ⏱")
+    text = text.replace("**\u00a0⏱", "** \u00a0⏱")
 
     # FIX 3 (v10 REWRITE): таймкод должен стоять ПЕРЕД завершающей пунктуацией.
     # Правило: «текст ⏱ 49:00.» — ПРАВИЛЬНО (TS часть предложения, точка после него).
@@ -263,16 +265,16 @@ def _md_parse_inline(text: str) -> list[str | dict[str, Any]]:
     text = _fix_unclosed_bold(text)
     nodes: list[str | dict[str, Any]] = []
     # Быстрая защита от malformed markdown с избыточными * — предотвращает ReDoS
-    if text.count('*') > 200 or text.count('_') > 100:
-        return [text.replace('**', '').replace('*', '').replace('_', '')]
+    if text.count("*") > 200 or text.count("_") > 100:
+        return [text.replace("**", "").replace("*", "").replace("_", "")]
     # Bold/italic не должны захватывать двойной перенос строки (граница абзаца).
     pattern = re.compile(
-        r'(\*\*\*((?:(?!\n\n).)+?)\*\*\*|\*\*((?:(?!\n\n).)+?)\*\*|\*((?:(?!\n\n).)+?)\*|_((?:(?!\n\n).)+?)_)'
+        r"(\*\*\*((?:(?!\n\n).)+?)\*\*\*|\*\*((?:(?!\n\n).)+?)\*\*|\*((?:(?!\n\n).)+?)\*|_((?:(?!\n\n).)+?)_)"
     )
     last = 0
     for m in pattern.finditer(text):
         if m.start() > last:
-            nodes.append(text[last:m.start()])
+            nodes.append(text[last : m.start()])
 
         def _make_b_node(children: list[Any]) -> dict[str, Any]:
             return {"tag": "b", "children": children}
@@ -289,5 +291,5 @@ def _md_parse_inline(text: str) -> list[str | dict[str, Any]]:
     if last < len(text):
         nodes.append(text[last:])
     # Fallback: убираем сырые ** которые не распознал парсер
-    nodes = [n.replace('**', '') if isinstance(n, str) else n for n in nodes]
+    nodes = [n.replace("**", "") if isinstance(n, str) else n for n in nodes]
     return _fix_inline_spacing(nodes) if nodes else [text]

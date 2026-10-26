@@ -44,12 +44,8 @@ def test_extract_pull_request_filter_handles_paths_and_paths_ignore():
 def test_workflow_applies_matches_github_trigger_semantics():
     assert workflow_applies("paths", ("**/*.py",), ("services/x.py",))
     assert not workflow_applies("paths", ("**/*.py",), ("README.md",))
-    assert workflow_applies(
-        "paths-ignore", ("**/*.md", ".gitignore"), ("README.md", "bot.py")
-    )
-    assert not workflow_applies(
-        "paths-ignore", ("**/*.md", ".gitignore"), ("README.md", ".gitignore")
-    )
+    assert workflow_applies("paths-ignore", ("**/*.md", ".gitignore"), ("README.md", "bot.py"))
+    assert not workflow_applies("paths-ignore", ("**/*.md", ".gitignore"), ("README.md", ".gitignore"))
     with pytest.raises(ValueError, match="negative patterns"):
         workflow_applies("paths-ignore", ("!README.md",), ("README.md",))
 
@@ -64,8 +60,7 @@ def test_every_pull_request_workflow_is_gated():
     declared = {
         path.relative_to(ROOT).as_posix()
         for path in (ROOT / ".github" / "workflows").glob("*.yml")
-        if path.name != Path(GATE_WORKFLOW).name
-        and "pull_request:" in path.read_text(encoding="utf-8")
+        if path.name != Path(GATE_WORKFLOW).name and "pull_request:" in path.read_text(encoding="utf-8")
     }
     discovered = set(discover_profile_workflows(ROOT))
 
@@ -78,20 +73,16 @@ def test_every_pull_request_workflow_is_gated():
 def test_discovery_picks_up_a_new_workflow_without_registration(tmp_path):
     workflows = tmp_path / ".github" / "workflows"
     workflows.mkdir(parents=True)
-    (workflows / "ci.yml").write_text(
-        "on:\n  pull_request:\n", encoding="utf-8"
-    )
+    (workflows / "ci.yml").write_text("on:\n  pull_request:\n", encoding="utf-8")
     (workflows / "existing.yml").write_text(
-        "on:\n  pull_request:\n    paths:\n      - \"services/**\"\n",
+        'on:\n  pull_request:\n    paths:\n      - "services/**"\n',
         encoding="utf-8",
     )
     (workflows / "brand-new.yml").write_text(
-        "on:\n  pull_request:\n    paths:\n      - \"core/**\"\n",
+        'on:\n  pull_request:\n    paths:\n      - "core/**"\n',
         encoding="utf-8",
     )
-    (workflows / "push-only.yml").write_text(
-        "on:\n  push:\n    branches: [main]\n", encoding="utf-8"
-    )
+    (workflows / "push-only.yml").write_text("on:\n  push:\n    branches: [main]\n", encoding="utf-8")
     (workflows / "notes.txt").write_text("not a workflow", encoding="utf-8")
 
     assert discover_profile_workflows(tmp_path) == (
@@ -103,14 +94,10 @@ def test_discovery_picks_up_a_new_workflow_without_registration(tmp_path):
 def test_workflow_without_pull_request_trigger_is_not_gated(tmp_path):
     workflows = tmp_path / ".github" / "workflows"
     workflows.mkdir(parents=True)
-    (workflows / "release.yml").write_text(
-        "on:\n  workflow_dispatch:\n", encoding="utf-8"
-    )
+    (workflows / "release.yml").write_text("on:\n  workflow_dispatch:\n", encoding="utf-8")
 
     with pytest.raises(MissingPullRequestTrigger):
-        extract_pull_request_filter(
-            (workflows / "release.yml").read_text(encoding="utf-8")
-        )
+        extract_pull_request_filter((workflows / "release.yml").read_text(encoding="utf-8"))
     with pytest.raises(RuntimeError, match="no pull_request workflows"):
         discover_profile_workflows(tmp_path)
 
@@ -134,9 +121,7 @@ def test_expected_profile_workflows_use_live_workflow_filters():
     secret_scan = {".github/workflows/secret-scan.yml"}
     assert set(expected_profile_workflows(ROOT, ("README.md",))) == secret_scan
 
-    youtube = set(
-        expected_profile_workflows(ROOT, ("services/youtube_po_token_runtime.py",))
-    )
+    youtube = set(expected_profile_workflows(ROOT, ("services/youtube_po_token_runtime.py",)))
     assert {
         ".github/workflows/cut-policy-ci.yml",
         ".github/workflows/gemini-qa-policy.yml",
@@ -163,10 +148,14 @@ def test_expected_profile_workflows_use_live_workflow_filters():
 
     # .env.example — не документация: его смотрит и CodeQL (любой не-md файл
     # запускает анализ), и secret-scan, и политика Gemini-ключей.
-    assert set(expected_profile_workflows(ROOT, (".env.example",))) == {
-        ".github/workflows/gemini-qa-policy.yml",
-        ".github/workflows/codeql.yml",
-    } | secret_scan
+    assert (
+        set(expected_profile_workflows(ROOT, (".env.example",)))
+        == {
+            ".github/workflows/gemini-qa-policy.yml",
+            ".github/workflows/codeql.yml",
+        }
+        | secret_scan
+    )
 
 
 def test_wait_timeout_fits_inside_the_gate_job_budget() -> None:
@@ -186,9 +175,7 @@ def test_wait_timeout_fits_inside_the_gate_job_budget() -> None:
     assert budget_match, "required-pr-gate must declare timeout-minutes"
     budget_seconds = int(budget_match.group(1)) * 60
 
-    assert DEFAULT_TIMEOUT_SECONDS <= budget_seconds, (
-        "the gate script would expire before its own job"
-    )
+    assert DEFAULT_TIMEOUT_SECONDS <= budget_seconds, "the gate script would expire before its own job"
     assert budget_seconds - DEFAULT_TIMEOUT_SECONDS >= 300, (
         "leave at least 5 minutes for checkout, job setup and reporting"
     )

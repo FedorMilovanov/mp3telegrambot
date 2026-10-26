@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Factory bridge for full-sermon translation editorial review."""
+
 from __future__ import annotations
 
 import asyncio
@@ -51,10 +52,7 @@ def factory_editorial_gemini_enabled() -> bool:
 
 
 def _safe_media_id(media_id: str) -> str:
-    safe = "".join(
-        char if (char.isalnum() or char in "_-") else "_"
-        for char in str(media_id or "media")
-    )
+    safe = "".join(char if (char.isalnum() or char in "_-") else "_" for char in str(media_id or "media"))
     return safe[:100] or "media"
 
 
@@ -290,7 +288,7 @@ def _gemini_max_attempts() -> int:
 def _manifest_for_model(manifest: dict[str, Any]) -> dict[str, Any]:
     """Remove machine-local paths before sending semantic evidence to Gemini."""
     copied = json.loads(json.dumps(manifest, ensure_ascii=False))
-    translated = ((copied.get("source") or {}).get("translated_video") or {})
+    translated = (copied.get("source") or {}).get("translated_video") or {}
     if isinstance(translated, dict):
         translated.pop("local_path", None)
     return copied
@@ -510,8 +508,7 @@ async def prepare_factory_editorial_review(
     if math.isfinite(caller_duration) and caller_duration > 0:
         if abs(actual_duration - caller_duration) > 1.25:
             raise RuntimeError(
-                f"Factory editorial source duration drift: caller={caller_duration:.3f}s "
-                f"probe={actual_duration:.3f}s"
+                f"Factory editorial source duration drift: caller={caller_duration:.3f}s probe={actual_duration:.3f}s"
             )
 
     durable_source = await asyncio.to_thread(_durable_review_source, source_path, root, media_id)

@@ -13,6 +13,7 @@ proxy не поддерживается официальным telegram-bot-api.
 Request Entity Too Large, потому что бот в этой сессии фактически работал
 через облачный API (50 МБ), а не через локальный (2000 МБ).
 """
+
 import re
 from pathlib import Path
 

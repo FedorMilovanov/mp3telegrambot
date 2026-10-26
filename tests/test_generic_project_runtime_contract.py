@@ -101,5 +101,3 @@ def test_atomic_json_rejects_nan_without_replacing_existing_file(tmp_path: Path)
         "value": 1,
     }
     assert not list(tmp_path.glob("state.json.tmp.*"))
-
-

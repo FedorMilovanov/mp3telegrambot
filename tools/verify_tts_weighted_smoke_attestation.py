@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Verify one downloaded weighted-TTS attestation artifact fail-closed."""
+
 from __future__ import annotations
 
 import argparse
@@ -98,10 +99,7 @@ def _identifier_scalar(
     if not 1 <= len(text) <= maximum:
         raise RuntimeError(f"Unsafe identifier output scalar: {label}.")
     allowed_extra = set(extra)
-    if any(
-        not (char.isascii() and (char.isalnum() or char in allowed_extra))
-        for char in text
-    ):
+    if any(not (char.isascii() and (char.isalnum() or char in allowed_extra)) for char in text):
         raise RuntimeError(f"Unsafe identifier output scalar: {label}.")
     if not text[0].isalnum() or not text[-1].isalnum():
         raise RuntimeError(f"Unsafe identifier output scalar: {label}.")
@@ -178,16 +176,10 @@ def verify_downloaded_attestation(
         raise ValueError("Attestation не подтверждает passed/audio cleanup invariants.")
 
     outputs = {
-        "attestation_digest": _hex_scalar(
-            payload["digest_sha256"], length=64, label="attestation_digest"
-        ),
-        "commit_sha": _hex_scalar(
-            subject["commit_sha"], length=40, label="commit_sha"
-        ),
+        "attestation_digest": _hex_scalar(payload["digest_sha256"], length=64, label="attestation_digest"),
+        "commit_sha": _hex_scalar(subject["commit_sha"], length=40, label="commit_sha"),
         "run_id": str(_positive_int(subject["run_id"], "run_id")),
-        "run_attempt": str(
-            _positive_int(subject["run_attempt"], "run_attempt")
-        ),
+        "run_attempt": str(_positive_int(subject["run_attempt"], "run_attempt")),
         "profile_id": _identifier_scalar(
             result["profile_id"],
             label="profile_id",
@@ -206,12 +198,8 @@ def verify_downloaded_attestation(
             maximum=96,
             extra="-_",
         ),
-        "output_duration_seconds": _duration_scalar(
-            result["output_duration_seconds"]
-        ),
-        "output_sample_rate": _sample_rate_scalar(
-            result["output_sample_rate"]
-        ),
+        "output_duration_seconds": _duration_scalar(result["output_duration_seconds"]),
+        "output_sample_rate": _sample_rate_scalar(result["output_sample_rate"]),
         "audio_retained": "false",
     }
     if set(outputs) != set(_OUTPUT_KEYS):

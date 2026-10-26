@@ -85,10 +85,7 @@ def test_composition_validates_repair_binding_shape(tmp_path: Path) -> None:
 
     plan["source"]["repair_provenance"]["sha256"] = "sha256:not-a-digest"
     plan = refresh_composition_id(plan)
-    assert any(
-        "repair_provenance.sha256" in item
-        for item in validate_composition_document(plan)
-    )
+    assert any("repair_provenance.sha256" in item for item in validate_composition_document(plan))
 
 
 @pytest.mark.asyncio

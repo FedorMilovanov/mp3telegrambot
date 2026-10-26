@@ -19,6 +19,7 @@
 * ``SecretMaskingFormatter`` вырезает значения известных секретных переменных
   из готового текста — defense-in-depth поверх того, что в коде их и так не печатают.
 """
+
 from __future__ import annotations
 
 import contextvars

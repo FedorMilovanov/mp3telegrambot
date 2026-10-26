@@ -15,6 +15,7 @@
   вызывающий код обязан сказать пользователю про размер и не терять уже
   готовый дубляж.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -107,16 +108,24 @@ def download_args(
     ``extra_args`` существует потому, что два прежних места вызывали разные
     наборы флагов; расхождение сохранено явно, а не спрятано в двух копиях.
     """
-    return list(YTDLP_BASE_ARGS) + list(sponsorblock_args) + list(extra_args) + [
-        "--extract-audio",
-        "--audio-format", "mp3",
-        "--audio-quality", audio_quality(duration),
-        "--embed-metadata",
-        "--embed-thumbnail",
-        "--no-playlist",
-        "--output", str(download_dir / f"{media_id}.%(ext)s"),
-        url,
-    ]
+    return (
+        list(YTDLP_BASE_ARGS)
+        + list(sponsorblock_args)
+        + list(extra_args)
+        + [
+            "--extract-audio",
+            "--audio-format",
+            "mp3",
+            "--audio-quality",
+            audio_quality(duration),
+            "--embed-metadata",
+            "--embed-thumbnail",
+            "--no-playlist",
+            "--output",
+            str(download_dir / f"{media_id}.%(ext)s"),
+            url,
+        ]
+    )
 
 
 async def prepare_audio(
@@ -153,9 +162,7 @@ async def prepare_audio(
         )
         proc = await run_cancellable_process(cmd, timeout=timeout, text=True)
         if proc.returncode != 0:
-            raise AudioError(
-                (proc.stderr or "")[-500:] or f"yt-dlp rc={proc.returncode}"
-            )
+            raise AudioError((proc.stderr or "")[-500:] or f"yt-dlp rc={proc.returncode}")
         path = find_existing(download_dir, media_id) or path
         if path.exists():
             # mp3gain правит только заголовки: без перекодирования, обратимо.

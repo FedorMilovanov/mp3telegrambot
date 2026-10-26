@@ -150,19 +150,13 @@ class _Visitor(ast.NodeVisitor):
                 direct_kind = kind
                 break
         if direct_kind:
-            self.findings.append(
-                Finding(self.relpath, node.lineno, function, direct_kind, expr)
-            )
+            self.findings.append(Finding(self.relpath, node.lineno, function, direct_kind, expr))
 
         if expr == "gemini_generate" or expr.endswith(".gemini_generate"):
-            self.findings.append(
-                Finding(self.relpath, node.lineno, function, "common_router", expr)
-            )
+            self.findings.append(Finding(self.relpath, node.lineno, function, "common_router", expr))
 
         if expr in {"genai.Client", "google.genai.Client"} or expr.endswith(".genai.Client"):
-            self.findings.append(
-                Finding(self.relpath, node.lineno, function, "client_create", expr)
-            )
+            self.findings.append(Finding(self.relpath, node.lineno, function, "client_create", expr))
 
         self.generic_visit(node)
 
@@ -243,10 +237,7 @@ def main() -> int:
     if unknown:
         print("Unclassified runtime Gemini callers:")
         for item in unknown:
-            print(
-                f"  {item.path}:{item.line} {item.function} "
-                f"{item.kind} {item.expression}"
-            )
+            print(f"  {item.path}:{item.line} {item.function} {item.kind} {item.expression}")
 
     if count_drift:
         print("Approved direct-call signature count drift:")
@@ -257,8 +248,7 @@ def main() -> int:
         return 0
     if unknown or count_drift:
         raise SystemExit(
-            "Gemini caller census failed closed: classify the new runtime route "
-            "or remove the extra direct SDK call."
+            "Gemini caller census failed closed: classify the new runtime route or remove the extra direct SDK call."
         )
     print("Gemini caller census strict gate: PASS")
     return 0

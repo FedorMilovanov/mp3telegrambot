@@ -189,9 +189,7 @@ def test_non_direct_mode_keeps_backend_boundary_for_legacy_master() -> None:
 def test_source_prosody_policy_is_model_independent_and_diagnostic_only() -> None:
     from tools.voxcpm2 import source_prosody_policy
 
-    segment = source_prosody_policy.mark_diagnostic_only(
-        {"text": "Текст.", "source_prosody": {"f0_median": 240.0}}
-    )
+    segment = source_prosody_policy.mark_diagnostic_only({"text": "Текст.", "source_prosody": {"f0_median": 240.0}})
     ranked = source_prosody_policy.ranking_view(segment)
     assert source_prosody_policy.is_diagnostic_only(segment) is True
     assert "source_prosody" not in ranked
@@ -264,9 +262,7 @@ def test_registry_accepts_future_backend_without_voxcpm_session_shape() -> None:
     try:
         selected = get_backend("future-test")
         session = selected.open_session(BackendSessionConfig(Path("future-model")))
-        assert session.generate(
-            BackendGenerationRequest("Привет.", Path("reference.wav"))
-        ) == "Привет."
+        assert session.generate(BackendGenerationRequest("Привет.", Path("reference.wav"))) == "Привет."
     finally:
         unregister_backend("future-test")
 
@@ -293,9 +289,7 @@ def test_direct_candidate_ranking_ignores_source_prosody(monkeypatch) -> None:
     )
 
     candidate: dict = {"attempt": 1}
-    segment = cli.source_prosody_policy.mark_diagnostic_only(
-        {"text": "Текст.", "source_prosody": {"f0_median": 300.0}}
-    )
+    segment = cli.source_prosody_policy.mark_diagnostic_only({"text": "Текст.", "source_prosody": {"f0_median": 300.0}})
     penalty = cli.source_prosody_penalty(candidate, segment)
 
     assert penalty == 1.25

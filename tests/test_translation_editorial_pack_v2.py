@@ -42,9 +42,7 @@ def _fake_v1_builder(*args, **kwargs) -> Path:
         "candidates": candidates,
         "timeline": {"russian_whisper": "translated_video_timeline"},
     }
-    manifest["review_pack_id"] = pack_v2._canonical_sha256(
-        pack_v2._v1_evidence_identity(manifest)
-    )
+    manifest["review_pack_id"] = pack_v2._canonical_sha256(pack_v2._v1_evidence_identity(manifest))
     destination = output_dir / f"{media_id}_translation_editorial_v1.zip"
     with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False))
@@ -106,9 +104,10 @@ def test_v2_builder_leaves_no_legacy_pack_in_output(monkeypatch, tmp_path):
 def test_v2_verifier_rejects_modified_instructions(monkeypatch, tmp_path):
     pack = _build(monkeypatch, tmp_path / "packs")
     tampered = tmp_path / "tampered.zip"
-    with zipfile.ZipFile(pack, "r") as source, zipfile.ZipFile(
-        tampered, "w", compression=zipfile.ZIP_DEFLATED
-    ) as destination:
+    with (
+        zipfile.ZipFile(pack, "r") as source,
+        zipfile.ZipFile(tampered, "w", compression=zipfile.ZIP_DEFLATED) as destination,
+    ):
         for info in source.infolist():
             payload = source.read(info.filename)
             if info.filename == "REVIEW_INSTRUCTIONS.md":

@@ -6,6 +6,7 @@ termination of the Python parent can leave the Node child alive. Startup may
 self-heal only when the listener can be proven to be this repository's exact
 ``server/build/main.js`` command. Unknown listeners remain fail-closed.
 """
+
 from __future__ import annotations
 
 import json
@@ -19,14 +20,7 @@ from pathlib import Path
 
 DEFAULT_PORT = 4416
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_SERVER_MAIN = (
-    PROJECT_ROOT
-    / ".runtime"
-    / "bgutil-ytdlp-pot-provider"
-    / "server"
-    / "build"
-    / "main.js"
-)
+DEFAULT_SERVER_MAIN = PROJECT_ROOT / ".runtime" / "bgutil-ytdlp-pot-provider" / "server" / "build" / "main.js"
 _PROBE_TIMEOUT_SEC = 10
 _STOP_TIMEOUT_SEC = 5.0
 
@@ -46,9 +40,7 @@ class WindowsPortOwner:
 def _powershell_executable() -> str:
     shell = shutil.which("pwsh") or shutil.which("powershell") or shutil.which("powershell.exe")
     if not shell:
-        raise BgutilOrphanRecoveryError(
-            "PowerShell не найден; безопасно определить владельца bgutil-порта невозможно"
-        )
+        raise BgutilOrphanRecoveryError("PowerShell не найден; безопасно определить владельца bgutil-порта невозможно")
     return shell
 
 
@@ -58,7 +50,7 @@ def _probe_windows_port_owners(port: int) -> tuple[WindowsPortOwner, ...]:
         f"$ids=@(Get-NetTCPConnection -LocalPort {int(port)} -State Listen "
         "-ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique); "
         "$rows=foreach($ownerId in $ids){"
-        "$p=Get-CimInstance Win32_Process -Filter \"ProcessId=$ownerId\" -ErrorAction SilentlyContinue; "
+        '$p=Get-CimInstance Win32_Process -Filter "ProcessId=$ownerId" -ErrorAction SilentlyContinue; '
         "if($null -ne $p){[pscustomobject]@{pid=[int]$p.ProcessId;name=[string]$p.Name;"
         "executable_path=[string]$p.ExecutablePath;command_line=[string]$p.CommandLine}}}; "
         "@($rows)|ConvertTo-Json -Compress"
@@ -74,16 +66,12 @@ def _probe_windows_port_owners(port: int) -> tuple[WindowsPortOwner, ...]:
             check=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        raise BgutilOrphanRecoveryError(
-            "Не удалось определить процесс, занявший bgutil HTTP port"
-        ) from exc
+        raise BgutilOrphanRecoveryError("Не удалось определить процесс, занявший bgutil HTTP port") from exc
 
     if process.returncode:
         detail = (process.stderr or process.stdout or "").strip()[-700:]
         suffix = f": {detail}" if detail else ""
-        raise BgutilOrphanRecoveryError(
-            "PowerShell не смог определить владельца bgutil HTTP port" + suffix
-        )
+        raise BgutilOrphanRecoveryError("PowerShell не смог определить владельца bgutil HTTP port" + suffix)
 
     raw = (process.stdout or "").strip()
     if not raw:
@@ -91,9 +79,7 @@ def _probe_windows_port_owners(port: int) -> tuple[WindowsPortOwner, ...]:
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise BgutilOrphanRecoveryError(
-            "PowerShell вернул повреждённые данные о владельце bgutil HTTP port"
-        ) from exc
+        raise BgutilOrphanRecoveryError("PowerShell вернул повреждённые данные о владельце bgutil HTTP port") from exc
 
     rows = payload if isinstance(payload, list) else [payload]
     owners: dict[int, WindowsPortOwner] = {}
@@ -158,15 +144,11 @@ def _kill_windows_process_tree(pid: int) -> None:
             check=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        raise BgutilOrphanRecoveryError(
-            f"Не удалось остановить orphaned bgutil provider PID {pid}"
-        ) from exc
+        raise BgutilOrphanRecoveryError(f"Не удалось остановить orphaned bgutil provider PID {pid}") from exc
     if process.returncode:
         detail = (process.stderr or process.stdout or "").strip()[-700:]
         suffix = f": {detail}" if detail else ""
-        raise BgutilOrphanRecoveryError(
-            f"Не удалось остановить orphaned bgutil provider PID {pid}" + suffix
-        )
+        raise BgutilOrphanRecoveryError(f"Не удалось остановить orphaned bgutil provider PID {pid}" + suffix)
 
 
 def recover_orphaned_bgutil_http_runtime(
@@ -188,15 +170,12 @@ def recover_orphaned_bgutil_http_runtime(
     if not owners:
         return None
     if len(owners) != 1:
-        raise BgutilOrphanRecoveryError(
-            f"Порт {port} слушают несколько процессов; автоматическая очистка запрещена"
-        )
+        raise BgutilOrphanRecoveryError(f"Порт {port} слушают несколько процессов; автоматическая очистка запрещена")
 
     owner = owners[0]
     if not is_expected_bgutil_owner(owner, server_main=server_main, port=port):
         raise BgutilOrphanRecoveryError(
-            f"Порт {port} занят неизвестным процессом PID {owner.pid}; "
-            "автоматическое завершение запрещено"
+            f"Порт {port} занят неизвестным процессом PID {owner.pid}; автоматическое завершение запрещено"
         )
 
     _kill_windows_process_tree(owner.pid)

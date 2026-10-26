@@ -1,4 +1,5 @@
 """Backend-neutral process leases and artifact postconditions for Dub jobs."""
+
 from __future__ import annotations
 
 import hashlib
@@ -55,10 +56,14 @@ def _pid_is_running(pid: int) -> bool:
 
 def _linux_start_token(pid: int) -> str:
     try:
-        fields = Path(f"/proc/{int(pid)}/stat").read_text(
-            encoding="utf-8",
-            errors="replace",
-        ).split()
+        fields = (
+            Path(f"/proc/{int(pid)}/stat")
+            .read_text(
+                encoding="utf-8",
+                errors="replace",
+            )
+            .split()
+        )
     except OSError:
         return ""
     return fields[21] if len(fields) > 21 else ""
@@ -226,9 +231,7 @@ def record_execution_lease(
             old_pid = int(current["runner_pid"])
             old_token = str(current["process_start_token"] or "")
             if process_identity_matches(old_pid, old_token):
-                raise RuntimeError(
-                    f"Job #{job_id} already has a live runner lease for PID {old_pid}."
-                )
+                raise RuntimeError(f"Job #{job_id} already has a live runner lease for PID {old_pid}.")
         conn.execute(
             """
             INSERT INTO dub_execution_leases(
@@ -337,11 +340,7 @@ def active_execution_leases(store: DubStore) -> list[ExecutionLease]:
             runner_pid=int(row["runner_pid"]),
             runner_started_at=str(row["runner_started_at"]),
             process_start_token=str(row["process_start_token"] or ""),
-            process_group_id=(
-                int(row["process_group_id"])
-                if row["process_group_id"] is not None
-                else None
-            ),
+            process_group_id=(int(row["process_group_id"]) if row["process_group_id"] is not None else None),
             command_fingerprint=str(row["command_fingerprint"]),
             heartbeat_at=str(row["heartbeat_at"]),
             state=str(row["state"]),
@@ -357,10 +356,7 @@ def recover_orphaned_executions(store: DubStore) -> int:
         if process_identity_matches(lease.runner_pid, lease.process_start_token):
             terminate_process_tree(lease.runner_pid)
             if _pid_is_running(lease.runner_pid):
-                raise RuntimeError(
-                    f"Unable to terminate orphan runner PID {lease.runner_pid} "
-                    f"for job #{lease.job_id}."
-                )
+                raise RuntimeError(f"Unable to terminate orphan runner PID {lease.runner_pid} for job #{lease.job_id}.")
             state = "terminated"
         else:
             state = "stale"
@@ -418,11 +414,7 @@ def _ffprobe_media_ok(path: Path, *, require_video: bool, require_audio: bool) -
     except (TypeError, ValueError, json.JSONDecodeError):
         return False
     types = {str(item.get("codec_type")) for item in payload.get("streams") or []}
-    return (
-        duration > 0
-        and (not require_video or "video" in types)
-        and (not require_audio or "audio" in types)
-    )
+    return duration > 0 and (not require_video or "video" in types) and (not require_audio or "audio" in types)
 
 
 def validate_recipe_outputs(
@@ -439,9 +431,7 @@ def validate_recipe_outputs(
     for name, raw_spec in recipe.outputs.items():
         spec = dict(raw_spec)
         applicable = spec.get("actions")
-        if isinstance(applicable, list) and action_name not in {
-            str(item) for item in applicable
-        }:
+        if isinstance(applicable, list) and action_name not in {str(item) for item in applicable}:
             continue
         raw_path = str(spec.get("path") or "")
         if not raw_path:
@@ -454,10 +444,7 @@ def validate_recipe_outputs(
             stat = None
             exists = False
         size = int(stat.st_size) if stat is not None and exists else 0
-        current_job = bool(
-            stat is not None
-            and stat.st_mtime >= max(0.0, started_timestamp - 2.0)
-        )
+        current_job = bool(stat is not None and stat.st_mtime >= max(0.0, started_timestamp - 2.0))
         min_bytes = max(1, int(spec.get("min_bytes") or 1))
         media = str(spec.get("media") or "").lower()
         media_ok = True
@@ -496,8 +483,7 @@ def validate_recipe_outputs(
 
     if required_failures:
         raise RuntimeError(
-            "Required current-job artifacts failed validation: "
-            + ", ".join(dict.fromkeys(required_failures))
+            "Required current-job artifacts failed validation: " + ", ".join(dict.fromkeys(required_failures))
         )
     return {
         "artifact_validation_policy": ARTIFACT_VALIDATION_POLICY,

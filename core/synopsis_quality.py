@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Duration-aware Synopsis density and coverage helpers."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -51,7 +52,6 @@ def _section_time_seconds(section: dict[str, Any]) -> int | None:
     return time_to_seconds(t) if t else None
 
 
-
 def _section_times(sections: list[dict[str, Any]]) -> list[int]:
     """Времена секций без ``None``.
 
@@ -72,7 +72,8 @@ def _section_text_chars(section: dict[str, Any]) -> int:
     if isinstance(blocks, list) and blocks:
         return sum(
             len(str(b.get("text") or b.get("quote") or b.get("why_relevant") or b.get("role_in_argument") or ""))
-            for b in blocks if isinstance(b, dict)
+            for b in blocks
+            if isinstance(b, dict)
         )
     return len(str((section or {}).get("content") or "").strip())
 
@@ -95,8 +96,7 @@ def looks_like_organizational_announcement(section: dict[str, Any]) -> bool:
     blocks = (section or {}).get("blocks") or []
     if isinstance(blocks, list):
         text += " " + " ".join(
-            str(b.get("text") or b.get("quote") or b.get("why_relevant") or "")
-            for b in blocks if isinstance(b, dict)
+            str(b.get("text") or b.get("quote") or b.get("why_relevant") or "") for b in blocks if isinstance(b, dict)
         )
     if not text.strip():
         return False
@@ -115,11 +115,14 @@ def filter_organizational_announcement_sections(
     first = valid[0]
     if looks_like_organizational_announcement(first):
         title = str(first.get("title") or "").strip()[:80]
-        return valid[1:], [SynopsisQualityIssue(
-            "synopsis_organizational_announcement_removed",
-            f"removed leading organizational announcement section: {title or 'untitled'}",
-        )]
+        return valid[1:], [
+            SynopsisQualityIssue(
+                "synopsis_organizational_announcement_removed",
+                f"removed leading organizational announcement section: {title or 'untitled'}",
+            )
+        ]
     return valid, []
+
 
 _BOLD_PHRASE_RE = re.compile(r"\*\*[^*\n]{6,160}\*\*")
 _YEAR_OR_NAME_RE = re.compile(r"\b(?:1[5-9]\d{2}|20\d{2}|[А-ЯЁ][а-яё]{3,}\s+[А-ЯЁ][а-яё]{3,})\b")
@@ -128,7 +131,12 @@ _YEAR_OR_NAME_RE = re.compile(r"\b(?:1[5-9]\d{2}|20\d{2}|[А-ЯЁ][а-яё]{3,}\
 def _section_paragraph_count(section: dict[str, Any]) -> int:
     blocks = section.get("blocks") if isinstance(section, dict) else None
     if isinstance(blocks, list) and blocks:
-        return sum(1 for b in blocks if isinstance(b, dict) and str(b.get("type") or "paragraph") in {"paragraph", "thesis", "pull_quote", "scripture", "bullet"})
+        return sum(
+            1
+            for b in blocks
+            if isinstance(b, dict)
+            and str(b.get("type") or "paragraph") in {"paragraph", "thesis", "pull_quote", "scripture", "bullet"}
+        )
     content = str((section or {}).get("content") or "")
     return len([p for p in re.split(r"\n\s*\n", content) if p.strip()])
 
@@ -139,10 +147,13 @@ def _section_author_voice_markers(section: dict[str, Any]) -> int:
     if isinstance(blocks, list):
         for b in blocks:
             if isinstance(b, dict):
-                text += " " + " ".join(str(b.get(k) or "") for k in ("text", "quote", "role_in_argument", "why_relevant"))
+                text += " " + " ".join(
+                    str(b.get(k) or "") for k in ("text", "quote", "role_in_argument", "why_relevant")
+                )
                 for step in b.get("steps") or []:
                     text += " " + str(step)
     return len(_BOLD_PHRASE_RE.findall(text)) + len(_YEAR_OR_NAME_RE.findall(text))
+
 
 # FIX AUDIT R4: маркер ⏱/📌 обязателен. Опциональный маркер превращал ссылки
 # на стихи («Ин 3:16», «Рим 8:28») в «якоря» — конспект без единого реального
@@ -159,13 +170,16 @@ def _section_inline_timestamp_count(section: dict[str, Any]) -> int:
     if isinstance(blocks, list):
         for b in blocks:
             if isinstance(b, dict):
-                text += " " + " ".join(str(b.get(k) or "") for k in ("text", "quote", "why_relevant", "role_in_argument"))
+                text += " " + " ".join(
+                    str(b.get(k) or "") for k in ("text", "quote", "why_relevant", "role_in_argument")
+                )
                 for step in b.get("steps") or []:
                     text += " " + str(step)
                 for k in ("timestamp", "anchor_timestamp"):
                     if _TS_FIELD_RE.match(str(b.get(k) or "")):
                         field_count += 1
     return field_count + len(_TS_INLINE_RE.findall(text))
+
 
 def audit_synopsis_density(
     sections: list[dict[str, Any]],
@@ -177,15 +191,19 @@ def audit_synopsis_density(
     valid = [s for s in sections or [] if isinstance(s, dict)]
     total_chars = sum(_section_text_chars(s) for s in valid)
     if len(valid) < profile.min_sections:
-        issues.append(SynopsisQualityIssue(
-            "synopsis_too_few_sections",
-            f"sections={len(valid)} below profile minimum {profile.min_sections} for {profile.name}",
-        ))
+        issues.append(
+            SynopsisQualityIssue(
+                "synopsis_too_few_sections",
+                f"sections={len(valid)} below profile minimum {profile.min_sections} for {profile.name}",
+            )
+        )
     if total_chars < profile.min_total_chars:
-        issues.append(SynopsisQualityIssue(
-            "synopsis_too_few_chars",
-            f"content_chars={total_chars} below profile minimum {profile.min_total_chars} for {profile.name}",
-        ))
+        issues.append(
+            SynopsisQualityIssue(
+                "synopsis_too_few_chars",
+                f"content_chars={total_chars} below profile minimum {profile.min_total_chars} for {profile.name}",
+            )
+        )
     try:
         dur = int(duration_seconds or 0)
     except (TypeError, ValueError):
@@ -195,31 +213,39 @@ def audit_synopsis_density(
         # Без времён секций покрытие не измерить: молчим, а не сообщаем 0 %.
         last_time = max(times) if times else 0
         if times and last_time / dur < 0.70:
-            issues.append(SynopsisQualityIssue(
-                "synopsis_time_coverage_low",
-                f"last_section_time={last_time} covers only {last_time/dur:.0%} of duration",
-            ))
+            issues.append(
+                SynopsisQualityIssue(
+                    "synopsis_time_coverage_low",
+                    f"last_section_time={last_time} covers only {last_time / dur:.0%} of duration",
+                )
+            )
         inline_count = sum(_section_inline_timestamp_count(s) for s in valid)
         min_inline = max(4, min(len(valid), dur // 900))
         if inline_count < min_inline:
-            issues.append(SynopsisQualityIssue(
-                "synopsis_missing_inline_anchors",
-                f"inline_timestamp_anchors={inline_count} below minimum {min_inline} for transcript-like Synopsis",
-            ))
+            issues.append(
+                SynopsisQualityIssue(
+                    "synopsis_missing_inline_anchors",
+                    f"inline_timestamp_anchors={inline_count} below minimum {min_inline} for transcript-like Synopsis",
+                )
+            )
         paragraph_counts = [_section_paragraph_count(s) for s in valid]
         thin_paragraph_sections = sum(1 for count in paragraph_counts if count < 3)
         if valid and thin_paragraph_sections > max(1, len(valid) // 3):
-            issues.append(SynopsisQualityIssue(
-                "synopsis_too_few_paragraphs",
-                f"sections_with_lt3_paragraphs={thin_paragraph_sections}/{len(valid)} for transcript-like Synopsis",
-            ))
+            issues.append(
+                SynopsisQualityIssue(
+                    "synopsis_too_few_paragraphs",
+                    f"sections_with_lt3_paragraphs={thin_paragraph_sections}/{len(valid)} for transcript-like Synopsis",
+                )
+            )
         voice_markers = sum(_section_author_voice_markers(s) for s in valid)
         min_voice = max(4, len(valid) // 2)
         if voice_markers < min_voice:
-            issues.append(SynopsisQualityIssue(
-                "synopsis_author_voice_low",
-                f"author_voice_markers={voice_markers} below minimum {min_voice}; preserve quotes, names, dates, examples",
-            ))
+            issues.append(
+                SynopsisQualityIssue(
+                    "synopsis_author_voice_low",
+                    f"author_voice_markers={voice_markers} below minimum {min_voice}; preserve quotes, names, dates, examples",
+                )
+            )
     return issues
 
 
@@ -273,7 +299,7 @@ def should_retry_synopsis_density(issues: list[SynopsisQualityIssue], duration_s
     return bool(codes & critical)
 
 
-_INLINE_TS_EXTRACT_RE = re.compile(r'[⏱📌]\s*\*{0,2}(\d{1,2}:\d{2}(?::\d{2})?)\*{0,2}')
+_INLINE_TS_EXTRACT_RE = re.compile(r"[⏱📌]\s*\*{0,2}(\d{1,2}:\d{2}(?::\d{2})?)\*{0,2}")
 
 
 def audit_inline_timestamp_order(
@@ -306,11 +332,13 @@ def audit_inline_timestamp_order(
         for m in _INLINE_TS_EXTRACT_RE.finditer(text):
             ts = time_to_seconds(m.group(1))
             if ts is not None and ts < section_time - 5:  # 5s tolerance
-                issues.append(SynopsisQualityIssue(
-                    code="inline_timestamp_before_section",
-                    message=(
-                        f"sections[{idx}] time={section_time_str}: "
-                        f"inline {m.group(1)} is {section_time - ts:.0f}s before section start"
-                    ),
-                ))
+                issues.append(
+                    SynopsisQualityIssue(
+                        code="inline_timestamp_before_section",
+                        message=(
+                            f"sections[{idx}] time={section_time_str}: "
+                            f"inline {m.group(1)} is {section_time - ts:.0f}s before section start"
+                        ),
+                    )
+                )
     return issues

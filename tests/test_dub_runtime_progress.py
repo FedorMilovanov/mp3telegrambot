@@ -43,8 +43,7 @@ def test_runtime_builds_one_job_scoped_progress_card() -> None:
     assert "ref_job_id != event_job_id" in source
     assert "_store_progress_message_ref" in source
     progress_section = source[
-        source.index("async def _notify_progress_milestone"):
-        source.index("async def _finalize_progress_card")
+        source.index("async def _notify_progress_milestone") : source.index("async def _finalize_progress_card")
     ]
     assert progress_section.index("edit_message_text") < progress_section.index("send_message")
     assert "message is not modified" in progress_section

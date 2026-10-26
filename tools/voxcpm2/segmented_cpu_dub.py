@@ -6,6 +6,7 @@ Loads VoxCPM2 once, synthesizes each source-aligned segment independently,
 fits every segment to its target time window with FFmpeg, then builds one
 complete timeline WAV. CUDA is hidden before importing torch.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -42,9 +43,7 @@ def run_checked(command: list[str]) -> None:
     )
     if proc.returncode != 0:
         tail = (proc.stderr or proc.stdout or "")[-4000:]
-        raise RuntimeError(
-            "Command failed:\n" + " ".join(command) + "\n\n" + tail
-        )
+        raise RuntimeError("Command failed:\n" + " ".join(command) + "\n\n" + tail)
 
 
 def probe_duration(path: Path) -> float:
@@ -100,11 +99,7 @@ def looks_like_model_dir(path: Path) -> bool:
     return (
         path.is_dir()
         and (path / "config.json").exists()
-        and (
-            (path / "model.safetensors").exists()
-            or any(path.glob("*.safetensors"))
-            or any(path.glob("*.bin"))
-        )
+        and ((path / "model.safetensors").exists() or any(path.glob("*.safetensors")) or any(path.glob("*.bin")))
     )
 
 
@@ -129,19 +124,9 @@ def discover_model(archive_root: Path, explicit: str | None) -> Path:
         raise RuntimeError(f"ModelPath is not a VoxCPM2 directory: {path}")
 
     candidates = [
-        archive_root
-        / "models"
-        / "voxcpm2-model-cache"
-        / "models--openbmb--VoxCPM2",
-        archive_root
-        / "models"
-        / "voxcpm2-model-cache"
-        / "models--OpenBMB--VoxCPM2",
-        Path.home()
-        / ".cache"
-        / "huggingface"
-        / "hub"
-        / "models--openbmb--VoxCPM2",
+        archive_root / "models" / "voxcpm2-model-cache" / "models--openbmb--VoxCPM2",
+        archive_root / "models" / "voxcpm2-model-cache" / "models--OpenBMB--VoxCPM2",
+        Path.home() / ".cache" / "huggingface" / "hub" / "models--openbmb--VoxCPM2",
     ]
 
     for candidate in candidates:
@@ -183,9 +168,7 @@ def read_segments(path: Path) -> list[dict[str, Any]]:
         if not text:
             raise RuntimeError(f"Empty text for segment #{segment_id}")
 
-        result.append(
-            {"id": segment_id, "start": start, "end": end, "text": text}
-        )
+        result.append({"id": segment_id, "start": start, "end": end, "text": text})
         previous_end = end
 
     return result
@@ -294,9 +277,7 @@ def build_timeline(
 def main() -> None:
     configure_utf8()
 
-    parser = argparse.ArgumentParser(
-        description="Segmented CPU-only VoxCPM2 dubbing"
-    )
+    parser = argparse.ArgumentParser(description="Segmented CPU-only VoxCPM2 dubbing")
     parser.add_argument("--archive-root", required=True)
     parser.add_argument("--model-path")
     parser.add_argument("--reference-wav", required=True)
@@ -356,16 +337,8 @@ def main() -> None:
 
     if args.clone_mode in {"ultimate", "continuation"}:
         if not args.prompt_text_file:
-            raise RuntimeError(
-                "ultimate/continuation requires --prompt-text-file"
-            )
-        prompt_text = (
-            Path(args.prompt_text_file)
-            .expanduser()
-            .resolve()
-            .read_text(encoding="utf-8-sig")
-            .strip()
-        )
+            raise RuntimeError("ultimate/continuation requires --prompt-text-file")
+        prompt_text = Path(args.prompt_text_file).expanduser().resolve().read_text(encoding="utf-8-sig").strip()
         if not prompt_text:
             raise RuntimeError("Reference transcript is empty")
 
@@ -393,12 +366,8 @@ def main() -> None:
     cache_dtype = next(model.tts_model.parameters()).dtype
     cache_device = model.tts_model.device
 
-    model.tts_model.base_lm.setup_cache(
-        1, cache_length, cache_device, cache_dtype
-    )
-    model.tts_model.residual_lm.setup_cache(
-        1, cache_length, cache_device, cache_dtype
-    )
+    model.tts_model.base_lm.setup_cache(1, cache_length, cache_device, cache_dtype)
+    model.tts_model.residual_lm.setup_cache(1, cache_length, cache_device, cache_dtype)
 
     load_seconds = time.perf_counter() - load_started
     log(f"KV cache: {cache_length}")
@@ -435,10 +404,7 @@ def main() -> None:
         fitted_path = fitted_dir / f"{segment_id:02d}_fitted.wav"
 
         log("")
-        log(
-            f"[{position}/{len(segments)}] Segment {segment_id}: "
-            f"{target_duration:.2f} sec"
-        )
+        log(f"[{position}/{len(segments)}] Segment {segment_id}: {target_duration:.2f} sec")
         log(f"Text: {text}")
         log(f"min_len={min_len}; max_len={max_len}")
 
@@ -496,8 +462,7 @@ def main() -> None:
         )
 
         log(
-            f"Done: raw={fit_info['raw_duration']:.2f} sec; "
-            f"atempo={fit_info['tempo']:.3f}; CPU={synth_seconds:.1f} sec"
+            f"Done: raw={fit_info['raw_duration']:.2f} sec; atempo={fit_info['tempo']:.3f}; CPU={synth_seconds:.1f} sec"
         )
 
         del wav, wav_np

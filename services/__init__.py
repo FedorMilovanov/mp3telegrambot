@@ -8,6 +8,7 @@ Keeping package import pure removes the former ``sys.meta_path`` hook and makes
 startup order observable, testable and fail-closed instead of depending on which
 service happened to be imported first.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -34,9 +35,7 @@ def service_bootstrap_events() -> tuple[dict[str, Any], ...]:
         )
 
     events: list[dict[str, Any]] = []
-    for sequence, (feature_id, result) in enumerate(
-        payload.get("features", {}).items(), start=1
-    ):
+    for sequence, (feature_id, result) in enumerate(payload.get("features", {}).items(), start=1):
         state = str(result.get("state") or "pending")
         detail = str(result.get("detail") or state)
         events.append(
@@ -59,10 +58,7 @@ def emit_service_bootstrap_diagnostics(
     events = service_bootstrap_events()
     for event in events:
         marker = "✅" if event["ok"] else "⚠️"
-        target(
-            f"{marker} {event['component']}: {event['detail']} "
-            f"[{event['policy']}]"
-        )
+        target(f"{marker} {event['component']}: {event['detail']} [{event['policy']}]")
     try:
         from services.runtime_build_identity import runtime_build_identity_log_line
 

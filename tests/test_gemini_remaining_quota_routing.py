@@ -11,7 +11,8 @@ def function_source(relpath: str, name: str) -> str:
     text = path.read_text(encoding="utf-8")
     tree = ast.parse(text)
     matches = [
-        node for node in ast.walk(tree)
+        node
+        for node in ast.walk(tree)
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name
     ]
     assert len(matches) == 1, (relpath, name, len(matches))
@@ -47,7 +48,7 @@ def test_legacy_factory_keeps_files_and_inference_quota_scopes_separate() -> Non
     assert 'files_scope = "shorts_factory_legacy_files"' in source
     assert 'inference_scope = "shorts_factory_legacy_inference"' in source
     assert "record_project_scoped_error(client, quota_scope, exc)" in source
-    assert source.index("quota_tracker.should_skip(client, inference_scope)") < source.index("uploaded_name = """)
+    assert source.index("quota_tracker.should_skip(client, inference_scope)") < source.index("uploaded_name = ")
 
 
 def test_sync_voxcpm_route_uses_slot_aligned_project_domain_metadata() -> None:

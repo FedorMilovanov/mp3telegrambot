@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Pure disk-capacity policy for SHORTS FACTORY MAX."""
+
 from __future__ import annotations
 
 import logging
@@ -50,10 +51,7 @@ def estimate_factory_selection_payload(
     total = 0.0
     for row in _selected_format_rows(payload):
         row_duration = _finite_positive(row.get("duration")) or duration
-        size = (
-            _finite_positive(row.get("filesize"))
-            or _finite_positive(row.get("filesize_approx"))
-        )
+        size = _finite_positive(row.get("filesize")) or _finite_positive(row.get("filesize_approx"))
         if not size:
             total_bitrate_kbps = _finite_positive(row.get("tbr"))
             if total_bitrate_kbps and row_duration:

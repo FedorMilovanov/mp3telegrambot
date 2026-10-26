@@ -8,6 +8,7 @@ falls or rises, where the energy peak lands, how much empty tail remains and
 whether a continuation was rendered like a full stop.  The functions are
 deterministic, model-agnostic and never alter text or audio.
 """
+
 from __future__ import annotations
 
 import math
@@ -133,15 +134,11 @@ def _stabilize_pitch_track(
             raw_distance = abs(math.log2(value / max(anchor, 1e-9)))
             if raw_distance >= 0.72:
                 candidates = [
-                    candidate
-                    for candidate in (value * 0.5, value, value * 2.0)
-                    if 45.0 <= candidate <= 500.0
+                    candidate for candidate in (value * 0.5, value, value * 2.0) if 45.0 <= candidate <= 500.0
                 ]
                 best = min(
                     candidates,
-                    key=lambda candidate: abs(
-                        math.log2(candidate / max(anchor, 1e-9))
-                    ),
+                    key=lambda candidate: abs(math.log2(candidate / max(anchor, 1e-9))),
                 )
                 best_distance = abs(math.log2(best / max(anchor, 1e-9)))
                 if best_distance + 0.20 < raw_distance:
@@ -301,9 +298,7 @@ def evaluate_candidate_cadence(
     trailing = float(contour.get("trailing_silence") or 0.0)
     target_duration = max(
         0.1,
-        float(segment.get("end") or 0.0)
-        - float(segment.get("start") or 0.0)
-        - float(segment.get("tail_guard") or 0.0),
+        float(segment.get("end") or 0.0) - float(segment.get("start") or 0.0) - float(segment.get("tail_guard") or 0.0),
     )
     duration_ratio = float(candidate.get("duration") or 0.0) / target_duration
     penalty = 0.0
@@ -394,7 +389,7 @@ __all__ = [
     "prosody_contour",
 ]
 
-_BASE_ALL = tuple(globals().get('__all__', ()))
+_BASE_ALL = tuple(globals().get("__all__", ()))
 
 
 import re
@@ -422,12 +417,14 @@ _SOURCE_PEAK_MIN_DOMINANCE = 0.18
 
 _legacy_evaluate_candidate_cadence = evaluate_candidate_cadence
 
+
 def _finite(value: Any, default: float = 0.0) -> float:
     try:
         result = float(value)
     except (TypeError, ValueError, OverflowError):
         return float(default)
     return result if math.isfinite(result) else float(default)
+
 
 def _source_peak_evidence(segment: dict[str, Any]) -> tuple[int | None, float]:
     """Return validated source contour evidence for diagnostics only."""
@@ -456,6 +453,7 @@ def _source_peak_evidence(segment: dict[str, Any]) -> tuple[int | None, float]:
         return None, 0.0
     return peak, dominance
 
+
 def _apply_emphasis_policy(
     *,
     cadence: str,
@@ -464,15 +462,13 @@ def _apply_emphasis_policy(
 ) -> tuple[bool, list[str]]:
     """Report an early Russian exclamation peak without cross-language gating."""
     early_emphasis_observed = bool(
-        cadence == "firm_terminal"
-        and word_count >= 3
-        and isinstance(peak_bin, int)
-        and peak_bin <= 1
+        cadence == "firm_terminal" and word_count >= 3 and isinstance(peak_bin, int) and peak_bin <= 1
     )
     return (
         early_emphasis_observed,
         ["emphasis_too_early"] if early_emphasis_observed else [],
     )
+
 
 def evaluate_candidate_cadence(
     candidate: dict[str, Any],
@@ -487,10 +483,7 @@ def evaluate_candidate_cadence(
 
     ranking_segment = source_prosody_policy.ranking_view(segment)
     result = dict(_legacy_evaluate_candidate_cadence(candidate, ranking_segment))
-    cadence = str(
-        result.get("cadence")
-        or classify_cadence(str(segment.get("text") or ""))
-    )
+    cadence = str(result.get("cadence") or classify_cadence(str(segment.get("text") or "")))
     delta = _finite(result.get("ending_delta_semitones"))
     ending_energy = _finite(result.get("ending_energy_delta_db"))
     peak_bin = result.get("peak_energy_bin")
@@ -509,32 +502,17 @@ def evaluate_candidate_cadence(
     )
 
     candidate_duration = _finite(candidate.get("duration"))
-    required_fit_tempo = (
-        max(1.0, candidate_duration / actual_speech_slot)
-        if candidate_duration > 0.0
-        else math.inf
-    )
-    if (
-        required_fit_tempo > MAX_TEMPO + 1e-9
-        and "fit_tempo_exceeds_hard_limit" not in failures
-    ):
+    required_fit_tempo = max(1.0, candidate_duration / actual_speech_slot) if candidate_duration > 0.0 else math.inf
+    if required_fit_tempo > MAX_TEMPO + 1e-9 and "fit_tempo_exceeds_hard_limit" not in failures:
         failures.append("fit_tempo_exceeds_hard_limit")
 
     if cadence == "terminal":
-        if (
-            delta > -0.55
-            and ending_energy > -1.0
-            and "terminal_not_resolved" not in failures
-        ):
+        if delta > -0.55 and ending_energy > -1.0 and "terminal_not_resolved" not in failures:
             failures.append("terminal_not_resolved")
     elif cadence == "firm_terminal":
         if delta > 0.35 and "terminal_rises" not in failures:
             failures.append("terminal_rises")
-        if (
-            delta > -0.75
-            and ending_energy > -0.50
-            and "firm_terminal_not_resolved" not in failures
-        ):
+        if delta > -0.75 and ending_energy > -0.50 and "firm_terminal_not_resolved" not in failures:
             failures.append("firm_terminal_not_resolved")
 
     early_emphasis_observed, emphasis_advisories = _apply_emphasis_policy(
@@ -565,9 +543,7 @@ def evaluate_candidate_cadence(
         emphasis_hard_gate_evidence=False,
         emphasis_advisories=emphasis_advisories,
         emphasis_peak_distance=(
-            abs(source_peak - peak_bin)
-            if isinstance(source_peak, int) and isinstance(peak_bin, int)
-            else None
+            abs(source_peak - peak_bin) if isinstance(source_peak, int) and isinstance(peak_bin, int) else None
         ),
         preferred_emphasis_bins=preferred_bins,
         expected_emphasis_bins=None,
@@ -577,6 +553,7 @@ def evaluate_candidate_cadence(
         max_fit_tempo=MAX_TEMPO,
     )
     return result
+
 
 POLICY = POLICY
 

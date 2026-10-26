@@ -7,6 +7,7 @@ written by FFmpeg, after atempo, fades, padding, delays and mixing, so a release
 cannot pass merely because the raw candidate was clean. Failed segments advance
 their durable seed epoch, so the next job does not regenerate identical audio.
 """
+
 from __future__ import annotations
 
 import json
@@ -119,8 +120,7 @@ def verify_timeline_delivery(
         following = checks[index + 1]
         gap = max(
             0.0,
-            _finite(following.get("active_start_time"))
-            - _finite(current.get("active_end_time")),
+            _finite(following.get("active_start_time")) - _finite(current.get("active_end_time")),
         )
         current["gap_to_next_seconds"] = gap
         cadence = current["cadence"]
@@ -217,8 +217,7 @@ def verify_timeline_delivery(
             )
         raise RuntimeError(
             "Собранная русская дорожка не прошла cadence/tail QA; "
-            "проваленные сегменты переведены на новые seed epochs: "
-            + "; ".join(details)
+            "проваленные сегменты переведены на новые seed epochs: " + "; ".join(details)
         )
     return report
 
@@ -230,12 +229,7 @@ __all__ = [
     "verify_timeline_delivery",
 ]
 
-_BASE_ALL = tuple(globals().get('__all__', ()))
-
-
-
-
-
+_BASE_ALL = tuple(globals().get("__all__", ()))
 
 
 from tools.voxcpm2 import direct_monolith_contract
@@ -271,11 +265,13 @@ GLOBAL_F0_MAX_LIMIT_ST = 13.0
 
 _legacy_verify_timeline_delivery = verify_timeline_delivery
 
+
 def _mono(samples: Any) -> np.ndarray:
     audio = np.asarray(samples, dtype=np.float32)
     if audio.ndim > 1:
         audio = audio.mean(axis=1)
     return audio.reshape(-1)
+
 
 def _finite(value: Any, default: float = 0.0) -> float:
     try:
@@ -284,18 +280,22 @@ def _finite(value: Any, default: float = 0.0) -> float:
         return float(default)
     return result if math.isfinite(result) else float(default)
 
+
 def _ratio(value: float, reference: float) -> float:
     if value <= 0.0 or reference <= 0.0:
         return 0.0
     return value / reference
 
+
 def _semitones(value: float, reference: float) -> float | None:
     ratio = _ratio(value, reference)
     return 12.0 * math.log2(ratio) if ratio > 0.0 else None
 
+
 def _source_pitch(segment: dict[str, Any], key: str) -> float:
     source = segment.get("source_prosody")
     return _finite(source.get(key)) if isinstance(source, dict) else 0.0
+
 
 def _reference_profile(timeline: Path) -> dict[str, Any]:
     path = timeline.parent.parent / "references" / "extended_reference.wav"
@@ -308,6 +308,7 @@ def _reference_profile(timeline: Path) -> dict[str, Any]:
         "pitch": pitch_profile(audio, int(rate)),
         "timbre": spectral_envelope(audio, int(rate)),
     }
+
 
 def _window_rows(
     timeline: Path,
@@ -334,9 +335,7 @@ def _window_rows(
             active_clip = clip
         else:
             margin = int(rate * 0.025)
-            active_clip = clip[
-                max(0, active_left - margin):min(len(clip), active_right + margin)
-            ]
+            active_clip = clip[max(0, active_left - margin) : min(len(clip), active_right + margin)]
         pitch = pitch_profile(active_clip, rate)
         timbre = spectral_envelope(active_clip, rate)
         activity = activity_stats(active_clip, rate)
@@ -366,28 +365,28 @@ def _window_rows(
         )
     return audio, rate, rows, anchor
 
+
 def _append(row: dict[str, Any], reason: str) -> None:
     failures = row.setdefault("failures", [])
     if reason not in failures:
         failures.append(reason)
     row["passed"] = False
 
+
 def _identity(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "f0_median": _finite(row["pitch"].get("f0_median")),
         "f0_p90": _finite(row["pitch"].get("f0_p90")),
         "spectral_centroid_hz": _finite(row["timbre"].get("spectral_centroid_hz")),
-        "spectral_bands": [
-            _finite(value) for value in (row["timbre"].get("bands") or [])
-        ],
+        "spectral_bands": [_finite(value) for value in (row["timbre"].get("bands") or [])],
     }
+
 
 def _sequence_checks(rows: list[dict[str, Any]]) -> dict[str, Any]:
     valid_f0 = [
         _finite(row["pitch"].get("f0_median"))
         for row in rows
-        if _finite(row["pitch"].get("voiced_ratio")) >= 0.12
-        and _finite(row["pitch"].get("f0_median")) > 45.0
+        if _finite(row["pitch"].get("voiced_ratio")) >= 0.12 and _finite(row["pitch"].get("f0_median")) > 45.0
     ]
     valid_centroids = [
         _finite(row["timbre"].get("spectral_centroid_hz"))
@@ -395,17 +394,11 @@ def _sequence_checks(rows: list[dict[str, Any]]) -> dict[str, Any]:
         if _finite(row["timbre"].get("spectral_centroid_hz")) > 80.0
     ]
     valid_source_f0 = [
-        _source_pitch(row["segment"], "f0_median")
-        for row in rows
-        if _source_pitch(row["segment"], "f0_median") > 55.0
+        _source_pitch(row["segment"], "f0_median") for row in rows if _source_pitch(row["segment"], "f0_median") > 55.0
     ]
     baseline_f0 = float(np.median(np.asarray(valid_f0))) if valid_f0 else 0.0
-    baseline_centroid = (
-        float(np.median(np.asarray(valid_centroids))) if valid_centroids else 0.0
-    )
-    source_baseline_f0 = (
-        float(np.median(np.asarray(valid_source_f0))) if valid_source_f0 else 0.0
-    )
+    baseline_centroid = float(np.median(np.asarray(valid_centroids))) if valid_centroids else 0.0
+    source_baseline_f0 = float(np.median(np.asarray(valid_source_f0))) if valid_source_f0 else 0.0
 
     for index, row in enumerate(rows):
         pitch = row["pitch"]
@@ -464,8 +457,7 @@ def _sequence_checks(rows: list[dict[str, Any]]) -> dict[str, Any]:
             _finite(previous["pitch"].get("f0_p90")),
         )
         rms_jump = abs(
-            _finite(activity.get("rms_dbfs"), -120.0)
-            - _finite(previous["activity"].get("rms_dbfs"), -120.0)
+            _finite(activity.get("rms_dbfs"), -120.0) - _finite(previous["activity"].get("rms_dbfs"), -120.0)
         )
         transition = direct_source_relative_continuity.evaluate_transition(
             current_identity=_identity(row),
@@ -492,11 +484,7 @@ def _sequence_checks(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 _append(row, "adjacent_voice_range_discontinuity")
         if rms_jump > 10.0 and neighbour_similarity < 0.72:
             _append(row, "adjacent_voice_level_and_timbre_jump")
-        if (
-            f0_ratio
-            and (f0_ratio < 0.70 or f0_ratio > 1.50)
-            and neighbour_similarity < 0.74
-        ):
+        if f0_ratio and (f0_ratio < 0.70 or f0_ratio > 1.50) and neighbour_similarity < 0.74:
             _append(row, "combined_global_and_adjacent_voice_shift")
 
     for index in range(len(rows) - 1):
@@ -504,8 +492,7 @@ def _sequence_checks(rows: list[dict[str, Any]]) -> dict[str, Any]:
         following = rows[index + 1]
         gap = max(
             0.0,
-            _finite(following.get("active_start_time"))
-            - _finite(current.get("active_end_time")),
+            _finite(following.get("active_start_time")) - _finite(current.get("active_end_time")),
         )
         current["gap_to_next_seconds"] = gap
         if current["cadence"] not in {"linked", "continuation"}:
@@ -524,6 +511,7 @@ def _sequence_checks(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "baseline_spectral_centroid_hz": baseline_centroid,
         "fail_closed_identity_policy": direct_fail_closed_identity.FAIL_CLOSED_IDENTITY_POLICY,
     }
+
 
 def _invalidate_failures(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     invalidated: list[dict[str, Any]] = []
@@ -555,6 +543,7 @@ def _invalidate_failures(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             )
         )
     return invalidated
+
 
 def verify_timeline_delivery(
     timeline: Path,
@@ -605,15 +594,14 @@ def verify_timeline_delivery(
     )
     if failed:
         details = "; ".join(
-            f"#{row['id']}: {','.join(row.get('failures') or ['qa'])}"
-            for row in rows
-            if row.get("passed") is not True
+            f"#{row['id']}: {','.join(row.get('failures') or ['qa'])}" for row in rows if row.get("passed") is not True
         )
         raise RuntimeError(
             "Собранная дорожка звучит не как один монолитный голос; "
             "проваленные сегменты переведены на новые seed epochs: " + details
         )
     return report
+
 
 verify_timeline_delivery = verify_timeline_delivery
 

@@ -27,10 +27,12 @@ def test_telegraph_repair_url_path_and_record_url_collection():
 
 
 def test_repair_result_formatter_reports_ok_changed_and_errors():
-    text = format_repair_results([
-        TelegraphRepairResult(url="https://telegra.ph/a", ok=True, changed=True, audit_summary="warn"),
-        TelegraphRepairResult(url="https://telegra.ph/b", ok=False, error="editPage_failed"),
-    ])
+    text = format_repair_results(
+        [
+            TelegraphRepairResult(url="https://telegra.ph/a", ok=True, changed=True, audit_summary="warn"),
+            TelegraphRepairResult(url="https://telegra.ph/b", ok=False, error="editPage_failed"),
+        ]
+    )
     assert "1/2 OK" in text
     assert "changed=1" in text
     assert "editPage_failed" in text
@@ -54,10 +56,13 @@ def test_generated_page_exact_lookup_supports_repair_target(tmp_path):
 
 
 def test_batch_repair_formatter_summarizes_records():
-    batch = [TelegraphRepairBatchItem(
-        video_id="v1", title="T",
-        results=[TelegraphRepairResult(url="https://telegra.ph/a", ok=True, changed=True)],
-    )]
+    batch = [
+        TelegraphRepairBatchItem(
+            video_id="v1",
+            title="T",
+            results=[TelegraphRepairResult(url="https://telegra.ph/a", ok=True, changed=True)],
+        )
+    ]
     text = format_batch_repair_results(batch)
     assert "records=1" in text
     assert "pages=1/1 OK" in text
@@ -117,18 +122,23 @@ def test_repair_service_skips_edit_when_postprocess_makes_no_changes():
     src = Path("services/telegraph_repair.py").read_text(encoding="utf-8")
     assert "if not changed:" in src
     assert "no deterministic changes" in src
-    assert "_edit_telegraph_page" in src[src.find("if not changed:"):]
+    assert "_edit_telegraph_page" in src[src.find("if not changed:") :]
     assert src.find("if not changed:") < src.find("ok = await _edit_telegraph_page")
 
 
 def test_repair_extracts_chained_telegraph_next_part_urls():
     from services.telegraph_repair import _extract_next_part_urls
 
-    nodes = [{"tag": "p", "children": [
-        {"tag": "a", "attrs": {"href": "/Part-2"}, "children": ["➡ Дальше: [2/3]"]},
-        " ",
-        {"tag": "a", "attrs": {"href": "https://example.com/no"}, "children": ["➡ external"]},
-    ]}]
+    nodes = [
+        {
+            "tag": "p",
+            "children": [
+                {"tag": "a", "attrs": {"href": "/Part-2"}, "children": ["➡ Дальше: [2/3]"]},
+                " ",
+                {"tag": "a", "attrs": {"href": "https://example.com/no"}, "children": ["➡ external"]},
+            ],
+        }
+    ]
     assert _extract_next_part_urls(nodes) == ["https://telegra.ph/Part-2"]
 
 
@@ -157,11 +167,13 @@ def test_repair_chain_default_does_not_truncate_after_twelve_pages(monkeypatch):
         index = int(path.rsplit("-", 1)[1])
         children = []
         if index < total:
-            children = [{
-                "tag": "a",
-                "attrs": {"href": f"/Chain-{index + 1}"},
-                "children": [f"➡ Дальше: [{index + 1}/{total}]"],
-            }]
+            children = [
+                {
+                    "tag": "a",
+                    "attrs": {"href": f"/Chain-{index + 1}"},
+                    "children": [f"➡ Дальше: [{index + 1}/{total}]"],
+                }
+            ]
         return Response({"ok": True, "result": {"content": [{"tag": "p", "children": children}]}})
 
     monkeypatch.setattr(telegraph_repair.requests, "get", fake_get)
@@ -180,17 +192,25 @@ def test_repair_chain_explicit_limit_remains_available(monkeypatch):
 
         def json(self):
             index = int(self.path.rsplit("-", 1)[1])
-            return {"ok": True, "result": {"content": [{"tag": "p", "children": [{
-                "tag": "a", "attrs": {"href": f"/Cap-{index + 1}"}, "children": ["➡ Дальше"]
-            }]}]}}
+            return {
+                "ok": True,
+                "result": {
+                    "content": [
+                        {
+                            "tag": "p",
+                            "children": [
+                                {"tag": "a", "attrs": {"href": f"/Cap-{index + 1}"}, "children": ["➡ Дальше"]}
+                            ],
+                        }
+                    ]
+                },
+            }
 
     def fake_get(url, **_kwargs):
         return Response(url.split("/getPage/", 1)[1].split("?", 1)[0])
 
     monkeypatch.setattr(telegraph_repair.requests, "get", fake_get)
-    chain = asyncio.run(
-        telegraph_repair.expand_telegraph_page_chain("https://telegra.ph/Cap-1", max_pages=3)
-    )
+    chain = asyncio.run(telegraph_repair.expand_telegraph_page_chain("https://telegra.ph/Cap-1", max_pages=3))
     assert chain == [
         "https://telegra.ph/Cap-1",
         "https://telegra.ph/Cap-2",

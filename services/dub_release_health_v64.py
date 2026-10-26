@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Canonical Dub release health for the source-owned runtime architecture."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -121,7 +122,8 @@ def _v68_quality_contract(repo: Path) -> tuple[bool, str]:
             text["repair"],
             "clean.render_and_master(",
             "_source_main()",
-        ) and "legacy_repair._load_segments =" not in text["repair"],
+        )
+        and "legacy_repair._load_segments =" not in text["repair"],
         "semantic-blocks": _has(
             text["semantic_blocks"],
             f'POLICY = "{SEMANTIC_BLOCK_POLICY}"',
@@ -133,8 +135,9 @@ def _v68_quality_contract(repo: Path) -> tuple[bool, str]:
             "def _tempo_policy_penalty(",
             "def candidate_score(",
             "backend.open_session(",
-        ) and "_direct_cli.candidate_score =" not in text["stable_cli"]
-          and "_direct_cli.MAX_TEMPO =" not in text["stable_cli"],
+        )
+        and "_direct_cli.candidate_score =" not in text["stable_cli"]
+        and "_direct_cli.MAX_TEMPO =" not in text["stable_cli"],
         "backend-boundary": _has(
             text["backend_base"],
             f'BACKEND_COMMAND_POLICY = "{BACKEND_COMMAND_POLICY}"',
@@ -142,7 +145,8 @@ def _v68_quality_contract(repo: Path) -> tuple[bool, str]:
             f'PRODUCTION_CAPABILITY_POLICY = "{PRODUCTION_CAPABILITY_POLICY}"',
             "def build_renderer_command(",
             "def build_master_command(",
-        ) and _has(
+        )
+        and _has(
             text["backend_vox"],
             "class VoxCPM2Session:",
             "def build_renderer_command(",
@@ -152,20 +156,22 @@ def _v68_quality_contract(repo: Path) -> tuple[bool, str]:
         "worker-preflight": _has(
             text["preflight"],
             "def run(",
-        ) and _has(
+        )
+        and _has(
             text["worker"],
             "class WorkerDubStore(DubStore):",
             "def _execute_runner_job(",
             "CANCELLATION_POLICY =",
             "STORE_ROOT_POLICY =",
             "from tools.voxcpm2 import dub_job_preflight",
-        ) and _has(
+        )
+        and _has(
             text["worker_entry"],
             "from services.dub_worker import main",
         ),
         "final-media-qa": _has(text["final_qa"], "def verify_final_outputs(")
-          and bool(text["spatial_qa"])
-          and bool(text["master"]),
+        and bool(text["spatial_qa"])
+        and bool(text["master"]),
     }
     failed = [name for name, passed in checks.items() if not passed]
     if failed:

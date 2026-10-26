@@ -20,6 +20,7 @@ Allowed формы установки:
 ``--no-index`` и путь ``.whl``. Иначе исключение превратилось бы в дыру, через
 которую снова проходят «pip install чего угодно».
 """
+
 from __future__ import annotations
 
 import re
@@ -70,11 +71,7 @@ def _is_allowed(line: str) -> bool:
 def test_no_workflow_pins_packages_by_hand() -> None:
     offenders: dict[str, list[str]] = {}
     for path in _workflow_files():
-        bad = [
-            line
-            for line in _install_commands(path.read_text(encoding="utf-8"))
-            if not _is_allowed(line)
-        ]
+        bad = [line for line in _install_commands(path.read_text(encoding="utf-8")) if not _is_allowed(line)]
         if bad:
             offenders[path.name] = bad
     assert not offenders, (
@@ -117,7 +114,7 @@ def test_workflow_is_valid_yaml_with_jobs(workflow: str) -> None:
 
 def test_local_artifact_exception_is_narrow() -> None:
     """Исключение для wheel не должно пропускать установку из индекса."""
-    assert _is_allowed('python -m pip install --no-deps --no-index dist/mp3bot-4.0.0-py3-none-any.whl')
+    assert _is_allowed("python -m pip install --no-deps --no-index dist/mp3bot-4.0.0-py3-none-any.whl")
     assert not _is_allowed("python -m pip install --no-deps requests")
     assert not _is_allowed("python -m pip install --no-index requests")
     assert not _is_allowed("python -m pip install --no-deps --no-index requests")

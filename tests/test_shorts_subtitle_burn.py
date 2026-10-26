@@ -174,10 +174,7 @@ def test_active_pipelines_use_transactional_subtitle_owner() -> None:
     root = Path(__file__).resolve().parents[1]
     for relative_path in ("pipelines/shorts.py", "pipelines/montage.py"):
         source = (root / relative_path).read_text(encoding="utf-8")
-        assert (
-            "from services.shorts_subtitle_burn import "
-            "burn_subtitles_into_short"
-        ) in source
+        assert ("from services.shorts_subtitle_burn import burn_subtitles_into_short") in source
         shorts_import = source.split("from services.shorts_video import (", 1)[1].split(")", 1)[0]
         assert "burn_subtitles_into_short" not in shorts_import
 

@@ -1,17 +1,17 @@
 """Regression tests for R43 — closing the previously-flagged decision items.
 
-  1. QA prompt: removed the "parents/sexual immorality splice" worked example
-     (confusing, not a real-world translation failure mode; risked biasing the
-     model toward false `major` flags in that category). The general sentence-
-     splice red-flag remains — it covers the same class of error.
-  2. QA reference_block decision now accounts for the reused Gemini audio_part,
-     not just original_audio_path — the model is no longer told "no audio
-     attached" when audio actually was attached via reuse.
-  3. Konspekt-fallback QA runs are marked low-confidence and the report shows
-     an honest caveat instead of implying a full-transcript check.
-  4. Subtitle translation: prompt no longer invites merging IDs across
-     boundaries, and a missing ID gets one targeted retry with honest logging
-     instead of a silent English fallback.
+1. QA prompt: removed the "parents/sexual immorality splice" worked example
+   (confusing, not a real-world translation failure mode; risked biasing the
+   model toward false `major` flags in that category). The general sentence-
+   splice red-flag remains — it covers the same class of error.
+2. QA reference_block decision now accounts for the reused Gemini audio_part,
+   not just original_audio_path — the model is no longer told "no audio
+   attached" when audio actually was attached via reuse.
+3. Konspekt-fallback QA runs are marked low-confidence and the report shows
+   an honest caveat instead of implying a full-transcript check.
+4. Subtitle translation: prompt no longer invites merging IDs across
+   boundaries, and a missing ID gets one targeted retry with honest logging
+   instead of a silent English fallback.
 """
 
 from pathlib import Path

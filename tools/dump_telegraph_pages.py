@@ -12,6 +12,7 @@
 
 Токен НЕ нужен: getPage — публичный метод.
 """
+
 from __future__ import annotations
 
 import re
@@ -106,8 +107,7 @@ def main(argv: list[str]) -> int:
         if dump_url(u):
             ok += 1
     print(
-        f"\nГотово: {ok}/{len(urls)}. Файлы лежат в docs/page_dumps/ "
-        "(каталог в .gitignore — коммитить дампы не нужно)."
+        f"\nГотово: {ok}/{len(urls)}. Файлы лежат в docs/page_dumps/ (каталог в .gitignore — коммитить дампы не нужно)."
     )
     return 0 if ok else 1
 

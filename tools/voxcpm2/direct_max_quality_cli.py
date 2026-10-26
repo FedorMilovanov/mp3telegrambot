@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """CLI entry for the direct max-quality speech-backend renderer."""
+
 from __future__ import annotations
 
 import argparse
@@ -78,6 +79,7 @@ from tools.voxcpm2.direct_source_prosody import (
     source_prosody_penalty,
 )
 
+
 def _tempo_policy_penalty(duration: float, speech_slot: float) -> float:
     ratio = float(duration) / max(0.1, float(speech_slot))
     if ratio <= PREFERRED_MAX_TEMPO:
@@ -139,9 +141,7 @@ def _merge_backend_options(*sources: Mapping[str, Any]) -> dict[str, Any]:
             raise TypeError("Backend plan options должны быть mapping.")
         overlap = sorted(set(merged).intersection(source))
         if overlap:
-            raise RuntimeError(
-                "Backend plans конфликтуют по option keys: " + ", ".join(overlap)
-            )
+            raise RuntimeError("Backend plans конфликтуют по option keys: " + ", ".join(overlap))
         merged.update(dict(source))
     return merged
 
@@ -160,9 +160,7 @@ def _build_generation_request(
         text=str(kwargs.get("text") or ""),
         reference_audio=Path(kwargs["reference"]).resolve(),
         seed=int(kwargs.get("seed") or 0),
-        duration_budget=(
-            float(duration_budget) if duration_budget is not None else None
-        ),
+        duration_budget=(float(duration_budget) if duration_budget is not None else None),
         backend_options=dict(raw_options),
     )
 
@@ -194,12 +192,7 @@ def _acceptable_candidates(
     candidates: list[dict[str, Any]],
     speech_slot: float,
 ) -> list[dict[str, Any]]:
-    return [
-        item
-        for item in candidates
-        if candidate_hard_ok(item, speech_slot)
-        and candidate_pitch_evidence_ok(item)
-    ]
+    return [item for item in candidates if candidate_hard_ok(item, speech_slot) and candidate_pitch_evidence_ok(item)]
 
 
 def _candidate_failure_summary(candidates: list[dict[str, Any]], speech_slot: float) -> str:
@@ -275,14 +268,9 @@ def _raw_failure_evidence(
                 "generation_profile_request": item.get("generation_profile_request") or {},
                 "generation_profile_plan": item.get("generation_profile_plan") or {},
                 "cadence_failures": [
-                    str(value)
-                    for value in (item.get("cadence_evidence") or {}).get("failures") or []
+                    str(value) for value in (item.get("cadence_evidence") or {}).get("failures") or []
                 ],
-                "late_tail": bool(
-                    ((item.get("cadence_evidence") or {}).get("tail_artifact") or {}).get(
-                        "suspicious"
-                    )
-                ),
+                "late_tail": bool(((item.get("cadence_evidence") or {}).get("tail_artifact") or {}).get("suspicious")),
             }
             for item in candidates
         ],
@@ -291,9 +279,7 @@ def _raw_failure_evidence(
 
 def _render_main() -> None:
     configure_utf8()
-    parser = argparse.ArgumentParser(
-        description="Direct maximum-quality speech backend renderer."
-    )
+    parser = argparse.ArgumentParser(description="Direct maximum-quality speech backend renderer.")
     parser.add_argument("--speech-backend", default="voxcpm2")
     parser.add_argument("--archive-root", required=True)
     parser.add_argument("--extended-reference", required=True)
@@ -394,9 +380,7 @@ def _render_main() -> None:
         "Candidate selection uses exact SRT speech slot + fit tempo + artifacts + raw pitch + "
         "voice identity + Russian cadence + source-guided prosody"
     )
-    log(
-        "Failed segments advance a durable seed epoch; successful checkpoints remain reusable"
-    )
+    log("Failed segments advance a durable seed epoch; successful checkpoints remain reusable")
     log("Best-of-bad candidates are forbidden")
     log("Official retry_badcase enabled when supported")
 
@@ -486,21 +470,12 @@ def _render_main() -> None:
             },
         }
 
-        if (
-            not args.force_segments
-            and checkpoint_path.is_file()
-            and fitted_path.is_file()
-        ):
+        if not args.force_segments and checkpoint_path.is_file() and fitted_path.is_file():
             try:
-                checkpoint = json.loads(
-                    checkpoint_path.read_text(encoding="utf-8")
-                )
+                checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 checkpoint = None
-            if (
-                isinstance(checkpoint, dict)
-                and checkpoint.get("signature") == signature
-            ):
+            if isinstance(checkpoint, dict) and checkpoint.get("signature") == signature:
                 saved_report = checkpoint.get("report")
                 if isinstance(saved_report, dict):
                     fitted_segments.append((segment, fitted_path))
@@ -545,10 +520,7 @@ def _render_main() -> None:
                     if attempt_index >= 4:
                         break
 
-            previous_output_durations = tuple(
-                float(item["duration"])
-                for item in candidates
-            )
+            previous_output_durations = tuple(float(item["duration"]) for item in candidates)
             length_request = _build_generation_length_request(
                 segment,
                 duration_budget=speech_slot,
@@ -556,16 +528,10 @@ def _render_main() -> None:
                 previous_output_durations=previous_output_durations,
             )
             if not isinstance(length_request, BackendGenerationLengthRequest):
-                raise TypeError(
-                    "Generation length request factory должен вернуть "
-                    "BackendGenerationLengthRequest."
-                )
+                raise TypeError("Generation length request factory должен вернуть BackendGenerationLengthRequest.")
             length_plan = backend.plan_generation_length(audio_spec, length_request)
             if not isinstance(length_plan, BackendGenerationLengthPlan):
-                raise TypeError(
-                    "Speech backend length planner должен вернуть "
-                    "BackendGenerationLengthPlan."
-                )
+                raise TypeError("Speech backend length planner должен вернуть BackendGenerationLengthPlan.")
             if length_plan.backend_id != backend.backend_id:
                 raise RuntimeError(
                     "Speech backend length plan принадлежит другому backend: "
@@ -575,34 +541,24 @@ def _render_main() -> None:
                 length_plan.duration_budget != length_request.duration_budget
                 or length_plan.attempt != length_request.attempt
             ):
-                raise RuntimeError(
-                    "Speech backend length plan не соответствует typed request."
-                )
+                raise RuntimeError("Speech backend length plan не соответствует typed request.")
 
             profile_request = _build_generation_profile_request(
                 base_generation_profile_options,
                 attempt=attempt_index,
             )
             if not isinstance(profile_request, BackendGenerationProfileRequest):
-                raise TypeError(
-                    "Generation profile request factory должен вернуть "
-                    "BackendGenerationProfileRequest."
-                )
+                raise TypeError("Generation profile request factory должен вернуть BackendGenerationProfileRequest.")
             profile_plan = backend.plan_generation_profile(profile_request)
             if not isinstance(profile_plan, BackendGenerationProfilePlan):
-                raise TypeError(
-                    "Speech backend profile planner должен вернуть "
-                    "BackendGenerationProfilePlan."
-                )
+                raise TypeError("Speech backend profile planner должен вернуть BackendGenerationProfilePlan.")
             if profile_plan.backend_id != backend.backend_id:
                 raise RuntimeError(
                     "Speech backend profile plan принадлежит другому backend: "
                     f"{profile_plan.backend_id} != {backend.backend_id}."
                 )
             if profile_plan.attempt != profile_request.attempt:
-                raise RuntimeError(
-                    "Speech backend profile plan не соответствует typed request."
-                )
+                raise RuntimeError("Speech backend profile plan не соответствует typed request.")
             backend_options = _merge_backend_options(
                 length_plan.backend_options,
                 profile_plan.backend_options,
@@ -615,10 +571,7 @@ def _render_main() -> None:
                 retry_epoch,
             )
             set_seed(seed, torch)
-            raw_path = (
-                attempts_dir
-                / f"{segment_id:02d}_{profile}_epoch{retry_epoch}_attempt{attempt_index}.wav"
-            )
+            raw_path = attempts_dir / f"{segment_id:02d}_{profile}_epoch{retry_epoch}_attempt{attempt_index}.wav"
 
             started = time.perf_counter()
             with torch.inference_mode():
@@ -786,33 +739,19 @@ def _render_main() -> None:
             "selected_generation_length_plan": selected["generation_length_plan"],
             "selected_generation_profile_request": selected["generation_profile_request"],
             "selected_generation_profile_plan": selected["generation_profile_plan"],
-            "selected_voice_match": {
-                key: round(float(value), 6)
-                for key, value in selected["voice_match"].items()
-            },
-            "selected_source_prosody_match": _report_mapping(
-                selected.get("source_prosody_match")
-            ),
+            "selected_voice_match": {key: round(float(value), 6) for key, value in selected["voice_match"].items()},
+            "selected_source_prosody_match": _report_mapping(selected.get("source_prosody_match")),
             "tail_trimmed": bool(tail_trimmed),
-            "tail_trim_time": (
-                round(float(trim_time), 6)
-                if trim_time is not None
-                else None
-            ),
+            "tail_trim_time": (round(float(trim_time), 6) if trim_time is not None else None),
             "fit": {
-                key: (
-                    round(float(value), 6)
-                    if isinstance(value, (int, float))
-                    else value
-                )
+                key: (round(float(value), 6) if isinstance(value, (int, float)) else value)
                 for key, value in fit.items()
             },
             "attempts": [
                 {
                     key: (
                         round(float(value), 6)
-                        if isinstance(value, (int, float))
-                        and not isinstance(value, bool)
+                        if isinstance(value, (int, float)) and not isinstance(value, bool)
                         else value
                     )
                     for key, value in {
@@ -839,12 +778,8 @@ def _render_main() -> None:
                         **item["pitch"],
                         **item["activity"],
                         **item["voice_match"],
-                        "source_prosody_match": _report_mapping(
-                            item.get("source_prosody_match")
-                        ),
-                        "tail_restart": bool(
-                            item["tail_info"].get("suspicious")
-                        ),
+                        "source_prosody_match": _report_mapping(item.get("source_prosody_match")),
+                        "tail_restart": bool(item["tail_info"].get("suspicious")),
                     }.items()
                 }
                 for item in candidates
@@ -906,10 +841,7 @@ def _render_main() -> None:
         "references": reference_reports,
         "segments": report_segments,
         "total_synthesis_seconds": round(total_synthesis, 3),
-        "references_paths": {
-            key: str(value)
-            for key, value in references.items()
-        },
+        "references_paths": {key: str(value) for key, value in references.items()},
         "output": str(output),
         "video_duration": float(args.video_duration),
         "final_audio_duration": final_duration,
@@ -928,6 +860,7 @@ def _render_main() -> None:
     log("=== DIRECT MAX-QUALITY RENDER COMPLETE ===")
     log(f"Timeline: {output}")
     log(f"Report: {report_path}")
+
 
 from tools.voxcpm2 import direct_universal_runtime as universal_runtime
 from tools.voxcpm2 import direct_surgical_runtime as surgical_runtime
@@ -1050,11 +983,7 @@ def seed_for_attempt(
     segment = _universal_segment(segment_id) or {"text": ""}
     slot = float(segment.get("speech_slot") or 1.0)
     work_dir = _UNIVERSAL_STATE.get("work_dir")
-    context = (
-        _universal_scope(Path(work_dir), segment_id)[1]
-        if work_dir is not None
-        else {}
-    )
+    context = _universal_scope(Path(work_dir), segment_id)[1] if work_dir is not None else {}
     if int(attempt) == 1 and work_dir is not None:
         direct_timing_guard.enforce_retry_epoch_budget(
             work_dir=Path(work_dir),
@@ -1114,11 +1043,7 @@ def _acceptable_candidates(
         return acceptable
     retry_epoch = int(segment.get("retry_epoch") or 0)
     work_dir = _UNIVERSAL_STATE.get("work_dir")
-    context = (
-        _universal_scope(Path(work_dir), segment.get("id"))[1]
-        if work_dir is not None
-        else {}
-    )
+    context = _universal_scope(Path(work_dir), segment.get("id"))[1] if work_dir is not None else {}
     timing_failure = direct_timing_guard.evaluate_dynamic_timing_failure(
         candidates,
         segment=segment,
@@ -1134,9 +1059,7 @@ def _acceptable_candidates(
             retry_epoch=retry_epoch,
             evidence=timing_failure,
         )
-        raise RuntimeError(
-            direct_timing_guard.format_timing_block_message(block, repeated=False)
-        )
+        raise RuntimeError(direct_timing_guard.format_timing_block_message(block, repeated=False))
     plan = direct_timing_guard.candidate_efficiency_plan(
         segment,
         speech_slot=float(speech_slot),
@@ -1175,19 +1098,14 @@ def _raw_failure_evidence(
     segment = _universal_current_segment()
     work_dir = _UNIVERSAL_STATE.get("work_dir")
     if isinstance(segment, dict):
-        context = (
-            _universal_scope(Path(work_dir), segment.get("id"))[1]
-            if work_dir is not None
-            else {}
-        )
-        payload["failure_scope_fingerprint"] = (
-            direct_timing_guard.failure_scope_fingerprint(
-                segment,
-                signature_context=context,
-            )
+        context = _universal_scope(Path(work_dir), segment.get("id"))[1] if work_dir is not None else {}
+        payload["failure_scope_fingerprint"] = direct_timing_guard.failure_scope_fingerprint(
+            segment,
+            signature_context=context,
         )
     payload["universal_runtime_policy"] = universal_runtime.POLICY
     return payload
+
 
 SURGICAL_RUNTIME_POLICY = surgical_runtime.POLICY
 _SURGICAL_RUNTIME_STATE: dict[str, Any] = {
@@ -1209,332 +1127,339 @@ _surgical_max_tempo = float(MAX_TEMPO)
 _surgical_expected_encode = int(EXPECTED_ENCODE_SR)
 _surgical_expected_output = int(EXPECTED_OUTPUT_SR)
 
+
 def log(message: str) -> Any:
-        text = str(message)
-        if text.startswith("Модель загружена за"):
-            return _surgical_base_log(
-                "Модель работает лениво: checkpoint-only resume не открывает веса; "
-                "загрузка начнётся перед первым отсутствующим сегментом."
-            )
-        return _surgical_base_log(text)
+    text = str(message)
+    if text.startswith("Модель загружена за"):
+        return _surgical_base_log(
+            "Модель работает лениво: checkpoint-only resume не открывает веса; "
+            "загрузка начнётся перед первым отсутствующим сегментом."
+        )
+    return _surgical_base_log(text)
+
 
 def get_backend(name: str) -> Any:
-        backend = _surgical_base_get_backend(name)
-        if str(getattr(backend, "backend_id", "")).casefold() != "voxcpm2":
-            return backend
-        return surgical_runtime.direct_surgical_io.LazyBackend(
-            backend,
-            encode=_surgical_expected_encode,
-            output=_surgical_expected_output,
-            log=_surgical_base_log,
-        )
+    backend = _surgical_base_get_backend(name)
+    if str(getattr(backend, "backend_id", "")).casefold() != "voxcpm2":
+        return backend
+    return surgical_runtime.direct_surgical_io.LazyBackend(
+        backend,
+        encode=_surgical_expected_encode,
+        output=_surgical_expected_output,
+        log=_surgical_base_log,
+    )
+
 
 def prepare_reference(source: Path, output: Path, sf_module: Any) -> dict[str, Any]:
-        cached = surgical_runtime.direct_surgical_io.cached_reference(
-            source=source,
-            output=output,
-            _surgical_hash_file=_surgical_hash_file,
-            expected_sample_rate=_surgical_expected_encode,
-        )
-        if cached is not None:
-            _surgical_base_log(
-                f"Reference cache hit: {Path(output).stem} "
-                f"({float(cached['duration']):.2f} сек.)"
-            )
-            return cached
-        report = dict(_surgical_base_prepare_reference(source, output, sf_module))
-        return surgical_runtime.direct_surgical_io.enrich_reference_report(
-            report,
-            source=source,
-            _surgical_hash_file=_surgical_hash_file,
-        )
+    cached = surgical_runtime.direct_surgical_io.cached_reference(
+        source=source,
+        output=output,
+        _surgical_hash_file=_surgical_hash_file,
+        expected_sample_rate=_surgical_expected_encode,
+    )
+    if cached is not None:
+        _surgical_base_log(f"Reference cache hit: {Path(output).stem} ({float(cached['duration']):.2f} сек.)")
+        return cached
+    report = dict(_surgical_base_prepare_reference(source, output, sf_module))
+    return surgical_runtime.direct_surgical_io.enrich_reference_report(
+        report,
+        source=source,
+        _surgical_hash_file=_surgical_hash_file,
+    )
+
 
 def read_segments(path: Path) -> list[dict[str, Any]]:
-        values = list(_surgical_base_read_segments(Path(path)))
-        _SURGICAL_RUNTIME_STATE["segments"] = surgical_runtime._segments_by_id(values)
-        return values
+    values = list(_surgical_base_read_segments(Path(path)))
+    _SURGICAL_RUNTIME_STATE["segments"] = surgical_runtime._segments_by_id(values)
+    return values
+
 
 def _segment(segment_id: Any) -> dict[str, Any] | None:
-        try:
-            return _SURGICAL_RUNTIME_STATE["segments"].get(int(segment_id))
-        except (TypeError, ValueError, OverflowError):
-            return None
+    try:
+        return _SURGICAL_RUNTIME_STATE["segments"].get(int(segment_id))
+    except (TypeError, ValueError, OverflowError):
+        return None
+
 
 def _runtime_context() -> dict[str, str]:
-        cached = _SURGICAL_RUNTIME_STATE.get("runtime_context")
-        if isinstance(cached, dict):
-            return cached
-        repo = Path(__file__).resolve().parents[2]
-        hashes: dict[str, str] = {}
-        for relative in surgical_runtime._RUNTIME_SCOPE_FILES:
-            path = repo / relative
-            if not path.is_file():
-                raise RuntimeError(f"Не найден runtime-файл для retry scope: {relative}")
-            hashes[relative] = str(_surgical_hash_file(path))
-        encoded = json.dumps(
-            hashes,
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
-        result = {
-            "surgical_runtime_policy": surgical_runtime.POLICY,
-            "surgical_runtime_sha256": hashlib.sha256(encoded).hexdigest(),
-        }
-        _SURGICAL_RUNTIME_STATE["runtime_context"] = result
-        return result
+    cached = _SURGICAL_RUNTIME_STATE.get("runtime_context")
+    if isinstance(cached, dict):
+        return cached
+    repo = Path(__file__).resolve().parents[2]
+    hashes: dict[str, str] = {}
+    for relative in surgical_runtime._RUNTIME_SCOPE_FILES:
+        path = repo / relative
+        if not path.is_file():
+            raise RuntimeError(f"Не найден runtime-файл для retry scope: {relative}")
+        hashes[relative] = str(_surgical_hash_file(path))
+    encoded = json.dumps(
+        hashes,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    result = {
+        "surgical_runtime_policy": surgical_runtime.POLICY,
+        "surgical_runtime_sha256": hashlib.sha256(encoded).hexdigest(),
+    }
+    _SURGICAL_RUNTIME_STATE["runtime_context"] = result
+    return result
+
 
 def _scope(
-        work_dir: Path,
-        segment_id: Any,
-    ) -> tuple[dict[str, Any] | None, dict[str, Any], str]:
-        segment = _segment(segment_id)
-        context = {
-            **surgical_runtime.guard.load_signature_context(work_dir),
-            **_runtime_context(),
-        }
-        if not isinstance(segment, dict):
-            return None, context, ""
-        profile = str(segment.get("reference_profile") or "extended")
-        reference = Path(work_dir).resolve() / "references_guarded" / f"{profile}.wav"
-        if reference.is_file():
-            context.update(
-                reference_profile=profile,
-                reference_sha256=str(_surgical_hash_file(reference)),
-            )
-        fingerprint = surgical_runtime.guard.failure_scope_fingerprint(
-            segment,
-            signature_context=context,
+    work_dir: Path,
+    segment_id: Any,
+) -> tuple[dict[str, Any] | None, dict[str, Any], str]:
+    segment = _segment(segment_id)
+    context = {
+        **surgical_runtime.guard.load_signature_context(work_dir),
+        **_runtime_context(),
+    }
+    if not isinstance(segment, dict):
+        return None, context, ""
+    profile = str(segment.get("reference_profile") or "extended")
+    reference = Path(work_dir).resolve() / "references_guarded" / f"{profile}.wav"
+    if reference.is_file():
+        context.update(
+            reference_profile=profile,
+            reference_sha256=str(_surgical_hash_file(reference)),
         )
-        return segment, context, fingerprint
+    fingerprint = surgical_runtime.guard.failure_scope_fingerprint(
+        segment,
+        signature_context=context,
+    )
+    return segment, context, fingerprint
+
 
 def load_retry_epoch(work_dir: Path, segment_id: Any) -> int:
-        work = Path(work_dir).resolve()
-        _SURGICAL_RUNTIME_STATE["work_dir"] = work
-        segment, _context, scope = _scope(work, segment_id)
-        value = int(
-            surgical_runtime.direct_retry_epoch.load_retry_epoch(
-                work,
-                segment_id,
-                scope_fingerprint=scope or None,
-            )
+    work = Path(work_dir).resolve()
+    _SURGICAL_RUNTIME_STATE["work_dir"] = work
+    segment, _context, scope = _scope(work, segment_id)
+    value = int(
+        surgical_runtime.direct_retry_epoch.load_retry_epoch(
+            work,
+            segment_id,
+            scope_fingerprint=scope or None,
         )
-        key = int(segment_id)
-        _SURGICAL_RUNTIME_STATE["retry_epochs"][key] = value
-        if isinstance(segment, dict):
-            segment["retry_epoch"] = value
-        return value
+    )
+    key = int(segment_id)
+    _SURGICAL_RUNTIME_STATE["retry_epochs"][key] = value
+    if isinstance(segment, dict):
+        segment["retry_epoch"] = value
+    return value
+
 
 def invalidate_segment_for_retry(
-        work_dir: Path,
-        segment: dict[str, Any],
-        *,
-        reason: str,
-        fitted_path: Path | None = None,
-        evidence: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        _value, context, scope = _scope(work_dir, segment.get("id"))
-        enriched = dict(evidence or {})
-        enriched["failure_scope_fingerprint"] = scope or surgical_runtime.guard.failure_scope_fingerprint(
-            segment,
-            signature_context=context,
-        )
-        return surgical_runtime.direct_retry_epoch.invalidate_segment_for_retry(
-            work_dir,
-            segment,
-            reason=reason,
-            fitted_path=fitted_path,
-            evidence=enriched,
-        )
+    work_dir: Path,
+    segment: dict[str, Any],
+    *,
+    reason: str,
+    fitted_path: Path | None = None,
+    evidence: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    _value, context, scope = _scope(work_dir, segment.get("id"))
+    enriched = dict(evidence or {})
+    enriched["failure_scope_fingerprint"] = scope or surgical_runtime.guard.failure_scope_fingerprint(
+        segment,
+        signature_context=context,
+    )
+    return surgical_runtime.direct_retry_epoch.invalidate_segment_for_retry(
+        work_dir,
+        segment,
+        reason=reason,
+        fitted_path=fitted_path,
+        evidence=enriched,
+    )
+
 
 def _position(segment_id: int) -> tuple[int, int]:
-        ordered = sorted(int(value) for value in _SURGICAL_RUNTIME_STATE["segments"])
-        total = max(1, len(ordered))
-        try:
-            return ordered.index(int(segment_id)) + 1, total
-        except ValueError:
-            return min(max(1, int(segment_id)), total), total
+    ordered = sorted(int(value) for value in _SURGICAL_RUNTIME_STATE["segments"])
+    total = max(1, len(ordered))
+    try:
+        return ordered.index(int(segment_id)) + 1, total
+    except ValueError:
+        return min(max(1, int(segment_id)), total), total
+
 
 def _build_generation_length_request(
-        segment: dict[str, Any],
-        *,
-        duration_budget: float,
-        attempt: int,
-        previous_output_durations: tuple[float, ...],
-    ) -> Any:
-        segment_id = int(segment.get("id") or 0)
-        _SURGICAL_RUNTIME_STATE["current_segment_id"] = segment_id
-        epoch = int(_SURGICAL_RUNTIME_STATE["retry_epochs"].get(segment_id, segment.get("retry_epoch") or 0))
-        work = _SURGICAL_RUNTIME_STATE.get("work_dir")
-        context: dict[str, Any] = {}
-        if work is not None:
-            _value, context, _scope_hash = _scope(Path(work), segment_id)
-            if int(attempt) == 1:
-                surgical_runtime.guard.enforce_retry_epoch_budget(
-                    work_dir=Path(work),
-                    segment=segment,
-                    retry_epoch=epoch,
-                    signature_context=context,
-                )
-                marker = surgical_runtime.guard.load_matching_timing_block(
-                    Path(work),
-                    segment=segment,
-                    signature_context=context,
-                )
-                if marker is not None:
-                    raise surgical_runtime.guard.RetryableSynthesisFailure(
-                        surgical_runtime.guard.format_timing_block_message(marker, repeated=True),
-                        segment=segment,
-                        evidence=marker.get("evidence") or {},
-                        advance_retry=False,
-                        failure_kind="unchanged_timing_block",
-                    )
-        plan = surgical_runtime.guard.candidate_efficiency_plan(
-            segment,
-            speech_slot=max(0.001, float(duration_budget)),
-            retry_epoch=epoch,
-            max_tempo=_surgical_max_tempo,
-        )
-        position, total = _position(segment_id)
-        _surgical_base_log(
-            "DUB_PROGRESS "
-            + json.dumps(
-                {
-                    "progress": surgical_runtime._progress_value(
-                        position=position,
-                        total=total,
-                        attempt=int(attempt),
-                        max_attempts=int(plan.get("max_attempts") or 5),
-                    ),
-                    "stage": (
-                        f"voxcpm2 · сегмент {position}/{total} · "
-                        f"вариант {int(attempt)}/{int(plan.get('max_attempts') or 5)} · "
-                        f"epoch {epoch}"
-                    ),
-                    "policy": surgical_runtime._PROGRESS_POLICY,
-                    "risk_band": plan.get("risk_band"),
-                },
-                ensure_ascii=False,
+    segment: dict[str, Any],
+    *,
+    duration_budget: float,
+    attempt: int,
+    previous_output_durations: tuple[float, ...],
+) -> Any:
+    segment_id = int(segment.get("id") or 0)
+    _SURGICAL_RUNTIME_STATE["current_segment_id"] = segment_id
+    epoch = int(_SURGICAL_RUNTIME_STATE["retry_epochs"].get(segment_id, segment.get("retry_epoch") or 0))
+    work = _SURGICAL_RUNTIME_STATE.get("work_dir")
+    context: dict[str, Any] = {}
+    if work is not None:
+        _value, context, _scope_hash = _scope(Path(work), segment_id)
+        if int(attempt) == 1:
+            surgical_runtime.guard.enforce_retry_epoch_budget(
+                work_dir=Path(work),
+                segment=segment,
+                retry_epoch=epoch,
+                signature_context=context,
             )
-        )
-        return _surgical_base_build_generation_length_request(
-            segment,
-            duration_budget=duration_budget,
-            attempt=attempt,
-            previous_output_durations=previous_output_durations,
-        )
-
-def seed_for_attempt(base_seed: int, segment_id: int, attempt: int, epoch: int) -> int:
-        _SURGICAL_RUNTIME_STATE["current_segment_id"] = int(segment_id)
-        _SURGICAL_RUNTIME_STATE["retry_epochs"][int(segment_id)] = int(epoch)
-        return int(
-            surgical_runtime.direct_retry_epoch.seed_for_attempt(base_seed, segment_id, attempt, epoch)
-        )
-
-def _acceptable_candidates(
-        candidates: list[dict[str, Any]],
-        speech_slot: float,
-    ) -> list[dict[str, Any]]:
-        try:
-            acceptable = list(_surgical_base_acceptable_candidates(candidates, speech_slot))
-        except RuntimeError as exc:
-            message = str(exc)
-            if not any(
-                marker in message
-                for marker in ("адаптивный бюджет", "не помещается естественно")
-            ):
-                raise
-            acceptable = []
-            legacy_error = exc
-        else:
-            legacy_error = None
-        segment = _segment(_SURGICAL_RUNTIME_STATE.get("current_segment_id"))
-        if not isinstance(segment, dict) or acceptable:
-            return acceptable
-        segment_id = int(segment.get("id") or 0)
-        epoch = int(_SURGICAL_RUNTIME_STATE["retry_epochs"].get(segment_id, segment.get("retry_epoch") or 0))
-        work = _SURGICAL_RUNTIME_STATE.get("work_dir")
-        context = _scope(Path(work), segment_id)[1] if work is not None else {}
-        timing = surgical_runtime.guard.evaluate_dynamic_timing_failure(
-            candidates,
-            segment=segment,
-            speech_slot=float(speech_slot),
-            retry_epoch=epoch,
-            max_tempo=_surgical_max_tempo,
-        )
-        if timing is not None and work is not None:
-            marker = surgical_runtime.guard.persist_timing_block(
+            marker = surgical_runtime.guard.load_matching_timing_block(
                 Path(work),
                 segment=segment,
                 signature_context=context,
-                retry_epoch=epoch,
-                evidence=timing,
             )
-            raise surgical_runtime.guard.RetryableSynthesisFailure(
-                surgical_runtime.guard.format_timing_block_message(marker, repeated=False),
-                segment=segment,
-                evidence=timing,
-                advance_retry=True,
-                failure_kind="measured_timing_failure",
-            )
-        plan = surgical_runtime.guard.candidate_efficiency_plan(
-            segment,
-            speech_slot=float(speech_slot),
-            retry_epoch=epoch,
-            max_tempo=_surgical_max_tempo,
+            if marker is not None:
+                raise surgical_runtime.guard.RetryableSynthesisFailure(
+                    surgical_runtime.guard.format_timing_block_message(marker, repeated=True),
+                    segment=segment,
+                    evidence=marker.get("evidence") or {},
+                    advance_retry=False,
+                    failure_kind="unchanged_timing_block",
+                )
+    plan = surgical_runtime.guard.candidate_efficiency_plan(
+        segment,
+        speech_slot=max(0.001, float(duration_budget)),
+        retry_epoch=epoch,
+        max_tempo=_surgical_max_tempo,
+    )
+    position, total = _position(segment_id)
+    _surgical_base_log(
+        "DUB_PROGRESS "
+        + json.dumps(
+            {
+                "progress": surgical_runtime._progress_value(
+                    position=position,
+                    total=total,
+                    attempt=int(attempt),
+                    max_attempts=int(plan.get("max_attempts") or 5),
+                ),
+                "stage": (
+                    f"voxcpm2 · сегмент {position}/{total} · "
+                    f"вариант {int(attempt)}/{int(plan.get('max_attempts') or 5)} · "
+                    f"epoch {epoch}"
+                ),
+                "policy": surgical_runtime._PROGRESS_POLICY,
+                "risk_band": plan.get("risk_band"),
+            },
+            ensure_ascii=False,
         )
-        budget = int(plan.get("max_attempts") or 5)
-        if len(candidates) >= budget:
-            evidence = {
-                "kind": "adaptive-candidate-budget-exhausted",
-                "candidate_plan": plan,
-                "speech_slot": float(speech_slot),
-                "_surgical_max_tempo": _surgical_max_tempo,
-                "attempts": [
-                    {
-                        "attempt": int(item.get("attempt") or 0),
-                        "seed": int(item.get("seed") or 0),
-                        "duration": float(item.get("duration") or 0.0),
-                        "required_tempo": float(item.get("required_tempo") or 0.0),
-                        "score": float(item.get("score") or 0.0),
-                    }
-                    for item in candidates
-                ],
-            }
-            raise surgical_runtime.guard.RetryableSynthesisFailure(
-                f"Сегмент #{segment_id}: адаптивный бюджет {budget} кандидатов "
-                f"исчерпан (risk={plan.get('risk_band')}); hard-quality кандидат не найден.",
-                segment=segment,
-                evidence=evidence,
-                advance_retry=True,
-                failure_kind="adaptive_budget_exhausted",
-            )
-        if legacy_error is not None:
-            raise legacy_error
-        return []
+    )
+    return _surgical_base_build_generation_length_request(
+        segment,
+        duration_budget=duration_budget,
+        attempt=attempt,
+        previous_output_durations=previous_output_durations,
+    )
+
+
+def seed_for_attempt(base_seed: int, segment_id: int, attempt: int, epoch: int) -> int:
+    _SURGICAL_RUNTIME_STATE["current_segment_id"] = int(segment_id)
+    _SURGICAL_RUNTIME_STATE["retry_epochs"][int(segment_id)] = int(epoch)
+    return int(surgical_runtime.direct_retry_epoch.seed_for_attempt(base_seed, segment_id, attempt, epoch))
+
+
+def _acceptable_candidates(
+    candidates: list[dict[str, Any]],
+    speech_slot: float,
+) -> list[dict[str, Any]]:
+    try:
+        acceptable = list(_surgical_base_acceptable_candidates(candidates, speech_slot))
+    except RuntimeError as exc:
+        message = str(exc)
+        if not any(marker in message for marker in ("адаптивный бюджет", "не помещается естественно")):
+            raise
+        acceptable = []
+        legacy_error = exc
+    else:
+        legacy_error = None
+    segment = _segment(_SURGICAL_RUNTIME_STATE.get("current_segment_id"))
+    if not isinstance(segment, dict) or acceptable:
+        return acceptable
+    segment_id = int(segment.get("id") or 0)
+    epoch = int(_SURGICAL_RUNTIME_STATE["retry_epochs"].get(segment_id, segment.get("retry_epoch") or 0))
+    work = _SURGICAL_RUNTIME_STATE.get("work_dir")
+    context = _scope(Path(work), segment_id)[1] if work is not None else {}
+    timing = surgical_runtime.guard.evaluate_dynamic_timing_failure(
+        candidates,
+        segment=segment,
+        speech_slot=float(speech_slot),
+        retry_epoch=epoch,
+        max_tempo=_surgical_max_tempo,
+    )
+    if timing is not None and work is not None:
+        marker = surgical_runtime.guard.persist_timing_block(
+            Path(work),
+            segment=segment,
+            signature_context=context,
+            retry_epoch=epoch,
+            evidence=timing,
+        )
+        raise surgical_runtime.guard.RetryableSynthesisFailure(
+            surgical_runtime.guard.format_timing_block_message(marker, repeated=False),
+            segment=segment,
+            evidence=timing,
+            advance_retry=True,
+            failure_kind="measured_timing_failure",
+        )
+    plan = surgical_runtime.guard.candidate_efficiency_plan(
+        segment,
+        speech_slot=float(speech_slot),
+        retry_epoch=epoch,
+        max_tempo=_surgical_max_tempo,
+    )
+    budget = int(plan.get("max_attempts") or 5)
+    if len(candidates) >= budget:
+        evidence = {
+            "kind": "adaptive-candidate-budget-exhausted",
+            "candidate_plan": plan,
+            "speech_slot": float(speech_slot),
+            "_surgical_max_tempo": _surgical_max_tempo,
+            "attempts": [
+                {
+                    "attempt": int(item.get("attempt") or 0),
+                    "seed": int(item.get("seed") or 0),
+                    "duration": float(item.get("duration") or 0.0),
+                    "required_tempo": float(item.get("required_tempo") or 0.0),
+                    "score": float(item.get("score") or 0.0),
+                }
+                for item in candidates
+            ],
+        }
+        raise surgical_runtime.guard.RetryableSynthesisFailure(
+            f"Сегмент #{segment_id}: адаптивный бюджет {budget} кандидатов "
+            f"исчерпан (risk={plan.get('risk_band')}); hard-quality кандидат не найден.",
+            segment=segment,
+            evidence=evidence,
+            advance_retry=True,
+            failure_kind="adaptive_budget_exhausted",
+        )
+    if legacy_error is not None:
+        raise legacy_error
+    return []
+
 
 def _raw_failure_evidence(
-        candidates: list[dict[str, Any]],
-        *,
-        speech_slot: float,
-        retry_epoch: int,
-    ) -> dict[str, Any]:
-        payload = dict(
-            _surgical_base_raw_failure_evidence(
-                candidates,
-                speech_slot=speech_slot,
-                retry_epoch=retry_epoch,
-            )
+    candidates: list[dict[str, Any]],
+    *,
+    speech_slot: float,
+    retry_epoch: int,
+) -> dict[str, Any]:
+    payload = dict(
+        _surgical_base_raw_failure_evidence(
+            candidates,
+            speech_slot=speech_slot,
+            retry_epoch=retry_epoch,
         )
-        segment = _segment(_SURGICAL_RUNTIME_STATE.get("current_segment_id"))
-        work = _SURGICAL_RUNTIME_STATE.get("work_dir")
-        if isinstance(segment, dict):
-            context = _scope(Path(work), segment.get("id"))[1] if work is not None else {}
-            payload["failure_scope_fingerprint"] = surgical_runtime.guard.failure_scope_fingerprint(
-                segment,
-                signature_context=context,
-            )
-        payload["surgical_runtime_policy"] = surgical_runtime.POLICY
-        return payload
+    )
+    segment = _segment(_SURGICAL_RUNTIME_STATE.get("current_segment_id"))
+    work = _SURGICAL_RUNTIME_STATE.get("work_dir")
+    if isinstance(segment, dict):
+        context = _scope(Path(work), segment.get("id"))[1] if work is not None else {}
+        payload["failure_scope_fingerprint"] = surgical_runtime.guard.failure_scope_fingerprint(
+            segment,
+            signature_context=context,
+        )
+    payload["surgical_runtime_policy"] = surgical_runtime.POLICY
+    return payload
+
 
 FINAL_AUDIT_POLICY = final_audit.POLICY
 _FINAL_AUDIT_STATE: dict[str, Any] = {
@@ -1601,20 +1526,14 @@ def get_backend(name: str) -> Any:
         return backend
     setter = getattr(backend, "set_model_discovery_callback", None)
     if not callable(setter):
-        raise RuntimeError(
-            "VoxCPM2 backend не поддерживает source-owned model discovery audit callback."
-        )
+        raise RuntimeError("VoxCPM2 backend не поддерживает source-owned model discovery audit callback.")
     setter(_final_audit_model_discovered)
     return backend
 
 
 def prepare_reference(source: Path, output: Path, sf_module: Any) -> dict[str, Any]:
     target = Path(output).resolve()
-    work = (
-        target.parent.parent
-        if target.parent.name == "references_guarded"
-        else target.parent
-    )
+    work = target.parent.parent if target.parent.name == "references_guarded" else target.parent
     _FINAL_AUDIT_STATE["work_dir"] = work
     if not bool(_FINAL_AUDIT_STATE.get("preflight_done")):
         segments = list(_FINAL_AUDIT_STATE.get("segments") or [])
@@ -1629,20 +1548,16 @@ def prepare_reference(source: Path, output: Path, sf_module: Any) -> dict[str, A
         )
         _FINAL_AUDIT_STATE["preflight_done"] = True
         warnings = report.get("warning_ids") if isinstance(report, Mapping) else []
-        log(
-            "direct final timing preflight passed before references/model: "
-            f"warnings={warnings or []}"
-        )
+        log(f"direct final timing preflight passed before references/model: warnings={warnings or []}")
     return dict(_final_audit_base_prepare_reference(source, output, sf_module))
 
 
-_BASE_ALL = tuple(globals().get('__all__', ()))
+_BASE_ALL = tuple(globals().get("__all__", ()))
 
 from dataclasses import replace
 
 
 import types
-
 
 
 from tools.voxcpm2 import direct_monolith_contract
@@ -1669,10 +1584,12 @@ _CONTINUATION_TEXT = ""
 
 CONTINUATION_POLICY = "backend-capability-gated-previous-block-prompt-v2"
 
+
 def set_continuation_context(reference: Path | None, text: str = "") -> None:
     global _CONTINUATION_REFERENCE, _CONTINUATION_TEXT
     _CONTINUATION_REFERENCE = Path(reference).resolve() if reference is not None else None
     _CONTINUATION_TEXT = str(text or "").strip()
+
 
 _legacy_read_segments = read_segments
 
@@ -1694,10 +1611,12 @@ _legacy_candidate_failure_summary = _candidate_failure_summary
 
 _legacy_raw_failure_evidence = _raw_failure_evidence
 
+
 def read_segments(path: Path) -> list[dict[str, Any]]:
     segments = _legacy_read_segments(Path(path))
     marked = [source_prosody_policy.mark_diagnostic_only(item) for item in segments]
     return direct_monolith_contract.register_segments(marked)
+
 
 def seed_for_attempt(
     base_seed: int,
@@ -1716,6 +1635,7 @@ def seed_for_attempt(
             retry_epoch,
         )
     )
+
 
 def _generate(
     model: Any,
@@ -1749,6 +1669,7 @@ def _generate(
         )
     return _legacy_generate(model, **kwargs)
 
+
 def _build_generation_length_request(
     segment: dict[str, Any],
     *,
@@ -1778,6 +1699,7 @@ def _build_generation_length_request(
         metadata=metadata,
     )
 
+
 def _build_generation_request(
     session: Any,
     **kwargs: Any,
@@ -1791,10 +1713,7 @@ def _build_generation_request(
 
     continuation_reference: Path | None = None
     continuation_text = ""
-    if (
-        _CONTINUATION_REFERENCE is not None
-        and bool(getattr(session, "supports_continuation_context", False))
-    ):
+    if _CONTINUATION_REFERENCE is not None and bool(getattr(session, "supports_continuation_context", False)):
         continuation_reference = _CONTINUATION_REFERENCE
         continuation_text = _CONTINUATION_TEXT
 
@@ -1809,6 +1728,7 @@ def _build_generation_request(
         backend_options=base_request.backend_options,
     )
 
+
 def source_prosody_penalty(
     candidate: dict[str, Any],
     segment: dict[str, Any],
@@ -1819,13 +1739,9 @@ def source_prosody_penalty(
         pronunciation = russian_pronunciation.prepare_segment(segment)
         segment["pronunciation"] = pronunciation
     display_segment = dict(segment)
-    display_segment["text"] = str(
-        pronunciation.get("display_text") or segment.get("text") or ""
-    )
+    display_segment["text"] = str(pronunciation.get("display_text") or segment.get("text") or "")
     ranking_segment = source_prosody_policy.ranking_view(display_segment)
-    diagnostic_penalty = float(
-        _legacy_source_prosody_penalty(candidate, ranking_segment)
-    )
+    diagnostic_penalty = float(_legacy_source_prosody_penalty(candidate, ranking_segment))
     monolith = direct_monolith_contract.evaluate_candidate(candidate, segment)
     match = candidate.get("source_prosody_match")
     if not isinstance(match, dict):
@@ -1843,16 +1759,15 @@ def source_prosody_penalty(
     match["pronunciation_variant_policy"] = PRONUNCIATION_VARIANT_POLICY
     match["pronunciation_variant"] = variant
     match["display_text"] = str(pronunciation.get("display_text") or "")
-    match["synthesis_text_without_control"] = str(
-        variant.get("synthesis_text_without_control") or ""
-    )
+    match["synthesis_text_without_control"] = str(variant.get("synthesis_text_without_control") or "")
     return float(direct_monolith_contract.candidate_penalty(candidate))
+
 
 def candidate_hard_ok(candidate: dict[str, Any], speech_slot: float) -> bool:
     return bool(
-        _legacy_candidate_hard_ok(candidate, speech_slot)
-        and direct_monolith_contract.candidate_hard_ok(candidate)
+        _legacy_candidate_hard_ok(candidate, speech_slot) and direct_monolith_contract.candidate_hard_ok(candidate)
     )
+
 
 def _acceptable_candidates(
     candidates: list[dict[str, Any]],
@@ -1861,6 +1776,7 @@ def _acceptable_candidates(
     result = list(_legacy_acceptable_candidates(candidates, speech_slot))
     direct_monolith_contract.record_acceptable(result)
     return result
+
 
 def _monolith_diagnostic(candidate: dict[str, Any]) -> str:
     evidence = candidate.get("monolith_identity")
@@ -1906,6 +1822,7 @@ def _monolith_diagnostic(candidate: dict[str, Any]) -> str:
         variant=int(variant.get("variant_index") or 0),
     )
 
+
 def _candidate_failure_summary(
     candidates: list[dict[str, Any]],
     speech_slot: float,
@@ -1917,6 +1834,7 @@ def _candidate_failure_summary(
         if isinstance(item, dict)
     ]
     return "; ".join(value for value in (base, *extras) if value)
+
 
 def _raw_failure_evidence(
     candidates: list[dict[str, Any]],
@@ -1933,11 +1851,7 @@ def _raw_failure_evidence(
     )
     payload["monolith_policy"] = direct_monolith_contract.POLICY
     payload["pronunciation_variant_policy"] = PRONUNCIATION_VARIANT_POLICY
-    by_attempt = {
-        int(item.get("attempt") or 0): item
-        for item in candidates
-        if isinstance(item, dict)
-    }
+    by_attempt = {int(item.get("attempt") or 0): item for item in candidates if isinstance(item, dict)}
     attempts = payload.get("attempts")
     if isinstance(attempts, list):
         for row in attempts:
@@ -1951,6 +1865,7 @@ def _raw_failure_evidence(
             if isinstance(match, dict) and isinstance(match.get("pronunciation_variant"), dict):
                 row["pronunciation_variant"] = match["pronunciation_variant"]
     return payload
+
 
 read_segments = read_segments
 
@@ -1973,6 +1888,7 @@ _acceptable_candidates = _acceptable_candidates
 _candidate_failure_summary = _candidate_failure_summary
 
 _raw_failure_evidence = _raw_failure_evidence
+
 
 def main() -> Any:
     return run_with_failure_recovery(_render_main, invalidate_segment_for_retry)

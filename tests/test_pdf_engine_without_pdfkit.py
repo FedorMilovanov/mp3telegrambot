@@ -9,6 +9,7 @@ None`, то есть прямой вызов бинарника wkhtmltopdf от
 что движок действительно работает от одного бинарника и что рудимент не
 вернулся.
 """
+
 from __future__ import annotations
 
 import ast
@@ -26,9 +27,7 @@ def _fake_wkhtmltopdf(tmp_path: Path) -> Path:
     """Скрипт-заглушка: пишет «PDF» больше _MIN_PDF_SIZE в последний аргумент."""
     script = tmp_path / "wkhtmltopdf"
     script.write_text(
-        f"#!{sys.executable}\n"
-        "import sys\n"
-        "open(sys.argv[-1], 'wb').write(b'%PDF-1.4\\n' + b'x' * 4096)\n",
+        f"#!{sys.executable}\nimport sys\nopen(sys.argv[-1], 'wb').write(b'%PDF-1.4\\n' + b'x' * 4096)\n",
         encoding="utf-8",
     )
     script.chmod(script.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)

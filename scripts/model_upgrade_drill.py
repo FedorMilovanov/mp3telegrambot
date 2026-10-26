@@ -29,6 +29,7 @@ What a green run proves:
 The script never leaves the working tree mutated: the original catalog bytes are
 restored in ``finally`` and the renderer is re-run.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -109,9 +110,7 @@ def _swap_catalog(source: str, model: str) -> str:
     """Replace the one catalog line that decides the primary route."""
     if not _ROLE_PRIMARY_ROW.search(source):
         raise SystemExit("ROLE_PRIMARY row not found in core/model_catalog.py")
-    return _ROLE_PRIMARY_ROW.sub(
-        lambda m: f"{m.group(1)}{model}{m.group(2)}", source, count=1
-    )
+    return _ROLE_PRIMARY_ROW.sub(lambda m: f"{m.group(1)}{model}{m.group(2)}", source, count=1)
 
 
 def main(argv: list[str] | None = None) -> int:

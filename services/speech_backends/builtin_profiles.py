@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Built-in pinned TTS profiles loaded from repository-owned manifests."""
+
 from __future__ import annotations
 
 import os
@@ -14,8 +15,7 @@ from services.speech_backends.profile_manifests import (
 
 _FALLBACK_MODEL_PROFILE_ID = "voxcpm2-production-v1"
 DEFAULT_MODEL_PROFILE_ID = (
-    os.getenv("DUB_DEFAULT_TTS_PROFILE", _FALLBACK_MODEL_PROFILE_ID).strip()
-    or _FALLBACK_MODEL_PROFILE_ID
+    os.getenv("DUB_DEFAULT_TTS_PROFILE", _FALLBACK_MODEL_PROFILE_ID).strip() or _FALLBACK_MODEL_PROFILE_ID
 )
 _BUILTIN_PROFILE_RECORDS = load_profile_catalog()
 
@@ -32,9 +32,7 @@ def _profile_by_id(profile_id: str) -> SpeechModelProfile:
     for record in _BUILTIN_PROFILE_RECORDS:
         if record.profile.profile_id == profile_id:
             return record.profile
-    raise ProfileManifestError(
-        f"Обязательный встроенный TTS profile отсутствует: {profile_id}"
-    )
+    raise ProfileManifestError(f"Обязательный встроенный TTS profile отсутствует: {profile_id}")
 
 
 def voxcpm2_production_profile() -> SpeechModelProfile:

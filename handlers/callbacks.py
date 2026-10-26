@@ -14,20 +14,31 @@ run_in_executor — больше не блокируют event loop.
 
 AUDIT FIX L9: re.sub вместо некорректного lstrip("✅☑️️ ") (☑️ = 2 кодпоинта).
 """
+
 from core.globals import (
-    HAS_GEMINI, DOWNLOAD_DIR, DB_PATH,
-    InlineKeyboardButton, InlineKeyboardMarkup,
+    HAS_GEMINI,
+    DOWNLOAD_DIR,
+    DB_PATH,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
 )
 from core.database import (
     _db_conn,
-    asettings_get, asettings_set, asettings_get_all,
-    shorts_speed_get, shorts_speed_set, shorts_speed_cycle,
-    ashorts_speed_get, ashorts_speed_cycle,        # AUDIT M4
-    short_trim_get, short_trim_save,
-    SETTINGS_DEFAULTS, SETTINGS_LABELS,
+    asettings_get,
+    asettings_set,
+    asettings_get_all,
+    shorts_speed_get,
+    shorts_speed_set,
+    shorts_speed_cycle,
+    ashorts_speed_get,
+    ashorts_speed_cycle,  # AUDIT M4
+    short_trim_get,
+    short_trim_save,
+    SETTINGS_DEFAULTS,
+    SETTINGS_LABELS,
     ADMIN_IDS,
     settings_get_all,
-    SETTINGS_GROUPS,                                # AUDIT M19 (перенесено сюда)
+    SETTINGS_GROUPS,  # AUDIT M19 (перенесено сюда)
 )
 from converters.md_telegraph import visible_length, safe_trim_caption
 from core.utils import mask_api_key as _mask
@@ -37,7 +48,7 @@ from services.shorts_video import build_short_caption, render_short_clip
 import asyncio
 import json
 import logging
-import re                                            # AUDIT L9
+import re  # AUDIT L9
 import sqlite3
 import time
 import uuid
@@ -83,18 +94,24 @@ def _build_settings_keyboard(
                 if group_btns:
                     _flush_buttons(buttons, group_btns, WIDE_THRESHOLD)
                     group_btns = []
-                buttons.append([InlineKeyboardButton(
-                    f"⚡ Скорость: {speed}x",
-                    callback_data="setting_speed",
-                )])
+                buttons.append(
+                    [
+                        InlineKeyboardButton(
+                            f"⚡ Скорость: {speed}x",
+                            callback_data="setting_speed",
+                        )
+                    ]
+                )
             else:
                 state = settings.get(key, SETTINGS_DEFAULTS.get(key, True))
-                icon  = "✅" if state else "☑️"
+                icon = "✅" if state else "☑️"
                 label = SETTINGS_LABELS.get(key, key)
-                group_btns.append(InlineKeyboardButton(
-                    f"{icon} {label}",
-                    callback_data=f"setting:{key}",
-                ))
+                group_btns.append(
+                    InlineKeyboardButton(
+                        f"{icon} {label}",
+                        callback_data=f"setting:{key}",
+                    )
+                )
 
         if group_btns:
             _flush_buttons(buttons, group_btns, WIDE_THRESHOLD)
@@ -198,8 +215,6 @@ async def handle_callback(update, context) -> None:
             logger.debug(f"edit_message_reply_markup (toggle): {e}")
         return
 
-
-
     # ── Segment list pagination from /segments ─────────────────
     if data.startswith("segpage:"):
         user_id = update.effective_user.id
@@ -219,7 +234,14 @@ async def handle_callback(update, context) -> None:
             await query.answer("🧩 Сегменты выключены.", show_alert=True)
             return
         try:
-            from handlers.commands import _build_segments_keyboard, _format_segments_page_text, _html_pre_message, _resolve_segment_source, _segments_from_cache
+            from handlers.commands import (
+                _build_segments_keyboard,
+                _format_segments_page_text,
+                _html_pre_message,
+                _resolve_segment_source,
+                _segments_from_cache,
+            )
+
             _vid, cache, archive_record = await _resolve_segment_source(video_id)
             if not cache:
                 await query.answer("Нет video_cache с ai_data.", show_alert=True)
@@ -274,7 +296,12 @@ async def handle_callback(update, context) -> None:
             if not segment:
                 await query.message.reply_text("⚠️ Сегмент не найден.")
                 return
-            source_url = (cache or {}).get("url") or (archive_record or {}).get("source_url") or (archive_record or {}).get("youtube_url") or ""
+            source_url = (
+                (cache or {}).get("url")
+                or (archive_record or {}).get("source_url")
+                or (archive_record or {}).get("youtube_url")
+                or ""
+            )
             if not source_url:
                 await query.message.reply_text("⚠️ Нет source_url для скачивания видео.")
                 return
@@ -299,7 +326,9 @@ async def handle_callback(update, context) -> None:
                 total_segments=len(segments),
                 ai_data=ai_data,
             )
-            await safe_edit_text(msg, "✅ Сегмент отправлен." if ok else "❌ Не удалось скачать видео или отправить сегмент.")
+            await safe_edit_text(
+                msg, "✅ Сегмент отправлен." if ok else "❌ Не удалось скачать видео или отправить сегмент."
+            )
         except Exception as exc:
             logger.warning("segcut callback failed: %s", exc, exc_info=True)
             try:
@@ -310,6 +339,7 @@ async def handle_callback(update, context) -> None:
             if _render_token is not None:
                 try:
                     from core.render_locks import release_render_lock
+
                     await release_render_lock(_render_token)
                 except Exception:
                     pass
@@ -340,8 +370,8 @@ async def handle_callback(update, context) -> None:
         # nosub он вообще не нужен, а для ретрима перекачиваем по yt_url ниже.
         video_path = Path(rec.get("video_path") or "")
         start_s = rec.get("start_seconds")
-        end_s   = rec.get("end_seconds")
-        if start_s is None or end_s is None:   # AUDIT R39: неполная запись — мягкий отказ
+        end_s = rec.get("end_seconds")
+        if start_s is None or end_s is None:  # AUDIT R39: неполная запись — мягкий отказ
             await query.answer("Данные Short неполные.", show_alert=True)
             return
         # AUDIT M5: ограничение по длительности оригинала
@@ -377,19 +407,18 @@ async def handle_callback(update, context) -> None:
             # Исходник удалён после отправки шортов — перекачиваем по yt_url.
             yt_url = rec.get("yt_url", "")
             if not yt_url:
-                await query.message.reply_text(
-                    "⚠️ Исходное видео удалено и нет ссылки для повторного скачивания."
-                )
+                await query.message.reply_text("⚠️ Исходное видео удалено и нет ссылки для повторного скачивания.")
                 return
             _was_livedub = "original_video" in video_path.name or "livedub" in str(video_path).lower()
             _dl_note = (
                 "⬇️ Переведённый исходник удалён — скачиваю оригинал (перерезка будет БЕЗ перевода)…"
-                if _was_livedub else
-                "⬇️ Исходник удалён — скачиваю заново для перерезки…"
+                if _was_livedub
+                else "⬇️ Исходник удалён — скачиваю заново для перерезки…"
             )
             status = await query.message.reply_text(_dl_note)
             from services.shorts_video import download_video_for_shorts
             import hashlib as _hashlib
+
             _m = re.match(r"^(.+?)_video\.[A-Za-z0-9]+$", video_path.name)
             _media_id = _m.group(1) if _m else "retrim_" + _hashlib.sha1(yt_url.encode()).hexdigest()[:12]
             new_src = await download_video_for_shorts(yt_url, _media_id)
@@ -415,6 +444,7 @@ async def handle_callback(update, context) -> None:
                 r = conn.execute("DELETE FROM video_cache").rowcount
                 conn.commit()
                 return r
+
         rows = await loop.run_in_executor(None, _delete_all_cache)
         try:
             await query.edit_message_text(f"🗑 Весь кэш удалён: {rows} записей.")
@@ -432,6 +462,7 @@ async def handle_callback(update, context) -> None:
 
 
 # ─── Подпрограммы strim ──────────────────────────────────────────
+
 
 async def _handle_strim_nosub(query, rec: dict, start_s: int, end_s: int) -> None:
     """Отправить ранее сохранённую версию без субтитров."""
@@ -497,8 +528,12 @@ async def _handle_strim_nosub(query, rec: dict, start_s: int, end_s: int) -> Non
 
 
 async def _handle_strim_retrim(
-    query, rec: dict, video_path: Path,
-    start_s: int, end_s: int, label: str,
+    query,
+    rec: dict,
+    video_path: Path,
+    start_s: int,
+    end_s: int,
+    label: str,
     source_duration: int,
 ) -> None:
     """Перерезать short по новым start_s/end_s и отправить."""
@@ -507,8 +542,8 @@ async def _handle_strim_retrim(
         candidate = json.loads(rec["candidate_json"])
     except Exception:
         pass
-    candidate["start_seconds"]    = start_s
-    candidate["end_seconds"]      = end_s
+    candidate["start_seconds"] = start_s
+    candidate["end_seconds"] = end_s
     candidate["duration_seconds"] = end_s - start_s
 
     out_path = DOWNLOAD_DIR / f"{uuid.uuid4().hex[:16]}_trim.mp4"
@@ -555,15 +590,17 @@ async def _handle_strim_retrim(
         _new_nosub_path = rec.get("video_path_nosub", "")
         _new_nosub_buttons = []
         if _new_nosub_path and Path(_new_nosub_path).exists():
-            _new_nosub_buttons = [
-                InlineKeyboardButton("🚫Sub", callback_data=f"strim:nosub:{new_short_id}")
+            _new_nosub_buttons = [InlineKeyboardButton("🚫Sub", callback_data=f"strim:nosub:{new_short_id}")]
+        new_trim_keyboard = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton("⏪ Начало -10", callback_data=f"strim:s10:{new_short_id}"),
+                    InlineKeyboardButton("⏭ Конец +10", callback_data=f"strim:e10:{new_short_id}"),
+                    InlineKeyboardButton("⏭⏭ Конец +20", callback_data=f"strim:e20:{new_short_id}"),
+                    *_new_nosub_buttons,
+                ]
             ]
-        new_trim_keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton("⏪ Начало -10", callback_data=f"strim:s10:{new_short_id}"),
-            InlineKeyboardButton("⏭ Конец +10",  callback_data=f"strim:e10:{new_short_id}"),
-            InlineKeyboardButton("⏭⏭ Конец +20", callback_data=f"strim:e20:{new_short_id}"),
-            *_new_nosub_buttons,
-        ]])
+        )
 
         caption = build_short_caption(
             candidate=candidate,

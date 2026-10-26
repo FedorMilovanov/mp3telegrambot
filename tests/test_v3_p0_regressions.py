@@ -10,10 +10,7 @@ def _load_valid_clip_for_test():
     # Берём только чистую функцию без импорта всего services.shorts_candidates,
     # потому что полный модуль требует Telegram/Flask/dotenv runtime-зависимости.
     tree = ast.parse(Path("services/shorts_candidates.py").read_text(encoding="utf-8"))
-    fn = next(
-        node for node in tree.body
-        if isinstance(node, ast.FunctionDef) and node.name == "_valid_clip"
-    )
+    fn = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "_valid_clip")
     module = ast.Module(body=[fn], type_ignores=[])
     ast.fix_missing_locations(module)
     ns = {}
@@ -30,8 +27,6 @@ def test_audio_prompt_does_not_start_with_literal_backslash():
     )
     assert not prompt.startswith("\\")
     assert prompt.startswith("Ты — ассистент")
-
-
 
 
 def test_audio_prompt_sanitizes_metadata_injection_markers():

@@ -4,6 +4,7 @@
 No hallucinated timestamp labels are generated here. We only measure coverage and
 log a warning when primary audio analysis covers too little of a long material.
 """
+
 from __future__ import annotations
 
 import re

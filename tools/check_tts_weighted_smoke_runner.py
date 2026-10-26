@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Validate a trusted weighted-TTS runner without loading model weights."""
+
 from __future__ import annotations
 
 import argparse
@@ -63,8 +64,7 @@ def main(argv: list[str] | None = None) -> int:
         report = run_weighted_tts_runner_doctor(config)
     except Exception as exc:
         print(
-            f"TTS_WEIGHTED_SMOKE_RUNNER_FAILED {type(exc).__name__}: "
-            f"{_redacted_failure(exc, config)}",
+            f"TTS_WEIGHTED_SMOKE_RUNNER_FAILED {type(exc).__name__}: {_redacted_failure(exc, config)}",
             file=sys.stderr,
         )
         return 1

@@ -18,21 +18,15 @@ def test_quiet_dip_noise_island_and_voice_residue_is_rejected() -> None:
     # With 20 ms analysis frames and a 10 ms hop, one boundary frame belongs
     # to both the broadband run and the following voice run.
     rng = np.random.default_rng(20260731)
-    audio[int(rate * 1.16): int(rate * 1.22)] = (
-        rng.standard_normal(int(rate * 0.06)).astype(np.float32) * 0.17
-    )
-    audio[int(rate * 1.22): int(rate * 1.39)] = _tone(
-        rate, 0.17, 150.0, 0.14
-    )
+    audio[int(rate * 1.16) : int(rate * 1.22)] = rng.standard_normal(int(rate * 0.06)).astype(np.float32) * 0.17
+    audio[int(rate * 1.22) : int(rate * 1.39)] = _tone(rate, 0.17, 150.0, 0.14)
 
     report = direct_tail_artifact.detect_late_broadband_tail(audio, rate)
 
     assert report["suspicious"] is True, report
     assert report["artifact_type"] == "embedded_terminal_broadband_island"
     assert report["repairable"] is False
-    assert report["bracketing_policy"] == (
-        "analysis-window-overlap-aware-voice-brackets-v1"
-    )
+    assert report["bracketing_policy"] == ("analysis-window-overlap-aware-voice-brackets-v1")
     assert report["analysis_overlap_before_frames"] <= 2
     assert report["analysis_overlap_after_frames"] <= 2
     assert 0.15 <= report["terminal_residue_seconds"] <= 0.19
@@ -47,12 +41,8 @@ def test_continuous_terminal_fricative_without_quiet_dip_is_not_embedded_artifac
     rng = np.random.default_rng(17)
     # No closure/dip before the broadband section; this models a connected final
     # fricative rather than a detached synthesis island.
-    audio[int(rate * 1.16): int(rate * 1.22)] = (
-        rng.standard_normal(int(rate * 0.06)).astype(np.float32) * 0.08
-    )
-    audio[int(rate * 1.22): int(rate * 1.39)] = _tone(
-        rate, 0.17, 150.0, 0.14
-    )
+    audio[int(rate * 1.16) : int(rate * 1.22)] = rng.standard_normal(int(rate * 0.06)).astype(np.float32) * 0.08
+    audio[int(rate * 1.22) : int(rate * 1.39)] = _tone(rate, 0.17, 150.0, 0.14)
 
     embedded = direct_tail_artifact._embedded_terminal_island(audio, rate)
 

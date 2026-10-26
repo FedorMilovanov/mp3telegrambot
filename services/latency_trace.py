@@ -6,6 +6,7 @@ owns one dispatched video request. It does not change timeouts, retries, model
 selection, prompts, media quality or persistence, and it deliberately avoids
 ContextVar/ambient request state.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -145,11 +146,7 @@ def finish_latency_trace(handle: _TraceHandle | None, *, outcome: str) -> str:
     stages = ",".join(stage_parts) if stage_parts else "none"
 
     requested_outcome = str(outcome or "unknown")[:80]
-    effective_outcome = (
-        "partial"
-        if requested_outcome == "ok" and trace.partial_reasons
-        else requested_outcome
-    )
+    effective_outcome = "partial" if requested_outcome == "ok" and trace.partial_reasons else requested_outcome
     partial_detail = ""
     if trace.partial_reasons:
         partial_detail = " partial_reason=" + ",".join(trace.partial_reasons)

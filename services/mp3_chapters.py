@@ -11,6 +11,7 @@ ID3v2-главы делают её НАВИГАЦИЕЙ внутри самог�
 Используется mutagen.
 Никогда не бросает исключений наружу — метаданные это enhancement.
 """
+
 from __future__ import annotations
 
 import logging
@@ -29,7 +30,7 @@ def _ts_to_ms(ts: str) -> int | None:
     if not m:
         return None
     h = int(m.group(1) or 0)
-    return ((h * 3600 + int(m.group(2)) * 60 + int(m.group(3))) * 1000)
+    return (h * 3600 + int(m.group(2)) * 60 + int(m.group(3))) * 1000
 
 
 def _clean_title(topic: str, max_len: int = 120) -> str:
@@ -52,7 +53,8 @@ def timestamps_to_chapter_list(timestamps) -> list:
     """
     if isinstance(timestamps, list):
         return [
-            t for t in timestamps
+            t
+            for t in timestamps
             if isinstance(t, dict) and str(t.get("time") or "").strip() and str(t.get("topic") or "").strip()
         ]
     out: list[dict] = []
@@ -64,13 +66,13 @@ def timestamps_to_chapter_list(timestamps) -> list:
 
 
 def embed_chapters(
-    mp3_path: Path, 
-    timestamps: list, 
+    mp3_path: Path,
+    timestamps: list,
     duration_sec: int = 0,
     title: str = "",
     performer: str = "",
     thumb_path: Optional[Path] = None,
-    comment: str = ""
+    comment: str = "",
 ) -> bool:
     """Вшивает ID3v2 CHAP/CTOC-главы и базовые метаданные в mp3.
 
@@ -100,16 +102,13 @@ def embed_chapters(
         if performer:
             tags.add(TPE1(encoding=3, text=[performer]))
         if comment:
-            tags.add(COMM(encoding=3, lang='rus', desc='desc', text=[comment]))
+            tags.add(COMM(encoding=3, lang="rus", desc="desc", text=[comment]))
 
         # 2. Обложка
         if thumb_path and Path(thumb_path).exists():
             try:
                 with open(thumb_path, "rb") as img:
-                    tags.add(APIC(
-                        encoding=3, mime='image/jpeg', type=3, desc='Cover',
-                        data=img.read()
-                    ))
+                    tags.add(APIC(encoding=3, mime="image/jpeg", type=3, desc="Cover", data=img.read()))
             except Exception as e:
                 logger.debug("MP3 cover embed failed: %s", e)
 
@@ -126,14 +125,14 @@ def embed_chapters(
                     continue
                 points.append((ms, topic_title))
             points.sort(key=lambda p: p[0])
-            
+
             # дедуп по времени
             dedup: list[tuple[int, str]] = []
             for ms, topic_title in points:
                 if dedup and ms <= dedup[-1][0]:
                     continue
                 dedup.append((ms, topic_title))
-            
+
             if len(dedup) >= 2:
                 # Убираем старые главы (повторный прогон)
                 tags.delall("CHAP")
@@ -147,14 +146,22 @@ def embed_chapters(
                         next_ms = ms + 1000
                     cid = f"ch{i:02d}"
                     child_ids.append(cid)
-                    tags.add(CHAP(
-                        element_id=cid, start_time=ms, end_time=next_ms,
-                        sub_frames=[TIT2(encoding=3, text=[topic_title])],
-                    ))
-                tags.add(CTOC(
-                    element_id="toc", flags=CTOCFlags.TOP_LEVEL | CTOCFlags.ORDERED,
-                    child_element_ids=child_ids, sub_frames=[],
-                ))
+                    tags.add(
+                        CHAP(
+                            element_id=cid,
+                            start_time=ms,
+                            end_time=next_ms,
+                            sub_frames=[TIT2(encoding=3, text=[topic_title])],
+                        )
+                    )
+                tags.add(
+                    CTOC(
+                        element_id="toc",
+                        flags=CTOCFlags.TOP_LEVEL | CTOCFlags.ORDERED,
+                        child_element_ids=child_ids,
+                        sub_frames=[],
+                    )
+                )
                 chapters_embedded = True
                 logger.info("MP3 metadata: вшито %d глав", len(child_ids))
 

@@ -32,10 +32,12 @@ def test_qa_synopsis_prompt_is_transcript_like_not_summary():
 
 
 def test_content_audit_removes_editorial_position_leak_variants():
-    sections = [{
-        "title": "T",
-        "content": "Редакторская позиция канала помогает понять цессационизм. Конфессиональная рамка канала дана для анализа. Основной тезис остаётся.",
-    }]
+    sections = [
+        {
+            "title": "T",
+            "content": "Редакторская позиция канала помогает понять цессационизм. Конфессиональная рамка канала дана для анализа. Основной тезис остаётся.",
+        }
+    ]
     out, _, issues = audit_expanded_sections(sections, label="StudyAnalysis")
     text = out[0]["content"]
     assert "Редакторская позиция" not in text
@@ -51,7 +53,10 @@ def test_study_prompt_does_not_teach_third_person_wrappers():
 
 
 def test_study_prompt_forbids_unregistered_russian_source_titles():
-    assert "если не знаешь устойчивого признанного русского названия" in STUDY_ANALYSIS_PROMPT.lower() or "registry" in STUDY_ANALYSIS_PROMPT
+    assert (
+        "если не знаешь устойчивого признанного русского названия" in STUDY_ANALYSIS_PROMPT.lower()
+        or "registry" in STUDY_ANALYSIS_PROMPT
+    )
     assert "**Об умерщвлении греха**, Джон Оуэн" in STUDY_ANALYSIS_PROMPT
 
 
@@ -67,6 +72,7 @@ def test_study_prompt_source_and_guardrail_wording_avoids_leaky_patterns():
 
 def test_prompts_do_not_repeat_literal_third_person_bad_examples():
     from core.prompt_rules import THIRD_PERSON_BAN
+
     assert "МакАртур показывает" not in THIRD_PERSON_BAN
     assert "автор подчеркивает" not in THIRD_PERSON_BAN
     assert "фамилия автора + показывает" in THIRD_PERSON_BAN

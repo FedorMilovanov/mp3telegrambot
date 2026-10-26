@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Post-delivery extras: порядок, отказы и LiveDub без реальных рендеров."""
+
 from __future__ import annotations
 
 import asyncio

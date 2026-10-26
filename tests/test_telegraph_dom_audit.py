@@ -68,10 +68,13 @@ def test_audit_tool_can_write_repair_targets(tmp_path):
     from tools.audit_telegraph_pages import write_repair_targets
 
     out = tmp_path / "targets.md"
-    count = write_repair_targets(out, [
-        ("https://telegra.ph/bad", [TelegraphDomIssue("third_person_wrapper", "x")]),
-        ("https://telegra.ph/good", []),
-    ])
+    count = write_repair_targets(
+        out,
+        [
+            ("https://telegra.ph/bad", [TelegraphDomIssue("third_person_wrapper", "x")]),
+            ("https://telegra.ph/good", []),
+        ],
+    )
     text = out.read_text(encoding="utf-8")
     assert count == 1
     assert "https://telegra.ph/bad" in text
@@ -82,9 +85,14 @@ def test_audit_tool_can_write_repair_targets(tmp_path):
 def test_audit_tool_extracts_next_part_urls_from_nodes():
     from tools.audit_telegraph_pages import _extract_next_part_urls_from_nodes
 
-    nodes = [{"tag": "p", "children": [
-        {"tag": "a", "attrs": {"href": "/Part-2"}, "children": ["➡ Дальше: [2/3]"]},
-    ]}]
+    nodes = [
+        {
+            "tag": "p",
+            "children": [
+                {"tag": "a", "attrs": {"href": "/Part-2"}, "children": ["➡ Дальше: [2/3]"]},
+            ],
+        }
+    ]
     assert _extract_next_part_urls_from_nodes(nodes) == ["https://telegra.ph/Part-2"]
 
 
@@ -114,11 +122,13 @@ def test_audit_chain_default_does_not_truncate_after_twelve_pages(monkeypatch):
         index = int(path.rsplit("-", 1)[1])
         children = []
         if index < total:
-            children = [{
-                "tag": "a",
-                "attrs": {"href": f"/Audit-{index + 1}"},
-                "children": [f"➡ Дальше: [{index + 1}/{total}]"],
-            }]
+            children = [
+                {
+                    "tag": "a",
+                    "attrs": {"href": f"/Audit-{index + 1}"},
+                    "children": [f"➡ Дальше: [{index + 1}/{total}]"],
+                }
+            ]
         return Response({"ok": True, "result": {"content": [{"tag": "p", "children": children}]}})
 
     monkeypatch.setattr(audit_telegraph_pages.requests, "get", fake_get)
@@ -129,7 +139,9 @@ def test_audit_chain_default_does_not_truncate_after_twelve_pages(monkeypatch):
 
 
 def test_dom_audit_treats_prev_next_links_as_navigation():
-    html = "<html><body><article>" + ("длинный текст " * 400) + "<a href='/p2'>➡ Дальше: [2/4]</a></article></body></html>"
+    html = (
+        "<html><body><article>" + ("длинный текст " * 400) + "<a href='/p2'>➡ Дальше: [2/4]</a></article></body></html>"
+    )
     issues = audit_telegraph_html(html, url="https://telegra.ph/p1")
     assert "navigation_missing_warning" not in {i.code for i in issues}
 

@@ -8,6 +8,7 @@ real media. No provider/network dependency is involved, so a benchmark failure
 means the media policy or local FFmpeg surface changed rather than YouTube/Vimeo
 availability changing.
 """
+
 from __future__ import annotations
 
 import argparse

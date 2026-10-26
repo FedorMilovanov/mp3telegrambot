@@ -41,18 +41,49 @@ def test_clean_ru_and_final_mix_are_valid_distinct_mp3_files(tmp_path: Path):
     video = tmp_path / "publication.mp4"
     clean = tmp_path / "translation.live.mp3"
 
-    _run([
-        ffmpeg, "-y",
-        "-f", "lavfi", "-i", "color=c=black:s=320x240:d=1.5",
-        "-f", "lavfi", "-i", "sine=frequency=440:duration=1.5",
-        "-shortest", "-c:v", "mpeg4", "-q:v", "5",
-        "-c:a", "aac", "-b:a", "128k", str(video),
-    ])
-    _run([
-        ffmpeg, "-y", "-f", "lavfi", "-i", "sine=frequency=880:duration=1.5",
-        "-c:a", "libmp3lame", "-b:a", "160k", "-ar", "44100", "-ac", "2",
-        str(clean),
-    ])
+    _run(
+        [
+            ffmpeg,
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=black:s=320x240:d=1.5",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=1.5",
+            "-shortest",
+            "-c:v",
+            "mpeg4",
+            "-q:v",
+            "5",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            str(video),
+        ]
+    )
+    _run(
+        [
+            ffmpeg,
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=880:duration=1.5",
+            "-c:a",
+            "libmp3lame",
+            "-b:a",
+            "160k",
+            "-ar",
+            "44100",
+            "-ac",
+            "2",
+            str(clean),
+        ]
+    )
 
     mixed = companion._extract_mix_mp3(video)
 

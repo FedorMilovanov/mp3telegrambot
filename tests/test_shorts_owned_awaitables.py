@@ -22,11 +22,7 @@ PUBLIC_OWNED = (
 
 def _public_source(source: str, name: str) -> str:
     tree = ast.parse(source)
-    node = next(
-        item
-        for item in tree.body
-        if isinstance(item, ast.AsyncFunctionDef) and item.name == name
-    )
+    node = next(item for item in tree.body if isinstance(item, ast.AsyncFunctionDef) and item.name == name)
     value = ast.get_source_segment(source, node)
     assert value is not None
     return value
@@ -35,11 +31,7 @@ def _public_source(source: str, name: str) -> str:
 def test_active_shorts_functions_have_one_public_owner() -> None:
     source = Path(shorts_video.__file__).read_text(encoding="utf-8")
     tree = ast.parse(source)
-    names = [
-        node.name
-        for node in tree.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-    ]
+    names = [node.name for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
 
     for public_name in PUBLIC_OWNED:
         assert names.count(public_name) == 1

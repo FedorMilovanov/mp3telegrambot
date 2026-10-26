@@ -45,6 +45,7 @@ model the default for any role (``FREE_TIER_ONLY`` / ``route_problems()``).
 Catalog snapshot: 2026-10-22 (Gemini API models / deprecations / changelog),
 free-tier availability verified 2026-10-23.
 """
+
 from __future__ import annotations
 
 import os
@@ -59,8 +60,7 @@ POLICY: Final[str] = f"project-gemini-routing-{CATALOG_VERSION}"
 # only when a billing-enabled project is provisioned on purpose.
 FREE_TIER_ONLY: Final[bool] = True
 FREE_TIER_SOURCE: Final[str] = (
-    "https://ai.google.dev/gemini-api/docs/pricing (Standard, 'Free Tier' column), "
-    "verified 2026-10-23"
+    "https://ai.google.dev/gemini-api/docs/pricing (Standard, 'Free Tier' column), verified 2026-10-23"
 )
 
 # ── Roles ─────────────────────────────────────────────────────────────────────
@@ -146,8 +146,7 @@ _BASE_MODELS: Final[dict[str, ModelSpec]] = {
     "gemini-4-argon": _spec(
         "gemini-4-argon",
         4,
-        note="flagship reasoning (unified 1M context); paid tier only, "
-        "not available on the free tier",
+        note="flagship reasoning (unified 1M context); paid tier only, not available on the free tier",
     ),
     "gemini-3.8-flash": _spec(
         "gemini-3.8-flash",
@@ -380,9 +379,7 @@ FLOATING_ALIASES: Final[frozenset[str]] = frozenset({"gemini-flash-latest"})
 # Gemini 3.x/4.x take ``thinking_level`` instead of the legacy ``temperature``.
 # The pattern (not a generation comparison) keeps historical oddities like
 # ``gemini-40-argon`` from being treated as Gemini 4.
-_THINKING_MODEL_RE: Final[re.Pattern[str]] = re.compile(
-    r"gemini-[34](?:[.\-]\d+)?(?:[\-_.].*)?"
-)
+_THINKING_MODEL_RE: Final[re.Pattern[str]] = re.compile(r"gemini-[34](?:[.\-]\d+)?(?:[\-_.].*)?")
 
 # prefix -> (supported levels, fallback level when the requested one is invalid)
 _THINKING_RULES: Final[tuple[tuple[str, frozenset[str], str], ...]] = (
@@ -465,23 +462,15 @@ def scheduled_migrations() -> dict[str, tuple[str, str]]:
 
 
 def access_limited_models() -> dict[str, str]:
-    return {
-        spec.model_id: spec.replacement
-        for spec in _MODELS.values()
-        if spec.status == "access_limited"
-    }
+    return {spec.model_id: spec.replacement for spec in _MODELS.values() if spec.status == "access_limited"}
 
 
 def shutdown_models() -> frozenset[str]:
-    return frozenset(
-        spec.model_id for spec in _MODELS.values() if spec.status == "shutdown"
-    )
+    return frozenset(spec.model_id for spec in _MODELS.values() if spec.status == "shutdown")
 
 
 def preview_models() -> frozenset[str]:
-    return frozenset(
-        spec.model_id for spec in _MODELS.values() if spec.status == "preview"
-    )
+    return frozenset(spec.model_id for spec in _MODELS.values() if spec.status == "preview")
 
 
 def current_models_outside_routing() -> dict[str, str]:
@@ -511,23 +500,17 @@ def is_free_tier(model_name: str) -> bool:
 
 def free_tier_models() -> frozenset[str]:
     """Models that are free of charge on the free tier."""
-    return frozenset(
-        spec.model_id for spec in _MODELS.values() if spec.free_tier is True
-    )
+    return frozenset(spec.model_id for spec in _MODELS.values() if spec.free_tier is True)
 
 
 def paid_only_models() -> frozenset[str]:
     """Models the free tier does not serve at all."""
-    return frozenset(
-        spec.model_id for spec in _MODELS.values() if spec.free_tier is False
-    )
+    return frozenset(spec.model_id for spec in _MODELS.values() if spec.free_tier is False)
 
 
 def unverified_free_tier_models() -> frozenset[str]:
     """Models whose free-tier availability has not been verified."""
-    return frozenset(
-        spec.model_id for spec in _MODELS.values() if spec.free_tier is None
-    )
+    return frozenset(spec.model_id for spec in _MODELS.values() if spec.free_tier is None)
 
 
 def role_free_tier(role: str) -> bool | None:
@@ -564,8 +547,7 @@ def route_problems() -> list[str]:
             )
         elif spec.free_tier is None and default:
             problems.append(
-                f"role '{role}' resolves to '{model}' with unverified free-tier "
-                f"availability; verify it before use"
+                f"role '{role}' resolves to '{model}' with unverified free-tier availability; verify it before use"
             )
     return problems
 

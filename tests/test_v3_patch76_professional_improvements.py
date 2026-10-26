@@ -16,7 +16,10 @@ from core.synopsis_quality import (
 def test_person_names_and_source_titles_share_canonical_display_names():
     assert canonical_person_name("Р. Ч. Спрол") == "Р. Ч. Спроул"
     assert canonical_author_name("R.C. Sproul") == "Р. Ч. Спроул"
-    assert normalize_source_card_line("• R.C. Sproul, The Holiness of God") == "**Святость Бога**, Р. Ч. Спроул (The Holiness of God, R.C. Sproul)."
+    assert (
+        normalize_source_card_line("• R.C. Sproul, The Holiness of God")
+        == "**Святость Бога**, Р. Ч. Спроул (The Holiness of God, R.C. Sproul)."
+    )
 
 
 def test_synopsis_organizational_announcement_filter_removes_only_leading_logistics():
@@ -42,15 +45,17 @@ def test_synopsis_organizational_announcement_filter_removes_only_leading_logist
 
 
 def test_structured_block_required_fields_warn_but_do_not_drop_section():
-    sections = [{
-        "title": "Sources",
-        "content": "fallback",
-        "blocks": [
-            {"type": "source", "author": "Джон МакАртур", "why_relevant": "нет title_original"},
-            {"type": "lexicon", "lemma": "ἑλκύω"},
-            {"type": "paragraph", "text": "Valid paragraph."},
-        ],
-    }]
+    sections = [
+        {
+            "title": "Sources",
+            "content": "fallback",
+            "blocks": [
+                {"type": "source", "author": "Джон МакАртур", "why_relevant": "нет title_original"},
+                {"type": "lexicon", "lemma": "ἑλκύω"},
+                {"type": "paragraph", "text": "Valid paragraph."},
+            ],
+        }
+    ]
     out, _, issues = audit_expanded_sections(sections, label="StudyAnalysis")
     assert len(out[0]["blocks"]) == 3
     warning_codes = [i.code for i in issues]

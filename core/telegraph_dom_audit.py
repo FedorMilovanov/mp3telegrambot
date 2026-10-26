@@ -6,6 +6,7 @@ Playwright/requests, then pass the HTML here. The checks focus on production
 regressions observed in generated pages: raw markdown artifacts, third-person
 wrappers, source-card title drift, empty paragraphs, and broken-looking links.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -56,8 +57,14 @@ def _text_from_html(html: str) -> tuple[str, list[str], list[str]]:
 
 
 _THIRD_PERSON_PATTERNS = (
-    re.compile(r"\b(?:лектор|проповедник|спикер|автор)\s+(?:показывает|подчеркивает|объясняет|говорит|указывает|раскрывает|разбирает)\b", re.I),
-    re.compile(r"\b(?:МакАртур|Молер|Девер|Данкан|Лоусон|Бики|Пеннингтон|Бокам|Коломийцев|Риккарди)\s+(?:показывает|подчеркивает|объясняет|говорит|указывает|раскрывает|разбирает)\b", re.I),
+    re.compile(
+        r"\b(?:лектор|проповедник|спикер|автор)\s+(?:показывает|подчеркивает|объясняет|говорит|указывает|раскрывает|разбирает)\b",
+        re.I,
+    ),
+    re.compile(
+        r"\b(?:МакАртур|Молер|Девер|Данкан|Лоусон|Бики|Пеннингтон|Бокам|Коломийцев|Риккарди)\s+(?:показывает|подчеркивает|объясняет|говорит|указывает|раскрывает|разбирает)\b",
+        re.I,
+    ),
 )
 _MARKDOWN_ARTIFACT_RE = re.compile(r"(?:\*\*|__|\*\s+\*|\s/\s/\s|-\*\s+\*)")
 _SOURCE_INVENTED_RU_TITLE_RE = re.compile(
@@ -78,52 +85,66 @@ def audit_telegraph_html(html: str, *, url: str = "") -> list[TelegraphDomIssue]
     for pattern in _THIRD_PERSON_PATTERNS:
         m = pattern.search(text)
         if m:
-            issues.append(TelegraphDomIssue(
-                "third_person_wrapper",
-                "third-person analytic wrapper is visible on published page",
-                _short(text[max(0, m.start() - 80): m.end() + 120]),
-            ))
+            issues.append(
+                TelegraphDomIssue(
+                    "third_person_wrapper",
+                    "third-person analytic wrapper is visible on published page",
+                    _short(text[max(0, m.start() - 80) : m.end() + 120]),
+                )
+            )
             break
 
     m = _MARKDOWN_ARTIFACT_RE.search(text)
     if m:
-        issues.append(TelegraphDomIssue(
-            "markdown_artifact",
-            "raw markdown or glue artifact is visible",
-            _short(text[max(0, m.start() - 80): m.end() + 120]),
-        ))
+        issues.append(
+            TelegraphDomIssue(
+                "markdown_artifact",
+                "raw markdown or glue artifact is visible",
+                _short(text[max(0, m.start() - 80) : m.end() + 120]),
+            )
+        )
 
     m = _SOURCE_INVENTED_RU_TITLE_RE.search(text)
     if m and not re.search(r"\)\s*[—-]\s+", m.group(0)):
-        issues.append(TelegraphDomIssue(
-            "source_map_original_title",
-            "source card may put invented Russian title before original title",
-            _short(m.group(0)),
-        ))
+        issues.append(
+            TelegraphDomIssue(
+                "source_map_original_title",
+                "source card may put invented Russian title before original title",
+                _short(m.group(0)),
+            )
+        )
 
     empty_paragraphs = [p for p in paragraphs if not p.strip()]
     if empty_paragraphs:
-        issues.append(TelegraphDomIssue(
-            "empty_paragraphs",
-            f"published page contains empty paragraph nodes: {len(empty_paragraphs)}",
-            "",
-        ))
+        issues.append(
+            TelegraphDomIssue(
+                "empty_paragraphs",
+                f"published page contains empty paragraph nodes: {len(empty_paragraphs)}",
+                "",
+            )
+        )
 
     bad_links = [h for h in hrefs if _BAD_LINK_RE.match(str(h or "").strip())]
     if bad_links:
-        issues.append(TelegraphDomIssue(
-            "bad_links",
-            f"published page contains broken-looking hrefs: {len(bad_links)}",
-            ", ".join(bad_links[:5]),
-        ))
+        issues.append(
+            TelegraphDomIssue(
+                "bad_links",
+                f"published page contains broken-looking hrefs: {len(bad_links)}",
+                ", ".join(bad_links[:5]),
+            )
+        )
 
-    nav_mentions = len(re.findall(r"\b(?:Часть\s+\d+|Навигация|Разбор|Размышление|Конспект|Дальше|Назад)\b", text, re.I))
+    nav_mentions = len(
+        re.findall(r"\b(?:Часть\s+\d+|Навигация|Разбор|Размышление|Конспект|Дальше|Назад)\b", text, re.I)
+    )
     if "telegra.ph" in url and len(text) > 3500 and nav_mentions == 0:
-        issues.append(TelegraphDomIssue(
-            "navigation_missing_warning",
-            "long Telegraph page has no visible navigation/cross-link markers",
-            "",
-        ))
+        issues.append(
+            TelegraphDomIssue(
+                "navigation_missing_warning",
+                "long Telegraph page has no visible navigation/cross-link markers",
+                "",
+            )
+        )
 
     return issues
 

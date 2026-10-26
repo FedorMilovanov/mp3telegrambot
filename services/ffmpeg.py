@@ -3,6 +3,7 @@
 FFmpeg & yt-dlp helpers — базовые аргументы, энкодер, silence/black detection.
 Извлечено из bot.py строки 751–780, 9235–9404.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -22,7 +23,7 @@ from services.async_process import run_cancellable_process
 
 
 # FIX #3: определяем здесь — ffmpeg.py не импортирует utils.py (избегаем кругового импорта)
-PYTHON_EXEC  = sys.executable
+PYTHON_EXEC = sys.executable
 COOKIES_FILE = Path("cookies.txt")
 
 # FIX #4: инициализируем кэш энкодера на уровне модуля
@@ -120,8 +121,6 @@ def _cookies_from_browser_source_available(spec: str) -> bool:
     return True
 
 
-
-
 def _version_tuple_from_text(text: str) -> tuple[int, ...]:
     m = re.search(r"(\d+)(?:\.(\d+))?(?:\.(\d+))?", text or "")
     if not m:
@@ -132,8 +131,12 @@ def _version_tuple_from_text(text: str) -> tuple[int, ...]:
 def _probe_js_runtime_version(exe: str, args: list[str]) -> tuple[int, ...]:
     try:
         proc = subprocess.run(
-            [exe, *args], capture_output=True, text=True,
-            encoding="utf-8", errors="replace", timeout=5,
+            [exe, *args],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=5,
         )
     except Exception:
         return ()
@@ -159,8 +162,7 @@ def _supported_js_runtimes() -> list[str]:
     node = shutil.which("node")
     if not node:
         logger.warning(
-            "⚠️ Node.js не найден — production yt-dlp JS runtime отключён; "
-            "bgutil startup должен завершиться fail-closed"
+            "⚠️ Node.js не найден — production yt-dlp JS runtime отключён; bgutil startup должен завершиться fail-closed"
         )
         return []
 
@@ -174,10 +176,10 @@ def _supported_js_runtimes() -> list[str]:
 
     if shutil.which("deno"):
         logger.debug(
-            "Deno установлен, но намеренно не включён в production yt-dlp: "
-            "bgutil/preflight закреплены на Node >=22"
+            "Deno установлен, но намеренно не включён в production yt-dlp: bgutil/preflight закреплены на Node >=22"
         )
     return ["node"]
+
 
 def _proxy_for_ytdlp() -> str:
     """Proxy URL for yt-dlp.
@@ -214,7 +216,12 @@ def _proxy_for_ytdlp() -> str:
         return ""
     u = urlparse(raw)
     scheme = (u.scheme or "").lower()
-    if scheme.startswith("socks") and os.getenv("YTDLP_PROXY_FORCE_SOCKS", "0").strip().lower() not in {"1", "true", "yes", "on"}:
+    if scheme.startswith("socks") and os.getenv("YTDLP_PROXY_FORCE_SOCKS", "0").strip().lower() not in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
         http_url = "http://" + raw.split("://", 1)[1]
         logger.info("🌐 yt-dlp: SOCKS proxy заменён на HTTP mixed proxy: %s", http_url)
         return http_url
@@ -241,8 +248,7 @@ def _build_ytdlp_base_args() -> list:
             _conf_has_cookies = _has_ytdlp_cookie_options(_conf_tokens)
             _conf_cookie_browser_specs = _extract_cookies_from_browser_specs(_conf_text)
             _conf_cookie_sources_ok = all(
-                _cookies_from_browser_source_available(spec)
-                for spec in _conf_cookie_browser_specs
+                _cookies_from_browser_source_available(spec) for spec in _conf_cookie_browser_specs
             )
         except OSError:
             pass
@@ -302,14 +308,16 @@ def _build_ytdlp_base_args() -> list:
         _frags = 4
     if _frags > 1:
         args += ["--concurrent-fragments", str(_frags)]
-        
+
     # 2026-06-11: Предпочитаем m4a для аудио, чтобы избежать медленного перекодирования webm в mp3.
     # Но оставляем 'bestaudio' как базу для стабильности.
     args += ["--format-sort", "ext:mp4:m4a"]
-    
+
     return args
 
+
 YTDLP_BASE_ARGS = _build_ytdlp_base_args()
+
 
 def normalize_mp3_lossless(mp3_path: Path, target_db: float = 92.0) -> bool:
     """Lossless-нормализация громкости MP3 через mp3gain (если установлен).
@@ -332,8 +340,7 @@ def normalize_mp3_lossless(mp3_path: Path, target_db: float = 92.0) -> bool:
     if not mp3gain:
         return False
     try:
-        kwargs: dict = {"capture_output": True, "text": True,
-                        "encoding": "utf-8", "errors": "replace"}
+        kwargs: dict = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
         if os.name == "nt":
             # Константа существует только под Windows; на других ОС — 0.
             kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -342,7 +349,8 @@ def normalize_mp3_lossless(mp3_path: Path, target_db: float = 92.0) -> bool:
         offset = target_db - 89.0
         proc = subprocess.run(
             [mp3gain, "-r", "-c", "-d", f"{offset:.1f}", str(mp3_path)],
-            timeout=600, **kwargs,
+            timeout=600,
+            **kwargs,
         )
         if proc.returncode == 0:
             logger.info("MP3 нормализован lossless (mp3gain, цель %.0f dB)", target_db)
@@ -373,14 +381,28 @@ def _get_video_encoder() -> tuple[str, list[str], list[str]]:
     # 2026-06-11: Добавляем поддержку AV1 (NVIDIA) для еще лучшего сжатия при высоком качестве.
     # Telegram в 2026 полностью поддерживает AV1.
     _force_cpu = os.getenv("VIDEO_FORCE_CPU", "0").strip() in {"1", "true", "yes", "on"}
-    
+
     if _VIDEO_ENCODER is not None:
         if _VIDEO_ENCODER == "av1_nvenc":
-             return "av1_nvenc", ["-rc", "vbr", "-cq", "25", "-b:v", "0", "-spatial-aq", "1"], ["-preset", "p5"]
+            return "av1_nvenc", ["-rc", "vbr", "-cq", "25", "-b:v", "0", "-spatial-aq", "1"], ["-preset", "p5"]
         if _VIDEO_ENCODER == "h264_nvenc":
-            return "h264_nvenc", ["-rc", "vbr", "-cq", "23", "-b:v", "0", "-spatial-aq", "1", "-rc-lookahead", "8"], ["-preset", "p5", "-tune", "hq"]
+            return (
+                "h264_nvenc",
+                ["-rc", "vbr", "-cq", "23", "-b:v", "0", "-spatial-aq", "1", "-rc-lookahead", "8"],
+                ["-preset", "p5", "-tune", "hq"],
+            )
         _preset = os.getenv("VIDEO_CPU_PRESET", "veryfast").strip() or "veryfast"
-        if _preset not in {"ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"}:
+        if _preset not in {
+            "ultrafast",
+            "superfast",
+            "veryfast",
+            "faster",
+            "fast",
+            "medium",
+            "slow",
+            "slower",
+            "veryslow",
+        }:
             _preset = "veryfast"
         return "libx264", ["-crf", "23"], ["-preset", _preset]
 
@@ -389,9 +411,9 @@ def _get_video_encoder() -> tuple[str, list[str], list[str]]:
         # Пробуем AV1 NVENC (Ada Lovelace+)
         try:
             result = subprocess.run(
-                [ffmpeg, "-f", "lavfi", "-i", "nullsrc=s=720x1280:d=0.1",
-                 "-c:v", "av1_nvenc", "-f", "null", "-"],
-                capture_output=True, timeout=5,
+                [ffmpeg, "-f", "lavfi", "-i", "nullsrc=s=720x1280:d=0.1", "-c:v", "av1_nvenc", "-f", "null", "-"],
+                capture_output=True,
+                timeout=5,
             )
             if result.returncode == 0:
                 _VIDEO_ENCODER = "av1_nvenc"
@@ -403,15 +425,19 @@ def _get_video_encoder() -> tuple[str, list[str], list[str]]:
         # Пробуем H264 NVENC
         try:
             result = subprocess.run(
-                [ffmpeg, "-f", "lavfi", "-i", "nullsrc=s=720x1280:d=0.1",
-                 "-c:v", "h264_nvenc", "-f", "null", "-"],
-                capture_output=True, timeout=10,
+                [ffmpeg, "-f", "lavfi", "-i", "nullsrc=s=720x1280:d=0.1", "-c:v", "h264_nvenc", "-f", "null", "-"],
+                capture_output=True,
+                timeout=10,
             )
             if result.returncode == 0:
                 _VIDEO_ENCODER = "h264_nvenc"
                 logger.info("Video encoder: h264_nvenc (NVIDIA GPU) ✅")
                 # QUALITY: см. комментарий выше (формула p5+hq+aq)
-                return "h264_nvenc", ["-rc", "vbr", "-cq", "23", "-b:v", "0", "-spatial-aq", "1", "-rc-lookahead", "8"], ["-preset", "p5", "-tune", "hq"]
+                return (
+                    "h264_nvenc",
+                    ["-rc", "vbr", "-cq", "23", "-b:v", "0", "-spatial-aq", "1", "-rc-lookahead", "8"],
+                    ["-preset", "p5", "-tune", "hq"],
+                )
         except Exception:
             pass
 
@@ -448,16 +474,20 @@ async def _find_silence_end(
 
     cmd = [
         ffmpeg,
-        "-ss", f"{scan_start:.3f}",
-        "-i", str(video_path),
-        "-t", f"{scan_duration:.3f}",
-        "-af", f"silencedetect=noise={noise_db}dB:d={min_duration}",
-        "-f", "null", "-",
+        "-ss",
+        f"{scan_start:.3f}",
+        "-i",
+        str(video_path),
+        "-t",
+        f"{scan_duration:.3f}",
+        "-af",
+        f"silencedetect=noise={noise_db}dB:d={min_duration}",
+        "-f",
+        "null",
+        "-",
     ]
     try:
-        proc = await run_cancellable_process(
-            cmd, timeout=30, text=True
-        )
+        proc = await run_cancellable_process(cmd, timeout=30, text=True)
         silences = []
         for line in proc.stderr.splitlines():
             if "silence_end:" in line:
@@ -476,8 +506,7 @@ async def _find_silence_end(
         return target_end
 
 
-async def _is_static_video(video_path: Path, sample_start: float = 0.0,
-                           probe_seconds: float = 6.0) -> bool:
+async def _is_static_video(video_path: Path, sample_start: float = 0.0, probe_seconds: float = 6.0) -> bool:
     """Delegate visual classification to the explicit static-video policy owner."""
     from services.shorts_static_policy import _is_static_video_confident
 
@@ -528,13 +557,12 @@ async def _detect_black_bars(video_path: Path, sample_start: float = 0.0) -> str
         try:
             probe = await run_cancellable_process(
                 [ffmpeg, "-i", str(video_path)],
-                timeout=10, text=True,
+                timeout=10,
+                text=True,
             )
             m_dur = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", probe.stderr or "")
             if m_dur:
-                _video_total = (
-                    int(m_dur.group(1)) * 3600 + int(m_dur.group(2)) * 60 + float(m_dur.group(3))
-                )
+                _video_total = int(m_dur.group(1)) * 3600 + int(m_dur.group(2)) * 60 + float(m_dur.group(3))
             else:
                 _video_total = sample_start + 30.0  # fallback: считаем что хватит на 30s
         except Exception:
@@ -548,15 +576,20 @@ async def _detect_black_bars(video_path: Path, sample_start: float = 0.0) -> str
         for sp in sample_points:
             cmd = [
                 ffmpeg,
-                "-ss", str(sp),
-                "-i", str(video_path),
-                "-t", "8",
-                "-vf", "cropdetect=limit=32:round=2:reset=0",
-                "-an", "-f", "null", "-",
+                "-ss",
+                str(sp),
+                "-i",
+                str(video_path),
+                "-t",
+                "8",
+                "-vf",
+                "cropdetect=limit=32:round=2:reset=0",
+                "-an",
+                "-f",
+                "null",
+                "-",
             ]
-            proc = await run_cancellable_process(
-                cmd, timeout=30, text=True
-            )
+            proc = await run_cancellable_process(cmd, timeout=30, text=True)
             output = proc.stderr or ""
             crop_str = ""
             for line in output.splitlines():
@@ -586,9 +619,7 @@ async def _detect_black_bars(video_path: Path, sample_start: float = 0.0) -> str
         # Только читаем заголовок файла — ffmpeg выведет метаданные в stderr и сразу выйдет.
         # НЕ используем "-f null -": это читает ВЕСЬ файл и таймаутится на длинных видео.
         probe_cmd = [ffmpeg, "-i", str(video_path)]
-        probe = await run_cancellable_process(
-            probe_cmd, timeout=5, text=True
-        )
+        probe = await run_cancellable_process(probe_cmd, timeout=5, text=True)
         dim_m = re.search(r"(\d{3,4})x(\d{3,4})", probe.stderr or "")
         if dim_m:
             orig_w, orig_h = int(dim_m.group(1)), int(dim_m.group(2))
@@ -607,14 +638,11 @@ async def _detect_black_bars(video_path: Path, sample_start: float = 0.0) -> str
         return ""
 
 
-
 async def probe_video_language(video_url: str) -> Optional[str]:
     """Определяет язык видео через yt-dlp metadata."""
     try:
         cmd = YTDLP_BASE_ARGS + ["--dump-json", video_url]
-        proc = await run_cancellable_process(
-            cmd, timeout=30, text=True
-        )
+        proc = await run_cancellable_process(cmd, timeout=30, text=True)
         if proc.returncode == 0:
             data = json.loads(proc.stdout)
             lang = data.get("language")

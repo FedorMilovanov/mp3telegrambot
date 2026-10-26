@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Fail-closed JSON contracts for Russian translation/editor passes."""
+
 from __future__ import annotations
 
 import math
@@ -13,9 +14,7 @@ POLICY = "strict-translation-payload-v1"
 def _integer_id(value: Any, *, location: str) -> int:
     if isinstance(value, bool):
         raise RuntimeError(f"{location}: bool нельзя использовать как ID.")
-    if isinstance(value, float) and (
-        not math.isfinite(value) or not value.is_integer()
-    ):
+    if isinstance(value, float) and (not math.isfinite(value) or not value.is_integer()):
         raise RuntimeError(f"{location}: ID должен быть целым числом, получено {value!r}.")
     try:
         result = int(value)
@@ -57,14 +56,10 @@ def _validate_exact(value: Any, expected_ids: list[int]) -> list[dict[str, Any]]
     payload = _segments(value)
     for position, item in enumerate(payload, start=1):
         if not isinstance(item, dict):
-            raise RuntimeError(
-                f"segments[{position}] должен быть JSON-объектом, получено {type(item).__name__}."
-            )
+            raise RuntimeError(f"segments[{position}] должен быть JSON-объектом, получено {type(item).__name__}.")
         item_id = _integer_id(item.get("id"), location=f"segments[{position}]")
         if item_id not in allowed:
-            raise RuntimeError(
-                f"segments[{position}]: неожиданный ID={item_id}; разрешены {expected_ids}."
-            )
+            raise RuntimeError(f"segments[{position}]: неожиданный ID={item_id}; разрешены {expected_ids}.")
         if item_id in by_id:
             raise RuntimeError(f"Переводчик вернул повторяющийся ID={item_id}.")
         text = re.sub(
@@ -95,10 +90,7 @@ def validate_full(
     if not isinstance(source_groups, list) or not source_groups:
         raise RuntimeError("Исходные группы перевода пусты.")
     expected = _ordered_unique_ids(
-        (
-            group.get("id") if isinstance(group, dict) else None
-            for group in source_groups
-        ),
+        (group.get("id") if isinstance(group, dict) else None for group in source_groups),
         location="исходные группы",
     )
     return _validate_exact(value, expected)

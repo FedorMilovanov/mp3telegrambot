@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Lazy backend session and evidence-gated reference reuse."""
+
 from __future__ import annotations
 
 from tools.voxcpm2 import direct_surgical_polish_v2 as polish

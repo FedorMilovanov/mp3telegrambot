@@ -1,4 +1,5 @@
 """Cache invalidation must track the full persisted generation/render contract."""
+
 import os
 from pathlib import Path
 

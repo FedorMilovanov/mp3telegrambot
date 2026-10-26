@@ -3,6 +3,7 @@
 опросов сразу — один последовательный тест: вопрос → ответ → следующий →
 счёт в конце. Продвижение через PollAnswerHandler.
 """
+
 import asyncio
 import types
 from pathlib import Path
@@ -58,9 +59,12 @@ def _passthrough_payload(monkeypatch):
     # Тестируем логику СЕССИИ, а не качество вопросов — payload делаем прямым.
     def _fake(q, *, index, total):
         return {
-            "question": q["question"], "options": q["options"],
-            "correct": q["correct"], "explanation": q.get("explanation", "x"),
+            "question": q["question"],
+            "options": q["options"],
+            "correct": q["correct"],
+            "explanation": q.get("explanation", "x"),
         }
+
     monkeypatch.setattr("services.quiz_generator._sanitize_poll_payload", _fake)
     qs._polls.clear()
     yield
@@ -68,10 +72,7 @@ def _passthrough_payload(monkeypatch):
 
 
 def _questions(n=3):
-    return [
-        {"question": f"Q{i}?", "options": ["a", "b", "c", "d"], "correct": 0, "explanation": "e"}
-        for i in range(n)
-    ]
+    return [{"question": f"Q{i}?", "options": ["a", "b", "c", "d"], "correct": 0, "explanation": "e"} for i in range(n)]
 
 
 @pytest.mark.asyncio

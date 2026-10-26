@@ -1,4 +1,5 @@
 """Fit a fresh caption, then persist its cache metadata and durable archive."""
+
 from __future__ import annotations
 
 import logging
@@ -57,8 +58,7 @@ async def finalize_fresh_caption(
     timestamps_shown = fitted.timestamps_shown
     trim_stage = fitted.trim_stage
     logger.info(
-        "Caption visible_len=%d format=%s ts_total=%d ts_cap_limit=%d "
-        "ts_in_cap=%d stage=%s",
+        "Caption visible_len=%d format=%s ts_total=%d ts_cap_limit=%d ts_in_cap=%d stage=%s",
         visible_length(caption),
         publication.format_name,
         publication.timestamps_total,

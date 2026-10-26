@@ -24,6 +24,7 @@
    "Джон МакАртур (Strange Fire, Джон МакАртур)". Fixed by making the
    bullet optional in that guard's regex.
 """
+
 from converters.md_telegraph import _structured_blocks_to_nodes_v2
 from core.source_titles import (
     build_source_card,
@@ -51,10 +52,14 @@ def _flat(nodes) -> str:
 
 
 def test_source_card_block_path_has_no_bullet():
-    blocks = [{
-        "type": "source", "author": "John MacArthur",
-        "title_original": "Strange Fire", "why_relevant": "Полезна для темы",
-    }]
+    blocks = [
+        {
+            "type": "source",
+            "author": "John MacArthur",
+            "title_original": "Strange Fire",
+            "why_relevant": "Полезна для темы",
+        }
+    ]
     flat = _flat(_structured_blocks_to_nodes_v2(blocks, yt_url=""))
     assert "•" not in flat
     # AUDIT R23 regression: the parenthetical original-language author must
@@ -100,12 +105,8 @@ def test_ryle_wrong_initial_still_resolves_to_known_translation():
 
 
 def test_ryle_via_normalize_source_card_line():
-    assert normalize_source_card_line("• Дж. К. Райл, Holiness") == (
-        "**Святость**, Дж. Ч. Райл (Holiness, J.C. Ryle)."
-    )
-    assert normalize_source_card_line("• J.C. Ryle, Holiness") == (
-        "**Святость**, Дж. Ч. Райл (Holiness, J.C. Ryle)."
-    )
+    assert normalize_source_card_line("• Дж. К. Райл, Holiness") == ("**Святость**, Дж. Ч. Райл (Holiness, J.C. Ryle).")
+    assert normalize_source_card_line("• J.C. Ryle, Holiness") == ("**Святость**, Дж. Ч. Райл (Holiness, J.C. Ryle).")
 
 
 def test_canonical_author_name_ryle_unaffected():

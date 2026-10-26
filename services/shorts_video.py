@@ -5,6 +5,7 @@ The legacy implementation module still provides unchanged helpers while public
 long-running operations and transactional outputs live here. This module never
 rewrites ``sys.modules`` or mutates imported modules at runtime.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -74,9 +75,7 @@ async def download_video_for_shorts(
     workdir: Path | None = None,
 ):
     """Own the full download awaitable so repeated outer cancellation cannot orphan it."""
-    return await _impl.await_owned_coroutine(
-        _LEGACY_DOWNLOAD_VIDEO(url, media_id, workdir=workdir)
-    )
+    return await _impl.await_owned_coroutine(_LEGACY_DOWNLOAD_VIDEO(url, media_id, workdir=workdir))
 
 
 async def transcribe_short_clip(
@@ -84,9 +83,7 @@ async def transcribe_short_clip(
     ai_data: dict | None = None,
 ) -> list[dict]:
     """Own extraction + Whisper as one public operation, not only the worker thread."""
-    return await _impl.await_owned_coroutine(
-        _LEGACY_TRANSCRIBE_SHORT_CLIP(video_path, ai_data=ai_data)
-    )
+    return await _impl.await_owned_coroutine(_LEGACY_TRANSCRIBE_SHORT_CLIP(video_path, ai_data=ai_data))
 
 
 async def _owned_render_short_clip(
@@ -125,9 +122,7 @@ async def _owned_render_short_clip(
             _impl.logger.warning("render_short_clip: ffmpeg not found")
             return False
         if not source_video_path.exists():
-            _impl.logger.warning(
-                "render_short_clip: source file not found: %s", source_video_path
-            )
+            _impl.logger.warning("render_short_clip: source file not found: %s", source_video_path)
             return False
         if end_seconds <= start_seconds:
             _impl.logger.warning(
@@ -174,9 +169,7 @@ async def _owned_render_short_clip(
             end_seconds = min(end_seconds, hard_ceiling)
         clip_duration = end_seconds - start_seconds
         if clip_duration <= 0:
-            _impl.logger.warning(
-                "render_short_clip: clip_duration <= 0 after silence adjustment"
-            )
+            _impl.logger.warning("render_short_clip: clip_duration <= 0 after silence adjustment")
             return False
 
         black_bars = await _impl._detect_black_bars(
@@ -189,17 +182,12 @@ async def _owned_render_short_clip(
         ):
             visual_mode = "full_frame_vertical"
             black_bars = ""
-            _impl.logger.info(
-                "Short: static frame detected; using full_frame_vertical without cropdetect"
-            )
+            _impl.logger.info("Short: static frame detected; using full_frame_vertical without cropdetect")
 
         use_filter_complex = False
         if visual_mode == "crop_zoom":
             bc = f"{black_bars}," if black_bars else ""
-            vf = (
-                f"{bc}crop=ih*9/16:ih:(iw-ih*9/16)/2:0,"
-                "scale=720:1280"
-            )
+            vf = f"{bc}crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=720:1280"
             mode_label = "crop_zoom(medium)"
         else:
             if black_bars:
@@ -222,14 +210,8 @@ async def _owned_render_short_clip(
             use_filter_complex = True
             mode_label = "full_frame_blur"
 
-        encoder, quality, preset = await _impl.await_owned_coroutine(
-            asyncio.to_thread(_impl._get_video_encoder)
-        )
-        vf_args = (
-            ["-filter_complex", vf, "-map", "[out]", "-map", "0:a?"]
-            if use_filter_complex
-            else ["-vf", vf]
-        )
+        encoder, quality, preset = await _impl.await_owned_coroutine(asyncio.to_thread(_impl._get_video_encoder))
+        vf_args = ["-filter_complex", vf, "-map", "[out]", "-map", "0:a?"] if use_filter_complex else ["-vf", vf]
         command = [
             ffmpeg,
             "-ss",
@@ -366,9 +348,7 @@ async def _owned_short_transform(
     if same_path:
         if no_op:
             return input_path.exists() and input_path.stat().st_size > 0
-        _impl.logger.warning(
-            "postprocess_short: input_path and output_path must differ for transforms"
-        )
+        _impl.logger.warning("postprocess_short: input_path and output_path must differ for transforms")
         return False
 
     _unlink_short_paths(output_path, protected=(input_path,))
@@ -379,9 +359,7 @@ async def _owned_short_transform(
         ):
             result = await _normalize_audio_copy_video(input_path, output_path)
             if result:
-                _impl.logger.info(
-                    "Short transform: normalize-only uses -c:v copy; no extra video generation"
-                )
+                _impl.logger.info("Short transform: normalize-only uses -c:v copy; no extra video generation")
         else:
             result = await _LEGACY_SHORT_TRANSFORM(
                 input_path,

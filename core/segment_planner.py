@@ -5,6 +5,7 @@ Used for selectable Q&A/theme cuts. No Gemini call: segments are derived from th
 existing timestamp grid. For Q&A this naturally maps one question to one answer;
 for sermons/lectures it gives thematic chunks.
 """
+
 from __future__ import annotations
 
 import re

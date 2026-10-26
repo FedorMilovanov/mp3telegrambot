@@ -1,4 +1,5 @@
 """Build the publication context after analysis and before Telegraph rendering."""
+
 from __future__ import annotations
 
 import logging
@@ -46,23 +47,17 @@ async def prepare_publication_context(
 ) -> PublicationContext:
     """Preserve the historical planning order and its diagnostics."""
     search_title = _build_search_title(ai_data, full_title)
-    author = normalize_author_name(
-        (ai_data or {}).get("real_author") or performer
-    ) or performer
+    author = normalize_author_name((ai_data or {}).get("real_author") or performer) or performer
     questions = (ai_data or {}).get("questions", []) if ai_data else []
-    terms_data = (
-        (ai_data or {}).get("terms_data", {}) or {} if ai_data else {}
-    )
+    terms_data = (ai_data or {}).get("terms_data", {}) or {} if ai_data else {}
 
     # Keep the single batch settings read ahead of caption-source metrics.
     _all_settings = await settings_get_all()
     caption_source_data = ai_data or degraded
     format_name = (caption_source_data or {}).get("format", "other")
-    timestamps_total = len([
-        line
-        for line in ((caption_source_data or {}).get("timestamps") or "").split("\n")
-        if line.strip()
-    ])
+    timestamps_total = len(
+        [line for line in ((caption_source_data or {}).get("timestamps") or "").split("\n") if line.strip()]
+    )
     timestamp_cap = get_caption_timestamp_limit(format_name)
 
     terms_total = _plan_terms_total(terms_data)

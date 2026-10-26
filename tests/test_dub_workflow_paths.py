@@ -10,9 +10,7 @@ WORKFLOWS = (
     Path(".github/workflows/dub-facade-hardening-check.yml"),
 )
 
-_EXPLICIT_PY_PATH = re.compile(
-    r"(?<![\w./-])((?:bot_new\.py|(?:services|handlers|tools|tests)/[^\s'\"\\]+\.py))"
-)
+_EXPLICIT_PY_PATH = re.compile(r"(?<![\w./-])((?:bot_new\.py|(?:services|handlers|tools|tests)/[^\s'\"\\]+\.py))")
 _YAML_QUOTED_LIST_ITEM = re.compile(r'^\s*-\s+"([^"]+)"\s*$', re.MULTILINE)
 _REPO_PATH_PREFIXES = (".github/", "bot_new.py", "handlers/", "services/", "tests/", "tools/")
 
@@ -20,23 +18,13 @@ _REPO_PATH_PREFIXES = (".github/", "bot_new.py", "handlers/", "services/", "test
 def _explicit_python_paths(workflow: Path) -> list[str]:
     text = workflow.read_text(encoding="utf-8")
     return sorted(
-        {
-            match.group(1).rstrip("\\")
-            for match in _EXPLICIT_PY_PATH.finditer(text)
-            if "*" not in match.group(1)
-        }
+        {match.group(1).rstrip("\\") for match in _EXPLICIT_PY_PATH.finditer(text) if "*" not in match.group(1)}
     )
 
 
 def _trigger_path_patterns(workflow: Path) -> list[str]:
     text = workflow.read_text(encoding="utf-8")
-    return sorted(
-        {
-            value
-            for value in _YAML_QUOTED_LIST_ITEM.findall(text)
-            if value.startswith(_REPO_PATH_PREFIXES)
-        }
-    )
+    return sorted({value for value in _YAML_QUOTED_LIST_ITEM.findall(text) if value.startswith(_REPO_PATH_PREFIXES)})
 
 
 def test_dub_workflow_explicit_python_paths_exist() -> None:

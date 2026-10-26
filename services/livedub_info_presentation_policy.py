@@ -8,6 +8,7 @@ sections. This adapter keeps the existing generation logic, adds a quality-first
 second-chance title translation across all configured Gemini clients, and
 replaces only the final presentation with a concise publication card.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -70,11 +71,7 @@ def _looks_like_author(value: str) -> bool:
     try:
         from core.person_names import known_author_from_text, known_ru_author_from_text, looks_like_author_list
 
-        return bool(
-            known_author_from_text(text)
-            or known_ru_author_from_text(text)
-            or looks_like_author_list(text)
-        )
+        return bool(known_author_from_text(text) or known_ru_author_from_text(text) or looks_like_author_list(text))
     except Exception:
         words = text.split()
         return 2 <= len(words) <= 6 and all(w[:1].isupper() for w in words if w)
@@ -213,11 +210,7 @@ def _make_formatter(module: Any):
         title, author = _split_title_author(raw_line)
         description = _clean(card.get("telegram_description"), 700)
         source_url = _clean(card.get("source_url"), 500)
-        hashtags = [
-            _clean(tag, 80)
-            for tag in (card.get("hashtags") or [])[:6]
-            if _clean(tag, 80)
-        ]
+        hashtags = [_clean(tag, 80) for tag in (card.get("hashtags") or [])[:6] if _clean(tag, 80)]
 
         if not title:
             title = "Переведённое видео"
@@ -235,14 +228,13 @@ def _make_formatter(module: Any):
         if source_url:
             lines += [
                 "",
-                f"🔗 <a href=\"{html.escape(source_url, quote=True)}\">Оригинал на YouTube</a>",
+                f'🔗 <a href="{html.escape(source_url, quote=True)}">Оригинал на YouTube</a>',
             ]
         if hashtags:
             lines += ["", html.escape(" ".join(hashtags), quote=False)]
         return safe_trim_caption("\n".join(lines).strip(), 3900)
 
     return format_message
-
 
 
 async def apply_card_presentation(
@@ -259,20 +251,16 @@ async def apply_card_presentation(
         translated = await _translate_title_second_chance(current_line)
     if translated:
         translated_title, translated_author = translated
-        result["youtube_title"] = (
-            f"{translated_title} - {translated_author}"
-            if translated_author else translated_title
-        )
+        result["youtube_title"] = f"{translated_title} - {translated_author}" if translated_author else translated_title
     elif not result.get("youtube_title"):
         result["youtube_title"] = _clean(title_line, 220)
 
-    final_title, final_author = _split_title_author(
-        _clean(result.get("youtube_title") or title_line, 260)
-    )
+    final_title, final_author = _split_title_author(_clean(result.get("youtube_title") or title_line, 260))
     description = _clean(result.get("telegram_description"), 700)
     if (
         not description
-        or description.casefold() in {
+        or description.casefold()
+        in {
             _clean(title_line, 260).casefold(),
             final_title.casefold(),
         }

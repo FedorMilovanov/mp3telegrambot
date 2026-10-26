@@ -14,6 +14,7 @@ extras и маркеров, для Linux и Windows и для обоих кра�
 exceptiongroup на <3.11 законны). Затем сравнивает множество с lock'ом:
 равенство означает, что lock — ровно то, что нужно, и ничего сверх.
 """
+
 from __future__ import annotations
 
 import sys
@@ -67,10 +68,7 @@ def _applies(requirement: Requirement, extras: set[str], environment: dict[str, 
     if marker is None:
         return True
     if "extra" in str(marker):
-        return any(
-            marker.evaluate({**environment, "extra": extra})
-            for extra in (sorted(extras) or [""])
-        )
+        return any(marker.evaluate({**environment, "extra": extra}) for extra in (sorted(extras) or [""]))
     return marker.evaluate({**environment, "extra": ""})
 
 
@@ -103,9 +101,7 @@ def _closure() -> tuple[set[str], set[str]]:
                 requirement = Requirement(raw)
                 if not _applies(requirement, set(extras), environment):
                     continue
-                queue.append(
-                    (canonicalize_name(requirement.name), frozenset(requirement.extras))
-                )
+                queue.append((canonicalize_name(requirement.name), frozenset(requirement.extras)))
     return reachable, unknown
 
 
@@ -127,9 +123,7 @@ def test_lock_is_exactly_the_dependency_closure() -> None:
         "в lock'е есть пакеты, которых никто не требует — это лишняя "
         f"поверхность атаки и повод для исключений в аудите: {extra_in_lock}"
     )
-    assert not missing_from_lock, (
-        f"эти зависимости достижимы, но не зафиксированы в lock: {missing_from_lock}"
-    )
+    assert not missing_from_lock, f"эти зависимости достижимы, но не зафиксированы в lock: {missing_from_lock}"
 
 
 def test_the_closure_check_sees_all_69_pins() -> None:

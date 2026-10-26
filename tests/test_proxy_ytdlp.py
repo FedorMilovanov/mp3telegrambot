@@ -1,4 +1,5 @@
 """Regression tests for yt-dlp proxy handling in no-TUN setups."""
+
 from pathlib import Path
 
 

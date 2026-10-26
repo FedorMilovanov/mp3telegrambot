@@ -6,6 +6,7 @@ The input SRT remains the subtitle authority, while synthesis is planned in
 longer, contiguous meaning/breath blocks. Each block is rendered as one complete
 candidate; original cue boundaries are restored only for subtitle delivery.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -109,11 +110,7 @@ def group_ready_srt(cues: list[Any]) -> list[dict[str, Any]]:
             and joined_duration > TARGET_BLOCK_SECONDS
             and remaining_after_current >= MIN_BLOCK_SECONDS
         )
-        if (
-            joined_duration > MAX_BLOCK_SECONDS + 1e-9
-            or gap > MAX_INTERNAL_GAP_SECONDS
-            or should_balance
-        ):
+        if joined_duration > MAX_BLOCK_SECONDS + 1e-9 or gap > MAX_INTERNAL_GAP_SECONDS or should_balance:
             flush()
             current = dict(group)
         else:

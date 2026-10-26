@@ -23,11 +23,7 @@ PROBE_FUNCTIONS = (
 def _function_source(name: str) -> str:
     source = SOURCE_PATH.read_text(encoding="utf-8")
     tree = ast.parse(source)
-    node = next(
-        item
-        for item in tree.body
-        if isinstance(item, ast.AsyncFunctionDef) and item.name == name
-    )
+    node = next(item for item in tree.body if isinstance(item, ast.AsyncFunctionDef) and item.name == name)
     return ast.get_source_segment(source, node) or ""
 
 

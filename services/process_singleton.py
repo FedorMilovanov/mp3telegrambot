@@ -5,6 +5,7 @@ The lock is acquired before importing ``main`` so a second process cannot race
 Telegram long-polling or initialize heavy runtime state. This module performs no
 post-import mutation.
 """
+
 from __future__ import annotations
 
 import atexit

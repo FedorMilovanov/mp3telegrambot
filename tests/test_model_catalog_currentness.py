@@ -4,6 +4,7 @@ The repository must not ship a documentation/config value that the runtime
 gate would reject (Factory) or that the provider has already deprecated.
 Catalog snapshot: 2026-10-22.
 """
+
 from __future__ import annotations
 
 import re
@@ -49,9 +50,9 @@ def test_editorial_review_docs_and_code_agree_on_the_primary_role() -> None:
     assert f"`{MODEL_PRIMARY}`" in doc
     # Status of a model never leaks into the doc as a hand-written identifier.
     for model in deprecated_aliases():
-        assert f"`{model}`" not in doc.replace(
-            f"`{model}` (deprecated", ""
-        ), f"{model} is documented as a standalone route"
+        assert f"`{model}`" not in doc.replace(f"`{model}` (deprecated", ""), (
+            f"{model} is documented as a standalone route"
+        )
 
 
 def test_operator_docs_do_not_route_through_the_deprecated_37_alias() -> None:

@@ -7,6 +7,7 @@ Factory candidate metadata. ChatGPT, Gemini or a human editor may return a
 versioned review document, but only deterministic actions validated against the
 exact verified pack may reach FFmpeg.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -115,8 +116,7 @@ def validate_drop_span_budget(
         span_seconds = end - start
         if span_seconds > MAX_DROP_SPAN_SECONDS + 0.001:
             errors.append(
-                f"drop_span[{index}] is {span_seconds:.3f}s; "
-                f"maximum automatic drop is {MAX_DROP_SPAN_SECONDS:.3f}s"
+                f"drop_span[{index}] is {span_seconds:.3f}s; maximum automatic drop is {MAX_DROP_SPAN_SECONDS:.3f}s"
             )
         spans.append((start, end))
 
@@ -129,10 +129,7 @@ def validate_drop_span_budget(
     total_removed = sum(end - start for start, end in merged)
     total_budget = drop_span_budget_seconds(source_duration)
     if total_removed > total_budget + 0.001:
-        errors.append(
-            f"merged automatic drop removal is {total_removed:.3f}s; "
-            f"source budget is {total_budget:.3f}s"
-        )
+        errors.append(f"merged automatic drop removal is {total_removed:.3f}s; source budget is {total_budget:.3f}s")
     return errors
 
 
@@ -202,10 +199,7 @@ def parse_srt(path: Path) -> list[SrtCue]:
 
 
 def _word_key(text: str) -> str:
-    normalized = "".join(
-        char if (char.isalnum() or char == "_") else " "
-        for char in str(text or "").casefold()
-    )
+    normalized = "".join(char if (char.isalnum() or char == "_") else " " for char in str(text or "").casefold())
     return " ".join(normalized.split())
 
 
@@ -295,10 +289,7 @@ def _file_entry(path: Path, *, role: str) -> dict[str, Any]:
 
 
 def _safe_media_id(media_id: str) -> str:
-    safe = "".join(
-        char if (char.isalnum() or char in "_-") else "_"
-        for char in str(media_id or "media")
-    )
+    safe = "".join(char if (char.isalnum() or char in "_-") else "_" for char in str(media_id or "media"))
     return safe[:100] or "media"
 
 
@@ -407,9 +398,7 @@ def build_review_pack(
                 "issue_severities": sorted(ISSUE_SEVERITIES),
                 "action_types": sorted(ACTION_TYPES),
                 "automatically_executable_actions": sorted(EXECUTABLE_ACTIONS),
-                "borrow_span_policy": (
-                    "review-only in v1; donor media is never synthesized or inserted automatically"
-                ),
+                "borrow_span_policy": ("review-only in v1; donor media is never synthesized or inserted automatically"),
             },
         }
         (root / "manifest.json").write_text(
@@ -590,9 +579,7 @@ def _validate_issue(
         errors.append(f"{prefix}: invalid action")
         return errors
     if action.get("type") == "drop_span" and end - start > MAX_DROP_SPAN_SECONDS + 0.001:
-        errors.append(
-            f"{prefix}: drop_span exceeds {MAX_DROP_SPAN_SECONDS:.3f}s automatic surgical limit"
-        )
+        errors.append(f"{prefix}: drop_span exceeds {MAX_DROP_SPAN_SECONDS:.3f}s automatic surgical limit")
     if action.get("type") == "borrow_span":
         donor_start = _finite_float(action.get("donor_start_seconds"))
         donor_end = _finite_float(action.get("donor_end_seconds"))
@@ -676,10 +663,7 @@ def validate_review_document(review: dict[str, Any], manifest: dict[str, Any]) -
                                 "end_seconds": end,
                             }
                         )
-        errors.extend(
-            f"full_sermon: {message}"
-            for message in validate_drop_span_budget(full_drop_repairs, duration)
-        )
+        errors.extend(f"full_sermon: {message}" for message in validate_drop_span_budget(full_drop_repairs, duration))
 
     candidate_reviews = review.get("candidate_reviews")
     if not isinstance(candidate_reviews, list):
@@ -809,12 +793,8 @@ def build_drop_filter(duration: float, drop_spans: Iterable[tuple[float, float]]
     parts: list[str] = []
     concat_inputs: list[str] = []
     for index, (start, end) in enumerate(keep):
-        parts.append(
-            f"[0:v]trim=start={start:.3f}:end={end:.3f},setpts=PTS-STARTPTS[v{index}]"
-        )
-        parts.append(
-            f"[0:a]atrim=start={start:.3f}:end={end:.3f},asetpts=PTS-STARTPTS[a{index}]"
-        )
+        parts.append(f"[0:v]trim=start={start:.3f}:end={end:.3f},setpts=PTS-STARTPTS[v{index}]")
+        parts.append(f"[0:a]atrim=start={start:.3f}:end={end:.3f},asetpts=PTS-STARTPTS[a{index}]")
         concat_inputs.append(f"[v{index}][a{index}]")
     parts.append("".join(concat_inputs) + f"concat=n={len(keep)}:v=1:a=1[outv][outa]")
     return ";".join(parts), len(keep)

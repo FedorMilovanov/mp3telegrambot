@@ -9,8 +9,7 @@ def _calls_in_process_factory():
     process = next(
         node
         for node in tree.body
-        if isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef))
-        and node.name == "process_shorts_factory"
+        if isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef)) and node.name == "process_shorts_factory"
     )
     return [node for node in ast.walk(process) if isinstance(node, ast.Call)]
 
@@ -24,7 +23,4 @@ def test_factory_audio_and_video_acquisition_receive_expected_duration():
     for target in ("_download_factory_audio", "download_video_for_shorts"):
         matching = [call for call in calls if _name(call) == target]
         assert matching, target
-        assert all(
-            any(keyword.arg == "expected_duration" for keyword in call.keywords)
-            for call in matching
-        ), target
+        assert all(any(keyword.arg == "expected_duration" for keyword in call.keywords) for call in matching), target

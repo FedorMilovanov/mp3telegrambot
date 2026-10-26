@@ -3,6 +3,7 @@
 The tests are parametrized over ``core.model_catalog`` itself, so adding or
 retiring a model never requires editing them.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -83,9 +84,7 @@ def test_preview_models_are_not_reported_as_stable(model: str) -> None:
     assert MODEL_PRIMARY in diagnostic.message
 
 
-@pytest.mark.parametrize(
-    "model", sorted(set(current_models_outside_routing()) - paid_only_models())
-)
+@pytest.mark.parametrize("model", sorted(set(current_models_outside_routing()) - paid_only_models()))
 def test_current_models_outside_routing_are_described(model: str) -> None:
     diagnostic = classify_gemini_model(model)
     assert diagnostic.level == "warning"

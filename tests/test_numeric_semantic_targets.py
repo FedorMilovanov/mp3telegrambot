@@ -24,26 +24,18 @@ def test_integer_to_words_preserves_exact_value() -> None:
 def test_numeric_text_normalizes_percent_currency_and_decimal() -> None:
     assert numbers.normalize_numeric_text("Рост 15%.") == "Рост пятнадцать процентов."
     assert numbers.normalize_numeric_text("Цена $5.") == "Цена пять долларов."
-    assert numbers.normalize_numeric_text("Значение 3,5.") == (
-        "Значение три целых пять десятых."
-    )
+    assert numbers.normalize_numeric_text("Значение 3,5.") == ("Значение три целых пять десятых.")
 
 
 def test_decimal_money_is_one_exact_value_not_two_numbers() -> None:
-    assert numbers.normalize_numeric_text("Цена $5.50.") == (
-        "Цена пять долларов пятьдесят центов."
-    )
-    assert numbers.normalize_numeric_text("Цена 12,05 ₽.") == (
-        "Цена двенадцать рублей пять копеек."
-    )
+    assert numbers.normalize_numeric_text("Цена $5.50.") == ("Цена пять долларов пятьдесят центов.")
+    assert numbers.normalize_numeric_text("Цена 12,05 ₽.") == ("Цена двенадцать рублей пять копеек.")
     groups = numbers.numeric_anchor_groups("Цена $5.50.")
     assert groups == [["пять долларов пятьдесят центов"]]
 
 
 def test_decimal_percent_is_consumed_before_plain_decimal() -> None:
-    assert numbers.normalize_numeric_text("Рост 3,5%.") == (
-        "Рост три целых пять десятых процента."
-    )
+    assert numbers.normalize_numeric_text("Рост 3,5%.") == ("Рост три целых пять десятых процента.")
     groups = numbers.numeric_anchor_groups("Рост 3,5%.")
     assert len(groups) == 1
     assert "три с половиной процента" in groups[0]

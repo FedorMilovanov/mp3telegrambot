@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Validate that direct requirements are covered by one exact resolved lock."""
+
 from __future__ import annotations
 
 import argparse
@@ -31,10 +32,7 @@ def direct_requirements(paths: Iterable[Path]) -> dict[str, Requirement]:
             name = canonicalize_name(requirement.name)
             existing = result.get(name)
             if existing is not None and str(existing) != str(requirement):
-                raise RuntimeError(
-                    f"Conflicting direct requirements for {name}: "
-                    f"{existing!s} vs {requirement!s}"
-                )
+                raise RuntimeError(f"Conflicting direct requirements for {name}: {existing!s} vs {requirement!s}")
             result[name] = requirement
     return result
 
@@ -66,9 +64,7 @@ def validate_lock(
     locked = locked_requirements(lock_path)
     missing = sorted(set(direct) - set(locked))
     if missing:
-        raise RuntimeError(
-            "Direct requirements missing from resolved lock: " + ", ".join(missing)
-        )
+        raise RuntimeError("Direct requirements missing from resolved lock: " + ", ".join(missing))
     incompatible: list[str] = []
     for name, requirement in direct.items():
         locked_version = next(iter(locked[name].specifier)).version
@@ -76,13 +72,9 @@ def validate_lock(
             locked_version,
             prereleases=True,
         ):
-            incompatible.append(
-                f"{name}: direct={requirement.specifier}, locked={locked_version}"
-            )
+            incompatible.append(f"{name}: direct={requirement.specifier}, locked={locked_version}")
     if incompatible:
-        raise RuntimeError(
-            "Locked versions violate direct constraints: " + "; ".join(incompatible)
-        )
+        raise RuntimeError("Locked versions violate direct constraints: " + "; ".join(incompatible))
     return {
         "policy": POLICY,
         "direct_count": len(direct),

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """PowerShell-friendly CLI for reviewed translation composition."""
+
 from __future__ import annotations
 
 import argparse
@@ -84,9 +85,7 @@ def _write_handoff(path: Path, data: dict[str, Any]) -> None:
         existing = _load(path)
         if existing.get("handoff_id") == data.get("handoff_id") and existing == data:
             return
-        raise FileExistsError(
-            f"existing handoff belongs to different rendered state; refusing overwrite: {path}"
-        )
+        raise FileExistsError(f"existing handoff belongs to different rendered state; refusing overwrite: {path}")
     try:
         _write_atomic(path, data, overwrite=False)
     except FileExistsError:
@@ -202,21 +201,16 @@ def _enforce_review_execution_gate(
             unresolved.append(action_type or "missing")
     if unresolved:
         raise ValueError(
-            "full-sermon review contains unresolved non-executable actions: "
-            + ", ".join(sorted(set(unresolved)))
+            "full-sermon review contains unresolved non-executable actions: " + ", ".join(sorted(set(unresolved)))
         )
 
     expected_repairs = _normalized_review_repairs(review)
     if verdict == "repair" and repair_provenance is None:
-        raise ValueError(
-            "full sermon requires repair; supply the exact --repair-provenance for the cleaned source"
-        )
+        raise ValueError("full sermon requires repair; supply the exact --repair-provenance for the cleaned source")
     if repair_provenance is not None:
         actual_repairs = repair_provenance.get("repairs") or []
         if actual_repairs != expected_repairs:
-            raise ValueError(
-                "repair provenance actions do not exactly match the full-sermon review"
-            )
+            raise ValueError("repair provenance actions do not exactly match the full-sermon review")
 
 
 async def _verify_embedded_repair_binding(document: dict[str, Any]) -> None:
@@ -330,9 +324,7 @@ async def _cmd_render(args: argparse.Namespace) -> int:
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="Build and render provenance-bound full/excerpt/Short compositions"
-    )
+    parser = argparse.ArgumentParser(description="Build and render provenance-bound full/excerpt/Short compositions")
     sub = parser.add_subparsers(dest="command", required=True)
 
     init = sub.add_parser("init", help="bind an empty composition plan to exact cleaned media")

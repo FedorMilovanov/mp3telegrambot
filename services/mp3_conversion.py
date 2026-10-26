@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Verified atomic MP3 re-encoding for delivery/cache variants."""
+
 from __future__ import annotations
 
 import asyncio
@@ -44,8 +45,7 @@ async def _probe_audio_file(path: Path) -> bool:
     except (TypeError, ValueError, json.JSONDecodeError):
         return False
     has_audio = any(
-        isinstance(stream, dict) and stream.get("codec_type") == "audio"
-        for stream in payload.get("streams") or []
+        isinstance(stream, dict) and stream.get("codec_type") == "audio" for stream in payload.get("streams") or []
     )
     return bool(has_audio and duration > 0.0)
 
@@ -75,16 +75,10 @@ async def reencode_mp3_atomic(
     bitrate = max(32, min(int(bitrate_kbps), 320))
     output.parent.mkdir(parents=True, exist_ok=True)
 
-    if (
-        output.is_file()
-        and output.stat().st_mtime >= source.stat().st_mtime
-        and await _probe_audio_file(output)
-    ):
+    if output.is_file() and output.stat().st_mtime >= source.stat().st_mtime and await _probe_audio_file(output):
         return True
 
-    temp = output.with_name(
-        f"{output.stem}.part-{os.getpid()}-{uuid.uuid4().hex[:8]}.mp3"
-    )
+    temp = output.with_name(f"{output.stem}.part-{os.getpid()}-{uuid.uuid4().hex[:8]}.mp3")
     try:
         temp.unlink(missing_ok=True)
         process = await run_cancellable_process(

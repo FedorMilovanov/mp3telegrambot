@@ -3,36 +3,57 @@
 Telegraph publisher — публикация с рекурсивным дроблением.
 Извлечено из bot.py строки 4437–5288.
 """
+
 from core.text_utils import (
-    _scrub_inline, _strip_meta_lines, normalize_author_name,
-    title_case_fragment, normalize_title_text,  # FIX telegraph
-    BAD_META_PATTERNS, is_meta_garbage,          # FIX telegraph
-    join_title_author,                           # R49: не дублировать имя автора
+    _scrub_inline,
+    _strip_meta_lines,
+    normalize_author_name,
+    title_case_fragment,
+    normalize_title_text,  # FIX telegraph
+    BAD_META_PATTERNS,
+    is_meta_garbage,  # FIX telegraph
+    join_title_author,  # R49: не дублировать имя автора
 )
 from converters.md_telegraph import (
-    _section_to_nodes_v2, _build_toc_nodes_v2, _build_nav_nodes_v2,
-    _split_sections_smart, _create_telegraph_page_single,
-    _final_telegraph_polish, _postprocess_telegraph_nodes,
-    _HEADING_BOLD_STRIP_RE,   # FIX telegraph
-    _estimate_nodes_v2,       # FIX telegraph
-    _extract_partial_sections,# FIX telegraph
+    _section_to_nodes_v2,
+    _build_toc_nodes_v2,
+    _build_nav_nodes_v2,
+    _split_sections_smart,
+    _create_telegraph_page_single,
+    _final_telegraph_polish,
+    _postprocess_telegraph_nodes,
+    _HEADING_BOLD_STRIP_RE,  # FIX telegraph
+    _estimate_nodes_v2,  # FIX telegraph
+    _extract_partial_sections,  # FIX telegraph
 )
+
 # _fix_rtl_in_text и _md_parse_inline перенесены в core_utils (разрыв цикла markdown ↔ caption/telegraph)
-from core.core_utils import _fix_rtl_in_text, _md_parse_inline, _polish_timestamps_in_text, normalize_misbolded_bullet_lead, unescape_markdown_markers, time_to_seconds  # FIX: circular imports + AUDIT-FIX BUG 1
+from core.core_utils import (
+    _fix_rtl_in_text,
+    _md_parse_inline,
+    _polish_timestamps_in_text,
+    normalize_misbolded_bullet_lead,
+    unescape_markdown_markers,
+    time_to_seconds,
+)  # FIX: circular imports + AUDIT-FIX BUG 1
 from core.url_utils import get_youtube_timestamp_url  # AUDIT R15: mini-outline ссылки на части 2+
 from core.globals import (
-    TELEGRAPH_TOKEN, GEMINI_CLIENTS,
-    gemini_generate,          # FIX telegraph,
+    TELEGRAPH_TOKEN,
+    GEMINI_CLIENTS,
+    gemini_generate,  # FIX telegraph,
     make_audio_config,
-    is_quota_error, is_overload_error,
+    is_quota_error,
+    is_overload_error,
 )
-from core.database import GEMINI_MODEL      # FIX telegraph
+from core.database import GEMINI_MODEL  # FIX telegraph
 from core.model_catalog import fallback_model
 from core.telegraph_contract import (
-    compose_telegraph_title, fit_telegraph_author_name,
-    fit_telegraph_author_url, fit_telegraph_title,
+    compose_telegraph_title,
+    fit_telegraph_author_name,
+    fit_telegraph_author_url,
+    fit_telegraph_title,
 )
-from core.utils import format_timestamp     # FIX telegraph
+from core.utils import format_timestamp  # FIX telegraph
 from core.prompts import SYNOPSIS_PROMPT_V2, SYNOPSIS_PROMPT_QA, SYNOPSIS_VERBATIM_PROMPT  # FIX telegraph
 from core.content_audit import audit_expanded_sections, format_content_audit_issues, has_content_audit_warnings
 from services.gemini_analyze import _spawn_safe_delete  # FIX: cleanup uploaded Gemini files
@@ -41,9 +62,12 @@ from core.content_audit import get_content_audit_mode, should_abort_for_content_
 from core.candidate_schema import expanded_page_response_schema
 from core.reasoning_guidance import build_synopsis_reasoning_note
 from core.synopsis_quality import (
-    audit_synopsis_density, filter_organizational_announcement_sections,
-    format_synopsis_quality_issues, get_synopsis_density_profile,
-    should_retry_synopsis_density, synopsis_density_score,
+    audit_synopsis_density,
+    filter_organizational_announcement_sections,
+    format_synopsis_quality_issues,
+    get_synopsis_density_profile,
+    should_retry_synopsis_density,
+    synopsis_density_score,
 )
 from core.synopsis_timestamps import format_timestamp_issues, unresolved_timestamp_issues
 from core.prompt_compactor import compact_prompt_for_generation
@@ -57,7 +81,7 @@ from services.telegraph_edit import (
 )
 
 import asyncio
-import json      # FIX telegraph
+import json  # FIX telegraph
 import logging
 import os
 import re
@@ -125,16 +149,17 @@ async def _edit_telegraph_page_classified(
     if result.ok:
         try:
             from services.pdf_generator import invalidate_telegraph_url
+
             invalidate_telegraph_url(page_url)
         except Exception:
             pass
     return result
 
 
-
 def _synopsis_density_retry_enabled() -> bool:
     """Opt-out flag for one extra Synopsis retry when long output is too thin."""
     return (os.getenv("SYNOPSIS_DENSITY_RETRY", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
+
 
 def _synopsis_structured_output_enabled() -> bool:
     """Opt-in flag for Synopsis structured {outline, sections}.
@@ -162,24 +187,24 @@ def _demote_paragraph_bold(line: str) -> str:
     FIX 2026-05-25: per-block check — проверяем каждый bold-кусок по отдельности,
     а не всю строку. Demote только если ОДИН кусок > 120 символов.
     """
-    if not line or '**' not in line:
+    if not line or "**" not in line:
         return line
     if "||" in line:
         # Legacy terms_data / source separators: не трогаем форматные разделители.
         return line
     # Считаем длину жирных кусков
-    bold_matches = re.findall(r'\*\*([^*\n]+)\*\*', line)
+    bold_matches = re.findall(r"\*\*([^*\n]+)\*\*", line)
     if not bold_matches:
         return line
     bold_len = sum(len(b) for b in bold_matches)
-    total_len = len(re.sub(r'\*\*([^*\n]+)\*\*', r'\1', line))
+    total_len = len(re.sub(r"\*\*([^*\n]+)\*\*", r"\1", line))
     if total_len == 0:
         return line
     bold_ratio = bold_len / total_len
     # FIX: bullet definition items like "• **Term — definition**, explanation"
     # have high bold_ratio but this is intentional formatting, not a "bold paragraph".
     # Don't demote if the line starts with a bullet marker + bold.
-    if line.lstrip().startswith(('• **', '- **')):
+    if line.lstrip().startswith(("• **", "- **")):
         return line
     # FIX 2026-05-24: короткие строки (<80 символов) —
     # осознанные акценты, не трогаем.
@@ -191,16 +216,18 @@ def _demote_paragraph_bold(line: str) -> str:
     MAX_SINGLE_BOLD = 120
     has_oversized = any(len(b) > MAX_SINGLE_BOLD for b in bold_matches)
     if has_oversized:
+
         def _demote_if_long(m):
             inner = m.group(1)
             if len(inner) > MAX_SINGLE_BOLD:
                 return inner
             return m.group(0)
-        return re.sub(r'\*\*([^*\n]+)\*\*', _demote_if_long, line)
+
+        return re.sub(r"\*\*([^*\n]+)\*\*", _demote_if_long, line)
 
     # Общий ratio check — если вся строка >70% жирная, снимаем всё
     if bold_ratio > 0.7:
-        return re.sub(r'\*\*([^*\n]+)\*\*', r'\1', line)
+        return re.sub(r"\*\*([^*\n]+)\*\*", r"\1", line)
     return line
 
 
@@ -238,7 +265,7 @@ def _md_to_telegraph_nodes(md: str) -> list:
             continue
         # Пропускаем строки из одних знаков препинания/разделителей (. .. ─── и т.п.)
         # Gemini иногда генерирует одиночную точку как визуальный разделитель между блоками
-        if re.fullmatch(r'[.\-–—─·•*_~\s]+', s):
+        if re.fullmatch(r"[.\-–—─·•*_~\s]+", s):
             prev_was_empty = True
             continue
         # Добавляем визуальный отступ только после заголовков — между обычными <p>
@@ -248,56 +275,54 @@ def _md_to_telegraph_nodes(md: str) -> list:
             nodes.append({"tag": "p", "children": [{"tag": "br"}]})
         prev_was_empty = False
         if s.startswith("#### "):
-            _h_text = _HEADING_BOLD_STRIP_RE.sub(r'\1', s[5:])
+            _h_text = _HEADING_BOLD_STRIP_RE.sub(r"\1", s[5:])
             nodes.append({"tag": "h4", "children": [_h_text]})
         elif s.startswith("### "):
-            _h_text = _HEADING_BOLD_STRIP_RE.sub(r'\1', s[4:])
+            _h_text = _HEADING_BOLD_STRIP_RE.sub(r"\1", s[4:])
             nodes.append({"tag": "h4", "children": [_h_text]})
         elif s.startswith("## "):
-            _h_text = _HEADING_BOLD_STRIP_RE.sub(r'\1', s[3:])
+            _h_text = _HEADING_BOLD_STRIP_RE.sub(r"\1", s[3:])
             nodes.append({"tag": "h3", "children": [_h_text]})
         elif s.startswith("# "):
-            _h_text = _HEADING_BOLD_STRIP_RE.sub(r'\1', s[2:])
+            _h_text = _HEADING_BOLD_STRIP_RE.sub(r"\1", s[2:])
             nodes.append({"tag": "h3", "children": [_h_text]})
         # FIX 2026-05-21 #7: ##### и ###### → h4 (вместо <p>)
         elif s.startswith("###### "):
-            _h_text = _HEADING_BOLD_STRIP_RE.sub(r'\1', s[7:])
+            _h_text = _HEADING_BOLD_STRIP_RE.sub(r"\1", s[7:])
             nodes.append({"tag": "h4", "children": [_h_text]})
         elif s.startswith("##### "):
-            _h_text = _HEADING_BOLD_STRIP_RE.sub(r'\1', s[6:])
+            _h_text = _HEADING_BOLD_STRIP_RE.sub(r"\1", s[6:])
             nodes.append({"tag": "h4", "children": [_h_text]})
         elif s in ("---", "***", "___"):
             nodes.append({"tag": "hr"})
         elif s.startswith("> "):
             _bq_text = s[2:]
-            _bq_has_rtl = bool(re.search(r'[\u0590-\u05FF\u0600-\u06FF]', _bq_text))
+            _bq_has_rtl = bool(re.search(r"[\u0590-\u05FF\u0600-\u06FF]", _bq_text))
             if _bq_has_rtl:
                 _bq_text = _fix_rtl_in_text(_bq_text)
             _bq_node = {"tag": "blockquote", "children": _md_parse_inline(_bq_text)}
             if _bq_has_rtl:
                 _bq_node["attrs"] = {"dir": "ltr"}
             nodes.append(_bq_node)
-        elif re.match(r'^\d+\.\s', s):
-            num_m = re.match(r'^(\d+)\.\s+(.*)', s)
+        elif re.match(r"^\d+\.\s", s):
+            num_m = re.match(r"^(\d+)\.\s+(.*)", s)
             if num_m:
                 _num, _rest = num_m.group(1), num_m.group(2)
                 _rest_stripped = _rest.lstrip()
                 # Если _rest — только жирный заголовок (**Title.**) без текста после —
                 # вливаем номер прямо внутрь <b>, чтобы получился один тег: <b>1. Title.</b>
                 # Иначе два соседних <b> рендерятся в Telegraph непоследовательно.
-                _only_bold = re.match(r'^\*\*([^*]+)\*\*\.?$', _rest_stripped)
+                _only_bold = re.match(r"^\*\*([^*]+)\*\*\.?$", _rest_stripped)
                 if _only_bold:
-                    _title = _rest_stripped[2:].rstrip('*').rstrip('.')
-                    _ob_node = {"tag": "p", "children": [
-                        {"tag": "b", "children": [f"{_num}. {_title}."]}
-                    ]}
-                    if re.search(r'[֐-׿؀-ۿ]', _title):
+                    _title = _rest_stripped[2:].rstrip("*").rstrip(".")
+                    _ob_node = {"tag": "p", "children": [{"tag": "b", "children": [f"{_num}. {_title}."]}]}
+                    if re.search(r"[֐-׿؀-ۿ]", _title):
                         _ob_node["attrs"] = {"dir": "ltr"}
                     nodes.append(_ob_node)
                 elif _rest_stripped.startswith("**"):
                     # Заголовок + текст: сливаем номер в первый <b>
                     _inline = _md_parse_inline(_rest_stripped)
-                    _inline_has_rtl = bool(re.search(r'[\u0590-\u05FF\u0600-\u06FF]', _rest_stripped))
+                    _inline_has_rtl = bool(re.search(r"[\u0590-\u05FF\u0600-\u06FF]", _rest_stripped))
                     if _inline and isinstance(_inline[0], dict) and _inline[0].get("tag") == "b":
                         _inline[0]["children"] = [f"{_num}. "] + _inline[0]["children"]
                         _p_inl = {"tag": "p", "children": _inline}
@@ -305,29 +330,30 @@ def _md_to_telegraph_nodes(md: str) -> list:
                             _p_inl["attrs"] = {"dir": "ltr"}
                         nodes.append(_p_inl)
                     else:
-                        _p_inl2 = {"tag": "p", "children":
-                            [{"tag": "b", "children": [f"{_num}. "]}] + _inline}
+                        _p_inl2 = {"tag": "p", "children": [{"tag": "b", "children": [f"{_num}. "]}] + _inline}
                         if _inline_has_rtl:
                             _p_inl2["attrs"] = {"dir": "ltr"}
                         nodes.append(_p_inl2)
                 else:
-                    _num_has_rtl = bool(re.search(r'[\u0590-\u05FF\u0600-\u06FF]', _rest))
+                    _num_has_rtl = bool(re.search(r"[\u0590-\u05FF\u0600-\u06FF]", _rest))
                     if _num_has_rtl:
                         _rest = _fix_rtl_in_text(_rest)
-                    _num_node = {"tag": "p", "children":
-                        [{"tag": "b", "children": [f"{_num}.\u00a0"]}] + _md_parse_inline(_rest)
+                    _num_node = {
+                        "tag": "p",
+                        "children": [{"tag": "b", "children": [f"{_num}.\u00a0"]}] + _md_parse_inline(_rest),
                     }
                     if _num_has_rtl:
                         _num_node["attrs"] = {"dir": "ltr"}
                     nodes.append(_num_node)
             else:
-                nodes.append({"tag": "p", "children": _md_parse_inline(re.sub(r'^\d+\.\s', '', s))})
+                nodes.append({"tag": "p", "children": _md_parse_inline(re.sub(r"^\d+\.\s", "", s))})
         elif s.startswith(("- ", "• ", "· ")) or (
-            s.startswith("* ") and not s.endswith("*/") and
-            not (re.search(r'(?<!\*)\*\s*$', s) and not re.search(r'\*\*\s*$', s))
+            s.startswith("* ")
+            and not s.endswith("*/")
+            and not (re.search(r"(?<!\*)\*\s*$", s) and not re.search(r"\*\*\s*$", s))
         ):  # "* " как список; исключаем CSS-комментарии и курсив-обёртки "* весь текст *"
             _li_text = s[2:]
-            _li_has_rtl = bool(re.search(r'[\u0590-\u05FF\u0600-\u06FF]', _li_text))
+            _li_has_rtl = bool(re.search(r"[\u0590-\u05FF\u0600-\u06FF]", _li_text))
             if _li_has_rtl:
                 _li_text = _fix_rtl_in_text(_li_text)
             _li_node = {"tag": "p", "children": ["• "] + _md_parse_inline(_li_text)}
@@ -338,16 +364,19 @@ def _md_to_telegraph_nodes(md: str) -> list:
             # Обычный абзац — сохраняем как единый <p>, не дробим на предложения.
             # dir="ltr" для строк содержащих RTL-символы (иврит, арабский) —
             # иначе браузер переключает выравнивание всего абзаца вправо.
-            _has_rtl = bool(re.search(r'[\u0590-\u05FF\u0600-\u06FF]', s))
+            _has_rtl = bool(re.search(r"[\u0590-\u05FF\u0600-\u06FF]", s))
             _s_for_parse = _fix_rtl_in_text(s) if _has_rtl else s
             _p_children = _md_parse_inline(_s_for_parse)
             # v10b RTL FIX: если первый child — dict (bold/italic) с ивритом,
             # браузер BiDi считает весь абзац RTL и «улетает» вправо.
             # Вставляем LTR Mark (U+200E) первым символом → абзац остаётся LTR.
             # Telegraph strips dir="ltr" attr, поэтому только текстовый якорь работает.
-            if (_has_rtl and _p_children
-                    and isinstance(_p_children[0], dict)
-                    and _p_children[0].get("tag") in ("b", "i")):
+            if (
+                _has_rtl
+                and _p_children
+                and isinstance(_p_children[0], dict)
+                and _p_children[0].get("tag") in ("b", "i")
+            ):
                 _p_children = ["\u200e"] + _p_children
             _p_node = {"tag": "p", "children": _p_children}
             if _has_rtl:
@@ -419,7 +448,7 @@ def _clean_telegraph_nodes(nodes: list) -> list:
                 cleaned.pop(0)
                 continue
             # Убираем строки с датами типа "March 15 at 18:55"
-            if re.search(r'\w+\s+\d{1,2}\s+at\s+\d{1,2}:\d{2}', text, re.IGNORECASE):
+            if re.search(r"\w+\s+\d{1,2}\s+at\s+\d{1,2}:\d{2}", text, re.IGNORECASE):
                 cleaned.pop(0)
                 continue
         break
@@ -436,21 +465,24 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
 
     # Ядерная чистка: убираем Cocoon AI и мусор из всех нод и title
     _dirty_phrases = [
-        "Cocoon AI Summary", "Cocoon AI", "cocoon ai summary", "cocoon ai",
-        "AI Summary", "Content Summary", "Auto-generated summary", "Auto-Generated Summary",
+        "Cocoon AI Summary",
+        "Cocoon AI",
+        "cocoon ai summary",
+        "cocoon ai",
+        "AI Summary",
+        "Content Summary",
+        "Auto-generated summary",
+        "Auto-Generated Summary",
     ]
     for _phrase in _dirty_phrases:
         title = title.replace(_phrase, "").strip()
     try:
-
         _raw = json.dumps(nodes, ensure_ascii=False)
         for _phrase in _dirty_phrases:
             _raw = _raw.replace(_phrase, "")
         nodes = json.loads(_raw)
         # Убираем пустые ноды после чистки
-        nodes = [n for n in nodes if n and (
-            not isinstance(n, dict) or n.get("children", [True])
-        )]
+        nodes = [n for n in nodes if n and (not isinstance(n, dict) or n.get("children", [True]))]
     except Exception:
         pass
 
@@ -470,14 +502,21 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
         # терялась навсегда, хотя 5 секунд ожидания решали проблему.
         for _attempt in range(3):
             try:
-                resp = await loop.run_in_executor(None, lambda: requests.post(
-                    "https://api.telegra.ph/createPage",
-                    json={"access_token": token, "title": t,
-                          "author_name": safe_author,
-                          "author_url": safe_author_url,
-                          "content": ns, "return_content": False},
-                    timeout=30,
-                ))
+                resp = await loop.run_in_executor(
+                    None,
+                    lambda: requests.post(
+                        "https://api.telegra.ph/createPage",
+                        json={
+                            "access_token": token,
+                            "title": t,
+                            "author_name": safe_author,
+                            "author_url": safe_author_url,
+                            "content": ns,
+                            "return_content": False,
+                        },
+                        timeout=30,
+                    ),
+                )
                 status_code = getattr(resp, "status_code", None)
                 try:
                     data = resp.json()
@@ -485,7 +524,7 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
                     last_err = f"HTTP {status_code}: invalid JSON ({json_error})"
                     if (status_code in {408, 425, 429} or bool(status_code and status_code >= 500)) and _attempt < 2:
                         logger.warning("Telegraph transient HTTP %s with invalid JSON — retry", status_code)
-                        await asyncio.sleep(2 ** _attempt)
+                        await asyncio.sleep(2**_attempt)
                         continue
                     return None, last_err
                 if data.get("ok"):
@@ -495,14 +534,14 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
                 if (status_code in {408, 425, 429} or bool(status_code and status_code >= 500)) and not _has_flood_wait:
                     if _attempt < 2:
                         logger.warning("Telegraph transient HTTP %s: %s — retry", status_code, last_err)
-                        await asyncio.sleep(2 ** _attempt)
+                        await asyncio.sleep(2**_attempt)
                         continue
                     return None, last_err or f"HTTP {status_code}"
             except (requests.Timeout, requests.ConnectionError, OSError) as e:
                 last_err = str(e)
                 logger.warning(f"Telegraph transient error: {e}")
                 if _attempt < 2:
-                    await asyncio.sleep(2 ** _attempt)
+                    await asyncio.sleep(2**_attempt)
                     continue
                 return None, last_err
             except Exception as e:
@@ -573,7 +612,8 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
     if not _all_ok:
         logger.warning(
             "Telegraph: '%s' опубликован НЕ полностью (%d частей) — TOC неполный",
-            title, len(parts_urls),
+            title,
+            len(parts_urls),
         )
     if len(parts_urls) == 1:
         return parts_urls[0][1]
@@ -581,18 +621,27 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
     # Оглавление
     toc_nodes = [{"tag": "hr"}]
     for num, part_url in parts_urls:
-        toc_nodes.append({"tag": "p", "children": [
-            {"tag": "a", "attrs": {"href": part_url}, "children": [f"Часть {num}"]}
-        ]})
+        toc_nodes.append(
+            {"tag": "p", "children": [{"tag": "a", "attrs": {"href": part_url}, "children": [f"Часть {num}"]}]}
+        )
     toc_title = compose_telegraph_title(title, " — Содержание")
     toc_url, _ = await _post_once(toc_title, toc_nodes)
     return toc_url
 
 
-async def create_telegraph_synopsis(mp3_path, title, performer, duration, url="",
-                                     existing_audio_part=None, existing_client=None,
-                                     ai_data=None, rutube_url="", vk_url="",
-                                     source_lang: str = ""):
+async def create_telegraph_synopsis(
+    mp3_path,
+    title,
+    performer,
+    duration,
+    url="",
+    existing_audio_part=None,
+    existing_client=None,
+    ai_data=None,
+    rutube_url="",
+    vk_url="",
+    source_lang: str = "",
+):
     """
     v2.1 — Format-aware конспект в Telegraph.
 
@@ -615,65 +664,70 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             _duration = 0
 
         duration_str = format_timestamp(_duration)
-        _fmt         = (ai_data or {}).get("format", "other") or "other"
-        _timestamps  = (ai_data or {}).get("timestamps", "") or ""
+        _fmt = (ai_data or {}).get("format", "other") or "other"
+        _timestamps = (ai_data or {}).get("timestamps", "") or ""
         _real_author = normalize_author_name((ai_data or {}).get("real_author") or performer)
-        author       = _real_author or normalize_author_name(performer) or "Проповедь"
-        _real_title  = normalize_title_text((ai_data or {}).get("real_title") or "") or ""
+        author = _real_author or normalize_author_name(performer) or "Проповедь"
+        _real_title = normalize_title_text((ai_data or {}).get("real_title") or "") or ""
         prompt_title = _real_title or normalize_title_text(title) or title
         prompt_title = title_case_fragment(prompt_title)
-        tg_title     = prompt_title
+        tg_title = prompt_title
         if author and author != "Проповедь":
             tg_title = join_title_author(tg_title, author)
         tg_title = tg_title[:256]  # fix #12: Telegraph API ограничение 256 символов
 
-        is_qa = (_fmt == "qa")
+        is_qa = _fmt == "qa"
         _ts_lines = [l.strip() for l in _timestamps.splitlines() if l.strip()]
 
         if is_qa and _ts_lines:
             timestamps_block = "\n".join(f"- {l}" for l in _ts_lines)
             _qa_prompt_template = SYNOPSIS_PROMPT_QA
             logger.info("Synopsis QA: единый промпт для всех вызовов")
-            prompt = SYNOPSIS_REASONING_FIRST_NOTE + "\n\n" + _qa_prompt_template.format(
-                title=prompt_title,
-                duration=duration_str,
-                timestamps_block=timestamps_block,
+            prompt = (
+                SYNOPSIS_REASONING_FIRST_NOTE
+                + "\n\n"
+                + _qa_prompt_template.format(
+                    title=prompt_title,
+                    duration=duration_str,
+                    timestamps_block=timestamps_block,
+                )
             )
             _syn_profile = get_synopsis_density_profile(_duration)
             _syn_max_tokens = _syn_profile.max_tokens
             logger.info(
-                f"Synopsis: mode=QA format={_fmt} questions={len(_ts_lines)} "
-                f"duration={int(_duration)//60}min"
+                f"Synopsis: mode=QA format={_fmt} questions={len(_ts_lines)} duration={int(_duration) // 60}min"
             )
         else:
             _hm = (ai_data or {}).get("hermeneutic_method") or "mixed"
 
             _syn_profile = get_synopsis_density_profile(_duration)
-            _syn_sections    = _syn_profile.sections
+            _syn_sections = _syn_profile.sections
             _syn_section_len = _syn_profile.section_len
-            _syn_total       = _syn_profile.total_chars
-            _syn_max_tokens  = _syn_profile.max_tokens
+            _syn_total = _syn_profile.total_chars
+            _syn_max_tokens = _syn_profile.max_tokens
             # AUDIT M6: расширили карту format → инструкция. Раньше для
             # sermon/lecture/topical/narrative/testimony в промт уходила
             # пустая строка, и Gemini угадывал голос (1-е лицо vs безличное) по заголовку.
             _format_note_map = {
-                "interview":  "Формат: ИНТЕРВЬЮ — беседа двух людей. Сохраняй диалоговую структуру: голос ведущего и голос гостя, не сводя к монологу.",
+                "interview": "Формат: ИНТЕРВЬЮ — беседа двух людей. Сохраняй диалоговую структуру: голос ведущего и голос гостя, не сводя к монологу.",
                 "discussion": "Формат: ДИСКУССИЯ — несколько участников. Сохраняй обмен позициями, не сглаживай разногласия в единый нарратив.",
-                "sermon":     "Формат: ПРОПОВЕДЬ — гомилетический материал. Сохраняй пасторский голос проповедника и обращения к слушателям (вы/мы), сохраняй риторические повторы.",
-                "lecture":    "Формат: ЛЕКЦИЯ — академический материал. Безличный регистр, чёткая логическая структура, термины не упрощай.",
-                "testimony":  "Формат: СВИДЕТЕЛЬСТВО — личный нарратив. Сохраняй 1-е лицо рассказчика, эмоциональную тональность и хронологию событий.",
-                "topical":    "Формат: ТЕМАТИЧЕСКИЙ ОБЗОР — несколько подтем под общей рамкой. Каждая секция должна заметно отличаться по подтеме.",
-                "narrative":  "Формат: НАРРАТИВ — повествование с сюжетной аркой. Сохраняй порядок событий и ключевые повороты.",
-                "qa":         "Формат: Q&A — вопросы и ответы. Каждая секция = один вопрос + развёрнутый ответ; не объединяй разные вопросы в одну секцию.",
+                "sermon": "Формат: ПРОПОВЕДЬ — гомилетический материал. Сохраняй пасторский голос проповедника и обращения к слушателям (вы/мы), сохраняй риторические повторы.",
+                "lecture": "Формат: ЛЕКЦИЯ — академический материал. Безличный регистр, чёткая логическая структура, термины не упрощай.",
+                "testimony": "Формат: СВИДЕТЕЛЬСТВО — личный нарратив. Сохраняй 1-е лицо рассказчика, эмоциональную тональность и хронологию событий.",
+                "topical": "Формат: ТЕМАТИЧЕСКИЙ ОБЗОР — несколько подтем под общей рамкой. Каждая секция должна заметно отличаться по подтеме.",
+                "narrative": "Формат: НАРРАТИВ — повествование с сюжетной аркой. Сохраняй порядок событий и ключевые повороты.",
+                "qa": "Формат: Q&A — вопросы и ответы. Каждая секция = один вопрос + развёрнутый ответ; не объединяй разные вопросы в одну секцию.",
             }
             _format_note = _format_note_map.get(_fmt, "")
             # BP-01 FIX: передаём primary-анализ в конспект, чтобы
             # Gemini не изобретал материал заново, а достраивал уже известное.
-            _main_topic     = (ai_data.get("main_topic") or "").strip()[:600]
-            _analysis_summ  = (ai_data.get("analysis_summary") or "").strip()[:500]
+            _main_topic = (ai_data.get("main_topic") or "").strip()[:600]
+            _analysis_summ = (ai_data.get("analysis_summary") or "").strip()[:500]
             # argument_arc: available via ai_data if needed later
-            _key_cats_raw   = ai_data.get("key_categories") or []
-            _key_cats_str2  = ", ".join(_key_cats_raw[:6]) if isinstance(_key_cats_raw, list) else str(_key_cats_raw)[:200]
+            _key_cats_raw = ai_data.get("key_categories") or []
+            _key_cats_str2 = (
+                ", ".join(_key_cats_raw[:6]) if isinstance(_key_cats_raw, list) else str(_key_cats_raw)[:200]
+            )
             # Таймкоды из первичного анализа — как якорная сетка
             _ts_raw = ai_data.get("timestamps") or []
             _ts_anchor = ""
@@ -682,7 +736,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 # Preserve the final anchor even when the primary analysis has many timestamps.
                 if len(_ts_raw) > 24 and _ts_raw[-1] not in _ts_source:
                     _ts_source = _ts_source[:-1] + [_ts_raw[-1]]
-                _ts_lines = [f"{t.get('time','?')} — {t.get('topic','')}" for t in _ts_source if isinstance(t, dict)]
+                _ts_lines = [f"{t.get('time', '?')} — {t.get('topic', '')}" for t in _ts_source if isinstance(t, dict)]
                 _ts_anchor = "\n".join(_ts_lines)
             _primary_context = ""
             if _main_topic or _analysis_summ:
@@ -697,9 +751,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                     + "--- КОНЕЦ КОНТЕКСТА ---"
                 )
             _syn_prompt_template = (
-                SYNOPSIS_VERBATIM_PROMPT
-                if _synopsis_verbatim_prompt_enabled()
-                else SYNOPSIS_PROMPT_V2
+                SYNOPSIS_VERBATIM_PROMPT if _synopsis_verbatim_prompt_enabled() else SYNOPSIS_PROMPT_V2
             )
             _verbatim_context = ""
             if _ts_anchor:
@@ -711,7 +763,9 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                     + "--- КОНЕЦ КАРТЫ ---"
                 )
             _syn_format_note = (
-                SYNOPSIS_REASONING_FIRST_NOTE + "\n" + _format_note
+                SYNOPSIS_REASONING_FIRST_NOTE
+                + "\n"
+                + _format_note
                 + (_verbatim_context if _syn_prompt_template is SYNOPSIS_VERBATIM_PROMPT else _primary_context)
             )
             prompt = _syn_prompt_template.format(
@@ -725,7 +779,9 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             )
             logger.info(
                 "Synopsis: mode=normal format=%s hermeneutic=%s duration=%dmin prompt=%s",
-                _fmt, _hm, int(_duration) // 60,
+                _fmt,
+                _hm,
+                int(_duration) // 60,
                 "verbatim" if _syn_prompt_template is SYNOPSIS_VERBATIM_PROMPT else "v2",
             )
 
@@ -737,6 +793,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
         if not is_qa and url:
             try:
                 from services.youtube_transcript import download_youtube_transcript_text
+
                 try:
                     _tr_max = int(os.getenv("SYNOPSIS_YT_TRANSCRIPT_MAX_CHARS", "120000") or "120000")
                 except ValueError:
@@ -782,12 +839,13 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
         if _compacted_prompt.saved_chars:
             logger.info(
                 "Synopsis: prompt compacted %d -> %d chars (removed_lines=%d)",
-                _compacted_prompt.original_chars, _compacted_prompt.compacted_chars,
+                _compacted_prompt.original_chars,
+                _compacted_prompt.compacted_chars,
                 _compacted_prompt.removed_lines,
             )
         prompt = _compacted_prompt.text
 
-        loop   = asyncio.get_running_loop()
+        loop = asyncio.get_running_loop()
         file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
 
         async def _generate_synopsis_content(
@@ -825,7 +883,8 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                         raise
                     logger.warning(
                         "Synopsis structured output failed (%s: %s) — retry legacy JSON config",
-                        type(_schema_err).__name__, str(_schema_err)[:180],
+                        type(_schema_err).__name__,
+                        str(_schema_err)[:180],
                     )
             return await asyncio.wait_for(
                 client.aio.models.generate_content(
@@ -844,7 +903,9 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             if getattr(audio, "state", None) == "FAILED":
                 raise RuntimeError("_synopsis_with_client: файл в состоянии FAILED")
             return await _generate_synopsis_content(
-                client, GEMINI_MODEL, [audio, prompt_text],
+                client,
+                GEMINI_MODEL,
+                [audio, prompt_text],
                 max_tokens=_syn_max_tokens,
                 use_schema=not _transcript_attached,
             )
@@ -875,7 +936,9 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
         if existing_audio_part is not None and existing_client is not None:
             try:
                 response = await _generate_synopsis_content(
-                    existing_client, GEMINI_MODEL, [existing_audio_part, prompt],
+                    existing_client,
+                    GEMINI_MODEL,
+                    [existing_audio_part, prompt],
                     max_tokens=_syn_max_tokens,
                     use_schema=not _transcript_attached,
                 )
@@ -884,6 +947,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 response = None
 
         if response is None:
+
             async def _upload(client):
                 if file_size_mb > 20:
                     uf = await client.aio.files.upload(
@@ -923,19 +987,25 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 and _fallback_model.casefold() != str(GEMINI_MODEL or "").casefold()
             ):
                 logger.warning(
-                    "Synopsis: основная модель недоступна — пробую разрешённый "
-                    "fallback %s (MP3BOT_FALLBACK_MODEL)", _fallback_model,
+                    "Synopsis: основная модель недоступна — пробую разрешённый fallback %s (MP3BOT_FALLBACK_MODEL)",
+                    _fallback_model,
                 )
                 try:
+
                     async def _call_fallback(client):
                         audio = await _upload(client)
                         return await _generate_synopsis_content(
-                            client, _fallback_model, [audio, prompt],
+                            client,
+                            _fallback_model,
+                            [audio, prompt],
                             max_tokens=_syn_max_tokens,
                             use_schema=not _transcript_attached,
                         )
+
                     response = await gemini_generate(
-                        GEMINI_CLIENTS, _call_fallback, model_name=_fallback_model,
+                        GEMINI_CLIENTS,
+                        _call_fallback,
+                        model_name=_fallback_model,
                     )
                     logger.info("Synopsis: fallback модель успешна")
                 except Exception as _fb_err:
@@ -952,8 +1022,12 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
         _obs_video_id = str(getattr(mp3_path, "stem", ""))
         if not synopsis_text:
             await alog_gemini_run(
-                task="synopsis", video_id=_obs_video_id, model=GEMINI_MODEL,
-                thinking_level="high", json_valid=False, error="empty_response",
+                task="synopsis",
+                video_id=_obs_video_id,
+                model=GEMINI_MODEL,
+                thinking_level="high",
+                json_valid=False,
+                error="empty_response",
             )
             return None, None
 
@@ -964,12 +1038,13 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             try:
                 clean = text.strip()
                 clean = re.sub(r"^```[a-z]*\s*", "", clean)
-                clean = re.sub(r"\s*```$",       "", clean).strip()
+                clean = re.sub(r"\s*```$", "", clean).strip()
                 s = clean.find("{")
                 e = clean.rfind("}")
                 if s == -1 or e <= s:
                     return None
-                chunk = clean[s:e + 1]
+                chunk = clean[s : e + 1]
+
                 # Защита: Gemini иногда вставляет реальные переносы строк
                 # внутри JSON-строк — это невалидный JSON. Экранируем их.
                 def _fix_json_newlines(s: str) -> str:
@@ -977,13 +1052,27 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                     while i < len(s):
                         c = s[i]
                         if c == "\\" and i + 1 < len(s):
-                            result.append(c + s[i + 1]); i += 2; continue
-                        if c == '"': in_str = not in_str
-                        if in_str and c == "\n": result.append("\\n"); i += 1; continue
-                        if in_str and c == "\r": result.append("\\r"); i += 1; continue
-                        if in_str and c == "\t": result.append("\\t"); i += 1; continue
-                        result.append(c); i += 1
+                            result.append(c + s[i + 1])
+                            i += 2
+                            continue
+                        if c == '"':
+                            in_str = not in_str
+                        if in_str and c == "\n":
+                            result.append("\\n")
+                            i += 1
+                            continue
+                        if in_str and c == "\r":
+                            result.append("\\r")
+                            i += 1
+                            continue
+                        if in_str and c == "\t":
+                            result.append("\\t")
+                            i += 1
+                            continue
+                        result.append(c)
+                        i += 1
                     return "".join(result)
+
                 try:
                     data = json.loads(chunk)
                 except Exception:
@@ -997,15 +1086,19 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             return t.startswith("{") or '"sections"' in t or '"outline"' in t
 
         sections: list = []
-        outline:  list = []
+        outline: list = []
 
         parsed = _try_parse_synopsis_json(synopsis_text)
         if parsed is not None:
             outline, sections = parsed
             logger.info("Synopsis: JSON распарсен успешно")
             await alog_gemini_response(
-                response=response, task="synopsis", video_id=_obs_video_id,
-                model=GEMINI_MODEL, thinking_level="high", json_valid=True,
+                response=response,
+                task="synopsis",
+                video_id=_obs_video_id,
+                model=GEMINI_MODEL,
+                thinking_level="high",
+                json_valid=True,
             )
         elif _looks_like_json(synopsis_text):
             # Сломанный JSON → один retry с явным указанием на ошибку формата
@@ -1022,13 +1115,16 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 if existing_audio_part is not None and existing_client is not None:
                     try:
                         retry_response = await _generate_synopsis_content(
-                            existing_client, GEMINI_MODEL, [existing_audio_part, retry_prompt],
+                            existing_client,
+                            GEMINI_MODEL,
+                            [existing_audio_part, retry_prompt],
                             max_tokens=_syn_max_tokens,
                             use_schema=not _transcript_attached,
                         )
                     except Exception as re_e:
                         logger.warning(f"Synopsis retry existing_audio_part failed: {re_e}")
                         retry_response = None
+
                 # Определяем _upload_retry здесь — вне условия — чтобы она была
                 # доступна и в _call_synopsis_simple (3-й retry), даже если
                 # 2-й retry прошёл через ветку existing_audio_part и этот блок
@@ -1054,10 +1150,15 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                         return uf
                     else:
                         return types.Part.from_bytes(data=mp3_path.read_bytes(), mime_type="audio/mpeg")
+
                 if retry_response is None:
+
                     async def _call_synopsis_retry(client):
                         return await _synopsis_with_client(client, _upload_retry, retry_prompt, loop)
-                    retry_response = await gemini_generate(GEMINI_CLIENTS, _call_synopsis_retry, model_name=GEMINI_MODEL)
+
+                    retry_response = await gemini_generate(
+                        GEMINI_CLIENTS, _call_synopsis_retry, model_name=GEMINI_MODEL
+                    )
                 retry_text = _extract_response_text(retry_response)
                 parsed_retry = _try_parse_synopsis_json(retry_text)
                 if parsed_retry is not None:
@@ -1072,26 +1173,32 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                         f"Создай краткий конспект материала «{title}» ({duration_str}).\n"
                         "Только валидный JSON без ```json и без текста вне JSON.\n"
                         "Ровно 6 разделов, каждый не более 150 слов.\n\n"
-                        '{\n'
+                        "{\n"
                         '  "outline": [{"title": "...", "time": "0:00"}, ...],\n'
                         '  "sections": [{"title": "...", "time": "0:00", "content": "..."}, ...]\n'
-                        '}'
+                        "}"
                     )
                     simple_response = None
                     try:
                         if existing_audio_part is not None and existing_client is not None:
                             try:
                                 simple_response = await _generate_synopsis_content(
-                                    existing_client, GEMINI_MODEL, [existing_audio_part, simple_prompt],
+                                    existing_client,
+                                    GEMINI_MODEL,
+                                    [existing_audio_part, simple_prompt],
                                     max_tokens=32000,
                                     use_schema=True,
                                 )
                             except Exception:
                                 simple_response = None
                         if simple_response is None:
+
                             async def _call_synopsis_simple(client):
                                 return await _synopsis_with_client(client, _upload_retry, simple_prompt, loop)
-                            simple_response = await gemini_generate(GEMINI_CLIENTS, _call_synopsis_simple, model_name=GEMINI_MODEL)
+
+                            simple_response = await gemini_generate(
+                                GEMINI_CLIENTS, _call_synopsis_simple, model_name=GEMINI_MODEL
+                            )
                         simple_text = _extract_response_text(simple_response)
                         parsed_simple = _try_parse_synopsis_json(simple_text)
                         if parsed_simple is not None:
@@ -1138,10 +1245,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
         sections = [s for s in sections if ((s.get("content") or "").strip() or s.get("blocks"))]
         removed_empty = total_before_filter - len(sections)
         if removed_empty > 0:
-            logger.warning(
-                f"Synopsis v2: удалено пустых sections={removed_empty} "
-                f"из {total_before_filter}"
-            )
+            logger.warning(f"Synopsis v2: удалено пустых sections={removed_empty} из {total_before_filter}")
 
         if not sections:
             logger.warning("Synopsis v2: все sections пусты после фильтрации content — abort")
@@ -1174,16 +1278,15 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
 
         _syn_quality_issues = audit_synopsis_density(sections, _duration)
         if _syn_quality_issues:
-            logger.warning("Synopsis v2: density/coverage audit: %s", format_synopsis_quality_issues(_syn_quality_issues))
+            logger.warning(
+                "Synopsis v2: density/coverage audit: %s", format_synopsis_quality_issues(_syn_quality_issues)
+            )
 
         if (
             _syn_quality_issues
             and _synopsis_density_retry_enabled()
             and should_retry_synopsis_density(_syn_quality_issues, _duration)
-            and (
-                (existing_audio_part is not None and existing_client is not None)
-                or _transcript_attached
-            )
+            and ((existing_audio_part is not None and existing_client is not None) or _transcript_attached)
         ):
             try:
                 _min_section_chars = 700
@@ -1205,6 +1308,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 )
                 if _transcript_attached:
                     logger.info("Synopsis v2: density retry uses transcript-only text path")
+
                     async def _call_density_retry_text(client):
                         return await _generate_synopsis_content(
                             client,
@@ -1213,6 +1317,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                             max_tokens=min(int(_syn_max_tokens * 1.35), 65000),
                             use_schema=False,
                         )
+
                     _retry_resp = await gemini_generate(
                         GEMINI_CLIENTS, _call_density_retry_text, model_name=GEMINI_MODEL
                     )
@@ -1228,7 +1333,11 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 _retry_parsed = _try_parse_synopsis_json(_retry_text)
                 if _retry_parsed is not None:
                     _retry_outline, _retry_sections = _retry_parsed
-                    _retry_sections = [s for s in _retry_sections if isinstance(s, dict) and ((s.get("content") or "").strip() or s.get("blocks"))]
+                    _retry_sections = [
+                        s
+                        for s in _retry_sections
+                        if isinstance(s, dict) and ((s.get("content") or "").strip() or s.get("blocks"))
+                    ]
                     _retry_sections, _retry_outline, _retry_audit = audit_expanded_sections(
                         _retry_sections,
                         _retry_outline if isinstance(_retry_outline, list) else [],
@@ -1253,12 +1362,19 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                         _syn_quality_issues = _retry_quality_issues
                         logger.info(
                             "Synopsis v2: density retry accepted (sections=%d score=%d->%d issues=%d->%d)",
-                            len(sections), _old_score, _new_score, _old_issue_count, _new_issue_count,
+                            len(sections),
+                            _old_score,
+                            _new_score,
+                            _old_issue_count,
+                            _new_issue_count,
                         )
                     else:
                         logger.info(
                             "Synopsis v2: density retry rejected — not denser, not enough issue improvement, or too much thinner (score=%d->%d issues=%d->%d)",
-                            _old_score, _new_score, _old_issue_count, _new_issue_count,
+                            _old_score,
+                            _new_score,
+                            _old_issue_count,
+                            _new_issue_count,
                         )
             except Exception as _density_retry_err:
                 logger.warning("Synopsis v2: density retry failed non-fatally: %s", str(_density_retry_err)[:180])
@@ -1292,23 +1408,25 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
         if outline and len(outline) == len(sections):
             merged = []
             for sec, oi in zip(sections, outline):
-                merged.append({
-                    "title": sec.get("title", ""),
-                    "time":  (sec.get("time") or oi.get("time") or ""),
-                })
+                merged.append(
+                    {
+                        "title": sec.get("title", ""),
+                        "time": (sec.get("time") or oi.get("time") or ""),
+                    }
+                )
             outline = merged
         else:
             # Длины не совпадают — полностью перестраиваем из sections
-            outline = [
-                {"title": sec.get("title", ""), "time": sec.get("time", "")}
-                for sec in sections
-            ]
+            outline = [{"title": sec.get("title", ""), "time": sec.get("time", "")} for sec in sections]
             outline_rebuilt = True
 
         # ── Диагностика ───────────────────────────────────────
         try:
             total_nodes_estimate = _estimate_nodes_v2(
-                sections, url, rutube_url=rutube_url, vk_url=vk_url,
+                sections,
+                url,
+                rutube_url=rutube_url,
+                vk_url=vk_url,
                 duration=int(_duration or 0),
             )
         except Exception:
@@ -1323,13 +1441,8 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
         )
 
         if is_qa:
-            question_like_titles = sum(
-                1 for s in sections
-                if ((s.get("title") or "").strip().endswith("?"))
-            )
-            logger.info(
-                f"Synopsis QA: question_like_titles={question_like_titles}/{len(sections)}"
-            )
+            question_like_titles = sum(1 for s in sections if ((s.get("title") or "").strip().endswith("?")))
+            logger.info(f"Synopsis QA: question_like_titles={question_like_titles}/{len(sections)}")
             if len(sections) >= 3 and question_like_titles < max(1, len(sections) // 2):
                 logger.warning(
                     "Synopsis QA: значительная часть заголовков не выглядит вопросительной — "
@@ -1352,15 +1465,11 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             )
 
         if _duration > 1800 and len(sections) < 4:
-            logger.warning(
-                f"Synopsis v2: мало sections ({len(sections)}) для {mins}мин "
-                f"— возможно неполный конспект"
-            )
+            logger.warning(f"Synopsis v2: мало sections ({len(sections)}) для {mins}мин — возможно неполный конспект")
 
         if _duration > 600 and total_nodes_estimate != -1 and total_nodes_estimate < 20:
             logger.warning(
-                f"Synopsis v2: мало nodes ({total_nodes_estimate}) для {mins}мин "
-                f"— конспект может быть слишком коротким"
+                f"Synopsis v2: мало nodes ({total_nodes_estimate}) для {mins}мин — конспект может быть слишком коротким"
             )
 
         # AUDIT R5 GROUNDING: сохраняем фрагменты финальной стенограммы в
@@ -1404,18 +1513,17 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 return True
 
             sec_offset = sum(len(p[0]) for p in published_parts)
-            sec_range  = f"sections[{sec_offset}..{sec_offset + len(secs) - 1}]"
+            sec_range = f"sections[{sec_offset}..{sec_offset + len(secs) - 1}]"
             part_nodes = []
             for sec_idx, sec in enumerate(secs):
                 if sec_idx > 0:
                     part_nodes.append({"tag": "hr"})
-                part_nodes.extend(_section_to_nodes_v2(sec, yt_url=url,
-                                                        rutube_url=rutube_url, vk_url=vk_url,
-                                                        duration=duration))
+                part_nodes.extend(
+                    _section_to_nodes_v2(sec, yt_url=url, rutube_url=rutube_url, vk_url=vk_url, duration=duration)
+                )
 
             logger.info(
-                f"Synopsis v2 depth={depth}: {sec_range} "
-                f"({len(secs)} secs, {len(part_nodes)} nodes) — публикую..."
+                f"Synopsis v2 depth={depth}: {sec_range} ({len(secs)} secs, {len(part_nodes)} nodes) — публикую..."
             )
             # FIX 2026-05-21 P0 #14: Telegraph path генерируется из title ОДИН РАЗ при createPage
             # и НЕ меняется при editPage. Раньше создавали с " [draft]" → URL навсегда содержал "-draft-DD-MM".
@@ -1442,7 +1550,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             mid = max(1, len(secs) // 2)
             logger.info(
                 f"Synopsis v2 depth={depth}: {sec_range} CONTENT_TOO_BIG "
-                f"({len(part_nodes)} nodes) → делю [{mid}]+[{len(secs)-mid}]"
+                f"({len(part_nodes)} nodes) → делю [{mid}]+[{len(secs) - mid}]"
             )
             ok_left = await _publish_recursive(secs[:mid], depth + 1)
             if not ok_left:
@@ -1470,29 +1578,36 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             for _cidx, _csec in enumerate(_combined_secs):
                 if _cidx > 0:
                     _combined_nodes.append({"tag": "hr"})
-                _combined_nodes.extend(_section_to_nodes_v2(
-                    _csec, yt_url=url, rutube_url=rutube_url, vk_url=vk_url, duration=duration,
-                ))
-            _merged_result = await _edit_telegraph_page_classified(
-                _prev_url, tg_title, author, _combined_nodes, loop
-            )
+                _combined_nodes.extend(
+                    _section_to_nodes_v2(
+                        _csec,
+                        yt_url=url,
+                        rutube_url=rutube_url,
+                        vk_url=vk_url,
+                        duration=duration,
+                    )
+                )
+            _merged_result = await _edit_telegraph_page_classified(_prev_url, tg_title, author, _combined_nodes, loop)
             if not _merged_result.ok:
                 if _merged_result.error != "CONTENT_TOO_BIG":
                     logger.warning(
                         "Synopsis v2: merge edit failed for %s: %s",
-                        _prev_url, _merged_result.error,
+                        _prev_url,
+                        _merged_result.error,
                     )
                 break
             logger.info(
                 "Synopsis v2: слил хвостовую часть (%d secs) в предыдущую — частей стало %d вместо %d",
-                len(_last_secs), len(published_parts) - 1, len(published_parts),
+                len(_last_secs),
+                len(published_parts) - 1,
+                len(published_parts),
             )
             published_parts[-2] = (_combined_secs, _prev_url)
             published_parts.pop()
 
-        total      = len(published_parts)
-        parts      = [p[0]   for p in published_parts]
-        parts_urls = [p[1]   for p in published_parts]
+        total = len(published_parts)
+        parts = [p[0] for p in published_parts]
+        parts_urls = [p[1] for p in published_parts]
 
         logger.info(f"Synopsis v2: опубликовано {total} частей")
 
@@ -1500,8 +1615,9 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
         # V3-P16: пауза перед editPage — Telegraph rate limit после быстрой публикации.
         # Без паузы editPage падает 3/3 при >50 nodes (0.7с между create и edit).
 
-        async def _build_part_nodes_edit(i: int, part_secs: list, part_title: str,
-                                          *, include_outline: bool = True) -> list:
+        async def _build_part_nodes_edit(
+            i: int, part_secs: list, part_title: str, *, include_outline: bool = True
+        ) -> list:
             _nodes: list = []
             if include_outline:
                 if i == 0:
@@ -1523,11 +1639,13 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                             _secs = time_to_seconds(_ps_time)
                             if _secs is not None and url:
                                 _children.append(" — ⏱\xa0")
-                                _children.append({
-                                    "tag": "a",
-                                    "attrs": {"href": get_youtube_timestamp_url(url, _secs)},
-                                    "children": [_ps_time],
-                                })
+                                _children.append(
+                                    {
+                                        "tag": "a",
+                                        "attrs": {"href": get_youtube_timestamp_url(url, _secs)},
+                                        "children": [_ps_time],
+                                    }
+                                )
                             else:
                                 _children.append(f" — ⏱ {_ps_time}")
                         _mini_outline.append({"tag": "p", "children": _children})
@@ -1537,22 +1655,24 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
             for sec_idx, sec in enumerate(part_secs):
                 if sec_idx > 0:
                     _nodes.append({"tag": "hr"})
-                _nodes.extend(_section_to_nodes_v2(sec, yt_url=url,
-                                                    rutube_url=rutube_url, vk_url=vk_url,
-                                                    page_title=part_title, duration=duration))
+                _nodes.extend(
+                    _section_to_nodes_v2(
+                        sec, yt_url=url, rutube_url=rutube_url, vk_url=vk_url, page_title=part_title, duration=duration
+                    )
+                )
             if total > 1:
                 _nodes.extend(_build_nav_nodes_v2(i, total, parts_urls))
 
             # FEATURE 2026-06-11: Блок «Читать также» в самом конце материала
             if i == total - 1:
                 try:
-                    _video_id = str(getattr(mp3_path, 'stem', ''))
+                    _video_id = str(getattr(mp3_path, "stem", ""))
                     _scripture_refs = extract_scripture_refs(ai_data)
                     _related = await aget_related_materials(
                         author=author,
                         scripture=(_scripture_refs[0] if _scripture_refs else ""),
                         exclude_video_id=_video_id,
-                        limit=3
+                        limit=3,
                     )
                     if _related:
                         _nodes.extend(_build_related_materials_nodes(_related))
@@ -1562,7 +1682,7 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
 
         await asyncio.sleep(2)
         for i, (part_secs, page_url) in enumerate(published_parts):
-            part_num   = i + 1
+            part_num = i + 1
             # FIX AUDIT R4: суффикс [N/M] не должен выталкивать итоговый
             # заголовок за лимит Telegraph 256 — editPage падал 3/3, и части
             # оставались без TOC/навигации.
@@ -1570,12 +1690,10 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 part_title = tg_title
             else:
                 _sfx = f" [{part_num}/{total}]"
-                part_title = tg_title[:256 - len(_sfx)] + _sfx
+                part_title = tg_title[: 256 - len(_sfx)] + _sfx
 
             nodes_edit = await _build_part_nodes_edit(i, part_secs, part_title)
-            edit_result = await _edit_telegraph_page_classified(
-                page_url, part_title, author, nodes_edit, loop
-            )
+            edit_result = await _edit_telegraph_page_classified(page_url, part_title, author, nodes_edit, loop)
             ok = edit_result.ok
 
             # CONTENT_TOO_BIG is deterministic for an identical payload. Do not
@@ -1585,23 +1703,22 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
                 logger.warning(
                     "Synopsis v2: editPage часть %d/%d CONTENT_TOO_BIG — "
                     "сразу пересобираю без оглавления (контент сохраняем)",
-                    part_num, total,
+                    part_num,
+                    total,
                 )
-                nodes_edit = await _build_part_nodes_edit(
-                    i, part_secs, part_title, include_outline=False
-                )
-                edit_result = await _edit_telegraph_page_classified(
-                    page_url, part_title, author, nodes_edit, loop
-                )
+                nodes_edit = await _build_part_nodes_edit(i, part_secs, part_title, include_outline=False)
+                edit_result = await _edit_telegraph_page_classified(page_url, part_title, author, nodes_edit, loop)
                 ok = edit_result.ok
 
             if ok:
                 logger.info(f"Synopsis v2: editPage часть {part_num}/{total} → {page_url}")
             else:
                 logger.warning(
-                    "Synopsis v2: editPage часть %d/%d окончательно failed (%s), "
-                    "page content may stay outdated: %s",
-                    part_num, total, edit_result.error, page_url,
+                    "Synopsis v2: editPage часть %d/%d окончательно failed (%s), page content may stay outdated: %s",
+                    part_num,
+                    total,
+                    edit_result.error,
+                    page_url,
                 )
 
         return parts_urls[0], outline
@@ -1619,6 +1736,3 @@ async def create_telegraph_synopsis(mp3_path, title, performer, duration, url=""
 
 
 # ─── Видимая длина HTML-caption и умная обрезка ──────────────
-
-
-

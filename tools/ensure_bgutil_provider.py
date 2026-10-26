@@ -6,6 +6,7 @@ repo-local source checkout under .runtime/. Nothing from the bgutil PyPI wheel i
 required at runtime, which prevents plugin/server drift and keeps one immutable
 upstream commit as the supply-chain identity.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -37,6 +38,7 @@ from core.bgutil_pin import (
     bgutil_pin_problems,
     marker_text,
 )
+
 RUNTIME_ROOT = PROJECT_ROOT / ".runtime"
 PROVIDER_ROOT = RUNTIME_ROOT / "bgutil-ytdlp-pot-provider"
 SERVER_ROOT = PROVIDER_ROOT / "server"
@@ -59,9 +61,7 @@ class ProvisionError(RuntimeError):
     """Raised when the pinned provider cannot be provisioned safely."""
 
 
-def _platform_command(
-    command: list[str], *, platform_name: str | None = None
-) -> list[str]:
+def _platform_command(command: list[str], *, platform_name: str | None = None) -> list[str]:
     """Wrap Windows .cmd/.bat shims explicitly through cmd.exe."""
     if not command:
         raise ProvisionError("empty command")
@@ -93,13 +93,9 @@ def _owned_run(
             )
         )
     except subprocess.TimeoutExpired as exc:
-        raise ProvisionError(
-            f"command timed out after {timeout:g}s: {' '.join(command)}"
-        ) from exc
+        raise ProvisionError(f"command timed out after {timeout:g}s: {' '.join(command)}") from exc
     except (OSError, RuntimeError) as exc:
-        raise ProvisionError(
-            f"command process tree could not be owned safely: {' '.join(command)}"
-        ) from exc
+        raise ProvisionError(f"command process tree could not be owned safely: {' '.join(command)}") from exc
 
 
 def _run(
@@ -116,18 +112,13 @@ def _run(
         capture_output=False,
     )
     if proc.returncode:
-        raise ProvisionError(
-            f"command failed ({proc.returncode}): {' '.join(command)}"
-        )
+        raise ProvisionError(f"command failed ({proc.returncode}): {' '.join(command)}")
 
 
 def _node_executable() -> str:
     node = shutil.which("node")
     if not node:
-        raise ProvisionError(
-            "Node.js не найден. Exact-source YouTube PO Token runtime требует "
-            "Node.js >=22."
-        )
+        raise ProvisionError("Node.js не найден. Exact-source YouTube PO Token runtime требует Node.js >=22.")
     process = _owned_run([node, "--version"], timeout=5)
     version = (process.stdout or process.stderr or "").strip().lstrip("v")
     try:
@@ -137,9 +128,7 @@ def _node_executable() -> str:
     if process.returncode:
         raise ProvisionError("Не удалось запустить Node.js")
     if major < BGUTIL_MIN_NODE_MAJOR:
-        raise ProvisionError(
-            f"Node.js {version} < {BGUTIL_MIN_NODE_MAJOR}; обнови Node.js"
-        )
+        raise ProvisionError(f"Node.js {version} < {BGUTIL_MIN_NODE_MAJOR}; обнови Node.js")
     return node
 
 
@@ -156,9 +145,7 @@ def _npm_executable() -> str:
     if process.returncode:
         raise ProvisionError("Не удалось запустить npm")
     if major < BGUTIL_MIN_NPM_MAJOR:
-        raise ProvisionError(
-            f"npm {version} < {BGUTIL_MIN_NPM_MAJOR}; обнови npm/Node.js"
-        )
+        raise ProvisionError(f"npm {version} < {BGUTIL_MIN_NPM_MAJOR}; обнови npm/Node.js")
     return npm
 
 
@@ -208,8 +195,7 @@ def _require_dependency_metadata(server: Path) -> str:
     actual_version = str(package.get("version") or "").strip()
     if actual_version != BGUTIL_VERSION:
         raise ProvisionError(
-            "bgutil package metadata version drift: "
-            f"expected={BGUTIL_VERSION} actual={actual_version or 'unknown'}"
+            f"bgutil package metadata version drift: expected={BGUTIL_VERSION} actual={actual_version or 'unknown'}"
         )
 
     source_packages = source_lock.get("packages")
@@ -232,10 +218,7 @@ def _require_dependency_metadata(server: Path) -> str:
         if not isinstance(relative_name, str) or not relative_name.startswith("node_modules/"):
             continue
         if not (server / relative_name).exists():
-            raise ProvisionError(
-                "bgutil node_modules is incomplete; missing installed package: "
-                f"{relative_name}"
-            )
+            raise ProvisionError(f"bgutil node_modules is incomplete; missing installed package: {relative_name}")
 
     # Direct runtime dependencies are also checked against both source and
     # installed lock versions plus their installed package metadata.
@@ -244,9 +227,7 @@ def _require_dependency_metadata(server: Path) -> str:
         source_entry = source_packages.get(lock_key)
         installed_entry = installed_packages.get(lock_key)
         if not isinstance(source_entry, dict) or not isinstance(installed_entry, dict):
-            raise ProvisionError(
-                f"bgutil npm lock missing direct dependency metadata: {dependency}"
-            )
+            raise ProvisionError(f"bgutil npm lock missing direct dependency metadata: {dependency}")
         expected_version = str(source_entry.get("version") or "").strip()
         installed_lock_version = str(installed_entry.get("version") or "").strip()
         dependency_dir = node_modules.joinpath(*dependency.split("/"))
@@ -290,10 +271,7 @@ def _require_script_version(
     if process.returncode != 0:
         detail = (stderr or stdout)[-900:]
         suffix = f" Детали: {detail}" if detail else ""
-        raise ProvisionError(
-            "compiled bgutil runtime не проходит offline syntax check."
-            + suffix
-        )
+        raise ProvisionError("compiled bgutil runtime не проходит offline syntax check." + suffix)
 
     server = Path(cwd)
     metadata_present = (
@@ -405,9 +383,7 @@ def _provision_lock(*, wait_seconds: float = _LOCK_WAIT_SEC):
                 break
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                raise ProvisionError(
-                    f"Другая установка bgutil runtime не завершилась за {wait:g} секунд"
-                )
+                raise ProvisionError(f"Другая установка bgutil runtime не завершилась за {wait:g} секунд")
             time.sleep(min(_LOCK_POLL_SEC, remaining))
 
         yield
@@ -462,12 +438,8 @@ def _publish_staging(staging: Path) -> None:
             except OSError as rollback_exc:
                 rollback_error = rollback_exc
         if rollback_error is not None:
-            raise ProvisionError(
-                "Не удалось опубликовать новый bgutil runtime и откатить старый"
-            ) from rollback_error
-        raise ProvisionError(
-            "Не удалось атомарно опубликовать подготовленный bgutil runtime"
-        ) from exc
+            raise ProvisionError("Не удалось опубликовать новый bgutil runtime и откатить старый") from rollback_error
+        raise ProvisionError("Не удалось атомарно опубликовать подготовленный bgutil runtime") from exc
     else:
         if backup.exists():
             shutil.rmtree(backup, ignore_errors=True)
@@ -488,9 +460,7 @@ def _require_patched_pin() -> None:
     problems = bgutil_pin_problems()
     if problems:
         raise ProvisionError(
-            "bgutil pin rejected: "
-            + "; ".join(problems)
-            + f". Security advisory: {BGUTIL_SECURITY_ADVISORY}"
+            "bgutil pin rejected: " + "; ".join(problems) + f". Security advisory: {BGUTIL_SECURITY_ADVISORY}"
         )
 
 
@@ -511,9 +481,7 @@ def ensure_bgutil_provider() -> Path:
         if _current_runtime_healthy(node):
             return SERVER_ROOT
 
-        staging = RUNTIME_ROOT / (
-            f".bgutil-{BGUTIL_COMMIT[:12]}-{os.getpid()}-{uuid.uuid4().hex[:8]}.tmp"
-        )
+        staging = RUNTIME_ROOT / (f".bgutil-{BGUTIL_COMMIT[:12]}-{os.getpid()}-{uuid.uuid4().hex[:8]}.tmp")
         print(
             "[SETUP] Installing exact-source browserless YouTube PO Token runtime "
             f"{BGUTIL_VERSION}@{BGUTIL_COMMIT[:8]}..."
@@ -532,17 +500,9 @@ def ensure_bgutil_provider() -> Path:
                     f"expected={BGUTIL_COMMIT} actual={head or 'unknown'}"
                 )
 
-            plugin_entry = (
-                staging
-                / "plugin"
-                / "yt_dlp_plugins"
-                / "extractor"
-                / "getpot_bgutil.py"
-            )
+            plugin_entry = staging / "plugin" / "yt_dlp_plugins" / "extractor" / "getpot_bgutil.py"
             if not plugin_entry.is_file():
-                raise ProvisionError(
-                    "bgutil source checkout does not contain the yt-dlp plugin"
-                )
+                raise ProvisionError("bgutil source checkout does not contain the yt-dlp plugin")
 
             server = staging / "server"
             _run(
@@ -553,29 +513,20 @@ def ensure_bgutil_provider() -> Path:
             tsc_name = "tsc.cmd" if os.name == "nt" else "tsc"
             tsc = server / "node_modules" / ".bin" / tsc_name
             if not tsc.is_file():
-                raise ProvisionError(
-                    "bgutil npm ci не установил pinned local TypeScript compiler"
-                )
+                raise ProvisionError("bgutil npm ci не установил pinned local TypeScript compiler")
             _run([str(tsc)], cwd=server, timeout=_BUILD_TIMEOUT_SEC)
             generated = server / "build" / "generate_once.js"
             if not generated.is_file():
-                raise ProvisionError(
-                    "bgutil build завершился без build/generate_once.js"
-                )
+                raise ProvisionError("bgutil build завершился без build/generate_once.js")
             _require_script_version(node, script=generated, cwd=server)
 
-            (staging / ".mp3bot-bgutil-version").write_text(
-                marker_text() + "\n", encoding="utf-8"
-            )
+            (staging / ".mp3bot-bgutil-version").write_text(marker_text() + "\n", encoding="utf-8")
             _publish_staging(staging)
         except Exception:
             shutil.rmtree(staging, ignore_errors=True)
             raise
 
-    print(
-        f"[SETUP] Exact-source bgutil {BGUTIL_VERSION}@{BGUTIL_COMMIT[:8]} ready: "
-        f"{SERVER_ROOT}"
-    )
+    print(f"[SETUP] Exact-source bgutil {BGUTIL_VERSION}@{BGUTIL_COMMIT[:8]} ready: {SERVER_ROOT}")
     return SERVER_ROOT
 
 

@@ -66,14 +66,8 @@ def test_browser_profile_parser_preserves_windows_drive() -> None:
     from services import ffmpeg
 
     windows_profile = r"C:\Users\Fedor\AppData\Roaming\Mozilla\Firefox\Profiles\abc.default"
-    assert (
-        ffmpeg._browser_profile_from_spec(f"firefox:{windows_profile}")
-        == windows_profile
-    )
-    assert (
-        ffmpeg._browser_profile_from_spec("firefox:/tmp/profile::basictext")
-        == "/tmp/profile"
-    )
+    assert ffmpeg._browser_profile_from_spec(f"firefox:{windows_profile}") == windows_profile
+    assert ffmpeg._browser_profile_from_spec("firefox:/tmp/profile::basictext") == "/tmp/profile"
     assert ffmpeg._browser_profile_from_spec("firefox") == ""
 
 

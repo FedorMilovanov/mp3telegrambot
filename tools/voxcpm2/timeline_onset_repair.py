@@ -8,6 +8,7 @@ for hours is unnecessary: when every non-timing check passes and the ending has
 safe room, this module shifts the existing PCM earlier inside the same immutable
 SRT window and leaves synthesis checkpoints untouched.
 """
+
 from __future__ import annotations
 
 import json
@@ -179,9 +180,7 @@ def repair_timeline_onsets(
         )
 
     if repairs:
-        temporary = timeline.with_name(
-            timeline.stem + ".onset-repair.tmp" + timeline.suffix
-        )
+        temporary = timeline.with_name(timeline.stem + ".onset-repair.tmp" + timeline.suffix)
         sf.write(
             str(temporary),
             audio,

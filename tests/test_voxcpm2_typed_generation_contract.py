@@ -107,9 +107,7 @@ def test_production_candidate_hook_builds_neutral_request() -> None:
         "cfg": 1.8,
         "steps": 16,
     }
-    assert direct_max_quality_cli.GENERATION_REQUEST_FACTORY_POLICY == (
-        "typed-generation-request-factory-v3"
-    )
+    assert direct_max_quality_cli.GENERATION_REQUEST_FACTORY_POLICY == ("typed-generation-request-factory-v3")
 
 
 def test_canonical_cli_owns_typed_generation_boundary_without_facade() -> None:
@@ -126,9 +124,7 @@ def test_canonical_cli_owns_typed_generation_boundary_without_facade() -> None:
 
 
 def test_adapter_source_has_no_legacy_generation_translation() -> None:
-    source = (ROOT / "services" / "speech_backends" / "voxcpm2.py").read_text(
-        encoding="utf-8"
-    )
+    source = (ROOT / "services" / "speech_backends" / "voxcpm2.py").read_text(encoding="utf-8")
 
     assert "_legacy_request" not in source
     assert "legacy_kwargs" not in source

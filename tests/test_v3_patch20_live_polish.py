@@ -22,9 +22,7 @@ def _flat(node):
 
 def test_normalize_common_typos_for_live_run_words():
     text = "доктлинальным основанием, великими богологами, понимание Божьего Слово"
-    assert normalize_common_typos(text) == (
-        "доктринальным основанием, великими богословами, понимание Божьего Слова"
-    )
+    assert normalize_common_typos(text) == ("доктринальным основанием, великими богословами, понимание Божьего Слова")
 
 
 def test_scrub_inline_applies_common_typos():
@@ -51,6 +49,7 @@ def test_telegraph_postprocess_fixes_typos_in_toc_and_titles():
 
 def test_study_translation_prompt_forbids_bare_headings():
     from core.prompts import STUDY_ANALYSIS_PROMPT
+
     assert "НЕ ОСТАВЛЯЙ ГОЛЫЕ ЗАГОЛОВКИ" in STUDY_ANALYSIS_PROMPT
     assert "Отче наш" in STUDY_ANALYSIS_PROMPT
     assert "Хлеб наш насущный" in STUDY_ANALYSIS_PROMPT
@@ -59,8 +58,9 @@ def test_study_translation_prompt_forbids_bare_headings():
 
 def test_audio_prompt_final_checklist_mentions_summary_fields_and_pompous_labels():
     from core.prompts import build_audio_analysis_prompt
+
     prompt = build_audio_analysis_prompt("T", "", "55:00", 3300, mode="deep")
-    tail = prompt[prompt.find("ФИНАЛЬНАЯ САМОПРОВЕРКА"):]
+    tail = prompt[prompt.find("ФИНАЛЬНАЯ САМОПРОВЕРКА") :]
     assert "analysis_summary" in tail
     assert "argument_arc" in tail
     assert "имя/роль автора" in tail
@@ -69,9 +69,10 @@ def test_audio_prompt_final_checklist_mentions_summary_fields_and_pompous_labels
 
 def test_audio_prompt_example_stays_neutral():
     from core.prompts import build_audio_analysis_prompt
+
     prompt = build_audio_analysis_prompt("T", "", "55:00", 3300, mode="deep")
     example_pos = prompt.find('"main_topic"')
-    example = prompt[example_pos:example_pos + 260]
+    example = prompt[example_pos : example_pos + 260]
     assert "МакАртур задаёт" not in example
     assert "Он вскрывает" not in example
 
@@ -83,10 +84,13 @@ def test_normalize_common_typos_fixes_mixed_greek_cyrillic_terms():
 
 def test_source_map_prefers_original_title_over_invented_russian_title():
     from converters.md_telegraph import _section_to_nodes_v2
-    nodes = _section_to_nodes_v2({
-        "title": "Карта источников для дальнейшего изучения",
-        "content": "• Синклер Фергюсон, _«Искушение молитвой Господней»_ ( _Sinclair Ferguson, The Lord's Prayer_).\n\nОписание.",
-    })
+
+    nodes = _section_to_nodes_v2(
+        {
+            "title": "Карта источников для дальнейшего изучения",
+            "content": "• Синклер Фергюсон, _«Искушение молитвой Господней»_ ( _Sinclair Ferguson, The Lord's Prayer_).\n\nОписание.",
+        }
+    )
     card = next(n for n in nodes if isinstance(n, dict) and n.get("tag") == "p" and _flat(n).startswith("•"))
     flat = _flat(card)
     assert "Искушение молитвой Господней" not in flat

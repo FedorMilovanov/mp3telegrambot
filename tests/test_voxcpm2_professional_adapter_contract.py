@@ -68,12 +68,7 @@ def main():
         ],
     )
 
-    adapter_path = (
-        Path(__file__).resolve().parents[1]
-        / "tools"
-        / "voxcpm2"
-        / "voxcpm2_professional_adapter_v45.py"
-    )
+    adapter_path = Path(__file__).resolve().parents[1] / "tools" / "voxcpm2" / "voxcpm2_professional_adapter_v45.py"
     namespace = runpy.run_path(str(adapter_path), run_name="adapter_contract_test")
     adapter_globals = namespace["main"].__globals__
 
@@ -147,12 +142,7 @@ def main():
     monkeypatch.setenv("VOXCPM_ORIGINAL_RENDERER", str(original))
     monkeypatch.setenv("HOOK_MARKER", str(marker))
 
-    renderer_path = (
-        Path(__file__).resolve().parents[1]
-        / "tools"
-        / "voxcpm2"
-        / "voxcpm2_quality_v4_renderer.py"
-    )
+    renderer_path = Path(__file__).resolve().parents[1] / "tools" / "voxcpm2" / "voxcpm2_quality_v4_renderer.py"
     namespace = runpy.run_path(str(renderer_path), run_name="quality_v4_contract_test")
     namespace["main"]()
 

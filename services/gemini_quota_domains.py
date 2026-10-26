@@ -5,6 +5,7 @@ This module is intentionally stdlib-only and side-effect free so both
 ``core.globals`` and Factory capacity routing can share one contract without
 creating bootstrap/import cycles.
 """
+
 from __future__ import annotations
 
 import os
@@ -77,9 +78,7 @@ def key_domain_entries(
 
         previous_key, previous_domain = entries[previous_index]
         if previous_domain and domain and previous_domain != domain:
-            raise RuntimeError(
-                "Duplicate Gemini API key has conflicting GEMINI_QUOTA_DOMAIN labels"
-            )
+            raise RuntimeError("Duplicate Gemini API key has conflicting GEMINI_QUOTA_DOMAIN labels")
         if not previous_domain and domain:
             entries[previous_index] = (previous_key, domain)
 
@@ -175,13 +174,9 @@ class ProjectQuotaDomainTracker:
         domain = self._domain_by_client_id.get(id(client), "")
         if not domain:
             return False
-        return any(
-            domain in self._exhausted_by_scope.get(scope, set()) for scope in scopes
-        )
+        return any(domain in self._exhausted_by_scope.get(scope, set()) for scope in scopes)
 
-    def record_project_scoped_error(
-        self, client: object, scope: str, exc: BaseException
-    ) -> bool:
+    def record_project_scoped_error(self, client: object, scope: str, exc: BaseException) -> bool:
         domain = self._domain_by_client_id.get(id(client), "")
         if not domain or not is_project_scoped_quota_error(exc):
             return False

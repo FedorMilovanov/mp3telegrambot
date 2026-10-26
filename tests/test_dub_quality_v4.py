@@ -49,18 +49,12 @@ def test_ready_srt_groups_adjacent_cues_into_bounded_semantic_breaths() -> None:
     )
 
     assert len(groups) == 2
-    assert " ".join(item["source"] for item in groups) == (
-        "Первая фраза. Вторая фраза. Третья фраза."
-    )
+    assert " ".join(item["source"] for item in groups) == ("Первая фраза. Вторая фраза. Третья фраза.")
     assert groups[0]["start"] == 0.0
     assert groups[-1]["end"] == 9.0
     assert all(float(item["end"]) - float(item["start"]) <= 7.04 for item in groups)
     assert any(int(item["source_cue_count"]) == 2 for item in groups)
-    assert all(
-        float(gap) <= MAX_INTERNAL_GAP_SECONDS
-        for item in groups
-        for gap in item["internal_gaps"]
-    )
+    assert all(float(gap) <= MAX_INTERNAL_GAP_SECONDS for item in groups for gap in item["internal_gaps"])
 
 
 def test_ready_srt_splits_long_cue_but_preserves_verbatim_word_order() -> None:
@@ -174,12 +168,9 @@ def test_timing_qa_rejects_isolated_click_before_speech() -> None:
     assert result["isolated_start_artifact"] is True
 
 
-
 def test_quality_v4_has_no_nested_prompt_retry_or_whole_mix_loudnorm() -> None:
     guard = Path("tools/voxcpm2/semantic_tts_guard_v4.py").read_text(encoding="utf-8")
-    renderer = Path("tools/voxcpm2/voxcpm2_quality_v4_renderer.py").read_text(
-        encoding="utf-8"
-    )
+    renderer = Path("tools/voxcpm2/voxcpm2_quality_v4_renderer.py").read_text(encoding="utf-8")
     master = Path("tools/voxcpm2/master_quality_v4.py").read_text(encoding="utf-8")
     assert 'env["VOXCPM_PROMPT_TEXTS_JSON"]' not in guard
     assert 'env.pop("VOXCPM_PROMPT_TEXTS_JSON", None)' in guard
@@ -198,9 +189,7 @@ def test_validation_report_matches_reality() -> None:
     вывод «v4.2 не работает». Дата и команда проверки в отчёте — часть
     контракта, а не украшение.
     """
-    report = Path("docs/dub_studio_quality_v42_validation.md").read_text(
-        encoding="utf-8"
-    )
+    report = Path("docs/dub_studio_quality_v42_validation.md").read_text(encoding="utf-8")
     assert "Текущий статус: PASS" in report, "отчёт снова описывает прошлое как текущее"
     assert "python -m pytest" in report, "в отчёте нет команды, которой его проверить"
     for name in (

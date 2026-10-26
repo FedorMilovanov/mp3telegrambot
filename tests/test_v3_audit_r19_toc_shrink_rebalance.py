@@ -28,6 +28,7 @@ editPage (CONTENT_TOO_BIG), а не догадка по числу нод — т
    («сначала сжать, потом уже выбросить») реализован, а старый
    безусловный «выбросить сразу» — убран.
 """
+
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,6 +39,7 @@ def _telegraph_src() -> str:
 
 
 # ── 1. Алгоритм сдвига секций (симуляция, тот же порядок операций) ──
+
 
 def _simulate_shrink(part_secs, next_secs, *, fits_when_len_lte):
     """Тот же цикл, что в create_telegraph_synopsis: пока не влезло и
@@ -60,9 +62,7 @@ def test_shrink_loop_moves_trailing_sections_preserving_order():
     shrunk, grown, attempts, fit = _simulate_shrink(part_secs, next_secs, fits_when_len_lte=2)
     assert fit, "должно было влезть после сжатия"
     assert shrunk == ["A", "B"], f"часть 1 должна остаться [A, B]: {shrunk}"
-    assert grown == ["C", "D", "E", "F", "G", "H"], (
-        f"перенесённые секции должны сохранить исходный порядок: {grown}"
-    )
+    assert grown == ["C", "D", "E", "F", "G", "H"], f"перенесённые секции должны сохранить исходный порядок: {grown}"
 
 
 def test_shrink_loop_stops_at_single_section_if_still_too_big():
@@ -91,6 +91,7 @@ def test_global_numbering_correct_after_shrink():
 
 # ── 2. Структурные проверки источника ────────────────────────────
 
+
 def test_shrink_before_drop_helper_present():
     src = _telegraph_src()
     assert "async def _build_part_nodes_edit(" in src
@@ -106,9 +107,9 @@ def test_shrink_attempted_before_dropping_outline():
     этом рапортовал успех. Осталась безопасная замена: пере-издать часть БЕЗ
     оглавления (контент уже на create-фазе, точно влезает)."""
     src = _telegraph_src()
-    assert "while len(part_secs) > 1:" not in src        # цикл сжатия убран
-    assert "переношу последнюю секцию" not in src         # лог переноса убран
-    assert "include_outline=False" in src                 # безопасный drop-TOC fallback
+    assert "while len(part_secs) > 1:" not in src  # цикл сжатия убран
+    assert "переношу последнюю секцию" not in src  # лог переноса убран
+    assert "include_outline=False" in src  # безопасный drop-TOC fallback
 
 
 def test_shrink_guarded_by_next_part_existing():
@@ -131,6 +132,8 @@ def test_related_materials_still_attached_in_no_outline_fallback():
     терял блок «Читать также» для последней части. Через общий хелпер
     include_outline=False блок related-materials сохраняется."""
     src = _telegraph_src()
-    helper = src.split("async def _build_part_nodes_edit(", 1)[1].split("\n\n        await asyncio.sleep(2)\n        for i,", 1)[0]
+    helper = src.split("async def _build_part_nodes_edit(", 1)[1].split(
+        "\n\n        await asyncio.sleep(2)\n        for i,", 1
+    )[0]
     assert "aget_related_materials" in helper
     assert "if i == total - 1:" in helper

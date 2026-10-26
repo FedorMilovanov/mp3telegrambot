@@ -5,6 +5,7 @@ Telegram remains responsive and only creates/inspects jobs.  A separate local
 worker claims those jobs from this SQLite database and performs the expensive
 CPU render.
 """
+
 from __future__ import annotations
 
 from core.media_title_policy import canonical_media_title
@@ -94,11 +95,7 @@ class Recipe:
         return dict(self.actions[action_name])
 
     def repair_actions(self) -> list[str]:
-        return [
-            name
-            for name, spec in self.actions.items()
-            if str(spec.get("kind", "")).lower() == "repair"
-        ]
+        return [name for name, spec in self.actions.items() if str(spec.get("kind", "")).lower() == "repair"]
 
 
 def load_recipe(recipe_id: str) -> Recipe:
@@ -418,9 +415,7 @@ class DubStore:
             ).fetchone()
             if active:
                 conn.rollback()
-                raise RuntimeError(
-                    f"У проекта уже есть активное задание #{active['id']} ({active['status']})."
-                )
+                raise RuntimeError(f"У проекта уже есть активное задание #{active['id']} ({active['status']}).")
             cur = conn.execute(
                 """
                 INSERT INTO dub_jobs(
@@ -454,9 +449,7 @@ class DubStore:
         now = utc_now()
         with self.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
-            row = conn.execute(
-                "SELECT * FROM dub_jobs WHERE status='queued' ORDER BY id LIMIT 1"
-            ).fetchone()
+            row = conn.execute("SELECT * FROM dub_jobs WHERE status='queued' ORDER BY id LIMIT 1").fetchone()
             if row is None:
                 conn.commit()
                 return None
@@ -523,10 +516,7 @@ class DubStore:
                 """,
                 (progress, str(stage)[:160], now, str(row["project_id"])),
             )
-            if message and (
-                str(row["stage"]) != str(stage)
-                or progress >= int(row["progress"] or 0) + 10
-            ):
+            if message and (str(row["stage"]) != str(stage) or progress >= int(row["progress"] or 0) + 10):
                 self._insert_event(
                     conn,
                     str(row["project_id"]),
@@ -813,9 +803,7 @@ class DubStore:
 
     def latest_worker(self) -> dict[str, Any] | None:
         with self.connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM dub_workers ORDER BY heartbeat_at DESC LIMIT 1"
-            ).fetchone()
+            row = conn.execute("SELECT * FROM dub_workers ORDER BY heartbeat_at DESC LIMIT 1").fetchone()
         if row is None:
             return None
         item = dict(row)

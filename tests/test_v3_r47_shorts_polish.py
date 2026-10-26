@@ -1,22 +1,22 @@
 """Regression tests for R47 — live-screenshot findings on Shorts subtitles/video.
 
-  1. Karaoke word list can contain a bare-punctuation token (e.g. "?»") as its
-     own array element (Whisper sometimes emits it separately from the word
-     it belongs to). Neither chunking nor line-wrap guarded against starting
-     a new line with one, so a live Short showed:
-       "«Тебе нужен Спаситель" / "?» Тебе нужен"
-     — the closing quote+question-mark orphaned onto its own line. Fixed with
-     a merge step (mirrors the existing hyphenated-particle merge).
+1. Karaoke word list can contain a bare-punctuation token (e.g. "?»") as its
+   own array element (Whisper sometimes emits it separately from the word
+   it belongs to). Neither chunking nor line-wrap guarded against starting
+   a new line with one, so a live Short showed:
+     "«Тебе нужен Спаситель" / "?» Тебе нужен"
+   — the closing quote+question-mark orphaned onto its own line. Fixed with
+   a merge step (mirrors the existing hyphenated-particle merge).
 
-  2. Static promo-slide Shorts (audio-only sermon cover) showed only the left
-     portion of the slide with a skewed blur background. Root cause: cropdetect
-     (_detect_black_bars) runs against the source regardless of whether it's a
-     real video frame or a static design graphic, and its result still fed the
-     "show the whole picture" full_frame_vertical branch. A slide's large dark/
-     colored design blocks are exactly what cropdetect(limit=32) — tuned to
-     catch dark/grey bars, not just pure black — can misread as letterboxing,
-     cropping real content asymmetrically. Fixed by ignoring the cropdetect
-     result whenever the static-slide auto-switch fires.
+2. Static promo-slide Shorts (audio-only sermon cover) showed only the left
+   portion of the slide with a skewed blur background. Root cause: cropdetect
+   (_detect_black_bars) runs against the source regardless of whether it's a
+   real video frame or a static design graphic, and its result still fed the
+   "show the whole picture" full_frame_vertical branch. A slide's large dark/
+   colored design blocks are exactly what cropdetect(limit=32) — tuned to
+   catch dark/grey bars, not just pure black — can misread as letterboxing,
+   cropping real content asymmetrically. Fixed by ignoring the cropdetect
+   result whenever the static-slide auto-switch fires.
 """
 
 from pathlib import Path
@@ -36,7 +36,11 @@ def test_r47_merges_trailing_punctuation_only_token():
     ]
     merged = _merge_orphan_punctuation(words)
     assert [w["word"] for w in merged] == [
-        "«Тебе", "нужен", "Спаситель?»", "Тебе", "нужен",
+        "«Тебе",
+        "нужен",
+        "Спаситель?»",
+        "Тебе",
+        "нужен",
     ]
     # timing of the merged word extends to the punctuation token's end
     assert merged[2]["end"] == 1.2
@@ -57,9 +61,7 @@ def test_r47_line_wrap_no_longer_orphans_punctuation():
     # no line may start with a bare punctuation fragment
     for line in lines:
         first_word = line.split()[0] if line.split() else ""
-        assert not (first_word and first_word[0] in "?!.,»\""), (
-            f"line starts with orphaned punctuation: {line!r}"
-        )
+        assert not (first_word and first_word[0] in '?!.,»"'), f"line starts with orphaned punctuation: {line!r}"
 
 
 def test_r47_ordinary_words_unaffected_by_merge():
@@ -100,7 +102,7 @@ def test_r47_static_slide_ignores_black_bars_cropdetect():
     src = Path("services/shorts_video_impl.py").read_text(encoding="utf-8")
     idx = src.find('visual_mode = "full_frame_vertical"')
     assert idx != -1
-    window = src[idx: idx + 1200]
+    window = src[idx : idx + 1200]
     assert 'black_bars = ""' in window
 
 

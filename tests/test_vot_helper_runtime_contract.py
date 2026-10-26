@@ -15,6 +15,7 @@ Two layers are checked here:
    installed `@vot.js/node` provides it. CI runs this inside the dependency
    job, right after `npm ci`, so the skip below never hides it there.
 """
+
 from __future__ import annotations
 
 import json
@@ -75,8 +76,7 @@ def test_undici_override_is_declared_and_resolved() -> None:
     assert resolved, "the lock must contain a resolved undici"
     for version in resolved:
         assert _version_tuple(version) >= floor, (
-            f"resolved undici {version} is below the declared floor "
-            f"{overrides['undici']}"
+            f"resolved undici {version} is below the declared floor {overrides['undici']}"
         )
 
 
@@ -103,9 +103,7 @@ def test_smoke_script_exists_and_is_wired_into_ci() -> None:
     assert "vot_live.mjs" in source
     assert "requiredClientMethods" in source
 
-    audit_workflow = (
-        ROOT / ".github" / "workflows" / "dependency-audit.yml"
-    ).read_text(encoding="utf-8")
+    audit_workflow = (ROOT / ".github" / "workflows" / "dependency-audit.yml").read_text(encoding="utf-8")
     assert "node smoke.mjs" in audit_workflow, "CI must run the smoke script"
     assert "npm audit --audit-level=high" in audit_workflow
     assert "npm ci --no-audit --no-fund" in audit_workflow
@@ -129,9 +127,7 @@ def test_installed_tree_satisfies_the_helper_api() -> None:
         timeout=120,
         check=False,
     )
-    assert completed.returncode == 0, (
-        f"smoke.mjs failed:\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
-    )
+    assert completed.returncode == 0, f"smoke.mjs failed:\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
     assert "runtime contract is satisfied" in completed.stdout
 
 
@@ -176,16 +172,15 @@ def test_production_install_uses_npm_ci_and_needs_the_lock(monkeypatch, tmp_path
     assert "install" not in calls[0]
 
 
-def test_missing_lock_disables_the_new_protocol_instead_of_resolving_fresh(
-    monkeypatch, tmp_path
-) -> None:
+def test_missing_lock_disables_the_new_protocol_instead_of_resolving_fresh(monkeypatch, tmp_path) -> None:
     from services import yandex_live_dub
 
     calls: list[list[str]] = []
     monkeypatch.setattr(yandex_live_dub, "_find_node", lambda: "/usr/bin/node")
     monkeypatch.setattr(yandex_live_dub.shutil, "which", lambda name: "/usr/bin/npm")
     monkeypatch.setattr(
-        yandex_live_dub, "_run_subprocess",
+        yandex_live_dub,
+        "_run_subprocess",
         lambda command, **kwargs: calls.append(list(command)) or (0, "", ""),
     )
 

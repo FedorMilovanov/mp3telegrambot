@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Maximum-quality Gemini planning for the standalone Shorts Factory mode."""
+
 from __future__ import annotations
 
 import asyncio
@@ -89,8 +90,7 @@ def _require_factory_model(model: str, source: str) -> str:
     value = str(model or "").strip()
     if value.casefold() != DEFAULT_SHORTS_FACTORY_MODEL:
         raise RuntimeError(
-            f"SHORTS FACTORY MAX requires {DEFAULT_SHORTS_FACTORY_MODEL}; "
-            f"{source}={value!r} is not allowed"
+            f"SHORTS FACTORY MAX requires {DEFAULT_SHORTS_FACTORY_MODEL}; {source}={value!r} is not allowed"
         )
     return DEFAULT_SHORTS_FACTORY_MODEL
 
@@ -182,9 +182,7 @@ def _normalize_candidate(
     if clip_duration < min_sec or clip_duration > max_sec:
         return None
 
-    title = title_case_fragment(
-        normalize_title_text(str(item.get("title_ru") or item.get("title") or ""))
-    ).strip()
+    title = title_case_fragment(normalize_title_text(str(item.get("title_ru") or item.get("title") or ""))).strip()
     if not title:
         return None
     hook = str(item.get("hook_ru") or item.get("hook") or "").strip()
@@ -287,17 +285,10 @@ def validate_factory_plan(
     shorts = _remove_heavy_overlap(shorts, max_overlap=0.20)[:5]
     longs = _remove_heavy_overlap(longs, max_overlap=0.45)[:3]
 
-    title = title_case_fragment(
-        normalize_title_text(str(meta.get("title_ru") or raw.get("title_ru") or ""))
-    ).strip()
-    author = normalize_author_name(
-        str(meta.get("author_ru") or raw.get("author_ru") or "")
-    ).strip()
+    title = title_case_fragment(normalize_title_text(str(meta.get("title_ru") or raw.get("title_ru") or ""))).strip()
+    author = normalize_author_name(str(meta.get("author_ru") or raw.get("author_ru") or "")).strip()
     language = str(meta.get("language") or raw.get("language") or "").strip().lower()
-    format_name = (
-        str(meta.get("format") or raw.get("format") or "other").strip().lower()
-        or "other"
-    )
+    format_name = str(meta.get("format") or raw.get("format") or "other").strip().lower() or "other"
 
     return {
         "metadata": {
@@ -322,7 +313,7 @@ def _scout_prompt(title: str, performer: str, duration: int, source_language: st
 - исходное название: {title}
 - предполагаемый автор/канал: {performer}
 - длительность: {format_timestamp(duration)} ({duration} секунд)
-- metadata language: {source_language or 'unknown'}
+- metadata language: {source_language or "unknown"}
 
 НУЖНЫ ДВЕ КАТЕГОРИИ:
 1. shorts_candidates: 5–8 сильных самостоятельных фрагментов длиной 35–177 секунд.
@@ -517,9 +508,7 @@ async def create_factory_plan(
 
             plan = validate_factory_plan(audited, duration, require_verified=True)
             if not plan["shorts_candidates"] and not plan["long_candidates"]:
-                raise RuntimeError(
-                    "Three-pass Gemini review produced no candidates with verified boundaries"
-                )
+                raise RuntimeError("Three-pass Gemini review produced no candidates with verified boundaries")
             plan["model"] = model
             plan["thinking_level"] = "high"
             plan["review_passes"] = 3

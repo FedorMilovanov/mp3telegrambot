@@ -18,32 +18,44 @@ def test_heavy_quality_policy_forces_38_high_and_large_v3(monkeypatch):
     кода их не читала, поэтому «настройка» была декоративной.
     """
     for name in (
-        "GEMINI_MODEL", "LIVEDUB_INFO_MODEL",
-        "LIVEDUB_QUICK_QA_MODEL", "LIVEDUB_LONG_QA_MODEL", "LIVEDUB_QA_VERIFY_MODEL",
+        "GEMINI_MODEL",
+        "LIVEDUB_INFO_MODEL",
+        "LIVEDUB_QUICK_QA_MODEL",
+        "LIVEDUB_LONG_QA_MODEL",
+        "LIVEDUB_QA_VERIFY_MODEL",
         "SHORTS_FACTORY_MODEL",
-        "LIVEDUB_QUICK_QA_THINKING", "LIVEDUB_LONG_QA_THINKING",
+        "LIVEDUB_QUICK_QA_THINKING",
+        "LIVEDUB_LONG_QA_THINKING",
         "LIVEDUB_QA_VERIFY_THINKING",
-        "WHISPER_MODEL", "SHORTS_FACTORY_WHISPER_MODEL",
+        "WHISPER_MODEL",
+        "SHORTS_FACTORY_WHISPER_MODEL",
     ):
         monkeypatch.delenv(name, raising=False)
     diagnostic = quality.configure_max_quality_env()
     import os
+
     for name in (
-        "GEMINI_MODEL", "LIVEDUB_INFO_MODEL",
-        "LIVEDUB_QUICK_QA_MODEL", "LIVEDUB_LONG_QA_MODEL", "LIVEDUB_QA_VERIFY_MODEL",
+        "GEMINI_MODEL",
+        "LIVEDUB_INFO_MODEL",
+        "LIVEDUB_QUICK_QA_MODEL",
+        "LIVEDUB_LONG_QA_MODEL",
+        "LIVEDUB_QA_VERIFY_MODEL",
         "SHORTS_FACTORY_MODEL",
     ):
         assert os.environ[name] == MODEL_PRIMARY
     for name in (
         "LIVEDUB_QUICK_QA_THINKING",
-        "LIVEDUB_LONG_QA_THINKING", "LIVEDUB_QA_VERIFY_THINKING",
+        "LIVEDUB_LONG_QA_THINKING",
+        "LIVEDUB_QA_VERIFY_THINKING",
     ):
         assert os.environ[name] == "high"
     for name in ("WHISPER_MODEL", "SHORTS_FACTORY_WHISPER_MODEL"):
         assert os.environ[name] == "large-v3"
     for removed in (
-        "GEMINI_MAX_MODEL", "GEMINI_FORCE_THINKING_LEVEL",
-        "LIVEDUB_INFO_THINKING", "WHISPER_ENG_SUBTITLES_MODEL",
+        "GEMINI_MAX_MODEL",
+        "GEMINI_FORCE_THINKING_LEVEL",
+        "LIVEDUB_INFO_THINKING",
+        "WHISPER_ENG_SUBTITLES_MODEL",
     ):
         assert removed not in os.environ, f"политика снова пишет мёртвую ручку {removed}"
     assert f"semantic={MODEL_PRIMARY}/high" in diagnostic
@@ -84,7 +96,8 @@ def test_utility_work_uses_lite_only_without_fallback(monkeypatch):
     assert "gemini-3.1" not in src and "gemini-2.5" not in src
 
     for name in (
-        "LIVEDUB_PUBLICATION_FALLBACK_MODELS", "LIVEDUB_INFO_FALLBACK_MODELS",
+        "LIVEDUB_PUBLICATION_FALLBACK_MODELS",
+        "LIVEDUB_INFO_FALLBACK_MODELS",
     ):
         monkeypatch.setenv(name, "operator-value")
     quality.configure_max_quality_env()

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """PowerShell-friendly CLI for translation editorial QA and safe repairs."""
+
 from __future__ import annotations
 
 import argparse
@@ -46,10 +47,7 @@ def _json(path: Path) -> dict[str, Any]:
 
 
 def _safe_media_id(media_id: str) -> str:
-    safe = "".join(
-        char if (char.isalnum() or char in "_-") else "_"
-        for char in str(media_id or "media")
-    )
+    safe = "".join(char if (char.isalnum() or char in "_-") else "_" for char in str(media_id or "media"))
     return safe[:100] or "media"
 
 
@@ -96,8 +94,7 @@ async def _source_duration(path: Path, expected: float | None) -> float:
             raise ValueError("--duration must be finite and positive when supplied")
         if abs(declared - actual) > 1.25:
             raise ValueError(
-                f"declared --duration does not match media probe: "
-                f"declared={declared:.3f}s probe={actual:.3f}s"
+                f"declared --duration does not match media probe: declared={declared:.3f}s probe={actual:.3f}s"
             )
     return actual
 
@@ -179,9 +176,7 @@ def _review_template(manifest: dict[str, Any]) -> dict[str, Any]:
 
 def _write_review_template(output_dir: Path, media_id: str, manifest: dict[str, Any]) -> Path:
     safe_id = _safe_media_id(media_id)
-    template_path = Path(output_dir) / (
-        f"{safe_id}_{manifest['review_pack_id'][7:19]}_review_template.json"
-    )
+    template_path = Path(output_dir) / (f"{safe_id}_{manifest['review_pack_id'][7:19]}_review_template.json")
     expected = _review_template(manifest)
     if template_path.exists():
         if _json(template_path) != expected:
@@ -391,22 +386,16 @@ async def _cmd_repair(args: argparse.Namespace) -> int:
         if action_type not in EXECUTABLE_ACTIONS:
             unresolved.append(str(action_type or "missing"))
     if unresolved:
-        raise RuntimeError(
-            "review contains non-executable actions: " + ", ".join(sorted(set(unresolved)))
-        )
+        raise RuntimeError("review contains non-executable actions: " + ", ".join(sorted(set(unresolved))))
 
     source = (manifest.get("source") or {}).get("translated_video") or {}
     source_path = Path(str(source.get("local_path") or ""))
     if not source_path.exists():
-        raise FileNotFoundError(
-            "translated source path from the review pack no longer exists: " + str(source_path)
-        )
+        raise FileNotFoundError("translated source path from the review pack no longer exists: " + str(source_path))
     expected_sha = str(source.get("sha256") or "")
     actual_sha = await asyncio.to_thread(sha256_file, source_path)
     if actual_sha != expected_sha:
-        raise RuntimeError(
-            "translated source bytes changed since review pack creation; repair refused"
-        )
+        raise RuntimeError("translated source bytes changed since review pack creation; repair refused")
 
     output_path = Path(args.output)
     provenance_path = output_path.with_suffix(".editorial-repair.json")

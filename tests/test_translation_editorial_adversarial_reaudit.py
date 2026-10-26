@@ -131,9 +131,7 @@ def test_repair_provenance_contract_binds_drop_map_and_rejects_unknown_actions()
             "duration_seconds": 100.0,
         },
     }
-    document["repair_result_id"] = repair_provenance._canonical_sha256(
-        repair_provenance._identity_payload(document)
-    )
+    document["repair_result_id"] = repair_provenance._canonical_sha256(repair_provenance._identity_payload(document))
     errors = repair_provenance.validate_repair_provenance_document(document)
     assert any("unsupported action" in item for item in errors)
 

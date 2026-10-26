@@ -36,9 +36,7 @@ def test_two_dub_commands_in_one_message_are_both_parsed() -> None:
 
 
 def test_bot_username_blank_lines_and_normal_fallback() -> None:
-    parsed = parse_dub_command_lines(
-        "/dubcheck@PreachingMP3Bot\n\n/dubstatus@PreachingMP3Bot last"
-    )
+    parsed = parse_dub_command_lines("/dubcheck@PreachingMP3Bot\n\n/dubstatus@PreachingMP3Bot last")
     assert parsed == [
         ("dubcheck", []),
         ("dubstatus", ["last"]),
@@ -182,5 +180,3 @@ def test_terminal_cue_is_never_retimed() -> None:
     adjusted, report = compact_timeline_segments(fitted, evidence_reader=_evidence)
     assert float(adjusted[0][0]["start"]) == 0.0
     assert report["shifted_segment_ids"] == []
-
-

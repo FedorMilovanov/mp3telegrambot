@@ -5,6 +5,7 @@
 вызовов — «ссылки до конспекта», «прогресс до анализа» — потому что именно
 порядок был неявным контрактом внутри `process_single_video`.
 """
+
 from __future__ import annotations
 
 import logging
@@ -26,9 +27,18 @@ from pipelines.analysis_stage import (
 class Recorder:
     """Фейковые зависимости, записывающие порядок вызовов."""
 
-    def __init__(self, *, ai_data=None, client=None, audio_part=None, links=None,
-                 links_exc=None, synopsis_result=("https://tg/ok", "- пункт"),
-                 synopsis_enabled=True, transcript=None):
+    def __init__(
+        self,
+        *,
+        ai_data=None,
+        client=None,
+        audio_part=None,
+        links=None,
+        links_exc=None,
+        synopsis_result=("https://tg/ok", "- пункт"),
+        synopsis_enabled=True,
+        transcript=None,
+    ):
         self.calls: list[tuple] = []
         self._ai_data = ai_data
         self._client = client
@@ -117,9 +127,7 @@ async def test_disabled_stage_does_nothing(mp3: Path, tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_order_progress_then_analyze_then_links_then_synopsis(
-    mp3: Path, tmp_path: Path
-) -> None:
+async def test_order_progress_then_analyze_then_links_then_synopsis(mp3: Path, tmp_path: Path) -> None:
     rec = Recorder(ai_data=dict(AI), links={"rutube": "https://rt/v", "vk": "https://vk/v"})
     outcome = await run_analysis(make_request(mp3, tmp_path), rec.deps())
 
@@ -167,8 +175,7 @@ async def test_progress_info_describes_the_recording(mp3: Path, tmp_path: Path) 
 
 @pytest.mark.asyncio
 async def test_synopsis_disabled_leaves_urls_empty(mp3: Path, tmp_path: Path) -> None:
-    rec = Recorder(ai_data=dict(AI), links={"rutube": "https://rt/v"},
-                   synopsis_enabled=False)
+    rec = Recorder(ai_data=dict(AI), links={"rutube": "https://rt/v"}, synopsis_enabled=False)
     outcome = await run_analysis(make_request(mp3, tmp_path), rec.deps())
 
     assert "synopsis" not in rec.names()
@@ -256,8 +263,7 @@ def test_safe_title_replaces_mismatched_title() -> None:
 
 
 def test_safe_title_keeps_good_title() -> None:
-    ai = {"real_title": "Молитва и пост", "title_topic_warning": True,
-          "main_topic": "молитва и пост"}
+    ai = {"real_title": "Молитва и пост", "title_topic_warning": True, "main_topic": "молитва и пост"}
     new, replaced = apply_safe_title(ai, "Молитва и пост")
     assert replaced is False
     assert new is ai
@@ -278,9 +284,7 @@ async def test_safe_title_applied_before_synopsis(mp3: Path, tmp_path: Path) -> 
         "timestamps": "00:00 молитва и пост",
     }
     rec = Recorder(ai_data=ai, links={})
-    outcome = await run_analysis(
-        make_request(mp3, tmp_path, full_title="Молитва и пост"), rec.deps()
-    )
+    outcome = await run_analysis(make_request(mp3, tmp_path, full_title="Молитва и пост"), rec.deps())
 
     assert outcome.safe_title_replaced is True
     assert outcome.ai_data["real_title"] == "Молитва и пост"

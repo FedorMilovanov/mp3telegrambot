@@ -5,6 +5,7 @@ This is a static/admin tool, not a generation-time constraint. It helps track
 prompt bloat and the balance between positive reasoning instructions and
 negative bans as the bot evolves.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -15,13 +16,35 @@ from core.prompt_compactor import compact_prompt_for_generation
 
 
 _NEGATIVE_MARKERS = (
-    "НЕ ", "НЕЛЬЗЯ", "ЗАПРЕЩ", "Никогда", "никогда", "Не пиши", "не пиши",
-    "не используй", "НЕ используй", "не выдум", "НЕ выдум",
+    "НЕ ",
+    "НЕЛЬЗЯ",
+    "ЗАПРЕЩ",
+    "Никогда",
+    "никогда",
+    "Не пиши",
+    "не пиши",
+    "не используй",
+    "НЕ используй",
+    "не выдум",
+    "НЕ выдум",
 )
 _POSITIVE_MARKERS = (
-    "РАЗРЕШЕНО", "ЖЕЛАТЕЛЬНО", "ПРАВИЛЬНО", "ХОРОШО", "можно", "Можно",
-    "сначала", "Сначала", "покажи", "Покажи", "используй", "Используй",
-    "разрешён", "разрешено", "positive", "reasoning",
+    "РАЗРЕШЕНО",
+    "ЖЕЛАТЕЛЬНО",
+    "ПРАВИЛЬНО",
+    "ХОРОШО",
+    "можно",
+    "Можно",
+    "сначала",
+    "Сначала",
+    "покажи",
+    "Покажи",
+    "используй",
+    "Используй",
+    "разрешён",
+    "разрешено",
+    "positive",
+    "reasoning",
 )
 
 _LEAKY_LITERAL_PATTERNS = (
@@ -125,7 +148,9 @@ def analyze_prompt_text(name: str, text: str) -> PromptHealthItem:
         chars=len(text),
         negative_markers=_count_markers(text, _NEGATIVE_MARKERS),
         positive_markers=_count_markers(text, _POSITIVE_MARKERS),
-        final_check_blocks=len(re.findall(r"ФИНАЛЬН[А-ЯЁ\s]+ПРОВЕРК|ФИНАЛЬН[А-ЯЁ\s]+САМОПРОВЕРК", text, flags=re.IGNORECASE)),
+        final_check_blocks=len(
+            re.findall(r"ФИНАЛЬН[А-ЯЁ\s]+ПРОВЕРК|ФИНАЛЬН[А-ЯЁ\s]+САМОПРОВЕРК", text, flags=re.IGNORECASE)
+        ),
         compacted_chars=compacted.compacted_chars,
         compaction_saved_chars=compacted.saved_chars,
         compaction_removed_lines=compacted.removed_lines,
@@ -147,6 +172,7 @@ def collect_prompt_health() -> list[PromptHealthItem]:
     ]
     try:
         from services.quiz_generator import QUIZ_PROMPT
+
         items.append(analyze_prompt_text("QUIZ_PROMPT", QUIZ_PROMPT))
     except Exception:
         pass
@@ -180,5 +206,7 @@ def format_prompt_health_report() -> str:
         if item.leaky_literals:
             lines.append("leaky_literals: <code>" + ", ".join(item.leaky_literals[:5]) + "</code>")
     lines.append("")
-    lines.append("Цель: постепенно снижать ratio, дубли финальных проверок и leaky_literals, не удаляя production guardrails без тестов.")
+    lines.append(
+        "Цель: постепенно снижать ratio, дубли финальных проверок и leaky_literals, не удаляя production guardrails без тестов."
+    )
     return "\n".join(lines)

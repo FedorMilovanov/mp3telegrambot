@@ -7,12 +7,7 @@ from services.translation_editorial import parse_srt
 def test_parse_srt_exposes_text_consumed_by_boundary_proof(tmp_path):
     source = tmp_path / "source.en.srt"
     source.write_text(
-        "1\n"
-        "00:00:01,000 --> 00:00:03,000\n"
-        "Christ is risen.\n\n"
-        "2\n"
-        "00:00:04,000 --> 00:00:09,000\n"
-        "<i>[Music]</i>\n\n",
+        "1\n00:00:01,000 --> 00:00:03,000\nChrist is risen.\n\n2\n00:00:04,000 --> 00:00:09,000\n<i>[Music]</i>\n\n",
         encoding="utf-8",
     )
 

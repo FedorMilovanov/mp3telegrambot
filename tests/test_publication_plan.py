@@ -6,6 +6,7 @@
 комментариях. Ошибка здесь стоит дорого в обе стороны: лишняя страница —
 публикация с выдуманным содержимым, недостающая — потерянный раздел.
 """
+
 from __future__ import annotations
 
 import itertools
@@ -79,19 +80,13 @@ def test_missing_settings_mean_enabled() -> None:
 
 
 def test_settings_can_disable_each_flag() -> None:
-    settings = {key: False for key in (
-        "analytics", "questions", "terms", "study_analysis", "reflection_application"
-    )}
-    assert feature_flags(settings, analysis_available=True) == FeatureFlags(
-        False, False, False, False, False
-    )
+    settings = {key: False for key in ("analytics", "questions", "terms", "study_analysis", "reflection_application")}
+    assert feature_flags(settings, analysis_available=True) == FeatureFlags(False, False, False, False, False)
 
 
 def test_no_analysis_turns_everything_off() -> None:
     """Иначе страницы строились бы из пустого ответа — с выдуманным содержимым."""
-    assert feature_flags({}, analysis_available=False) == FeatureFlags(
-        False, False, False, False, False
-    )
+    assert feature_flags({}, analysis_available=False) == FeatureFlags(False, False, False, False, False)
 
 
 # ── взаимные исключения ─────────────────────────────────────────────────────
@@ -126,9 +121,7 @@ def test_terms_are_dropped_when_both_new_pages_run() -> None:
     assert plan.study_analysis and plan.reflection_application
 
 
-@pytest.mark.parametrize(
-    ("study", "reflection"), [(True, False), (False, True), (False, False)]
-)
+@pytest.mark.parametrize(("study", "reflection"), [(True, False), (False, True), (False, False)])
 def test_terms_survive_if_at_least_one_new_page_is_off(study, reflection) -> None:
     plan = page_plan(FeatureFlags(False, False, True, study, reflection))
     assert plan.terms is True
@@ -185,8 +178,13 @@ def test_plan_without_analysis_is_empty() -> None:
 
 def test_build_plan_returns_flags_and_plan() -> None:
     flags, plan = build_plan(
-        {"analytics": True, "questions": False, "terms": True,
-         "study_analysis": False, "reflection_application": False},
+        {
+            "analytics": True,
+            "questions": False,
+            "terms": True,
+            "study_analysis": False,
+            "reflection_application": False,
+        },
         ai_data={"main_topic": "Тема"},
     )
     assert flags == FeatureFlags(True, False, True, False, False)

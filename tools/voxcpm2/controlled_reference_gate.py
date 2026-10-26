@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Transactional release gate for calm and controlled expressive references."""
+
 from __future__ import annotations
 
 import json
@@ -55,10 +56,11 @@ def _identity_similarity(
     if not math.isfinite(similarity):
         return False, "identity-сходство не является конечным числом", None
     if similarity < MIN_IDENTITY_SPECTRAL_SIMILARITY:
-        return False, (
-            f"identity spectral similarity={similarity:.4f} < "
-            f"{MIN_IDENTITY_SPECTRAL_SIMILARITY:.2f}"
-        ), similarity
+        return (
+            False,
+            (f"identity spectral similarity={similarity:.4f} < {MIN_IDENTITY_SPECTRAL_SIMILARITY:.2f}"),
+            similarity,
+        )
     return True, f"identity similarity={similarity:.4f}", similarity
 
 
@@ -102,10 +104,7 @@ def _valid_calm_reference(
     if not math.isfinite(duration):
         return False, "calm composite duration не является конечным числом"
     if not MIN_REFERENCE_SECONDS <= duration <= MAX_REFERENCE_SECONDS:
-        return False, (
-            f"calm duration={duration:.3f}s вне "
-            f"{MIN_REFERENCE_SECONDS:.1f}..{MAX_REFERENCE_SECONDS:.1f}s"
-        )
+        return False, (f"calm duration={duration:.3f}s вне {MIN_REFERENCE_SECONDS:.1f}..{MAX_REFERENCE_SECONDS:.1f}s")
     if not isinstance(payload, dict):
         return False, "calm report не является объектом"
     selected = payload.get("selected")
@@ -147,8 +146,7 @@ def _valid_expressive_reference(
         return False, "expressive duration не является конечным числом"
     if not MIN_REFERENCE_SECONDS <= duration <= MAX_REFERENCE_SECONDS:
         return False, (
-            f"expressive duration={duration:.3f}s вне "
-            f"{MIN_REFERENCE_SECONDS:.1f}..{MAX_REFERENCE_SECONDS:.1f}s"
+            f"expressive duration={duration:.3f}s вне {MIN_REFERENCE_SECONDS:.1f}..{MAX_REFERENCE_SECONDS:.1f}s"
         )
     if not isinstance(payload, dict):
         return False, "expressive report не является объектом"
@@ -164,10 +162,7 @@ def _valid_expressive_reference(
     if not math.isfinite(reported_duration):
         return False, "expressive report duration не является конечным числом"
     if abs(reported_duration - duration) > REPORT_DURATION_TOLERANCE:
-        return False, (
-            f"expressive report duration={reported_duration:.3f}s, "
-            f"WAV={duration:.3f}s"
-        )
+        return False, (f"expressive report duration={reported_duration:.3f}s, WAV={duration:.3f}s")
 
     identity_ok, identity_detail, similarity = _identity_similarity(
         output,

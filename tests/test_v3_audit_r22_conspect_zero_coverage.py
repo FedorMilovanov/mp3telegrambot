@@ -6,6 +6,7 @@ commit touching converters/md_telegraph.py and core/text_utils.py against
 the existing ~126 test files. Each of these protects one real, already-
 shipped fix; none are speculative or "protection for protection's sake".
 """
+
 from converters.md_telegraph import (
     _dedup_consecutive_timestamps,
     _final_telegraph_polish,
@@ -33,6 +34,7 @@ def _flat(nodes) -> str:
 # ── BUG-4 (commit d10ac8b, broadened by b7973c2): dedup consecutive
 # paragraphs that start with the identical timestamp ────────────────────
 
+
 def test_dedup_consecutive_timestamps_removes_duplicate():
     out = _dedup_consecutive_timestamps("12:34 Первая мысль\n12:34 Вторая мысль")
     assert out == "12:34 Первая мысль\nВторая мысль"
@@ -53,16 +55,19 @@ def test_dedup_consecutive_timestamps_leaves_different_timestamps_alone():
 # ── BUG-14 (commit 06f3475): bold timestamp glued directly to a closing
 # quote/punctuation mark gets a space inserted and loses its bold markers ──
 
+
 def test_quote_glued_bold_timestamp_gets_space_and_loses_bold():
     nodes = _section_to_nodes_v2(
         {
-            "title": "Т", "time": "",
+            "title": "Т",
+            "time": "",
             "content": (
                 "Он сказал так: «истина освобождает»**17:28** Далее была "
                 "вторая мысль про свободу и благодать в этом отрывке текста."
             ),
         },
-        yt_url="https://www.youtube.com/watch?v=x", duration=3000,
+        yt_url="https://www.youtube.com/watch?v=x",
+        duration=3000,
     )
     flat = _flat(nodes)
     assert "»**17:28**" not in flat
@@ -71,6 +76,7 @@ def test_quote_glued_bold_timestamp_gets_space_and_loses_bold():
 
 # ── R8 (commit 8f9e88e): single Latin homoglyph letters inside a Cyrillic
 # word get fixed, but real English words/acronyms stay untouched ───────────
+
 
 def test_fix_latin_homoglyphs_repairs_single_letter_substitution():
     assert _fix_latin_homoglyphs("Cемья это опора") == "Семья это опора"
@@ -87,10 +93,9 @@ def test_fix_latin_homoglyphs_does_not_touch_real_english_runs():
 # ── R14 (commit ee112fc): capitalize the first letter after a sentence-
 # ending period, but NOT after short abbreviations ("см.", "т.д.") ────────
 
+
 def test_capitalizes_after_real_sentence_boundary():
-    out = _postprocess_telegraph_nodes(
-        [{"tag": "p", "children": ["Это было их следствием. возрождение меняет всё."]}]
-    )
+    out = _postprocess_telegraph_nodes([{"tag": "p", "children": ["Это было их следствием. возрождение меняет всё."]}])
     assert "следствием. Возрождение" in _flat(out)
 
 
@@ -111,6 +116,7 @@ def test_does_not_capitalize_after_short_abbreviations():
 # ── R9 (commit f3e73f4): LTR-mark (U+200E) padded by whitespace draws a
 # visible gap in Hebrew/RTL lexicon cards — collapse the whitespace ───────
 
+
 def test_ltr_mark_space_before_it_is_collapsed():
     """Existing tests strip \\u200e before comparing (so they can't catch a
     regression of the space-collapsing itself) — this test keeps the mark."""
@@ -123,6 +129,7 @@ def test_ltr_mark_space_before_it_is_collapsed():
 # ── BUG-10 (commit 7eb81cf, tightened by fd91e0e): stray English
 # code-switch words get translated ONLY when adjacent to Cyrillic ────────
 
+
 def test_stray_english_word_translated_in_cyrillic_context():
     out = _final_telegraph_polish([{"tag": "p", "children": ["Это, however, интересно для нас"]}])
     assert "однако" in _flat(out)
@@ -132,7 +139,5 @@ def test_stray_english_word_translated_in_cyrillic_context():
 def test_stray_english_word_not_touched_in_all_english_context():
     """fd91e0e regression: an all-English phrase (e.g. a book title) must
     not have words replaced just because they match the code-switch dict."""
-    out = _final_telegraph_polish(
-        [{"tag": "p", "children": ['The book "However Long the Night" is famous']}]
-    )
+    out = _final_telegraph_polish([{"tag": "p", "children": ['The book "However Long the Night" is famous']}])
     assert _flat(out) == 'The book "However Long the Night" is famous'

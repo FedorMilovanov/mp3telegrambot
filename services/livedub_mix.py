@@ -34,6 +34,7 @@ LiveDub Pro Mix — профессиональный микс перевода �
     livedub_pro_mix — использовать этот микс (вкл по умолчанию)
     livedub_autofix — авто-правка по результатам QA (вкл по умолчанию)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -49,6 +50,7 @@ logger = logging.getLogger(__name__)
 
 
 # ── Числовые настройки из env (с безопасным парсом) ──────────────
+
 
 def _env_float(name: str, default: float) -> float:
     try:
@@ -100,6 +102,7 @@ def get_mix_params() -> dict:
 
 # ── Утилиты ──────────────────────────────────────────────────────
 
+
 def parse_mmss(time_str: str) -> Optional[float]:
     """'MM:SS' / 'H:MM:SS' → секунды. None при мусоре.
 
@@ -118,8 +121,7 @@ def parse_mmss(time_str: str) -> Optional[float]:
     return float(h * 3600 + mm * 60 + ss)
 
 
-def build_interval_volume_expr(intervals: list[tuple[float, float]],
-                               inside: float, outside: float = 1.0) -> str:
+def build_interval_volume_expr(intervals: list[tuple[float, float]], inside: float, outside: float = 1.0) -> str:
     """Выражение для ffmpeg volume: inside в интервалах, outside вне.
 
     between() суммируются — сумма >0 работает как OR.
@@ -153,16 +155,24 @@ def measure_loudness(path: Path, timeout: int = 600) -> Optional[float]:
         cache_key = None
     if cache_key is not None and cache_key in _loudness_cache:
         return _loudness_cache[cache_key]
-    kwargs: dict = {"capture_output": True, "text": True,
-                    "encoding": "utf-8", "errors": "replace"}
+    kwargs: dict = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
     if os.name == "nt":
         kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
     try:
         proc = subprocess.run(
-            [ffmpeg, "-i", str(path), "-vn",
-             "-af", "loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json",
-             "-f", "null", "-"],
-            timeout=timeout, **kwargs,
+            [
+                ffmpeg,
+                "-i",
+                str(path),
+                "-vn",
+                "-af",
+                "loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json",
+                "-f",
+                "null",
+                "-",
+            ],
+            timeout=timeout,
+            **kwargs,
         )
         m = re.search(r'"input_i"\s*:\s*"(-?[\d.]+)"', proc.stderr or "")
         if m:
@@ -193,8 +203,7 @@ def _run_ffmpeg(args: list[str], timeout: int = 1800) -> tuple[bool, str]:
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         return False, "ffmpeg не найден"
-    kwargs: dict = {"capture_output": True, "text": True,
-                    "encoding": "utf-8", "errors": "replace"}
+    kwargs: dict = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
     if os.name == "nt":
         kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
     try:
@@ -213,10 +222,21 @@ def probe_media_duration(path: Path, timeout: int = 60) -> Optional[float]:
         return None
     try:
         proc = subprocess.run(
-            [ffprobe, "-v", "error", "-show_entries", "format=duration",
-             "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
-            capture_output=True, text=True, timeout=timeout,
-            encoding="utf-8", errors="replace",
+            [
+                ffprobe,
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            encoding="utf-8",
+            errors="replace",
         )
         if proc.returncode == 0:
             dur = float((proc.stdout or "").strip() or "0")
@@ -231,10 +251,7 @@ def _extend_filter_with_video_tail(audio_fc: str, tail_pad_ms: int) -> str:
     """К audio filter_complex добавляет freeze-frame хвост видеоряда."""
     if tail_pad_ms <= 0:
         return audio_fc
-    return (
-        f"{audio_fc};"
-        f"[0:v]tpad=stop_mode=clone:stop_duration={tail_pad_ms / 1000.0:.3f}[vout]"
-    )
+    return f"{audio_fc};[0:v]tpad=stop_mode=clone:stop_duration={tail_pad_ms / 1000.0:.3f}[vout]"
 
 
 def has_video_stream(path: Path) -> bool:
@@ -251,14 +268,24 @@ def has_video_stream(path: Path) -> bool:
     if not ffprobe:
         return path.suffix.lower() in {".mp4", ".webm", ".mkv", ".mov", ".m4v"}
     try:
-        kwargs: dict = {"capture_output": True, "text": True,
-                        "encoding": "utf-8", "errors": "replace"}
+        kwargs: dict = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
         if os.name == "nt":
             kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
         proc = subprocess.run(
-            [ffprobe, "-v", "error", "-select_streams", "v:0",
-             "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(path)],
-            timeout=60, **kwargs,
+            [
+                ffprobe,
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=codec_type",
+                "-of",
+                "csv=p=0",
+                str(path),
+            ],
+            timeout=60,
+            **kwargs,
         )
         return proc.returncode == 0 and "video" in (proc.stdout or "").lower()
     except Exception as e:
@@ -266,9 +293,9 @@ def has_video_stream(path: Path) -> bool:
         return path.suffix.lower() in {".mp4", ".webm", ".mkv", ".mov", ".m4v"}
 
 
-def calculate_tail_pad_ms(delay_ms: int, tail_margin_ms: int,
-                          orig_duration: Optional[float],
-                          ru_duration: Optional[float]) -> int:
+def calculate_tail_pad_ms(
+    delay_ms: int, tail_margin_ms: int, orig_duration: Optional[float], ru_duration: Optional[float]
+) -> int:
     """Сколько хвоста реально нужно после сдвига RU-дорожки.
 
     База = delay + margin. Но Яндекс иногда отдаёт RU-аудио чуть длиннее
@@ -288,7 +315,10 @@ def calculate_tail_pad_ms(delay_ms: int, tail_margin_ms: int,
 
 _FORBIDDEN_FILENAME_CHARS_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _RESERVED_WINDOWS_NAMES = {
-    "CON", "PRN", "AUX", "NUL",
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
     *(f"COM{i}" for i in range(1, 10)),
     *(f"LPT{i}" for i in range(1, 10)),
 }
@@ -315,8 +345,7 @@ def safe_livedub_video_filename(title_line: str, fallback: str = "livedub") -> s
     return f"{text}.mp4"
 
 
-def prepare_livedub_send_path(video_path: Path, title_line: str,
-                              fallback: str = "livedub") -> Path:
+def prepare_livedub_send_path(video_path: Path, title_line: str, fallback: str = "livedub") -> Path:
     """Переименовывает готовый mp4 перед Telegram-отправкой в понятное имя."""
     src = Path(video_path)
     if not src.exists():
@@ -337,12 +366,20 @@ def prepare_livedub_send_path(video_path: Path, title_line: str,
 
 # ── Основной микс ────────────────────────────────────────────────
 
-def build_mix_filter(orig_volume: float, trans_volume: float, delay_ms: int,
-                     duck: bool = True,
-                     ru_extra_expr: str = "", en_extra_expr: str = "",
-                     en_gain_db: float = 0.0, ru_gain_db: float = 0.0,
-                     voice_eq: bool = True, rnnoise_model: str = "",
-                     tail_pad_ms: int = 0) -> str:
+
+def build_mix_filter(
+    orig_volume: float,
+    trans_volume: float,
+    delay_ms: int,
+    duck: bool = True,
+    ru_extra_expr: str = "",
+    en_extra_expr: str = "",
+    en_gain_db: float = 0.0,
+    ru_gain_db: float = 0.0,
+    voice_eq: bool = True,
+    rnnoise_model: str = "",
+    tail_pad_ms: int = 0,
+) -> str:
     """Собирает filter_complex для микса EN-оригинала и RU-перевода.
 
     ru_extra_expr / en_extra_expr — дополнительные volume-выражения
@@ -420,8 +457,9 @@ def build_mix_filter(orig_volume: float, trans_volume: float, delay_ms: int,
     )
 
 
-async def mix_tracks(orig_video: Path, ru_audio: Path, out_path: Path,
-                     ru_extra_expr: str = "", en_extra_expr: str = "") -> Optional[Path]:
+async def mix_tracks(
+    orig_video: Path, ru_audio: Path, out_path: Path, ru_extra_expr: str = "", en_extra_expr: str = ""
+) -> Optional[Path]:
     """Миксует оригинальное видео с дорожкой перевода.
 
     Перед миксом обе дорожки измеряются (loudnorm pass-1) и приводятся
@@ -451,8 +489,10 @@ async def mix_tracks(orig_video: Path, ru_audio: Path, out_path: Path,
     ru_gain = loudness_gain_db(ru_lufs)
     logger.info(
         "[LiveDubMix] loudness: EN=%s LUFS (gain %+.1f dB), RU=%s LUFS (gain %+.1f dB)",
-        f"{en_lufs:.1f}" if en_lufs is not None else "?", en_gain,
-        f"{ru_lufs:.1f}" if ru_lufs is not None else "?", ru_gain,
+        f"{en_lufs:.1f}" if en_lufs is not None else "?",
+        en_gain,
+        f"{ru_lufs:.1f}" if ru_lufs is not None else "?",
+        ru_gain,
     )
 
     # AUDIT R42: усечённый RU-дубляж — Яндекс/CDN иногда отдаёт HTTP 200 с
@@ -462,11 +502,11 @@ async def mix_tracks(orig_video: Path, ru_audio: Path, out_path: Path,
     # этого не ловят (длина видео полная). Отклоняем микс → вызывающий уходит
     # в fallback вместо отправки битого дубляжа. Autofix-ремикс подаёт полную
     # чистую дорожку, поэтому там условие не срабатывает.
-    if (orig_duration and orig_duration > 30
-            and ru_duration is not None and ru_duration < 0.5 * orig_duration):
+    if orig_duration and orig_duration > 30 and ru_duration is not None and ru_duration < 0.5 * orig_duration:
         logger.warning(
             "[LiveDubMix] RU-дубляж усечён: %.0fс из ~%.0fс оригинала — отклоняю микс",
-            ru_duration, orig_duration,
+            ru_duration,
+            orig_duration,
         )
         return None
 
@@ -477,18 +517,18 @@ async def mix_tracks(orig_video: Path, ru_audio: Path, out_path: Path,
         ru_duration,
     )
     freeze_max = int(p.get("tail_freeze_max_sec") or 0)
-    freeze_tail = bool(
-        tail_pad_ms > 0
-        and freeze_max > 0
-        and orig_duration is not None
-        and orig_duration <= freeze_max
-    )
+    freeze_tail = bool(tail_pad_ms > 0 and freeze_max > 0 and orig_duration is not None and orig_duration <= freeze_max)
 
     def _audio_filter(*, duck: bool, rnnoise_model: str, tail: bool = True) -> str:
         return build_mix_filter(
-            p["orig_volume"], p["trans_volume"], p["delay_ms"],
-            duck=duck, ru_extra_expr=ru_extra_expr, en_extra_expr=en_extra_expr,
-            en_gain_db=en_gain, ru_gain_db=ru_gain,
+            p["orig_volume"],
+            p["trans_volume"],
+            p["delay_ms"],
+            duck=duck,
+            ru_extra_expr=ru_extra_expr,
+            en_extra_expr=en_extra_expr,
+            en_gain_db=en_gain,
+            ru_gain_db=ru_gain,
             voice_eq=bool(p["voice_eq"]),
             rnnoise_model=rnnoise_model,
             tail_pad_ms=tail_pad_ms if tail else 0,
@@ -500,24 +540,33 @@ async def mix_tracks(orig_video: Path, ru_audio: Path, out_path: Path,
         if freeze_video:
             try:
                 from services.ffmpeg import _get_video_encoder
+
                 _enc, _q, _pr = _get_video_encoder()
                 fc = _extend_filter_with_video_tail(audio_fc, tail_pad_ms)
-                video_args = ["-map", "[vout]", "-map", "[aout]",
-                              "-c:v", _enc, *_q, *_pr, "-pix_fmt", "yuv420p"]
+                video_args = ["-map", "[vout]", "-map", "[aout]", "-c:v", _enc, *_q, *_pr, "-pix_fmt", "yuv420p"]
             except Exception as _enc_err:
                 logger.warning("[LiveDubMix] video-tail encoder unavailable: %s", _enc_err)
                 video_args = ["-map", "0:v", "-map", "[aout]", "-c:v", "copy"]
         else:
             video_args = ["-map", "0:v", "-map", "[aout]", "-c:v", "copy"]
         args = [
-            "-i", str(orig_video), "-i", str(ru_audio),
-            "-filter_complex", fc,
+            "-i",
+            str(orig_video),
+            "-i",
+            str(ru_audio),
+            "-filter_complex",
+            fc,
             *video_args,
         ]
         args += [
-            "-c:a", "aac", "-b:a", "160k",
-            "-movflags", "+faststart",
-            "-y", str(out_path),
+            "-c:a",
+            "aac",
+            "-b:a",
+            "160k",
+            "-movflags",
+            "+faststart",
+            "-y",
+            str(out_path),
         ]
         return args
 
@@ -580,6 +629,7 @@ async def build_pro_dub(video_url: str, workdir: Path, duration: float = 0.0, la
 
     ru_audio: Optional[Path] = None
     orig_video: Optional[Path] = None
+
     async def _drain(task):
         """Гасим отменённую задачу, чтобы не было 'exception was never retrieved'."""
         task.cancel()
@@ -604,13 +654,10 @@ async def build_pro_dub(video_url: str, workdir: Path, duration: float = 0.0, la
         # Обычные TTS-голоса больше НЕ включаются по умолчанию: иначе бот
         # врёт пользователю и маскирует настоящую проблему авторизации.
         # Если когда-нибудь понадобится аварийный резерв — только явный opt-in.
-        tts_fallback_enabled = (
-            os.getenv("LIVEDUB_TTS_FALLBACK", "0").strip().lower()
-            in {"1", "true", "yes", "on"}
-        )
-        if (("LIVEDUB_NOT_AVAILABLE" in str(_live_err)
-                or "LIVEDUB_AUTH_REQUIRED" in str(_live_err))
-                and tts_fallback_enabled):
+        tts_fallback_enabled = os.getenv("LIVEDUB_TTS_FALLBACK", "0").strip().lower() in {"1", "true", "yes", "on"}
+        if (
+            "LIVEDUB_NOT_AVAILABLE" in str(_live_err) or "LIVEDUB_AUTH_REQUIRED" in str(_live_err)
+        ) and tts_fallback_enabled:
             logger.info("[LiveDubMix] Живые голоса недоступны — LIVEDUB_TTS_FALLBACK=1, пробую обычные (tts)")
             try:
                 ru_audio = await get_live_dub_audio(video_url, workdir, voice_style="tts", duration=duration, lang=lang)
@@ -643,7 +690,10 @@ async def build_pro_dub(video_url: str, workdir: Path, duration: float = 0.0, la
         p = get_mix_params()
         logger.info(
             "[LiveDubMix] Pro-микс готов: orig=%.2f trans=%.2f delay=%dms base_tail=%dms duck=on",
-            p["orig_volume"], p["trans_volume"], p["delay_ms"], p.get("tail_pad_ms", 0),
+            p["orig_volume"],
+            p["trans_volume"],
+            p["delay_ms"],
+            p.get("tail_pad_ms", 0),
         )
     return result
 
@@ -665,6 +715,7 @@ def find_pro_tracks(workdir: Path) -> tuple[Optional[Path], Optional[Path]]:
 
 # ── Метаданные для Telegram-отправки ─────────────────────────────
 
+
 def probe_video_meta(path: Path) -> dict:
     """width/height/duration для send_video.
 
@@ -681,8 +732,7 @@ def probe_video_meta(path: Path) -> dict:
         if not ffmpeg:
             return meta
         try:
-            kwargs: dict = {"capture_output": True, "text": True,
-                            "encoding": "utf-8", "errors": "replace"}
+            kwargs: dict = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
             if os.name == "nt":
                 kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
             proc = subprocess.run([ffmpeg, "-i", str(path)], timeout=60, **kwargs)
@@ -698,12 +748,25 @@ def probe_video_meta(path: Path) -> dict:
         return meta
     try:
         import json as _json
+
         proc = subprocess.run(
-            [ffprobe, "-v", "error", "-select_streams", "v:0",
-             "-show_entries", "stream=width,height:format=duration",
-             "-of", "json", str(path)],
-            capture_output=True, text=True, timeout=60,
-            encoding="utf-8", errors="replace",
+            [
+                ffprobe,
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=width,height:format=duration",
+                "-of",
+                "json",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            encoding="utf-8",
+            errors="replace",
         )
         data = _json.loads(proc.stdout or "{}")
         streams = data.get("streams") or [{}]
@@ -728,10 +791,23 @@ def make_video_thumbnail(video_path: Path, at_sec: float = 3.0) -> Optional[Path
         if os.name == "nt":
             kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
         proc = subprocess.run(
-            [ffmpeg, "-ss", str(at_sec), "-i", str(video_path),
-             "-frames:v", "1", "-vf", "scale=320:-2", "-q:v", "5",
-             "-y", str(out)],
-            timeout=60, **kwargs,
+            [
+                ffmpeg,
+                "-ss",
+                str(at_sec),
+                "-i",
+                str(video_path),
+                "-frames:v",
+                "1",
+                "-vf",
+                "scale=320:-2",
+                "-q:v",
+                "5",
+                "-y",
+                str(out),
+            ],
+            timeout=60,
+            **kwargs,
         )
         if proc.returncode == 0 and out.exists() and 0 < out.stat().st_size < 200 * 1024:
             return out
@@ -744,13 +820,13 @@ def make_video_thumbnail(video_path: Path, at_sec: float = 3.0) -> Optional[Path
 # ── Авто-правка по результатам QA ────────────────────────────────
 
 # Окно правки вокруг таймкода проблемы
-_FIX_PRE = 0.5    # начать чуть раньше
-_FIX_LEN = 6.0    # длительность окна
+_FIX_PRE = 0.5  # начать чуть раньше
+_FIX_LEN = 6.0  # длительность окна
 # Насколько глушим перевод и поднимаем оригинал внутри окна.
 # Роковые major-ошибки (пример: склейка "родители" + sexual immorality)
 # нужно именно вырезать из RU-дубляжа, а не оставлять слышимыми на 15%.
 _FIX_RU_GAIN = _env_float("LIVEDUB_AUTOFIX_RU_VOLUME", 0.0)
-_FIX_EN_BOOST = _env_float("LIVEDUB_AUTOFIX_EN_BOOST", 2.2)   # 0.45 * 2.2 ≈ 1.0
+_FIX_EN_BOOST = _env_float("LIVEDUB_AUTOFIX_EN_BOOST", 2.2)  # 0.45 * 2.2 ≈ 1.0
 
 
 def extract_fix_intervals(
@@ -772,10 +848,12 @@ def extract_fix_intervals(
         moment = parse_mmss(str(issue.get("time") or ""))
         if moment is None:
             continue
-        intervals.append((
-            max(0.0, moment - _FIX_PRE),
-            moment - _FIX_PRE + _FIX_LEN + delay_s,
-        ))
+        intervals.append(
+            (
+                max(0.0, moment - _FIX_PRE),
+                moment - _FIX_PRE + _FIX_LEN + delay_s,
+            )
+        )
 
     intervals.sort()
     merged: list[tuple[float, float]] = []
@@ -818,8 +896,7 @@ async def apply_qa_audio_fixes(workdir: Path, issues: list[dict]) -> Optional[Pa
     ru_expr = build_interval_volume_expr(intervals, inside=_FIX_RU_GAIN)
     en_expr = build_interval_volume_expr(intervals, inside=_FIX_EN_BOOST)
     out = Path(workdir) / "pro_dub_fixed.mp4"
-    result = await mix_tracks(orig_video, ru_audio, out,
-                              ru_extra_expr=ru_expr, en_extra_expr=en_expr)
+    result = await mix_tracks(orig_video, ru_audio, out, ru_extra_expr=ru_expr, en_extra_expr=en_expr)
     if result:
         expected_duration = await asyncio.to_thread(probe_media_duration, orig_video)
         actual_duration = await asyncio.to_thread(probe_media_duration, Path(result))
@@ -834,10 +911,7 @@ async def apply_qa_audio_fixes(workdir: Path, issues: list[dict]) -> Optional[Pa
                 Path(result).unlink(missing_ok=True)
             except OSError:
                 pass
-            raise RuntimeError(
-                f"QA auto-fix postcondition failed: source={expected_duration}, "
-                f"fixed={actual_duration}"
-            )
+            raise RuntimeError(f"QA auto-fix postcondition failed: source={expected_duration}, fixed={actual_duration}")
         logger.info("[LiveDubMix] авто-правка: %d интервал(ов) приглушено", len(intervals))
         # FIX 2026-06-10: короткие ролики (<3 мин) шлются с ВШИТЫМИ
         # русскими субтитрами (gemini_subs.srt); пересборка из чистых
@@ -846,6 +920,7 @@ async def apply_qa_audio_fixes(workdir: Path, issues: list[dict]) -> Optional[Pa
         if srt.exists() and srt.stat().st_size > 50:
             try:
                 from services.eng_subtitles import merge_subtitles
+
                 with_subs = await merge_subtitles(result, srt, is_fallback=False)
                 if with_subs and Path(with_subs).exists():
                     logger.info("[LiveDubMix] авто-правка: субтитры возвращены в фикс-версию")

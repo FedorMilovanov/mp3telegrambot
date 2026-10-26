@@ -5,6 +5,7 @@
 пользователь получает не тот результат (или не получает ничего). До этих тестов
 файл был покрыт на 0 %.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -130,9 +131,7 @@ def test_arguments_are_passed_through(calls, traces) -> None:
 def test_editorial_mode_goes_to_editorial_runner(calls, traces, monkeypatch) -> None:
     import handlers.mode_command as mode_command
 
-    monkeypatch.setattr(
-        mode_command, "get_user_mode", _mode_reader(mode_command.EDITORIAL_MODE)
-    )
+    monkeypatch.setattr(mode_command, "get_user_mode", _mode_reader(mode_command.EDITORIAL_MODE))
     assert _dispatch(_FakeUpdate()) is True
     assert len(calls["editorial"]) == 1
     assert calls["main"] == [] and calls["factory"] == []

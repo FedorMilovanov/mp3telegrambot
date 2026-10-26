@@ -4,6 +4,7 @@ Covers: /pdf stub, dead strim retrim (source video path), caption prefix
 overflow, quiz correct-index shift after dedupe, /mode blocking SQLite and
 double-tap edit, rate-limit refund on video-lock timeout.
 """
+
 import json
 import sqlite3
 from pathlib import Path
@@ -24,8 +25,9 @@ def test_strim_record_stores_source_video_not_rendered_clip():
     абсолютные таймкоды исходника — каждый ретрим падал."""
     shorts = Path("pipelines/shorts.py").read_text(encoding="utf-8")
     save_call = shorts.split("short_trim_save(", 1)[1]
-    assert "video_path=str(video_path)" in save_call.split(")", 20)[0] or \
-        "video_path=str(video_path)" in save_call[:600]
+    assert (
+        "video_path=str(video_path)" in save_call.split(")", 20)[0] or "video_path=str(video_path)" in save_call[:600]
+    )
     callbacks = Path("handlers/callbacks.py").read_text(encoding="utf-8")
     retrim = callbacks.split("async def _handle_strim_retrim", 1)[1]
     assert "video_path=str(video_path)" in retrim
@@ -53,18 +55,23 @@ def test_quiz_correct_index_survives_dedupe():
     смещал правильный ответ на соседний вариант."""
     from services.quiz_generator import _parse_quiz_json
 
-    raw = json.dumps([{
-        "question": "Что утверждает Павел об оправдании согласно материалу проповеди?",
-        "options": [
-            "Оправдание достигается делами закона Моисея",
-            "Оправдание достигается делами закона Моисея",
-            "Оправдание принимается только верой во Христа",
-            "Оправдание передаётся через церковные таинства",
-            "Оправдание наследуется от праведных предков",
+    raw = json.dumps(
+        [
+            {
+                "question": "Что утверждает Павел об оправдании согласно материалу проповеди?",
+                "options": [
+                    "Оправдание достигается делами закона Моисея",
+                    "Оправдание достигается делами закона Моисея",
+                    "Оправдание принимается только верой во Христа",
+                    "Оправдание передаётся через церковные таинства",
+                    "Оправдание наследуется от праведных предков",
+                ],
+                "correct": 2,
+                "explanation": "Павел утверждает оправдание верой (Рим 3:28).",
+            }
         ],
-        "correct": 2,
-        "explanation": "Павел утверждает оправдание верой (Рим 3:28).",
-    }], ensure_ascii=False)
+        ensure_ascii=False,
+    )
     result = _parse_quiz_json(raw)
     assert result, "вопрос с дублем варианта должен пройти после ремапа"
     item = result[0]

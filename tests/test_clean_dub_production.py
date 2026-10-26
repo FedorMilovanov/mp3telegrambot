@@ -13,9 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_recipe_routes_only_to_clean_production() -> None:
     recipe = json.loads(
-        (ROOT / "tools" / "voxcpm2" / "recipes" / "generic_short_v1.json").read_text(
-            encoding="utf-8-sig"
-        )
+        (ROOT / "tools" / "voxcpm2" / "recipes" / "generic_short_v1.json").read_text(encoding="utf-8-sig")
     )
     actions = recipe["actions"]
     assert actions["render"]["module"] == "tools.voxcpm2.generic_gemini_runtime"
@@ -34,9 +32,7 @@ def test_recipe_routes_only_to_clean_production() -> None:
 
 
 def test_clean_core_has_no_renderer_wrapper_installation() -> None:
-    source = (ROOT / "tools" / "voxcpm2" / "clean_production_core.py").read_text(
-        encoding="utf-8"
-    )
+    source = (ROOT / "tools" / "voxcpm2" / "clean_production_core.py").read_text(encoding="utf-8")
     assert "import runpy" not in source
     assert "runpy.run_path" not in source
     assert "QualityV4SubprocessProxy" not in source
@@ -112,9 +108,7 @@ def test_clean_master_is_quieter_and_release_safe() -> None:
 
 
 def test_clean_repair_requires_expressive_baseline_for_selective_work() -> None:
-    source = (
-        ROOT / "tools" / "voxcpm2" / "generic_clean_audio_repair_runtime.py"
-    ).read_text(encoding="utf-8")
+    source = (ROOT / "tools" / "voxcpm2" / "generic_clean_audio_repair_runtime.py").read_text(encoding="utf-8")
     assert "clean expressive " in source
     assert "baseline renderer" in source
     assert "fingerprinted release-complete clean expressive baseline" in source

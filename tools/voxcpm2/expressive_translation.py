@@ -7,6 +7,7 @@ theological fidelity while preserving the discourse devices that make a sermon
 sound alive: repetition, direct address, questions, contrast, escalation,
 climax, concrete imagery, cadence and natural breathing points.
 """
+
 from __future__ import annotations
 
 import json
@@ -54,15 +55,9 @@ def translate_groups(
     source_json = _payload(groups)
     context = {
         "video_title": str((metadata or {}).get("title") or ""),
-        "channel": str(
-            (metadata or {}).get("uploader")
-            or (metadata or {}).get("channel")
-            or ""
-        ),
+        "channel": str((metadata or {}).get("uploader") or (metadata or {}).get("channel") or ""),
         "source_language": str(
-            (metadata or {}).get("language")
-            or (metadata or {}).get("original_language")
-            or "unknown"
+            (metadata or {}).get("language") or (metadata or {}).get("original_language") or "unknown"
         ),
         "caption_origin": str(caption_origin or ""),
     }
@@ -159,17 +154,13 @@ def translate_groups(
     overloaded: list[dict[str, Any]] = []
     for source, translated in zip(groups, final, strict=True):
         seconds = max(1.0, float(source["end"]) - float(source["start"]))
-        rate = len(
-            re.findall(r"\w+", translated["russian"], flags=re.UNICODE)
-        ) / seconds
+        rate = len(re.findall(r"\w+", translated["russian"], flags=re.UNICODE)) / seconds
         if rate > _MAX_WORDS_PER_SECOND:
             overloaded.append(
                 {
                     "id": int(source["id"]),
                     "seconds": round(seconds, 3),
-                    "source": str(
-                        source.get("source") or source.get("english") or ""
-                    ),
+                    "source": str(source.get("source") or source.get("english") or ""),
                     "russian": translated["russian"],
                     "words_per_second": round(rate, 3),
                 }
@@ -202,10 +193,7 @@ def translate_groups(
             _gemini(compression_prompt, model_name),
             [item["id"] for item in overloaded],
         )
-        compact_by_id = {
-            int(item["id"]): str(item["russian"])
-            for item in compact
-        }
+        compact_by_id = {int(item["id"]): str(item["russian"]) for item in compact}
         for item in final:
             if int(item["id"]) in compact_by_id:
                 item["russian"] = compact_by_id[int(item["id"])]

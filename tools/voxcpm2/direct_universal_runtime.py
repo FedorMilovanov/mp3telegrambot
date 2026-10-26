@@ -5,6 +5,7 @@
 Direct CLI state and candidate/retry wrappers are owned by the canonical CLI.
 This module exposes shared calculations plus the still-separate generic preflight.
 """
+
 from __future__ import annotations
 
 import json
@@ -17,9 +18,7 @@ from tools.voxcpm2 import direct_timing_guard
 
 POLICY = "voxcpm2-universal-production-hardening-v1"
 _PROGRESS_POLICY = "candidate-aware-project-progress-v1"
-_MODEL_TQDM_RE = re.compile(
-    r"^(?:\x1b\[[0-9;]*m)*\s*\d{1,3}%\|.*\|\s*\d+/\d+\s*\["
-)
+_MODEL_TQDM_RE = re.compile(r"^(?:\x1b\[[0-9;]*m)*\s*\d{1,3}%\|.*\|\s*\d+/\d+\s*\[")
 
 
 def _segments_by_id(segments: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
@@ -36,7 +35,11 @@ def _segments_by_id(segments: list[dict[str, Any]]) -> dict[int, dict[str, Any]]
 
 
 def _progress_value(
-    *, position: int, total: int, attempt: int, max_attempts: int,
+    *,
+    position: int,
+    total: int,
+    attempt: int,
+    max_attempts: int,
 ) -> int:
     total_value = max(1, int(total))
     position_value = max(1, min(int(position), total_value))
@@ -46,4 +49,4 @@ def _progress_value(
     return max(8, min(86, 8 + round(fraction / total_value * 78)))
 
 
-__all__ = ['POLICY']
+__all__ = ["POLICY"]

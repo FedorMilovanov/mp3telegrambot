@@ -52,9 +52,7 @@ def _document(tmp_path: Path) -> tuple[Path, dict]:
             "duration_seconds": 97.0,
         },
     }
-    document["repair_result_id"] = provenance._canonical_sha256(
-        provenance._identity_payload(document)
-    )
+    document["repair_result_id"] = provenance._canonical_sha256(provenance._identity_payload(document))
     return output, document
 
 

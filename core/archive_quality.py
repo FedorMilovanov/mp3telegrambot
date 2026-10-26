@@ -5,6 +5,7 @@ This is intentionally read-only. It summarizes the durable generated_pages
 archive so the owner can compare prompt variants and spot recurring quality
 warnings by author/format without digging through logs.
 """
+
 from __future__ import annotations
 
 from collections import Counter, defaultdict
@@ -190,16 +191,9 @@ def collect_prompt_variant_quality(*, limit: int = 50, base_dir: Path | None = N
                 coverage_values.append(cov)
         avg_cov = sum(coverage_values) / len(coverage_values) if coverage_values else 0.0
         total = len(items)
-        out.append(PromptVariantQualityStats(
-            variant=variant,
-            total=total,
-            warning_total=warning_total,
-            partial_segments=partial_segments,
-            caption_trimmed=caption_trimmed,
-            timestamp_low=timestamp_low,
-            title_topic_warnings=title_topic_warnings,
-            avg_timestamp_coverage=avg_cov,
-            quality_score=_quality_score(
+        out.append(
+            PromptVariantQualityStats(
+                variant=variant,
                 total=total,
                 warning_total=warning_total,
                 partial_segments=partial_segments,
@@ -207,8 +201,17 @@ def collect_prompt_variant_quality(*, limit: int = 50, base_dir: Path | None = N
                 timestamp_low=timestamp_low,
                 title_topic_warnings=title_topic_warnings,
                 avg_timestamp_coverage=avg_cov,
-            ),
-        ))
+                quality_score=_quality_score(
+                    total=total,
+                    warning_total=warning_total,
+                    partial_segments=partial_segments,
+                    caption_trimmed=caption_trimmed,
+                    timestamp_low=timestamp_low,
+                    title_topic_warnings=title_topic_warnings,
+                    avg_timestamp_coverage=avg_cov,
+                ),
+            )
+        )
     return sorted(out, key=lambda x: (-x.quality_score, -x.total, x.variant))
 
 
@@ -234,18 +237,20 @@ def collect_author_quality_profiles(*, limit: int = 50, base_dir: Path | None = 
         warning_total = sum(len(_record_warning_kinds(r)) for r in items)
         partial_segments = sum(1 for r in items if _norm(r.get("segments_status"), "complete") != "complete")
         formats = {_norm(r.get("format"), "unknown") for r in items}
-        out.append(AuthorQualityProfile(
-            author=author,
-            total=len(items),
-            warning_total=warning_total,
-            partial_segments=partial_segments,
-            formats=tuple(sorted(formats)),
-            recommendation=_author_recommendation(
+        out.append(
+            AuthorQualityProfile(
+                author=author,
+                total=len(items),
                 warning_total=warning_total,
                 partial_segments=partial_segments,
-                formats=formats,
-            ),
-        ))
+                formats=tuple(sorted(formats)),
+                recommendation=_author_recommendation(
+                    warning_total=warning_total,
+                    partial_segments=partial_segments,
+                    formats=formats,
+                ),
+            )
+        )
     return sorted(out, key=lambda x: (-x.warning_total, -x.partial_segments, -x.total, x.author))
 
 
@@ -332,6 +337,7 @@ def format_archive_quality_report(*, limit: int = 50, base_dir: Path | None = No
     )
     return "\n".join(lines)
 
+
 @dataclass(frozen=True)
 class PromptVariantComparison:
     left: PromptVariantQualityStats | None
@@ -381,7 +387,9 @@ def compare_prompt_variants(
         recommendation = f"{right.variant} looks better in archive warnings; confirm with manual page review"
     else:
         winner = left.variant
-        recommendation = f"{left.variant} looks better in archive warnings; keep current default unless manual review disagrees"
+        recommendation = (
+            f"{left.variant} looks better in archive warnings; keep current default unless manual review disagrees"
+        )
     return PromptVariantComparison(
         left=left,
         right=right,
@@ -430,7 +438,9 @@ def format_prompt_variant_comparison(
     lines.append(f"winner=<code>{_h(cmp.winner)}</code>")
     lines.append("Recommendation: " + _h(cmp.recommendation))
     lines.append("")
-    lines.append("Archive warnings are a filter, not a final judge: always inspect sample pages manually before promoting a variant.")
+    lines.append(
+        "Archive warnings are a filter, not a final judge: always inspect sample pages manually before promoting a variant."
+    )
     return "\n".join(lines)
 
 
@@ -531,6 +541,7 @@ async def awrite_archive_quality_exports(**kwargs: Any) -> dict[str, str]:
 
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, lambda: write_archive_quality_exports(**kwargs))
+
 
 @dataclass(frozen=True)
 class ArchiveQualityRecord:
@@ -649,7 +660,9 @@ def format_quality_records_report(
             f"   warnings=<code>{_h(warning_text)}</code>" + (f"\n   {link_text}" if link_text else "")
         )
     lines.append("")
-    lines.append("Use /repairpage for deterministic Telegraph repair, or rerun with a prompt variant after inspecting the linked pages.")
+    lines.append(
+        "Use /repairpage for deterministic Telegraph repair, or rerun with a prompt variant after inspecting the linked pages."
+    )
     return "\n".join(lines)
 
 
@@ -670,7 +683,9 @@ def recommend_prompt_variant(*, limit: int = 50, base_dir: Path | None = None, m
         lines.append("Not enough records per variant for recommendation yet.")
         lines.append("Observed variants:")
         for s in stats[:8]:
-            lines.append(f"- <code>{_h(s.variant)}</code>: records=<code>{s.total}</code> score=<code>{s.quality_score}</code>")
+            lines.append(
+                f"- <code>{_h(s.variant)}</code>: records=<code>{s.total}</code> score=<code>{s.quality_score}</code>"
+            )
         return "\n".join(lines)
 
     best = eligible[0]

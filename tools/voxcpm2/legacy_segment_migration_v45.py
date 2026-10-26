@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Safely migrate legacy long audio islands into short phrase windows."""
+
 from __future__ import annotations
 
 import hashlib
@@ -28,10 +29,7 @@ def _validate_old(payload: list[Any]) -> list[dict[str, Any]]:
     seen: set[int] = set()
     for position, item in enumerate(payload, start=1):
         if not isinstance(item, dict):
-            raise RuntimeError(
-                f"legacy segment[{position}] должен быть JSON-объектом, "
-                f"получено {type(item).__name__}."
-            )
+            raise RuntimeError(f"legacy segment[{position}] должен быть JSON-объектом, получено {type(item).__name__}.")
         copied = dict(item)
         segment_id = strict_core._strict_int(
             copied.get("id"),
@@ -51,11 +49,7 @@ def _validate_old(payload: list[Any]) -> list[dict[str, Any]]:
 
 def _window(item: dict[str, Any], delay: float) -> tuple[float, float]:
     segment_id = int(item["id"])
-    start_raw = (
-        item.get("original_srt_start")
-        if item.get("original_srt_start") is not None
-        else item.get("start", 0.0)
-    )
+    start_raw = item.get("original_srt_start") if item.get("original_srt_start") is not None else item.get("start", 0.0)
     start = strict_core._finite(
         start_raw,
         field=f"legacy segment[{segment_id}].start",
@@ -86,12 +80,7 @@ def migrate(root: Path, request: dict[str, Any]) -> bool:
         return False
     repair = json.loads(repair_path.read_text(encoding="utf-8-sig"))
     payload = json.loads(segments_path.read_text(encoding="utf-8-sig"))
-    if (
-        not isinstance(repair, dict)
-        or not repair.get("repair_all")
-        or not isinstance(payload, list)
-        or not payload
-    ):
+    if not isinstance(repair, dict) or not repair.get("repair_all") or not isinstance(payload, list) or not payload:
         return False
 
     old = _validate_old(payload)
@@ -99,8 +88,7 @@ def migrate(root: Path, request: dict[str, Any]) -> bool:
     delay = delay_ms / 1000.0
     old_windows = [_window(item, delay) for item in old]
     if not any(
-        end - start > 6.2
-        or item.get("quality_timing") != "global-delay-v4.5"
+        end - start > 6.2 or item.get("quality_timing") != "global-delay-v4.5"
         for item, (start, end) in zip(old, old_windows, strict=True)
     ):
         return False
@@ -125,9 +113,7 @@ def migrate(root: Path, request: dict[str, Any]) -> bool:
         duration = end - start
         parts = policy.split_text(str(item.get("text") or ""), duration)
         if not parts:
-            raise RuntimeError(
-                f"Реплика #{item['id']} пуста и не может быть мигрирована."
-            )
+            raise RuntimeError(f"Реплика #{item['id']} пуста и не может быть мигрирована.")
         weights = [policy.words(part) for part in parts]
         total = sum(weights)
         if total <= 0:
@@ -137,11 +123,7 @@ def migrate(root: Path, request: dict[str, Any]) -> bool:
             zip(parts, weights, strict=True),
             start=1,
         ):
-            part_end = (
-                end
-                if part_index == len(parts)
-                else cursor + duration * weight / total
-            )
+            part_end = end if part_index == len(parts) else cursor + duration * weight / total
             migrated.append(
                 {
                     "id": len(migrated) + 1,
@@ -166,18 +148,12 @@ def migrate(root: Path, request: dict[str, Any]) -> bool:
             item["reference_profile"] = "composite"
             item["tail_guard"] = 0.22
 
-    old_tokens = " ".join(
-        " ".join(str(item.get("text") or "").split()) for item in old
-    ).split()
-    new_tokens = " ".join(
-        " ".join(str(item.get("text") or "").split()) for item in migrated
-    ).split()
+    old_tokens = " ".join(" ".join(str(item.get("text") or "").split()) for item in old).split()
+    new_tokens = " ".join(" ".join(str(item.get("text") or "").split()) for item in migrated).split()
     if old_tokens != new_tokens:
         raise RuntimeError("Миграция изменила русский текст; операция остановлена.")
 
-    validation_duration = source_duration or max(
-        float(item["end"]) + delay for item in migrated
-    )
+    validation_duration = source_duration or max(float(item["end"]) + delay for item in migrated)
     strict_core._mark_and_validate_segments(migrated, validation_duration)
     backup = root / "segments_ru_final.pre_v45.json"
     if not backup.exists():
@@ -221,7 +197,6 @@ def migrate(root: Path, request: dict[str, Any]) -> bool:
                 encoding="utf-8",
             )
     policy.log(
-        f"legacy timing migrated safely: {len(old)} -> {len(migrated)} "
-        "segments; text preserved; final phrase protected"
+        f"legacy timing migrated safely: {len(old)} -> {len(migrated)} segments; text preserved; final phrase protected"
     )
     return True

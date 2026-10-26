@@ -6,6 +6,7 @@ reference or a long author hashtag is real. This module samples subtitles from
 the whole video for the model and validates high-risk fields against the full
 subtitle evidence.
 """
+
 from __future__ import annotations
 
 import re
@@ -20,19 +21,32 @@ _REF_RE = re.compile(r"(?<!\d)(?P<c>\d{1,3})\s*:\s*(?P<v>\d{1,3})(?!\d)")
 _WORD_RE = re.compile(r"[A-Za-zА-Яа-яЁё]{3,}")
 
 _BOOK_GROUPS = (
-    ("быт", "бытие", "genesis"), ("исх", "исход", "exodus"),
-    ("цар", "царств", "kings"), ("пар", "паралипоменон", "chronicles"),
-    ("пс", "псалом", "псалмов", "psalm"), ("притч", "притчи", "proverbs"),
-    ("ис", "исаия", "исайя", "isaiah"), ("иер", "иеремия", "jeremiah"),
-    ("матф", "матфея", "matthew"), ("мк", "марка", "mark"),
-    ("лк", "луки", "luke"), ("ин", "иоанна", "john"),
-    ("деян", "деяния", "acts"), ("рим", "римлянам", "romans"),
-    ("кор", "коринфянам", "corinthians"), ("гал", "галатам", "galatians"),
-    ("еф", "ефесянам", "ephesians"), ("флп", "филиппийцам", "philippians"),
-    ("кол", "колоссянам", "colossians"), ("фес", "фессалоникийцам", "thessalonians"),
-    ("тим", "тимофею", "timothy"), ("евр", "евреям", "hebrews"),
-    ("иак", "иакова", "james"), ("пет", "петра", "peter"),
-    ("иуд", "иуды", "jude"), ("откр", "откровение", "revelation"),
+    ("быт", "бытие", "genesis"),
+    ("исх", "исход", "exodus"),
+    ("цар", "царств", "kings"),
+    ("пар", "паралипоменон", "chronicles"),
+    ("пс", "псалом", "псалмов", "psalm"),
+    ("притч", "притчи", "proverbs"),
+    ("ис", "исаия", "исайя", "isaiah"),
+    ("иер", "иеремия", "jeremiah"),
+    ("матф", "матфея", "matthew"),
+    ("мк", "марка", "mark"),
+    ("лк", "луки", "luke"),
+    ("ин", "иоанна", "john"),
+    ("деян", "деяния", "acts"),
+    ("рим", "римлянам", "romans"),
+    ("кор", "коринфянам", "corinthians"),
+    ("гал", "галатам", "galatians"),
+    ("еф", "ефесянам", "ephesians"),
+    ("флп", "филиппийцам", "philippians"),
+    ("кол", "колоссянам", "colossians"),
+    ("фес", "фессалоникийцам", "thessalonians"),
+    ("тим", "тимофею", "timothy"),
+    ("евр", "евреям", "hebrews"),
+    ("иак", "иакова", "james"),
+    ("пет", "петра", "peter"),
+    ("иуд", "иуды", "jude"),
+    ("откр", "откровение", "revelation"),
 )
 
 _GENERIC_CLAIMS = {
@@ -59,7 +73,7 @@ def _read_blocks(path: Path) -> list[tuple[int, str]]:
         if not match:
             continue
         seconds = int(match.group("h")) * 3600 + int(match.group("m")) * 60 + int(match.group("s"))
-        text = " ".join(lines[idx + 1:]).strip()
+        text = " ".join(lines[idx + 1 :]).strip()
         if text:
             out.append((seconds, text))
     return out
@@ -196,7 +210,8 @@ def sanitize_card(card: dict | None, title_line: str, evidence: str) -> dict | N
     compact = result.get("compact_subtitles") or []
     if isinstance(compact, list):
         result["compact_subtitles"] = [
-            str(item).strip() for item in compact[:6]
+            str(item).strip()
+            for item in compact[:6]
             if str(item).strip() and _claim_supported(str(item), evidence_lower)
         ]
     for field in ("telegram_description", "youtube_description"):

@@ -7,6 +7,7 @@ truth.  This module moves a section start earlier only when its own earliest
 anchor proves that the section already began, preserves section ordering, and
 then rebuilds the public outline from the reconciled section times.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -16,12 +17,8 @@ from typing import Any
 from core.core_utils import time_to_seconds
 
 
-_INLINE_TS_RE = re.compile(
-    r"[⏱📌]\s*\*{0,2}(\d{1,2}:\d{2}(?::\d{2})?)\*{0,2}"
-)
-_EXACT_TS_RE = re.compile(
-    r"^\s*\*{0,2}(\d{1,2}:\d{2}(?::\d{2})?)\*{0,2}\s*$"
-)
+_INLINE_TS_RE = re.compile(r"[⏱📌]\s*\*{0,2}(\d{1,2}:\d{2}(?::\d{2})?)\*{0,2}")
+_EXACT_TS_RE = re.compile(r"^\s*\*{0,2}(\d{1,2}:\d{2}(?::\d{2})?)\*{0,2}\s*$")
 _BLOCK_TEXT_FIELDS = (
     "text",
     "quote",
@@ -101,9 +98,7 @@ def reconcile_synopsis_timestamps(
     outline: list[dict[str, Any]] | None = None,
     *,
     tolerance_seconds: int = 5,
-) -> tuple[
-    list[dict[str, Any]], list[dict[str, Any]], list[SynopsisTimestampIssue]
-]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[SynopsisTimestampIssue]]:
     """Return reconciled section copies, authoritative outline and diagnostics.
 
     A start is moved only to the earliest explicit anchor in that same section,
@@ -123,15 +118,17 @@ def reconcile_synopsis_timestamps(
         earliest = anchors[0] if anchors else None
 
         if current_start is not None and previous_start is not None and current_start < previous_start:
-            issues.append(SynopsisTimestampIssue(
-                code="section_start_non_monotonic",
-                section_index=index,
-                message=(
-                    f"section start {_format_seconds(current_start)} precedes previous "
-                    f"section start {_format_seconds(previous_start)}"
-                ),
-                before=raw_start,
-            ))
+            issues.append(
+                SynopsisTimestampIssue(
+                    code="section_start_non_monotonic",
+                    section_index=index,
+                    message=(
+                        f"section start {_format_seconds(current_start)} precedes previous "
+                        f"section start {_format_seconds(previous_start)}"
+                    ),
+                    before=raw_start,
+                )
+            )
 
         target: int | None = None
         if earliest is not None:
@@ -142,26 +139,30 @@ def reconcile_synopsis_timestamps(
 
         if target is not None:
             if previous_start is not None and target < previous_start:
-                issues.append(SynopsisTimestampIssue(
-                    code="section_time_reconcile_blocked",
-                    section_index=index,
-                    message=(
-                        f"earliest own anchor {_format_seconds(target)} is before previous "
-                        f"section start {_format_seconds(previous_start)}; boundary needs review"
-                    ),
-                    before=raw_start,
-                ))
+                issues.append(
+                    SynopsisTimestampIssue(
+                        code="section_time_reconcile_blocked",
+                        section_index=index,
+                        message=(
+                            f"earliest own anchor {_format_seconds(target)} is before previous "
+                            f"section start {_format_seconds(previous_start)}; boundary needs review"
+                        ),
+                        before=raw_start,
+                    )
+                )
             else:
                 new_start = _format_seconds(target)
                 section["time"] = new_start
                 current_start = target
-                issues.append(SynopsisTimestampIssue(
-                    code="section_time_reconciled",
-                    section_index=index,
-                    message=f"section start aligned to earliest own anchor {new_start}",
-                    before=raw_start,
-                    after=new_start,
-                ))
+                issues.append(
+                    SynopsisTimestampIssue(
+                        code="section_time_reconciled",
+                        section_index=index,
+                        message=f"section start aligned to earliest own anchor {new_start}",
+                        before=raw_start,
+                        after=new_start,
+                    )
+                )
 
         if current_start is not None:
             previous_start = current_start
@@ -175,10 +176,12 @@ def reconcile_synopsis_timestamps(
         source_item = source_outline[index] if same_length else {}
         section_time = str(section.get("time") or "").strip()
         fallback_time = str(source_item.get("time") or "").strip()
-        final_outline.append({
-            "title": str(section.get("title") or ""),
-            "time": section_time or fallback_time,
-        })
+        final_outline.append(
+            {
+                "title": str(section.get("title") or ""),
+                "time": section_time or fallback_time,
+            }
+        )
 
     return clean_sections, final_outline, issues
 
@@ -200,15 +203,16 @@ def unresolved_timestamp_issues(
             continue
         for anchor in section_anchor_seconds(section):
             if anchor < start - tolerance:
-                issues.append(SynopsisTimestampIssue(
-                    code="inline_timestamp_before_section",
-                    section_index=index,
-                    message=(
-                        f"inline {_format_seconds(anchor)} is {start - anchor}s before "
-                        f"section start {raw_start}"
-                    ),
-                    before=raw_start,
-                ))
+                issues.append(
+                    SynopsisTimestampIssue(
+                        code="inline_timestamp_before_section",
+                        section_index=index,
+                        message=(
+                            f"inline {_format_seconds(anchor)} is {start - anchor}s before section start {raw_start}"
+                        ),
+                        before=raw_start,
+                    )
+                )
     return issues
 
 
@@ -218,8 +222,7 @@ def format_timestamp_issues(
     limit: int = 12,
 ) -> str:
     rendered = [
-        f"{item.code}@sections[{item.section_index}]: {item.message}"
-        for item in (issues or [])[: max(0, int(limit))]
+        f"{item.code}@sections[{item.section_index}]: {item.message}" for item in (issues or [])[: max(0, int(limit))]
     ]
     if issues and len(issues) > limit:
         rendered.append(f"... и ещё {len(issues) - limit}")

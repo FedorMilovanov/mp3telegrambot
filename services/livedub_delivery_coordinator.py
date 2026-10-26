@@ -21,6 +21,7 @@ across a stack of runtime monkey-patches:
 * request-local single-flight prevents duplicate companion delivery without
   replacing Telegram methods globally.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -175,8 +176,7 @@ async def _send_local_variant_uncommitted(
         raise RuntimeError(f"{companion._VARIANT_LABELS[variant]}: MP3 не прошёл ffprobe")
     if not companion._duration_compatible(reference_duration, duration):
         raise RuntimeError(
-            f"{companion._VARIANT_LABELS[variant]}: длительность {duration}с "
-            f"не совпадает с видео {reference_duration}с"
+            f"{companion._VARIANT_LABELS[variant]}: длительность {duration}с не совпадает с видео {reference_duration}с"
         )
 
     fields = await _publication_audio_fields(publication_card, variant)
@@ -202,9 +202,7 @@ async def _send_local_variant_uncommitted(
     message = await bot.send_audio(**kwargs)
     audio_file_id = str(getattr(getattr(message, "audio", None), "file_id", "") or "").strip()
     if not audio_file_id:
-        raise RuntimeError(
-            f"{companion._VARIANT_LABELS[variant]}: Telegram не вернул audio.file_id"
-        )
+        raise RuntimeError(f"{companion._VARIANT_LABELS[variant]}: Telegram не вернул audio.file_id")
     cache_meta = {
         "title": fields["title"],
         "performer": fields["performer"] or "",
@@ -254,9 +252,7 @@ async def deliver_new_companions(
         if dual:
             assert clean is not None
             if _path_identity(clean) == _path_identity(mixed):
-                raise RuntimeError(
-                    "чистый русский перевод и финальный микс указывают на один файл"
-                )
+                raise RuntimeError("чистый русский перевод и финальный микс указывают на один файл")
             sources = [("clean", clean), ("mixed", mixed)]
         elif clean is not None:
             sources = [("clean", clean)]
@@ -289,9 +285,7 @@ async def deliver_new_companions(
                 for variant, expected_id, _meta in pending_cache:
                     actual = str((variants.get(variant) or {}).get("audio_file_id") or "")
                     if actual != expected_id:
-                        raise RuntimeError(
-                            f"{variant}: persistent companion cache verification failed"
-                        )
+                        raise RuntimeError(f"{variant}: persistent companion cache verification failed")
         except BaseException:
             deleted = await _rollback_messages(bot, chat_id, sent_messages)
             companion._cache_drop(video_file_id)
@@ -433,9 +427,7 @@ class SourceAudioDeferral:
 
         root = Path(tempfile.gettempdir()) / "mp3bot_livedub_deferred"
         root.mkdir(parents=True, exist_ok=True)
-        destination = root / (
-            f"{self.chat_id}_{self.reply_to}_{uuid.uuid4().hex[:8]}_{source.name}"
-        )
+        destination = root / (f"{self.chat_id}_{self.reply_to}_{uuid.uuid4().hex[:8]}_{source.name}")
         await asyncio.to_thread(shutil.copy2, source, destination)
 
         send_kwargs = dict(kwargs)
@@ -501,13 +493,8 @@ def create_source_audio_deferral(
         bot=bot,
         chat_id=chat_id,
         reply_to=reply_to,
-        enabled=bool(
-            enabled
-            and _truthy("LIVEDUB_AUDIO_DEDUPE")
-            and _truthy("LIVEDUB_SEND_AUDIO")
-        ),
+        enabled=bool(enabled and _truthy("LIVEDUB_AUDIO_DEDUPE") and _truthy("LIVEDUB_SEND_AUDIO")),
     )
-
 
 
 def reset_delivery_runtime_state() -> int:
@@ -554,10 +541,7 @@ def validate_livedub_delivery_contract() -> str:
     )
     if not all(callable(item) for item in required):
         raise RuntimeError("explicit LiveDub delivery contract is incomplete")
-    return (
-        "explicit pipeline delivery; source-owned cache/quality/publication; "
-        "no Telegram send_* interception"
-    )
+    return "explicit pipeline delivery; source-owned cache/quality/publication; no Telegram send_* interception"
 
 
 __all__ = [

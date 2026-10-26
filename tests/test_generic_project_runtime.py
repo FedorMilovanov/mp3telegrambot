@@ -53,17 +53,23 @@ def test_title_filename_keeps_cyrillic_and_removes_windows_chars() -> None:
 
 
 def test_dub_title_reuses_shorts_case_and_keeps_service_words_lowercase() -> None:
-    assert standardize_russian_title(
-        "сила и достоинство благочестивой женщины",
-        context="John Piper",
-    ) == "Сила и Достоинство Благочестивой Женщины - Джон Пайпер"
+    assert (
+        standardize_russian_title(
+            "сила и достоинство благочестивой женщины",
+            context="John Piper",
+        )
+        == "Сила и Достоинство Благочестивой Женщины - Джон Пайпер"
+    )
 
 
 def test_dub_title_keeps_initial_preposition_capitalized() -> None:
-    assert standardize_russian_title(
-        "в чем заключается сила христианской женщины",
-        context="Джон Пайпер",
-    ) == "В Чем Заключается Сила Женщины Христианки - Джон Пайпер"
+    assert (
+        standardize_russian_title(
+            "в чем заключается сила христианской женщины",
+            context="Джон Пайпер",
+        )
+        == "В Чем Заключается Сила Женщины Христианки - Джон Пайпер"
+    )
 
 
 def test_template_round_trip_preserves_user_words(tmp_path: Path) -> None:

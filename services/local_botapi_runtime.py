@@ -282,9 +282,7 @@ def _start_server(host: str, port: int, *, proxy_url: str = ""):
     try:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with log_path.open("a", encoding="utf-8", errors="replace") as marker:
-            marker.write(
-                f"\n===== runtime bootstrap {time.strftime('%Y-%m-%d %H:%M:%S')} =====\n"
-            )
+            marker.write(f"\n===== runtime bootstrap {time.strftime('%Y-%m-%d %H:%M:%S')} =====\n")
         handle = log_path.open("ab")
         kwargs["stdout"] = handle
         kwargs["stderr"] = subprocess.STDOUT

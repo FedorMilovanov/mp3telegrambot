@@ -37,9 +37,7 @@ def test_stale_inflight_from_old_event_loop_is_not_awaited(monkeypatch):
     monkeypatch.setattr(publication, "_build_uncached", fake_build)
 
     async def run():
-        return await publication.build_publication_card(
-            "Title", "https://youtu.be/restart"
-        )
+        return await publication.build_publication_card("Title", "https://youtu.be/restart")
 
     try:
         result = asyncio.run(run())
@@ -50,9 +48,7 @@ def test_stale_inflight_from_old_event_loop_is_not_awaited(monkeypatch):
 
 
 def test_missing_quality_config_falls_back_without_unconfigured_ai_call():
-    src = (Path(__file__).parents[1] / "services/livedub_publication_core.py").read_text(
-        encoding="utf-8"
-    )
+    src = (Path(__file__).parents[1] / "services/livedub_publication_core.py").read_text(encoding="utf-8")
     assert "if config is None:" in src
     assert "using deterministic fallback instead" in src
     assert "config=config" in src

@@ -12,6 +12,7 @@ known unavailable. The reverse is intentionally false: a Files outage must not
 block text-only GenerateContent, because the two Google surfaces can fail
 independently.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -52,11 +53,7 @@ def is_timeout_error(exc: BaseException) -> bool:
     """
     text = str(exc).casefold()
     name = type(exc).__name__.casefold()
-    return (
-        isinstance(exc, (asyncio.TimeoutError, TimeoutError))
-        or "timeout" in name
-        or "timed out" in text
-    )
+    return isinstance(exc, (asyncio.TimeoutError, TimeoutError)) or "timeout" in name or "timed out" in text
 
 
 def _env_int(name: str, default: int, minimum: int, maximum: int) -> int:
@@ -164,9 +161,7 @@ class GeminiRetryBudget:
 
     def claim(self) -> int:
         if self.exhausted:
-            raise RuntimeError(
-                "Gemini transient retry budget exhausted before network request"
-            )
+            raise RuntimeError("Gemini transient retry budget exhausted before network request")
         self.used += 1
         return self.used
 
@@ -190,9 +185,7 @@ class _LoopState:
     circuit_until: dict[str, float] = field(default_factory=dict)
 
 
-_LOOP_STATES: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, _LoopState] = (
-    weakref.WeakKeyDictionary()
-)
+_LOOP_STATES: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, _LoopState] = weakref.WeakKeyDictionary()
 
 
 def _loop_state() -> _LoopState:
@@ -208,10 +201,7 @@ def _circuit_remaining(state: _LoopState, domain: str) -> float:
     loop = asyncio.get_running_loop()
     return max(
         0.0,
-        *(
-            state.circuit_until.get(item, 0.0) - loop.time()
-            for item in _blocking_domains(domain)
-        ),
+        *(state.circuit_until.get(item, 0.0) - loop.time() for item in _blocking_domains(domain)),
     )
 
 
@@ -228,8 +218,7 @@ def require_domain_available(domain: str = "inference") -> None:
     if remaining > 0:
         note_latency_event(f"gemini_{_domain(domain)}_circuit_open")
         raise GeminiCapacityCircuitOpen(
-            f"Gemini {_domain(domain)} 503 overload circuit open; "
-            f"retry after about {remaining:.1f}s"
+            f"Gemini {_domain(domain)} 503 overload circuit open; retry after about {remaining:.1f}s"
         )
 
 
@@ -238,10 +227,7 @@ async def _respect_capacity_state(state: _LoopState, domain: str) -> None:
     loop = asyncio.get_running_loop()
     delay = max(
         0.0,
-        *(
-            state.cooldown_until.get(item, 0.0) - loop.time()
-            for item in _blocking_domains(domain)
-        ),
+        *(state.cooldown_until.get(item, 0.0) - loop.time() for item in _blocking_domains(domain)),
     )
     if delay > 0:
         started = time.perf_counter()

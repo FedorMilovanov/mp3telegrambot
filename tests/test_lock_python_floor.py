@@ -11,6 +11,7 @@
 установленных дистрибутивов (CI ставит lock перед тестами), а floor — из
 матрицы ``ci.yml``, чтобы версия Python не жила третьим местом.
 """
+
 from __future__ import annotations
 
 import re
@@ -30,7 +31,7 @@ def _floor_from_ci() -> tuple[int, int]:
     text = CI.read_text(encoding="utf-8")
     match = re.search(r"python-version:\s*\[([^\]]+)\]", text)
     assert match, "в ci.yml не найдена матрица python-version"
-    versions = [item.strip().strip('"\'') for item in match.group(1).split(",")]
+    versions = [item.strip().strip("\"'") for item in match.group(1).split(",")]
     floors = [tuple(int(part) for part in version.split(".")[:2]) for version in versions]
     return min(floors)
 
@@ -59,9 +60,7 @@ def test_floor_matches_the_declared_project_floor() -> None:
 
     with Path("pyproject.toml").open("rb") as handle:
         declared = tomllib.load(handle)["project"]["requires-python"]
-    assert declared == f">={floor[0]}.{floor[1]}", (
-        f"pyproject объявляет {declared}, а матрица CI — {floor}"
-    )
+    assert declared == f">={floor[0]}.{floor[1]}", f"pyproject объявляет {declared}, а матрица CI — {floor}"
 
     launcher = Path("Start Bot.bat").read_text(encoding="utf-8")
     assert f"({floor[0]}, {floor[1]}) <= sys.version_info[:2]" in launcher, (
@@ -88,10 +87,7 @@ def test_every_locked_pin_supports_the_minimum_python() -> None:
         if not SpecifierSet(requires).contains(f"{floor[0]}.{floor[1]}.0"):
             violations[distribution] = requires
 
-    assert not violations, (
-        "эти пины lock не устанавливаются на минимальном Python "
-        f"{floor[0]}.{floor[1]}: {violations}"
-    )
+    assert not violations, f"эти пины lock не устанавливаются на минимальном Python {floor[0]}.{floor[1]}: {violations}"
     # Не установленный локально пакет — не повод молча пропустить проверку.
     # В CI стоит весь lock, поэтому список должен быть пустым.
     assert not unverified, f"метаданные не найдены для: {sorted(unverified)}"
@@ -112,9 +108,7 @@ def test_numpy_major_is_allowed_now_that_the_floor_is_312() -> None:
         if line.split("#", 1)[0].strip().lower().startswith("numpy")
     ]
     assert requirements, "numpy больше не объявлен напрямую"
-    assert requirements[0].specifier.contains("2.5.0"), (
-        "numpy 2.5 разрешён: floor 3.12 это позволяет, обновите границу"
-    )
+    assert requirements[0].specifier.contains("2.5.0"), "numpy 2.5 разрешён: floor 3.12 это позволяет, обновите границу"
 
 
 def test_dependabot_no_longer_ignores_the_312_majors() -> None:
@@ -126,13 +120,9 @@ def test_dependabot_no_longer_ignores_the_312_majors() -> None:
     import yaml
 
     config = yaml.safe_load(Path(".github/dependabot.yml").read_text(encoding="utf-8"))
-    pip_update = next(
-        item for item in config["updates"] if item["package-ecosystem"] == "pip"
-    )
+    pip_update = next(item for item in config["updates"] if item["package-ecosystem"] == "pip")
     ignored = {entry["dependency-name"] for entry in pip_update.get("ignore", [])}
-    assert not {"numpy", "av"} & ignored, (
-        "numpy/av больше не требуют ignore: floor 3.12 снимает причину"
-    )
+    assert not {"numpy", "av"} & ignored, "numpy/av больше не требуют ignore: floor 3.12 снимает причину"
 
 
 @pytest.mark.parametrize("name", ["numpy", "av"])

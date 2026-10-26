@@ -27,14 +27,7 @@ from tools.voxcpm2.direct_source_prosody import candidate_pitch_evidence_ok
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXAMPLE = (
-    ROOT
-    / "tools"
-    / "voxcpm2"
-    / "examples"
-    / "john_piper_z20py4yqhyq"
-    / "voxcpm2_cpu_shorts_production.py"
-)
+EXAMPLE = ROOT / "tools" / "voxcpm2" / "examples" / "john_piper_z20py4yqhyq" / "voxcpm2_cpu_shorts_production.py"
 
 
 def _candidate(
@@ -205,12 +198,8 @@ def test_generation_preserves_final_word_headroom_and_supported_retries() -> Non
 
 
 def test_model_specific_loading_lives_only_in_backend_adapter() -> None:
-    raw_cli = (ROOT / "tools" / "voxcpm2" / "direct_max_quality_cli.py").read_text(
-        encoding="utf-8"
-    )
-    adapter = (ROOT / "services" / "speech_backends" / "voxcpm2.py").read_text(
-        encoding="utf-8"
-    )
+    raw_cli = (ROOT / "tools" / "voxcpm2" / "direct_max_quality_cli.py").read_text(encoding="utf-8")
+    adapter = (ROOT / "services" / "speech_backends" / "voxcpm2.py").read_text(encoding="utf-8")
     stable = EXAMPLE.read_text(encoding="utf-8")
 
     assert "VoxCPM.from_pretrained" not in raw_cli

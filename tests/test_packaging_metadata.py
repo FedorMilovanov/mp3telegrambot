@@ -13,6 +13,7 @@
 Проверки офлайновые: файлы и метаданные читаются напрямую, сборка wheel
 выполняется отдельным job'ом CI (``Package build``), потому что требует сети.
 """
+
 from __future__ import annotations
 
 import ast
@@ -68,12 +69,8 @@ def test_console_script_target_is_callable() -> None:
     module_name, _, attribute = scripts["mp3bot"].partition(":")
     source = (ROOT / f"{module_name}.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
-    functions = {
-        node.name for node in tree.body if isinstance(node, ast.FunctionDef)
-    }
-    assert attribute in functions, (
-        f"{module_name}.{attribute} не найдена — консольная команда упадёт с ImportError"
-    )
+    functions = {node.name for node in tree.body if isinstance(node, ast.FunctionDef)}
+    assert attribute in functions, f"{module_name}.{attribute} не найдена — консольная команда упадёт с ImportError"
 
 
 def test_launchers_are_inside_the_wheel_package_set() -> None:

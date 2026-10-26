@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Post-install surgical runtime for universal direct VoxCPM2 jobs."""
+
 from __future__ import annotations
 
 import hashlib
@@ -43,7 +44,11 @@ def _segments_by_id(values: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
 
 
 def _progress_value(
-    *, position: int, total: int, attempt: int, max_attempts: int,
+    *,
+    position: int,
+    total: int,
+    attempt: int,
+    max_attempts: int,
 ) -> int:
     total_value = max(1, int(total))
     position_value = max(1, min(int(position), total_value))
@@ -53,10 +58,7 @@ def _progress_value(
     return max(8, min(86, 8 + round(fraction / total_value * 78)))
 
 
-
 _segments_by_id = polish._segments_by_id
-_RUNTIME_SCOPE_FILES = tuple(
-    dict.fromkeys((*_RUNTIME_SCOPE_FILES, *polish._EXTRA_SCOPE))
-)
+_RUNTIME_SCOPE_FILES = tuple(dict.fromkeys((*_RUNTIME_SCOPE_FILES, *polish._EXTRA_SCOPE)))
 
-__all__ = ['POLICY']
+__all__ = ["POLICY"]

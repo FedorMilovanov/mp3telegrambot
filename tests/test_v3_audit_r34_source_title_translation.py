@@ -13,6 +13,7 @@
 русским названием; чужие книги без перевода (Вошер «The Power and Message of
 the Gospel») и не-карточки (ключевые понятия, стихи) не трогаем.
 """
+
 from core.source_titles import normalize_source_card_line as N
 from core.source_titles import official_ru_title
 
@@ -31,7 +32,7 @@ def test_russian_author_resolves_official_title():
 
 def test_no_false_positive_same_title_other_author():
     # «Holiness» Райла НЕ должен подставляться другим авторам.
-    assert official_ru_title("Jerry Bridges", "Holiness") == ""   # у него "The Pursuit of Holiness"
+    assert official_ru_title("Jerry Bridges", "Holiness") == ""  # у него "The Pursuit of Holiness"
     assert official_ru_title("John MacArthur", "Holiness") == ""
     # Пустой автор — не угадываем книгу по одному названию.
     assert official_ru_title("", "Holiness") == ""
@@ -49,7 +50,7 @@ def test_canonical_card_english_title_upgraded_without_paren():
     line = "**Holiness**, Дж. К. Райл. — Глубокий пасторский труд о святости."
     out = N(line)
     assert out.startswith("**Святость**")
-    assert "Дж. Ч. Райл" in out                  # имя канонизировано (R23)
+    assert "Дж. Ч. Райл" in out  # имя канонизировано (R23)
     assert "— Глубокий пасторский труд о святости." in out
 
 

@@ -4,6 +4,7 @@
 - core/prompt_rules.py: shared prompt constants created
 - core/prompts.py: SYNOPSIS_PROMPT_V2 uses shared rules via _expand_prompt_rules
 """
+
 import pathlib
 import tempfile
 import time
@@ -12,15 +13,17 @@ import os
 
 # ─── cleanup_stale_downloads ──────────────────────────────────────────────
 
+
 def test_cleanup_stale_downloads_function_exists():
     from core.utils import cleanup_stale_downloads
-    assert callable(cleanup_stale_downloads), \
-        "cleanup_stale_downloads must be callable"
+
+    assert callable(cleanup_stale_downloads), "cleanup_stale_downloads must be callable"
 
 
 def test_cleanup_stale_downloads_removes_old_video(tmp_path, monkeypatch):
     """Old .mp4 files older than threshold must be deleted."""
     from core import utils as u
+
     monkeypatch.setattr(u, "DOWNLOAD_DIR", tmp_path)
 
     # Create stale file (mtime 4 hours ago)
@@ -44,6 +47,7 @@ def test_cleanup_stale_downloads_removes_old_video(tmp_path, monkeypatch):
 def test_cleanup_stale_downloads_keeps_mp3(tmp_path, monkeypatch):
     """MP3 files must never be deleted by stale cleanup."""
     from core import utils as u
+
     monkeypatch.setattr(u, "DOWNLOAD_DIR", tmp_path)
 
     mp3_file = tmp_path / "abc.mp3"
@@ -59,6 +63,7 @@ def test_cleanup_stale_downloads_keeps_mp3(tmp_path, monkeypatch):
 def test_cleanup_stale_downloads_keeps_jpg(tmp_path, monkeypatch):
     """Thumbnail JPGs must never be deleted by stale cleanup."""
     from core import utils as u
+
     monkeypatch.setattr(u, "DOWNLOAD_DIR", tmp_path)
 
     thumb = tmp_path / "abc_thumb.jpg"
@@ -73,17 +78,17 @@ def test_cleanup_stale_downloads_keeps_jpg(tmp_path, monkeypatch):
 
 # ─── main.py periodic_maintenance ────────────────────────────────────────
 
+
 def test_main_periodic_maintenance_calls_stale_cleanup():
     src = pathlib.Path("main.py").read_text(encoding="utf-8")
-    assert "cleanup_stale_downloads" in src, \
-        "main.py must import and call cleanup_stale_downloads"
+    assert "cleanup_stale_downloads" in src, "main.py must import and call cleanup_stale_downloads"
     # 2026-06-10: импорт стал многострочным (добавлены botapi/livedub cleanups) —
     # проверяем наличие обоих имён, а не точную форму строки импорта
-    assert "cleanup_nosub_files" in src, \
-        "main.py must import cleanup_nosub_files alongside cleanup_stale_downloads"
+    assert "cleanup_nosub_files" in src, "main.py must import cleanup_nosub_files alongside cleanup_stale_downloads"
 
 
 # ─── prompt_rules.py ─────────────────────────────────────────────────────
+
 
 def test_prompt_rules_module_exists():
     from core.prompt_rules import (
@@ -93,6 +98,7 @@ def test_prompt_rules_module_exists():
         JSON_OUTPUT_RULE,
         SECTION_TITLE_RULE,
     )
+
     assert INLINE_TIMESTAMP_RULES, "INLINE_TIMESTAMP_RULES must not be empty"
     assert STRICT_BANS, "STRICT_BANS must not be empty"
     assert AUTHOR_NAMING_RULE, "AUTHOR_NAMING_RULE must not be empty"
@@ -100,6 +106,7 @@ def test_prompt_rules_module_exists():
 
 def test_prompt_rules_inline_timestamp_content():
     from core.prompt_rules import INLINE_TIMESTAMP_RULES
+
     assert "ПРАВИЛО INLINE-ТАЙМКОДОВ" in INLINE_TIMESTAMP_RULES
     assert "M:SS" in INLINE_TIMESTAMP_RULES
     assert "НИКОГДА не начинай" in INLINE_TIMESTAMP_RULES
@@ -107,6 +114,7 @@ def test_prompt_rules_inline_timestamp_content():
 
 def test_prompt_rules_strict_bans_content():
     from core.prompt_rules import STRICT_BANS
+
     assert "СТРОГИЕ ЗАПРЕТЫ" in STRICT_BANS
     assert "канцелярские вводные" in STRICT_BANS
     assert "автор/проповедник/спикер" in STRICT_BANS
@@ -115,17 +123,20 @@ def test_prompt_rules_strict_bans_content():
 
 # ─── prompts.py DRY ──────────────────────────────────────────────────────
 
+
 def test_synopsis_v2_no_raw_placeholders():
     from core.prompts import SYNOPSIS_PROMPT_V2
-    assert "{INLINE_TIMESTAMP_RULES}" not in SYNOPSIS_PROMPT_V2, \
+
+    assert "{INLINE_TIMESTAMP_RULES}" not in SYNOPSIS_PROMPT_V2, (
         "SYNOPSIS_PROMPT_V2 must not contain unresolved {INLINE_TIMESTAMP_RULES}"
-    assert "{STRICT_BANS}" not in SYNOPSIS_PROMPT_V2, \
-        "SYNOPSIS_PROMPT_V2 must not contain unresolved {STRICT_BANS}"
+    )
+    assert "{STRICT_BANS}" not in SYNOPSIS_PROMPT_V2, "SYNOPSIS_PROMPT_V2 must not contain unresolved {STRICT_BANS}"
 
 
 def test_synopsis_v2_contains_shared_rules():
     from core.prompts import SYNOPSIS_PROMPT_V2
     from core.prompt_rules import INLINE_TIMESTAMP_RULES, STRICT_BANS
+
     # Content of shared rules must be embedded
     assert "ПРАВИЛО INLINE-ТАЙМКОДОВ" in SYNOPSIS_PROMPT_V2
     assert "СТРОГИЕ ЗАПРЕТЫ" in SYNOPSIS_PROMPT_V2
@@ -133,6 +144,7 @@ def test_synopsis_v2_contains_shared_rules():
 
 def test_synopsis_v2_format_still_works():
     from core.prompts import SYNOPSIS_PROMPT_V2
+
     result = SYNOPSIS_PROMPT_V2.format(
         title="Test Sermon",
         duration="54:00",
@@ -149,10 +161,10 @@ def test_synopsis_v2_format_still_works():
 
 def test_expand_prompt_rules_helper():
     from core.prompts import _expand_prompt_rules
+
     sample = "Начало {INLINE_TIMESTAMP_RULES} конец {STRICT_BANS} ещё."
     result = _expand_prompt_rules(sample)
     assert "{INLINE_TIMESTAMP_RULES}" not in result
     assert "{STRICT_BANS}" not in result
     assert "ПРАВИЛО INLINE-ТАЙМКОДОВ" in result
     assert "СТРОГИЕ ЗАПРЕТЫ" in result
-

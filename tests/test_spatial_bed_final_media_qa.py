@@ -10,23 +10,15 @@ def _fixture(*, seconds: float = 8.0, sample_rate: int = 8_000):
     rng = np.random.default_rng(20260731)
     count = int(seconds * sample_rate)
     time = np.arange(count, dtype=np.float64) / sample_rate
-    source_voice = (
-        0.16 * np.sin(2.0 * np.pi * 145.0 * time)
-        + 0.045 * np.sin(2.0 * np.pi * 290.0 * time)
-    )
+    source_voice = 0.16 * np.sin(2.0 * np.pi * 145.0 * time) + 0.045 * np.sin(2.0 * np.pi * 290.0 * time)
     # Speech-bearing side: the two channels have different voice coloration.
     source = np.column_stack(
         (
-            source_voice + 0.035 * np.sin(2.0 * np.pi * 190.0 * time)
-            + rng.normal(0.0, 0.012, count),
-            source_voice - 0.030 * np.sin(2.0 * np.pi * 190.0 * time + 0.2)
-            + rng.normal(0.0, 0.012, count),
+            source_voice + 0.035 * np.sin(2.0 * np.pi * 190.0 * time) + rng.normal(0.0, 0.012, count),
+            source_voice - 0.030 * np.sin(2.0 * np.pi * 190.0 * time + 0.2) + rng.normal(0.0, 0.012, count),
         )
     )
-    russian_voice = (
-        0.20 * np.sin(2.0 * np.pi * 171.0 * time + 0.7)
-        + 0.040 * np.sin(2.0 * np.pi * 342.0 * time + 0.4)
-    )
+    russian_voice = 0.20 * np.sin(2.0 * np.pi * 171.0 * time + 0.7) + 0.040 * np.sin(2.0 * np.pi * 342.0 * time + 0.4)
     russian = np.column_stack((russian_voice, russian_voice))
     return rng, source, russian
 

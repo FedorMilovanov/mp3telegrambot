@@ -9,6 +9,7 @@ render_and_send_segment end-to-end with a controlled-size fake clip and
 proves the runtime-mutable limit is actually honored, not just imported
 correctly.
 """
+
 import core.database as db
 import pytest
 from core.segment_planner import PlannedSegment
@@ -39,13 +40,12 @@ def _make_fake_render(size_mb: int):
     async def _fake_render(video_path, clip_path, start, end):
         clip_path.write_bytes(b"0" * (size_mb * 1024 * 1024))
         return True
+
     return _fake_render
 
 
 @pytest.mark.asyncio
-async def test_oversized_segment_rejected_under_cloud_limit_but_accepted_under_local(
-    tmp_path, monkeypatch
-):
+async def test_oversized_segment_rejected_under_cloud_limit_but_accepted_under_local(tmp_path, monkeypatch):
     """A 60MB rendered clip must be rejected when the bot is effectively on
     the 50MB cloud Bot API, and accepted once the SAME code detects it's
     effectively on the 2000MB local Bot API — without restarting the
@@ -81,9 +81,13 @@ async def test_oversized_segment_rejected_under_cloud_limit_but_accepted_under_l
         db.set_effective_max_file_size_mb(False)  # cloud fallback: 50MB
         cloud_reply = _FakeMsg()
         ok_cloud = await render_and_send_segment(
-            reply_target=cloud_reply, status_msg=_FakeMsg(),
-            video_id="vid_cloud", source_url="http://example.invalid/v",
-            segment=segment, title="Заголовок", total_segments=1,
+            reply_target=cloud_reply,
+            status_msg=_FakeMsg(),
+            video_id="vid_cloud",
+            source_url="http://example.invalid/v",
+            segment=segment,
+            title="Заголовок",
+            total_segments=1,
         )
         assert ok_cloud is False
         assert not cloud_reply.videos
@@ -92,9 +96,13 @@ async def test_oversized_segment_rejected_under_cloud_limit_but_accepted_under_l
         db.set_effective_max_file_size_mb(True)  # local Bot API confirmed live: 2000MB
         local_reply = _FakeMsg()
         ok_local = await render_and_send_segment(
-            reply_target=local_reply, status_msg=_FakeMsg(),
-            video_id="vid_local", source_url="http://example.invalid/v",
-            segment=segment, title="Заголовок", total_segments=1,
+            reply_target=local_reply,
+            status_msg=_FakeMsg(),
+            video_id="vid_local",
+            source_url="http://example.invalid/v",
+            segment=segment,
+            title="Заголовок",
+            total_segments=1,
         )
         assert ok_local is True
         assert local_reply.videos
