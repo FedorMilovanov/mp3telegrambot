@@ -159,6 +159,34 @@ def test_key_bound_original_retries_owner_instead_of_dropping_evidence(monkeypat
     assert other.aio.files.upload_calls == 0
 
 
+def test_clean_dub_preflight_skips_extraction_and_missing_original(monkeypatch, tmp_path):
+    calls: list[str] = []
+    _install_common(monkeypatch, [_client("unused", calls)])
+    video = tmp_path / "dub.mp4"
+    clean_dub = tmp_path / "clean-ru.mp3"
+    video.write_bytes(b"video")
+    clean_dub.write_bytes(b"clean")
+    monkeypatch.setattr(
+        qa,
+        "_extract_audio_for_qa",
+        lambda *_args: pytest.fail("existing clean dub must not be extracted again"),
+    )
+
+    result = asyncio.run(
+        qa._run_translation_qa_base(
+            dub_video_path=video,
+            original_audio_path=tmp_path / "missing-original.mp3",
+            ai_data=None,
+            duration=60,
+            model_name="gemini-3.7-flash",
+            dub_audio_path=clean_dub,
+        )
+    )
+
+    assert result is None
+    assert calls == []
+
+
 def test_livedub_files_poll_failure_cleans_remote_handle(monkeypatch, tmp_path):
     path = tmp_path / "audio.mp3"
     path.write_bytes(b"audio")
