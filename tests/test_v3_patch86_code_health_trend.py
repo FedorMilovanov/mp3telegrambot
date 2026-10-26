@@ -59,6 +59,7 @@ def test_check_code_health_cli_is_non_blocking_by_default():
         env=env,
         encoding="utf-8",
         errors="replace",
+        check=False,
     )
     assert result.returncode == 0
     assert "Code health" in result.stdout

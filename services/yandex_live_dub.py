@@ -122,6 +122,7 @@ def _run_subprocess(cmd_parts: list, cwd: Path | None = None, timeout: int = 600
             cwd=cwd,
             timeout=timeout,
             shell=_use_shell,
+            check=False,
         )
     except FileNotFoundError as e:
         raise RuntimeError(f"Команда не найдена: {cmd_parts[0]}. {e}")

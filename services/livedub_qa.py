@@ -63,6 +63,7 @@ def _ffprobe_json(path: Path) -> dict | None:
             capture_output=True,
             text=True,
             timeout=60,
+            check=False,
         )
         if proc.returncode != 0:
             return None
@@ -95,7 +96,7 @@ def _mean_volume_db(
             "null",
             "-",
         ]
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=False)
         match = re.search(
             r"mean_volume:\s*(-?\d+(?:\.\d+)?)\s*dB",
             proc.stderr or "",
@@ -239,6 +240,7 @@ def _extract_audio_for_qa(video_path: Path, out_path: Path) -> Path | None:
             ],
             capture_output=True,
             timeout=600,
+            check=False,
         )
         if proc.returncode == 0 and out_path.exists() and out_path.stat().st_size > 1024:
             return out_path

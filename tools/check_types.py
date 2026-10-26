@@ -91,6 +91,7 @@ def check(
         cwd=str(ROOT),
         capture_output=True,
         text=True,
+        check=False,
     )
 
 

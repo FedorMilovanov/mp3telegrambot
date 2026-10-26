@@ -40,6 +40,7 @@ def test_verify_repo_tool_help_runs():
         capture_output=True,
         text=True,
         timeout=20,
+        check=False,
     )
     assert proc.returncode == 0
     assert "Run full mp3telegrambot repository verification" in proc.stdout
@@ -51,6 +52,7 @@ def test_verify_repo_tool_smoke_skip_heavy_checks():
         capture_output=True,
         text=True,
         timeout=120,
+        check=False,
     )
     assert proc.returncode == 0
     assert "compileall" in proc.stdout

@@ -14,6 +14,7 @@ Covers the verified fixes:
 
 import inspect
 from pathlib import Path
+import subprocess
 
 import pytest
 
@@ -23,6 +24,7 @@ from services.livedub_mix import (
     extract_fix_intervals,
 )
 from services.livedub_qa import format_qa_report, technical_check
+import services.livedub_mix as mix
 import services.livedub_qa as lq
 
 
@@ -119,6 +121,50 @@ def test_r42_format_qa_report_clean_pass():
     # a clean result (no issues) still renders a publish-ok message
     out = format_qa_report({"score": 98, "verdict": "перевод точный", "issues": []})
     assert "можно публиковать" in out
+
+
+def test_r42_run_ffmpeg_explicitly_accepts_nonzero_exit(monkeypatch):
+    monkeypatch.setattr(mix.shutil, "which", lambda _name: "ffmpeg")
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured.update(kwargs)
+        return subprocess.CompletedProcess(command, 1, stderr="boom")
+
+    monkeypatch.setattr(mix.subprocess, "run", fake_run)
+    ok, error = mix._run_ffmpeg(["-version"], timeout=5)
+    assert not ok and error == "boom"
+    assert captured["check"] is False
+
+
+def test_r42_ffmpeg_fallback_reads_metadata_without_ffprobe(monkeypatch):
+    monkeypatch.setattr(mix.shutil, "which", lambda name: None if name == "ffprobe" else "ffmpeg")
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured.update(kwargs)
+        return subprocess.CompletedProcess(
+            command,
+            1,
+            stderr="Duration: 00:01:02.00\n Video: h264, 1920x1080\n",
+        )
+
+    monkeypatch.setattr(mix.subprocess, "run", fake_run)
+    assert mix.probe_video_meta(Path("video.mp4")) == {"width": 1920, "height": 1080, "duration": 62}
+    assert captured["check"] is False
+
+
+def test_r42_mean_volume_uses_non_throwing_probe(monkeypatch):
+    monkeypatch.setattr(lq.shutil, "which", lambda _name: "ffmpeg")
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured.update(kwargs)
+        return subprocess.CompletedProcess(command, 0, stderr="mean_volume: -21.5 dB")
+
+    monkeypatch.setattr(lq.subprocess, "run", fake_run)
+    assert lq._mean_volume_db(Path("dub.mp3")) == -21.5
+    assert captured["check"] is False
 
 
 # ── QA source-level guarantees (async/Gemini-bound paths) ────────────────────

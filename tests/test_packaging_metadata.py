@@ -104,6 +104,7 @@ def test_version_flag_answers_without_a_runtime(flag: str) -> None:
         capture_output=True,
         text=True,
         timeout=120,
+        check=False,
     )
     assert proc.returncode == 0, proc.stderr[-2000:]
     assert proc.stdout.strip() == f"mp3bot {__version__}"

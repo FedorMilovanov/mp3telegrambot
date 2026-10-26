@@ -136,6 +136,7 @@ def _probe_js_runtime_version(exe: str, args: list[str]) -> tuple[int, ...]:
             encoding="utf-8",
             errors="replace",
             timeout=5,
+            check=False,
         )
     except Exception:
         return ()
@@ -350,6 +351,7 @@ def normalize_mp3_lossless(mp3_path: Path, target_db: float = 92.0) -> bool:
             [mp3gain, "-r", "-c", "-d", f"{offset:.1f}", str(mp3_path)],
             timeout=600,
             **kwargs,
+            check=False,
         )
         if proc.returncode == 0:
             logger.info("MP3 нормализован lossless (mp3gain, цель %.0f dB)", target_db)
@@ -413,6 +415,7 @@ def _get_video_encoder() -> tuple[str, list[str], list[str]]:
                 [ffmpeg, "-f", "lavfi", "-i", "nullsrc=s=720x1280:d=0.1", "-c:v", "av1_nvenc", "-f", "null", "-"],
                 capture_output=True,
                 timeout=5,
+                check=False,
             )
             if result.returncode == 0:
                 _VIDEO_ENCODER = "av1_nvenc"
@@ -427,6 +430,7 @@ def _get_video_encoder() -> tuple[str, list[str], list[str]]:
                 [ffmpeg, "-f", "lavfi", "-i", "nullsrc=s=720x1280:d=0.1", "-c:v", "h264_nvenc", "-f", "null", "-"],
                 capture_output=True,
                 timeout=10,
+                check=False,
             )
             if result.returncode == 0:
                 _VIDEO_ENCODER = "h264_nvenc"

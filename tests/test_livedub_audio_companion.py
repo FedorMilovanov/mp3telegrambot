@@ -1,4 +1,5 @@
 from pathlib import Path
+import subprocess
 
 import services.livedub_audio_companion as companion
 
@@ -38,6 +39,20 @@ def test_file_id_cache_stores_two_independent_variants(tmp_path: Path, monkeypat
     assert "clean" not in companion._cache_get("video-1")["variants"]
     companion._cache_drop("video-1")
     assert companion._cache_get("video-1") is None
+
+
+def test_run_text_keeps_non_throwing_subprocess_policy(monkeypatch) -> None:
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured.update(kwargs)
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(companion.subprocess, "run", fake_run)
+    result = companion._run_text(["probe"], timeout=7)
+    assert captured["check"] is False
+    assert captured["timeout"] == 7
+    assert result.returncode == 0
 
 
 def test_companion_validator_does_not_install_telegram_wrappers() -> None:

@@ -24,6 +24,7 @@ def run(
         text=True,
         encoding="utf-8",
         errors="replace",
+        check=False,
     )
     if proc.returncode != 0 and not allow_failure:
         tail = (proc.stderr or proc.stdout or "")[-6000:]
