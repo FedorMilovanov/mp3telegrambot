@@ -1133,8 +1133,8 @@ context. Волна 2f закрыла 11 `SIM105` в tools/tests, 27 в entry/co
 LiveDub/process slice — 42. `SIM105` = 0 и включён в gate. Затем все 12
 `ASYNC230` разобраны вручную и тоже включены в gate. Первый модульный slice
 `ASYNC240` закрыл 7 sites, второй — ещё 4 Factory/deferral/static functions,
-третий — Clips/Shorts delivery. Остаются 196, другие extended-правила и
-дальнейший ручной async review.
+третий — Clips/Shorts delivery, четвёртый — thumbnail/PDF stages. Остаются 191,
+другие extended-правила и дальнейший ручной async review.
 
 **Решение:**
 
