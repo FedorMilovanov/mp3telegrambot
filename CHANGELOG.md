@@ -153,6 +153,9 @@
 - Async I/O, двадцать пятый `ASYNC240` slice: Shorts Factory audio preflight/input
   переведён в worker threads; `services/shorts_factory_candidates.py` очищен,
   остаются 136 findings.
+- Async I/O, двадцать шестой `ASYNC240` slice: Shorts/Clips candidate audio input
+  переведён в worker threads; `services/shorts_candidates.py` очищен,
+  остаются 132 findings.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):
