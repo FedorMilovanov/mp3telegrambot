@@ -91,6 +91,13 @@ def _install_known_clients(monkeypatch, domains: list[str]):
     return clients
 
 
+def test_quota_domain_compatibility_exports_core_owner() -> None:
+    from core import gemini_quota_domains as core_owner
+
+    assert quota_domains.ProjectQuotaDomainTracker is core_owner.ProjectQuotaDomainTracker
+    assert quota_domains.is_project_scoped_quota_error is core_owner.is_project_scoped_quota_error
+
+
 def test_shared_project_scope_detector_is_conservative() -> None:
     assert (
         quota_domains.is_project_scoped_quota_error(

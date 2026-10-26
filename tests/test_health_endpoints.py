@@ -33,7 +33,7 @@ def _fresh_state():
 @pytest.fixture
 def healthy_sources(monkeypatch: pytest.MonkeyPatch):
     """Подменяем внешние факты: реальные БД и диск в юнит-тесте не нужны."""
-    from services import health_report
+    from core import health_report
 
     monkeypatch.setattr(health_report, "database_ok", lambda *_a, **_k: True)
     monkeypatch.setattr(health_report, "disk_free_gb", lambda *_a, **_k: 42.0)
