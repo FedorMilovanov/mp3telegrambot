@@ -273,12 +273,15 @@ async def create_gemini_subtitles(
         ms = int((seconds - int(seconds)) * 1000)
         return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
-    with open(srt_path, "w", encoding="utf-8") as f:
-        for i, seg in enumerate(segments, 1):
-            text = translated_segments.get(str(i), seg.text.strip())
-            text = text.replace("\n", " ").strip()
+    def _write_srt() -> None:
+        with open(srt_path, "w", encoding="utf-8") as f:
+            for i, seg in enumerate(segments, 1):
+                text = translated_segments.get(str(i), seg.text.strip())
+                text = text.replace("\n", " ").strip()
 
-            f.write(f"{i}\n{_to_srt_time(seg.start)} --> {_to_srt_time(seg.end)}\n{text}\n\n")
+                f.write(f"{i}\n{_to_srt_time(seg.start)} --> {_to_srt_time(seg.end)}\n{text}\n\n")
+
+    await asyncio.to_thread(_write_srt)
 
     logger.info(f"[EngSubtitles] Субтитры созданы: {srt_path}")
     return srt_path

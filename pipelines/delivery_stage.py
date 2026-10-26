@@ -351,7 +351,7 @@ async def send_pdf(request: DeliveryRequest, deps: DeliveryDeps) -> str:
                     outcome = "too_large"
                 else:
                     filename = f"{safe_filename(pdf_author)} — {safe_filename(pdf_title)}.pdf"
-                    with Path(generated).open("rb") as pdf_file:
+                    with await asyncio.to_thread(Path(generated).open, "rb") as pdf_file:
                         await request.update.message.reply_document(
                             document=pdf_file,
                             filename=filename,

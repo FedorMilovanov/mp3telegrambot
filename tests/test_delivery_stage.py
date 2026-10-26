@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 from types import SimpleNamespace
@@ -181,8 +182,12 @@ class FakeDeps:
         if self.pdf_kind == "nonexistent":
             return str(path.with_name("missing.pdf"))
         size = {"sent": self.pdf_size, "empty": 100, "large": MAX_PDF_BYTES + 1}[self.pdf_kind]
-        with path.open("wb") as output:
-            output.truncate(size)
+
+        def _write_pdf() -> None:
+            with path.open("wb") as output:
+                output.truncate(size)
+
+        await asyncio.to_thread(_write_pdf)
         return str(path)
 
     async def generate_quiz(self, **kwargs: Any) -> list[dict[str, Any]] | None:

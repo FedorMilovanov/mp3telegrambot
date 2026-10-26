@@ -1130,8 +1130,9 @@ subprocess semantics и возвращаемые выражения сохран
 все 24 `B904`: runtime causes сохранены, обработанные CLI exits не дублируют
 context. Волна 2f закрыла 11 `SIM105` в tools/tests, 27 в entry/core/handlers
 и 40 в pipelines; Shorts/PDF/transcript services добавили ещё 25, а финальный
-LiveDub/process slice — 42. `SIM105` = 0 и включён в gate; остаются другие
-extended-правила и `ASYNC240`.
+LiveDub/process slice — 42. `SIM105` = 0 и включён в gate. Затем все 12
+`ASYNC230` разобраны вручную и тоже включены в gate; остаются другие
+extended-правила и ручной разбор `ASYNC240`.
 
 **Решение:**
 

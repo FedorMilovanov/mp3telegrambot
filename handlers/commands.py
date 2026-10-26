@@ -466,7 +466,7 @@ async def archivequalityfile_command(update, context):
     if not path.exists():
         await update.message.reply_text("⚠️ Archive quality export не создан.")
         return
-    with open(path, "rb") as f:
+    with await asyncio.to_thread(path.open, "rb") as f:
         await update.message.reply_document(
             document=f,
             filename=path.name,
@@ -592,7 +592,7 @@ async def pdf_command(update, context):
                 return re.sub(r'[\\/:*?"<>|\n\r\t]', "", s).strip()[:80] or "doc"
 
             fn = f"{_safe_fn(pdf_author)} — {_safe_fn(pdf_title)}.pdf"
-            with open(result, "rb") as pdf_f:
+            with await asyncio.to_thread(Path(result).open, "rb") as pdf_f:
                 await update.message.reply_document(
                     document=pdf_f,
                     filename=fn,
@@ -1289,7 +1289,7 @@ async def archivefile_command(update, context):
             parse_mode="HTML",
         )
         return
-    with open(path, "rb") as f:
+    with await asyncio.to_thread(path.open, "rb") as f:
         await update.message.reply_document(
             document=f,
             filename=path.name,
@@ -1337,7 +1337,7 @@ async def segmentfile_command(update, context):
             "⚠️ Файл сегментов не найден. Нужен video_cache с ai_data или уже созданный export."
         )
         return
-    with open(path, "rb") as f:
+    with await asyncio.to_thread(path.open, "rb") as f:
         await update.message.reply_document(
             document=f,
             filename=path.name,

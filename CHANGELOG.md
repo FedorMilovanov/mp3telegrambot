@@ -100,6 +100,8 @@
   заменены; остаются 42 LiveDub/process service findings до включения gate.
 - Extended Ruff, волна 2f (LiveDub/process services): последние 42 `SIM105`
   заменены; findings = 0, правило включено в обязательный Ruff gate.
+- Async I/O: все 12 `ASYNC230` разобраны вручную; blocking open/write перенесены
+  в worker threads без изменения Telegram API contract, правило включено в gate.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

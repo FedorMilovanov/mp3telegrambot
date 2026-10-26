@@ -372,9 +372,13 @@ async def render_montage_short(
             return False
 
         assert concat_list_path is not None
-        with open(concat_list_path, "w", encoding="utf-8") as f:
-            for part_path in existing_parts:
-                f.write(f"file '{part_path.resolve()}'\n")
+
+        def _write_concat_list() -> None:
+            with open(concat_list_path, "w", encoding="utf-8") as f:
+                for part_path in existing_parts:
+                    f.write(f"file '{part_path.resolve()}'\n")
+
+        await asyncio.to_thread(_write_concat_list)
 
         # All parts were rendered by the same encoder/filter contract above, so
         # their video streams are concat-compatible. Re-encoding them here only
