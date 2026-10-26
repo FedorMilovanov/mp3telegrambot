@@ -111,8 +111,7 @@ def clean_caption_text(value: str) -> str:
     value = html.unescape(_TAG_RE.sub("", str(value or "")))
     value = value.replace("&nbsp;", " ")
     value = re.sub(r"\[[^\]]{1,40}\]", " ", value)
-    value = re.sub(r"\s+", " ", value).strip()
-    return value
+    return re.sub(r"\s+", " ", value).strip()
 
 
 def parse_vtt(path: Path) -> list[Cue]:

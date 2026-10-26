@@ -467,8 +467,7 @@ def _norm_title_for_match(value: str) -> str:
     s = str(value or "").casefold().strip()
     s = re.sub(r"[^\w\s]", " ", s, flags=re.UNICODE)
     s = re.sub(r"\s+", " ", s).strip()
-    s = re.sub(r"^(?:of the|the|a|an)\s+", "", s)
-    return s
+    return re.sub(r"^(?:of the|the|a|an)\s+", "", s)
 
 
 def _titles_match(known: str, given: str) -> bool:

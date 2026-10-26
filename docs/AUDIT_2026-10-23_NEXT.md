@@ -1125,10 +1125,9 @@ commit, а на pre-push/tag ref остаётся read-only `verify_repo.py`, п
 897 файлов отформатированы. Executable AST production-кода не изменился, полный
 pytest и coverage ratchet прошли. Волна 2a закрыта: 142 безопасные находки
 `UP009`/`UP006` устранены, а `UP009`, `UP006` и `W293` добавлены в обычный
-Ruff gate. Волна 2b закрыла 73 находки `UP045`, волна 2c — 35 `PLW1510`
-без изменения non-throwing subprocess semantics; generic wrapper по-прежнему
-принимает caller `check`. Остальные extended-правила, волна 3 и ручной разбор
-`ASYNC240` остаются открытыми.
+Ruff gate. Волны 2b–2d закрыли 73 `UP045`, 35 `PLW1510` и 28 `RET504`;
+subprocess semantics и возвращаемые выражения сохранены. Остались `SIM105`,
+`B904`, остальные extended-правила, волна 3 и ручной разбор `ASYNC240`.
 
 **Решение:**
 

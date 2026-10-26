@@ -100,8 +100,7 @@ def _clean_caption_text(line: str) -> str:
     line = html.unescape(str(line or ""))
     line = _TAG_RE.sub(" ", line)
     line = line.replace("♪", " ")
-    line = _DUP_SPACE_RE.sub(" ", line).strip()
-    return line
+    return _DUP_SPACE_RE.sub(" ", line).strip()
 
 
 def _merge_caption_lines(values: list[str]) -> str:
