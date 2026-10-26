@@ -571,7 +571,7 @@ async def send_factory_editorial_files(
     message = getattr(update, "message", None)
     if message is None:
         return
-    with Path(pack_path).open("rb") as stream:
+    with await asyncio.to_thread(Path(pack_path).open, "rb") as stream:
         await message.reply_document(
             document=stream,
             filename=Path(pack_path).name,
@@ -582,14 +582,14 @@ async def send_factory_editorial_files(
             ),
         )
     if review_path is not None and Path(review_path).exists():
-        with Path(review_path).open("rb") as stream:
+        with await asyncio.to_thread(Path(review_path).open, "rb") as stream:
             await message.reply_document(
                 document=stream,
                 filename=Path(review_path).name,
                 caption=f"🧠 Gemini {FACTORY_EDITORIAL_GEMINI_MODEL} · HIGH — редакционный review.json",
             )
     if markdown_path is not None and Path(markdown_path).exists():
-        with Path(markdown_path).open("rb") as stream:
+        with await asyncio.to_thread(Path(markdown_path).open, "rb") as stream:
             await message.reply_document(
                 document=stream,
                 filename=Path(markdown_path).name,

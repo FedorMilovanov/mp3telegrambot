@@ -47,7 +47,7 @@ async def send_factory_full_translation_if_enabled(
     clean_title = " ".join(str(title or "Полная проповедь").split())[:700]
     caption = f"🎬 Полная проповедь — русский видео-перевод\n{clean_title}"
     try:
-        with path.open("rb") as handle:
+        with await asyncio.to_thread(path.open, "rb") as handle:
             await message.reply_video(
                 video=handle,
                 filename=path.name,
