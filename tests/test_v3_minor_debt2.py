@@ -9,8 +9,9 @@ Tests for v3 minor-debt patch 2:
 import os
 import pathlib
 import sqlite3
+import subprocess
+import sys
 import tempfile
-import importlib
 import logging
 
 
@@ -65,9 +66,22 @@ def test_database_questions_json_failure_logs_debug():
 
 
 def test_pdf_telegraph_cache_size_env_var():
-    src = pathlib.Path("services/pdf_generator.py").read_text(encoding="utf-8")
-    assert "PDF_TELEGRAPH_CACHE_SIZE" in src, "PDF_TELEGRAPH_CACHE_SIZE env var not found in pdf_generator"
-    assert "_TELEGRAPH_CACHE_SIZE" in src, "_TELEGRAPH_CACHE_SIZE variable not found"
+    env = dict(os.environ)
+    env["PDF_TELEGRAPH_CACHE_SIZE"] = "7"
+    script = (
+        "from core import telegraph_cache as cache; "
+        "assert cache._TELEGRAPH_CACHE_SIZE == 7; "
+        "assert cache._TELEGRAPH_CACHE._max == 7"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=pathlib.Path(__file__).resolve().parents[1],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 # ---------------------------------------------------------------------------

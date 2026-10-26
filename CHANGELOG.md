@@ -65,6 +65,9 @@
 - Четвёртый import-layer burn-down: 13 → 12 legacy-рёбер. Markdown→Telegraph и
   node-cleaning принадлежат `converters.telegraph_nodes`; цикл publisher ↔
   converter разорван, а прежние `services.telegraph` имена сохранены.
+- Пятый import-layer burn-down: 12 → 11 legacy-рёбер. Общий Telegraph HTML
+  cache перенесён в `core.telegraph_cache`; PDF сохраняет прежние exports, а
+  converter больше не импортирует PDF service ради invalidation.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):
