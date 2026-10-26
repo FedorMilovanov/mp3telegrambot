@@ -146,6 +146,8 @@
   переведён в worker threads; остаются 146 findings.
 - Async I/O, двадцать второй `ASYNC240` slice: disk diagnostics
   переведены в worker threads; остаются 145 findings.
+- Async I/O, двадцать третий `ASYNC240` slice: status DB/backup и PDF cleanup
+  переведены в worker threads; `handlers/commands.py` очищен, остаются 143 findings.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

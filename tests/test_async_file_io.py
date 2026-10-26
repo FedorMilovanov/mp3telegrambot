@@ -180,6 +180,35 @@ async def test_pdf_command_rejects_undersized_output_and_cleans_file(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_status_command_reports_database_size_and_latest_backup(monkeypatch, tmp_path: Path) -> None:
+    import shutil
+
+    database = _write_file(tmp_path / "bot.db", b"x" * 4096)
+    _write_file(tmp_path / "bot.db.bak.2026-10-26", b"old")
+    _write_file(tmp_path / "bot.db.bak.2026-10-27", b"new")
+    update = _update()
+    monkeypatch.setattr(commands, "ADMIN_IDS", {123})
+    monkeypatch.setattr(commands, "DOWNLOAD_DIR", tmp_path)
+    monkeypatch.setattr(commands, "DB_PATH", str(database))
+    monkeypatch.setattr(shutil, "which", lambda _name: None)
+    monkeypatch.setattr(
+        shutil,
+        "disk_usage",
+        lambda _path: SimpleNamespace(free=1024**3, total=2 * 1024**3),
+    )
+    monkeypatch.setattr("services.ffmpeg._supported_js_runtimes", lambda: [])
+    monkeypatch.setattr("services.ffmpeg._get_video_encoder", lambda: ("encoder", "", ""))
+    monkeypatch.setattr("services.livedub_mix.get_mix_params", lambda: {})
+    monkeypatch.setattr("core.database.current_livedub_file_id_cache_fingerprint", lambda: "cache")
+    monkeypatch.setattr("services.operator_runtime_status.safe_operator_runtime_status_html_lines", lambda: [])
+
+    await commands.status_command(update, SimpleNamespace())
+
+    text = update.message.reply_text.await_args.args[0]
+    assert "🗄 БД: 4 КБ · бэкап: 2026-10-27" in text
+
+
+@pytest.mark.asyncio
 async def test_disk_command_reports_file_count_and_database_size(monkeypatch, tmp_path: Path) -> None:
     downloads = tmp_path / "downloads"
     _write_file(downloads / "one.mp3", b"one")
