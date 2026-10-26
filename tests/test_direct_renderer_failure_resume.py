@@ -5,6 +5,13 @@ import pytest
 from tools.voxcpm2.examples.john_piper_z20py4yqhyq import voxcpm2_cpu_shorts_production as direct_wrapper
 
 
+def test_direct_wrapper_missing_flag_preserves_lookup_cause(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(direct_wrapper.sys, "argv", ["direct-cli"])
+    with pytest.raises(RuntimeError, match="обязательный параметр") as caught:
+        direct_wrapper._flag("--required")
+    assert isinstance(caught.value.__cause__, ValueError)
+
+
 def test_direct_wrapper_persists_failure_without_losing_checkpoints(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

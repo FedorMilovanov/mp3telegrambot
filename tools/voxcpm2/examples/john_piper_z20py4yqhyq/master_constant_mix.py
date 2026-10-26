@@ -574,4 +574,4 @@ if __name__ == "__main__":
 
         print(f"ОШИБКА: {exc}", file=sys.stderr)
         traceback.print_exc()
-        raise SystemExit(1)
+        raise SystemExit(1) from None

@@ -38,10 +38,10 @@ _FAILURE_TEXT = "direct_renderer_failure.txt"
 def _flag(flag: str, *, default: str | None = None) -> str:
     try:
         index = sys.argv.index(flag)
-    except ValueError:
+    except ValueError as exc:
         if default is not None:
             return default
-        raise RuntimeError(f"В direct CLI отсутствует обязательный параметр {flag}.")
+        raise RuntimeError(f"В direct CLI отсутствует обязательный параметр {flag}.") from exc
     if index + 1 >= len(sys.argv):
         raise RuntimeError(f"После {flag} отсутствует значение.")
     return str(sys.argv[index + 1])
@@ -177,8 +177,8 @@ if __name__ == "__main__":
         run(main)
     except KeyboardInterrupt:
         print("Остановлено пользователем.", file=sys.stderr)
-        raise SystemExit(130)
+        raise SystemExit(130) from None
     except Exception as exc:
         print(f"ОШИБКА: {exc}", file=sys.stderr)
         traceback.print_exc()
-        raise SystemExit(1)
+        raise SystemExit(1) from None

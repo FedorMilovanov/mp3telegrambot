@@ -311,10 +311,10 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        raise SystemExit(130)
+        raise SystemExit(130) from None
     except Exception as exc:
         import traceback
 
         print(f"ОШИБКА QUALITY V4.2: {exc}", file=sys.stderr)
         traceback.print_exc()
-        raise SystemExit(1)
+        raise SystemExit(1) from None

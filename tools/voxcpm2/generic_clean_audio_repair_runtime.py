@@ -415,7 +415,7 @@ if __name__ == "__main__":
 
         print(f"ОШИБКА CLEAN AUDIO REPAIR: {exc}", file=__import__("sys").stderr)
         traceback.print_exc()
-        raise SystemExit(1)
+        raise SystemExit(1) from None
 
 _source_main = main
 
