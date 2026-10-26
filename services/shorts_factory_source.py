@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import shutil
@@ -108,10 +109,8 @@ def _progress_duration_seconds(stdout: Any) -> float:
     for raw_line in text.splitlines():
         line = raw_line.strip()
         if line.startswith("out_time_us="):
-            try:
+            with contextlib.suppress(TypeError, ValueError, OverflowError):
                 best = max(best, int(line.split("=", 1)[1]) / 1_000_000.0)
-            except (TypeError, ValueError, OverflowError):
-                pass
             continue
         if not line.startswith("out_time="):
             continue
@@ -174,10 +173,8 @@ def _stderr_tail(process: Any, limit: int = 900) -> str:
 
 def _remove_paths(paths) -> None:
     for path in paths:
-        try:
+        with contextlib.suppress(OSError):
             Path(path).unlink(missing_ok=True)
-        except OSError:
-            pass
 
 
 def _factory_livedub_timeout_seconds() -> int:
@@ -292,10 +289,8 @@ async def _prepare_gemini_audio(
     factory_audio_mime_type(output_path)
     ffprobe_estimate = float(getattr(probe, "duration", 0.0) or 0.0)
     if output_path != source_path:
-        try:
+        with contextlib.suppress(OSError):
             source_path.unlink(missing_ok=True)
-        except OSError:
-            pass
     logger.info(
         "Factory Gemini analysis audio prepared: codec=AAC mono bitrate=%dk "
         "sample_rate=%d verified_duration=%.3fs ffprobe_estimate=%.3fs size=%.1fMB",

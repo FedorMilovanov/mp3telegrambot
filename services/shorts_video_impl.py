@@ -26,6 +26,7 @@ from core.text_utils import normalize_common_typos, title_case_fragment  # FIX s
 from core.url_utils import get_youtube_video_url  # FIX shorts_video
 
 import asyncio
+import contextlib
 import logging
 import os  # FIX shorts_video
 import re
@@ -1051,10 +1052,8 @@ def _reset_whisper_model(device: str | None = None, compute_type: str | None = N
                     torch.cuda.synchronize()
             except Exception:
                 pass
-            try:
+            with contextlib.suppress(Exception):
                 del _whisper_model
-            except Exception:
-                pass
             _whisper_model = None
         _whisper_model_name = None
 
@@ -1067,10 +1066,8 @@ def _get_whisper_model(model_size: str | None = None):
     with _whisper_lock:
         if _whisper_model is None or _whisper_model_name != model_size:
             if _whisper_model is not None:
-                try:
+                with contextlib.suppress(Exception):
                     del _whisper_model
-                except Exception:
-                    pass
                 try:
                     import torch
 
@@ -1354,10 +1351,8 @@ async def _unowned_transcribe_short_clip(video_path: Path, ai_data: dict = None)
     except Exception as e:
         logger.warning(f"Subtitles transcribe error ({type(e).__name__}): {e}")
         if wav_path is not None:
-            try:
+            with contextlib.suppress(Exception):
                 wav_path.unlink(missing_ok=True)
-            except Exception:
-                pass
         return []
 
 
@@ -1595,10 +1590,8 @@ async def _unowned_create_short_title_poster(
     except Exception as e:
         logger.warning(f"create_short_title_poster error: {type(e).__name__}: {e}")
         if frame_path is not None:
-            try:
+            with contextlib.suppress(Exception):
                 frame_path.unlink(missing_ok=True)
-            except Exception:
-                pass
         return False
 
 

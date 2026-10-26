@@ -1129,7 +1129,8 @@ Ruff gate. Волны 2b–2d закрыли 73 `UP045`, 35 `PLW1510` и 28 `RET
 subprocess semantics и возвращаемые выражения сохранены. Волна 2e закрыла
 все 24 `B904`: runtime causes сохранены, обработанные CLI exits не дублируют
 context. Волна 2f закрыла 11 `SIM105` в tools/tests, 27 в entry/core/handlers
-и 40 в pipelines; остаются 67 в services, другие extended-правила и `ASYNC240`.
+и 40 в pipelines; Shorts/PDF/transcript services добавили ещё 25. Остаются 42
+LiveDub/process service findings, другие extended-правила и `ASYNC240`.
 
 **Решение:**
 

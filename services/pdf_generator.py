@@ -27,6 +27,7 @@ __all__ = [
 ]
 
 import asyncio
+import contextlib
 import html as html_module
 import logging
 import os
@@ -1603,17 +1604,13 @@ def _gen_wkhtmltopdf(
 
     except Exception as exc:
         logger.error("wkhtmltopdf: %s", exc)
-        try:
+        with contextlib.suppress(Exception):
             Path(out).unlink(missing_ok=True)
-        except Exception:
-            pass
         return None
     finally:
         if tmp:
-            try:
+            with contextlib.suppress(Exception):
                 Path(tmp).unlink()
-            except Exception:
-                pass
 
 
 def _gen_weasyprint(html_str: str, out: str) -> str | None:
@@ -1639,10 +1636,8 @@ def _gen_weasyprint(html_str: str, out: str) -> str | None:
         return out
     except Exception as exc:
         logger.error("weasyprint: %s", exc)
-        try:
+        with contextlib.suppress(Exception):
             Path(out).unlink(missing_ok=True)
-        except Exception:
-            pass
         return None
 
 
@@ -1814,10 +1809,8 @@ async def generate_sermon_pdf_async(
         for task in tasks:
             if not task.done():
                 task.cancel()
-                try:
+                with contextlib.suppress(asyncio.CancelledError, Exception):
                     await task
-                except (asyncio.CancelledError, Exception):
-                    pass
 
     if not sections:
         logger.warning("generate_sermon_pdf_async: все секции вернули пустой контент (keys=%r) — возвращаем None", keys)

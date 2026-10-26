@@ -8,6 +8,7 @@ is passed explicitly by the Factory owner.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import math
 import os
 from typing import Any, Awaitable
@@ -44,10 +45,8 @@ def heartbeat_seconds() -> float:
 async def safe_status(status_msg: Any, text: str) -> None:
     if status_msg is None:
         return
-    try:
+    with contextlib.suppress(Exception):
         await status_msg.edit_text(str(text)[:4000])
-    except Exception:
-        pass
 
 
 async def await_with_heartbeat(

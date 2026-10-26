@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import shutil
@@ -177,10 +178,8 @@ async def transcribe_short_clip(
         return []
     finally:
         if wav_path is not None:
-            try:
+            with contextlib.suppress(OSError):
                 wav_path.unlink(missing_ok=True)
-            except OSError:
-                pass
 
 
 __all__ = [

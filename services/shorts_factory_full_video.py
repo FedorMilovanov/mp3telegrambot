@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from pathlib import Path
 from typing import Any
@@ -64,12 +65,10 @@ async def send_factory_full_translation_if_enabled(
     except Exception as exc:
         logger.exception("Factory full translated sermon delivery failed: %s", exc)
         if not silent_errors:
-            try:
+            with contextlib.suppress(Exception):
                 await message.reply_text(
                     f"⚠️ Нарезки готовы, но полный видео-перевод не отправился. Причина: {str(exc)[:300]}"
                 )
-            except Exception:
-                pass
         return False
 
 
