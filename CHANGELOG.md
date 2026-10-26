@@ -163,6 +163,9 @@
   переведена в worker threads; остаются 126 findings.
 - Async I/O, двадцать девятый `ASYNC240` slice: LiveDub QA-autofix file I/O
   переведён в worker threads; `services/livedub_mix.py` очищен, остаются 124 findings.
+- Async I/O, тридцатый `ASYNC240` slice: LiveDub QA temporary-original cleanup
+  подтверждён тестом; cancellation-safe synchronous unlink сохранён с точечным
+  обоснованным `noqa`, остаются 123 findings.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

@@ -11,6 +11,7 @@ from handlers import commands
 from services import (
     eng_subtitles,
     livedub_mix,
+    livedub_qa,
     pdf_generator,
     render_clips_montage,
     shorts_candidates,
@@ -303,6 +304,57 @@ async def test_legacy_video_returns_discovered_path(monkeypatch, tmp_path: Path,
     result = await yandex_live_dub.get_live_dub_video("https://example.invalid/video", tmp_path)
 
     assert result == downloaded
+
+
+@pytest.mark.asyncio
+async def test_translation_qa_cleans_temporary_original_and_qa_audio(monkeypatch, tmp_path: Path) -> None:
+    dub_video = _write_file(tmp_path / "dub.mp4", b"video")
+    original = _write_file(tmp_path / "original.m4a", b"original")
+    dub_audio = _write_file(tmp_path / "clean_ru.mp3", b"dub")
+    qa_audio = _write_file(tmp_path / "dub_qa.mp3", b"qa")
+    temporary_original = tmp_path / "original_qa_original.mp3"
+    client = object()
+    upload = AsyncMock(side_effect=RuntimeError("stop after extraction"))
+
+    class QuotaTracker:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        def should_skip(self, *_args, **_kwargs) -> bool:
+            return False
+
+        def record_project_scoped_error(self, *_args, **_kwargs) -> None:
+            pass
+
+    def extract(source: Path, destination: Path) -> Path:
+        assert source == original
+        assert destination == temporary_original
+        destination.write_bytes(b"temporary")
+        return destination
+
+    monkeypatch.setattr(livedub_qa, "HAS_GEMINI", True)
+    monkeypatch.setattr(livedub_qa, "GEMINI_CLIENTS", [client])
+    monkeypatch.setattr(livedub_qa, "types", SimpleNamespace())
+    monkeypatch.setattr(livedub_qa.capacity_control, "require_domain_available", lambda _domain: None)
+    monkeypatch.setattr(livedub_qa, "ProjectQuotaDomainTracker", QuotaTracker)
+    monkeypatch.setattr(livedub_qa, "_extract_audio_for_qa", extract)
+    monkeypatch.setattr(livedub_qa, "_upload_and_wait", upload)
+
+    result = await livedub_qa._run_translation_qa_base(
+        dub_video,
+        original,
+        {"main_topic": "Topic"},
+        10,
+        model_name="model",
+        dub_audio_path=dub_audio,
+    )
+
+    assert result is None
+    assert upload.await_count == 1
+    assert not temporary_original.exists()
+    assert not qa_audio.exists()
+    assert original.exists()
+    assert dub_audio.exists()
 
 
 def _patch_qa_audio_fix_runtime(
