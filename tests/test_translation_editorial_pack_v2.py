@@ -72,6 +72,21 @@ def _build(monkeypatch, output_dir: Path) -> Path:
     )
 
 
+def test_v2_race_collision_chains_file_exists(monkeypatch, tmp_path):
+    real_open = Path.open
+
+    def racing_open(self, mode="r", *args, **kwargs):
+        if mode == "xb" and "_translation_editorial_v2_" in self.name:
+            raise FileExistsError(self)
+        return real_open(self, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", racing_open)
+    monkeypatch.setattr(pack_v2, "load_verified_review_pack", lambda _path: {"review_pack_id": "different"})
+    with pytest.raises(RuntimeError, match="path collision") as caught:
+        _build(monkeypatch, tmp_path)
+    assert isinstance(caught.value.__cause__, FileExistsError)
+
+
 def test_v2_identity_binds_review_contract_and_exact_instructions(monkeypatch, tmp_path):
     first = _build(monkeypatch, tmp_path / "first")
     first_manifest = pack_v2.load_verified_review_pack(first)

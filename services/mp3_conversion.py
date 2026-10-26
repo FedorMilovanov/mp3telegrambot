@@ -65,9 +65,9 @@ async def reencode_mp3_atomic(
     try:
         if source.resolve(strict=False) == output.resolve(strict=False):
             raise ValueError("MP3 source and output paths must differ")
-    except OSError:
+    except OSError as exc:
         if source.absolute() == output.absolute():
-            raise ValueError("MP3 source and output paths must differ")
+            raise ValueError("MP3 source and output paths must differ") from exc
 
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:

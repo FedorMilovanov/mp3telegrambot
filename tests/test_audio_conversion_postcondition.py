@@ -30,6 +30,20 @@ async def test_atomic_mp3_conversion_publishes_only_after_probe(monkeypatch, tmp
 
 
 @pytest.mark.asyncio
+async def test_atomic_mp3_conversion_chains_resolve_failure_for_same_path(monkeypatch, tmp_path: Path) -> None:
+    source = tmp_path / "source.mp3"
+    source.write_bytes(b"source")
+
+    def denied_resolve(_self, strict=False):
+        raise OSError("resolve denied")
+
+    monkeypatch.setattr(Path, "resolve", denied_resolve)
+    with pytest.raises(ValueError, match="paths must differ") as caught:
+        await mp3_conversion.reencode_mp3_atomic(source, source)
+    assert isinstance(caught.value.__cause__, OSError)
+
+
+@pytest.mark.asyncio
 async def test_atomic_mp3_conversion_keeps_existing_output_on_failed_probe(monkeypatch, tmp_path: Path) -> None:
     source = tmp_path / "source.mp3"
     output = tmp_path / "out.mp3"

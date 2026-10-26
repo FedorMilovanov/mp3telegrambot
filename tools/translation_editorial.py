@@ -188,10 +188,10 @@ def _write_review_template(output_dir: Path, media_id: str, manifest: dict[str, 
         with template_path.open("x", encoding="utf-8") as stream:
             created = True
             stream.write(payload)
-    except FileExistsError:
+    except FileExistsError as exc:
         if _json(template_path) == expected:
             return template_path
-        raise FileExistsError(f"refusing to overwrite different review template: {template_path}")
+        raise FileExistsError(f"refusing to overwrite different review template: {template_path}") from exc
     except Exception:
         if created:
             template_path.unlink(missing_ok=True)

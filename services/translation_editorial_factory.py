@@ -468,9 +468,9 @@ def _write_immutable_review_files(
                 with path.open("x", encoding="utf-8") as stream:
                     created = True
                     stream.write(content)
-            except FileExistsError:
+            except FileExistsError as exc:
                 if path.read_text(encoding="utf-8") != content:
-                    raise FileExistsError(f"immutable editorial review path collision: {path}")
+                    raise FileExistsError(f"immutable editorial review path collision: {path}") from exc
             except Exception:
                 if created:
                     path.unlink(missing_ok=True)

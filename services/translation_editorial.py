@@ -441,11 +441,11 @@ def build_review_pack(
                 with zip_path.open("xb") as target, temp_zip.open("rb") as source:
                     created = True
                     shutil.copyfileobj(source, target, length=1024 * 1024)
-            except FileExistsError:
+            except FileExistsError as exc:
                 existing = load_pack_manifest(zip_path)
                 if existing.get("review_pack_id") == review_pack_id:
                     return zip_path
-                raise FileExistsError(f"review pack filename collision: {zip_path}")
+                raise FileExistsError(f"review pack filename collision: {zip_path}") from exc
             except Exception:
                 if created:
                     zip_path.unlink(missing_ok=True)

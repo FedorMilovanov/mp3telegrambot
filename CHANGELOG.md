@@ -87,6 +87,8 @@
   caller `check`, а `PLW1510` включён в обычный gate.
 - Extended Ruff, волна 2d: 28 redundant assignments перед `return` заменены
   прямым возвратом того же выражения; `RET504` включён в обычный gate.
+- Extended Ruff, волна 2e (runtime slice): 10 исключений получили явный
+  `raise ... from cause`; 14 CLI exit sites оставлены следующему узкому этапу.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

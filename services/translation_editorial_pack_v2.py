@@ -271,10 +271,10 @@ def build_review_pack(*args: Any, **kwargs: Any) -> Path:
     try:
         with destination.open("xb") as stream:
             stream.write(payload)
-    except FileExistsError:
+    except FileExistsError as exc:
         existing = load_verified_review_pack(destination)
         if existing.get("review_pack_id") != pack_id:
-            raise RuntimeError("immutable translation editorial v2 path collision")
+            raise RuntimeError("immutable translation editorial v2 path collision") from exc
         return destination
 
     try:

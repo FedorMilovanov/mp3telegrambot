@@ -147,6 +147,33 @@ def _install_dependency(helper: Path) -> None:
     (module / "package.json").write_text('{"version": "2.4.12"}', encoding="utf-8")
 
 
+@pytest.mark.parametrize(
+    "failure",
+    [FileNotFoundError("missing"), subprocess.TimeoutExpired("vot", 3)],
+)
+def test_run_subprocess_chains_process_failures(monkeypatch, failure) -> None:
+    from services import yandex_live_dub
+
+    def fake_run(*_args, **_kwargs):
+        raise failure
+
+    monkeypatch.setattr(yandex_live_dub.subprocess, "run", fake_run)
+    with pytest.raises(RuntimeError) as caught:
+        yandex_live_dub._run_subprocess(["vot"], timeout=3)
+    assert caught.value.__cause__ is failure
+
+
+@pytest.mark.asyncio
+async def test_live_dub_info_chains_unrecoverable_json_error(monkeypatch) -> None:
+    from services import yandex_live_dub
+
+    monkeypatch.setattr(yandex_live_dub, "_check_vot_cli", lambda: "vot")
+    monkeypatch.setattr(yandex_live_dub, "_run_subprocess", lambda *_args, **_kwargs: ("not json", "", 0))
+    with pytest.raises(RuntimeError, match="Не удалось распарсить JSON") as caught:
+        await yandex_live_dub.get_live_dub_info("https://example.invalid/video")
+    assert isinstance(caught.value.__cause__, json.JSONDecodeError)
+
+
 def test_production_install_uses_npm_ci_and_needs_the_lock(monkeypatch, tmp_path) -> None:
     """`npm install` re-resolves versions; production must replay the lock."""
     from services import yandex_live_dub

@@ -1258,9 +1258,9 @@ def main():
 
         logger.info(f"🌐 HTTP health-check: waitress на порту {port}")
         serve(flask_app, host="0.0.0.0", port=port, threads=4)
-    except ImportError:
+    except ImportError as exc:
         if (os.getenv("ENV") or os.getenv("APP_ENV") or "").strip().lower() in {"prod", "production"}:
-            raise RuntimeError("waitress is required in production; install requirements.txt")
+            raise RuntimeError("waitress is required in production; install requirements.txt") from exc
         # Fallback на Flask dev-сервер если waitress не установлен.
         # Добавьте waitress в requirements.txt: waitress>=3.0.0,<4.0.0
         logger.warning("⚠️  waitress не установлен — используется Flask dev-сервер. Установите: pip install waitress")
