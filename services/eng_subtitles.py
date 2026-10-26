@@ -312,19 +312,39 @@ def _has_video_stream(path: Path) -> bool:
         return path.suffix.lower() in {".mp4", ".webm", ".mkv", ".mov", ".m4v"}
 
 
-async def download_original_video(video_url: str, workdir: Path) -> Path:
-    """Скачивает оригинальное видео в формате mp4."""
-    workdir.mkdir(parents=True, exist_ok=True)
-    video_path = workdir / "original_video.mp4"
-
-    # Реюз: pro-микс мог уже скачать оригинал в эту же папку. Но audio-only
-    # артефакты (original_video.f140.m4a) нельзя отдавать как видео.
+def _find_reusable_original_video(workdir: Path) -> Path | None:
     for existing in sorted(workdir.glob("original_video.*")):
         if existing.is_file() and _has_video_stream(existing):
             logger.info(f"[EngSubtitles] Оригинал уже скачан: {existing.name} — реюз")
             return existing
         if existing.is_file() and existing.stat().st_size > 100 * 1024:
             logger.info(f"[EngSubtitles] {existing.name} без видеопотока — не реюзаю для DUB")
+    return None
+
+
+def _find_downloaded_original_video(workdir: Path) -> Path | None:
+    actual_video = None
+    for file in sorted(workdir.glob("original_video.*")):
+        if _has_video_stream(file):
+            actual_video = file
+            break
+        if file.is_file() and file.stat().st_size > 100 * 1024:
+            logger.info(f"[EngSubtitles] после yt-dlp {file.name} без видеопотока — пропускаю")
+    if actual_video is not None and actual_video.exists():
+        return actual_video
+    return None
+
+
+async def download_original_video(video_url: str, workdir: Path) -> Path:
+    """Скачивает оригинальное видео в формате mp4."""
+    await asyncio.to_thread(workdir.mkdir, parents=True, exist_ok=True)
+    video_path = workdir / "original_video.mp4"
+
+    # Реюз: pro-микс мог уже скачать оригинал в эту же папку. Но audio-only
+    # артефакты (original_video.f140.m4a) нельзя отдавать как видео.
+    reusable = await asyncio.to_thread(_find_reusable_original_video, workdir)
+    if reusable is not None:
+        return reusable
 
     # FIX: используем YTDLP_BASE_ARGS (cookies, js-runtime, общие настройки) —
     # без них YouTube часто отвечает 403 Forbidden (та же причина, что в cabbac8).
@@ -348,15 +368,8 @@ async def download_original_video(video_url: str, workdir: Path) -> Path:
             f"stderr: {proc.stderr[-500:] if proc.stderr else ''}"
         )
 
-    actual_video = None
-    for file in sorted(workdir.glob("original_video.*")):
-        if _has_video_stream(file):
-            actual_video = file
-            break
-        if file.is_file() and file.stat().st_size > 100 * 1024:
-            logger.info(f"[EngSubtitles] после yt-dlp {file.name} без видеопотока — пропускаю")
-
-    if not actual_video or not actual_video.exists():
+    actual_video = await asyncio.to_thread(_find_downloaded_original_video, workdir)
+    if actual_video is None:
         raise RuntimeError(
             f"Не удалось скачать оригинальное видео с видеопотоком. stderr: {proc.stderr[-500:] if proc.stderr else ''}"
         )
