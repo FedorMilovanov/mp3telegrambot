@@ -18,7 +18,7 @@ async def factory_full_video_requested(update: Any) -> bool:
     if not user_id:
         return False
 
-    from handlers.mode_command import get_shorts_factory_full_video
+    from core.user_modes import get_shorts_factory_full_video
 
     return await get_shorts_factory_full_video(user_id)
 

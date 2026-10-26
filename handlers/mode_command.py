@@ -10,21 +10,22 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
-from core.database import ADMIN_IDS, _db_conn
+from core.database import ADMIN_IDS
+from core.user_modes import (
+    EDITORIAL_MODE,
+    VALID_MODES,
+    _get_shorts_factory_full_video_raw as _get_shorts_factory_full_video_raw,
+    _get_user_mode_raw as _get_user_mode_raw,
+    _read_user_mode,
+    _set_shorts_factory_full_video_raw,
+    _set_user_mode_raw,
+    get_shorts_factory_full_video,
+    get_user_mode,
+)
 
 logger = logging.getLogger(__name__)
 
-EDITORIAL_MODE = "translation_editorial"
-VALID_MODES = (
-    "rus",
-    "eng",
-    "eng_fast",
-    "eng_fast_qa",
-    "shorts_max",
-    EDITORIAL_MODE,
-)
 _DUB_WIZARD_KEY = "dub_universal_wizard"
-_SHORTS_FACTORY_FULL_VIDEO_PREFIX = "shorts_factory_full_video_"
 
 MODE_LABELS = {
     "rus": "🇷🇺 Русский — полный анализ",
@@ -208,26 +209,6 @@ async def _safe_edit(query, text: str, *, reply_markup=None) -> None:
             raise
 
 
-async def _read_user_mode(user_id: int) -> str:
-    loop = asyncio.get_running_loop()
-    try:
-        return await loop.run_in_executor(None, _get_user_mode_raw, user_id)
-    except Exception:
-        return "rus"
-
-
-async def get_user_mode(user_id: int) -> str:
-    return await _read_user_mode(user_id)
-
-
-async def get_shorts_factory_full_video(user_id: int) -> bool:
-    loop = asyncio.get_running_loop()
-    try:
-        return await loop.run_in_executor(None, _get_shorts_factory_full_video_raw, user_id)
-    except Exception:
-        return False
-
-
 async def mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     _clear_dub_wizard_state(context)
     current = await _read_user_mode(update.effective_user.id)
@@ -326,54 +307,6 @@ async def handle_mode_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         _analysis_text(mode, saved=True, full_video=full_video),
         reply_markup=_analysis_keyboard(mode, full_video=full_video),
     )
-
-
-def _get_user_mode_raw(user_id: int) -> str:
-    try:
-        with _db_conn() as conn:
-            row = conn.execute(
-                "SELECT value FROM bot_settings WHERE key = ?",
-                (f"user_mode_{user_id}",),
-            ).fetchone()
-        if row and row[0] in VALID_MODES:
-            return row[0]
-    except Exception:
-        pass
-    return "rus"
-
-
-def _set_user_mode_raw(user_id: int, mode: str) -> None:
-    if mode not in VALID_MODES:
-        raise ValueError(f"invalid mode: {mode}")
-    with _db_conn() as conn:
-        conn.execute(
-            "INSERT OR REPLACE INTO bot_settings (key, value) VALUES (?, ?)",
-            (f"user_mode_{user_id}", mode),
-        )
-        conn.commit()
-
-
-def _get_shorts_factory_full_video_raw(user_id: int) -> bool:
-    try:
-        with _db_conn() as conn:
-            row = conn.execute(
-                "SELECT value FROM bot_settings WHERE key = ?",
-                (f"{_SHORTS_FACTORY_FULL_VIDEO_PREFIX}{user_id}",),
-            ).fetchone()
-        if row:
-            return str(row[0]).strip().lower() in {"1", "true", "yes", "on"}
-    except Exception:
-        pass
-    return False
-
-
-def _set_shorts_factory_full_video_raw(user_id: int, enabled: bool) -> None:
-    with _db_conn() as conn:
-        conn.execute(
-            "INSERT OR REPLACE INTO bot_settings (key, value) VALUES (?, ?)",
-            (f"{_SHORTS_FACTORY_FULL_VIDEO_PREFIX}{user_id}", "1" if enabled else "0"),
-        )
-        conn.commit()
 
 
 __all__ = [

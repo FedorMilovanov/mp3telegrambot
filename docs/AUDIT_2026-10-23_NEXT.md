@@ -1306,11 +1306,13 @@ Release run 40240577021 выполнил полный pytest на Python 3.12, �
 **Перепроверка 2026-10-26:** `import-linter 2.15` добавлен в dev-lock,
 `tools/check_import_layers.py` исполняет layers-контракт на реальном графе и
 включён в `verify_repo.py`. Направление: `handlers → pipelines → services →
-converters → core`. После второго burn-down остаётся 15 точных legacy-рёбер:
+converters → core`. После третьего burn-down остаётся 13 точных legacy-рёбер:
 неиспользуемый `core.utils → ffmpeg` удалён, `QUIZ_PROMPT` перенесён в
 `core.prompts`, caption-link builders — в `converters.caption`, а чистые
 `health_report` и `gemini_quota_domains` — в `core` с compatibility-экспортами
-на прежних путях. Исключения
+на прежних путях. Mode-settings и флаг полного видео также принадлежат `core`,
+поэтому pipeline и Shorts service больше не импортируют Telegram handler.
+Исключения
 перечислены без wildcards, новые нарушения
 и устаревшие исключения падают. Пункт будет закрыт только при нулевом списке;
 одновременно нужно сделать `_telegraph_post` публичным API.

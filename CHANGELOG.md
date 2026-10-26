@@ -59,6 +59,9 @@
 - Второй import-layer burn-down: 17 → 15 legacy-рёбер. Чистые `health_report` и
   `gemini_quota_domains` перенесены в `core`; прежние `services`-пути сохранены
   compatibility-экспортами, поэтому вызывающий код и контракты не изменились.
+- Третий import-layer burn-down: 15 → 13 legacy-рёбер. Режимы пользователя и
+  флаг полного Shorts-видео вынесены в `core.user_modes`; handler сохраняет
+  прежние имена, а pipeline и Shorts service не зависят от Telegram UI.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

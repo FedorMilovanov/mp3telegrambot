@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from core import user_modes
 import handlers.mode_command as mode_command
 import services.shorts_factory_full_video as full_video
 
@@ -24,6 +25,18 @@ def test_factory_full_video_text_documents_no_retranslation():
     text = mode_command._analysis_text("shorts_max", full_video=True)
     assert "тот же готовый Yandex LiveDub-файл" in text
     assert "повторный перевод не запускается" in text
+
+
+@pytest.mark.asyncio
+async def test_factory_full_video_request_reads_core_owned_setting(monkeypatch):
+    async def enabled(user_id):
+        assert user_id == 42
+        return True
+
+    monkeypatch.setattr(user_modes, "get_shorts_factory_full_video", enabled)
+    update = SimpleNamespace(effective_user=SimpleNamespace(id=42))
+
+    assert await full_video.factory_full_video_requested(update) is True
 
 
 @pytest.mark.asyncio
