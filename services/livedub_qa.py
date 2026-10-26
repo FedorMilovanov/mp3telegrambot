@@ -45,6 +45,10 @@ _QA_UPLOAD_WAIT = 180
 _DURATION_TOLERANCE = 0.05
 
 
+def _path_exists(path: Path) -> bool:
+    return Path(path).exists()
+
+
 def _ffprobe_json(path: Path) -> dict | None:
     ffprobe = shutil.which("ffprobe")
     if not ffprobe:
@@ -407,14 +411,14 @@ async def _run_translation_qa_base(
 
     try:
         dub_timed_text = ""
-        if dub_srt_path and Path(dub_srt_path).exists():
+        if dub_srt_path is not None and await asyncio.to_thread(_path_exists, dub_srt_path):
             dub_timed_text = srt_to_timed_text(dub_srt_path)
             if not dub_timed_text:
                 logger.warning("[LiveDubQA] SRT перевода пустой/битый — перехожу на аудио дубляжа")
         _have_srt = bool(dub_timed_text)
         dub_audio = None
         if not _have_srt:
-            if dub_audio_path and Path(dub_audio_path).exists():
+            if dub_audio_path is not None and await asyncio.to_thread(_path_exists, dub_audio_path):
                 dub_audio = Path(dub_audio_path)
                 logger.info("[LiveDubQA] сравниваю по ЧИСТОЙ RU-дорожке (без EN-фона микса)")
             else:
@@ -428,7 +432,10 @@ async def _run_translation_qa_base(
         else:
             logger.info("[LiveDubQA] есть SRT перевода — сравниваю EN-аудио с текстом без извлечения дубляжа")
 
-        original_path_available = bool(original_audio_path and Path(original_audio_path).exists())
+        original_path_available = original_audio_path is not None and await asyncio.to_thread(
+            _path_exists,
+            original_audio_path,
+        )
         existing_original_active = bool(
             existing_audio_part is not None
             and existing_client is not None
