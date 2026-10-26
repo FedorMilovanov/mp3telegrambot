@@ -237,11 +237,18 @@ async def _probe_audio_duration(path: Path) -> float:
     return duration if math.isfinite(duration) and duration > 0 else 0.0
 
 
+def _file_size_if_file(path: Path) -> int | None:
+    if not path.is_file():
+        return None
+    return path.stat().st_size
+
+
 async def _detect_exact_ru_speech(ru_audio_path: Path) -> dict[str, Any]:
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         raise RuntimeError("ffmpeg is unavailable for Factory RU boundary proof")
-    if not ru_audio_path.is_file() or ru_audio_path.stat().st_size <= 1024:
+    ru_audio_size = await asyncio.to_thread(_file_size_if_file, ru_audio_path)
+    if ru_audio_size is None or ru_audio_size <= 1024:
         raise RuntimeError("exact VOT RU audio is missing or empty")
 
     exact_duration = await _probe_audio_duration(ru_audio_path)

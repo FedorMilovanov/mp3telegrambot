@@ -1135,8 +1135,8 @@ LiveDub/process slice — 42. `SIM105` = 0 и включён в gate. Затем
 `ASYNC240` закрыл 7 sites, второй — ещё 4 Factory/deferral/static functions,
 третий — Clips/Shorts delivery, четвёртый — thumbnail/PDF stages, пятый —
 FFmpeg silence/crop probes, шестой — Montage/Highlights LiveDub sources,
-седьмой — Factory full-video file validation. Остаются 185, другие
-extended-правила и дальнейший ручной async review.
+седьмой — Factory full-video file validation, восьмой — Factory RU speech
+proof. Остаются 183, другие extended-правила и дальнейший ручной async review.
 
 **Решение:**
 

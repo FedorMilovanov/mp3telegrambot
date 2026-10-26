@@ -116,6 +116,8 @@
   LiveDub source в worker thread; остаются 187 findings.
 - Async I/O, седьмой `ASYNC240` slice: Factory full-video delivery объединяет
   file/size validation в worker thread; остаются 185 findings.
+- Async I/O, восьмой `ASYNC240` slice: Factory RU speech proof считывает
+  file/size metadata в worker thread; остаются 183 findings.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):
