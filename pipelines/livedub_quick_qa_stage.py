@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from pathlib import Path
@@ -10,6 +11,26 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 QuickQaResult = tuple[Path, str, str]
+
+
+def _path_exists(path: Path) -> bool:
+    return path.exists()
+
+
+def _discover_quick_qa_paths(workdir: Path) -> tuple[Path | None, Path | None]:
+    srt_candidates = sorted(
+        (path for path in workdir.glob("*.srt") if path.name != "gemini_subs.srt"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    original_candidates = sorted(
+        workdir.glob("original_video.*"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    quick_srt = srt_candidates[0] if srt_candidates else None
+    original = original_candidates[0] if original_candidates else None
+    return quick_srt, original
 
 
 async def run_livedub_quick_qa(
@@ -38,19 +59,8 @@ async def run_livedub_quick_qa(
             quick_srt = None
             original = None
             clean_ru = None
-            if workdir and workdir.exists():
-                srt_candidates = sorted(
-                    (path for path in workdir.glob("*.srt") if path.name != "gemini_subs.srt"),
-                    key=lambda path: path.stat().st_mtime,
-                    reverse=True,
-                )
-                quick_srt = srt_candidates[0] if srt_candidates else None
-                original_candidates = sorted(
-                    workdir.glob("original_video.*"),
-                    key=lambda path: path.stat().st_mtime,
-                    reverse=True,
-                )
-                original = original_candidates[0] if original_candidates else None
+            if workdir is not None and await asyncio.to_thread(_path_exists, workdir):
+                quick_srt, original = await asyncio.to_thread(_discover_quick_qa_paths, workdir)
                 try:
                     from services.livedub_mix import find_pro_tracks
 
