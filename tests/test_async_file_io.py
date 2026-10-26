@@ -12,6 +12,7 @@ from services import (
     eng_subtitles,
     pdf_generator,
     render_clips_montage,
+    shorts_candidates,
     shorts_factory_candidates,
     shorts_video,
     yandex_live_dub,
@@ -301,6 +302,94 @@ async def test_legacy_video_returns_discovered_path(monkeypatch, tmp_path: Path,
     result = await yandex_live_dub.get_live_dub_video("https://example.invalid/video", tmp_path)
 
     assert result == downloaded
+
+
+@pytest.mark.asyncio
+async def test_shorts_candidates_reads_inline_audio_and_validates_response(monkeypatch, tmp_path: Path) -> None:
+    payload = b"x" * 2048
+    audio = _write_file(tmp_path / "shorts.mp3", payload)
+    client = object()
+    from_bytes = Mock(return_value="audio-part")
+    response = SimpleNamespace(
+        text=(
+            '{"shorts_candidates": [{"start": "00:00", "end": "00:40", '
+            '"title": "Candidate", "reason": "Reason", "kind": "story", "hashtags": []}]}'
+        )
+    )
+    generate_content = AsyncMock(return_value=response)
+
+    async def generate(clients, callback):
+        return await callback(clients[0])
+
+    monkeypatch.setattr(shorts_candidates, "HAS_GEMINI", True)
+    monkeypatch.setattr(shorts_candidates, "GEMINI_CLIENTS", [client])
+    monkeypatch.setattr(
+        shorts_candidates,
+        "types",
+        SimpleNamespace(Part=SimpleNamespace(from_bytes=from_bytes)),
+    )
+    monkeypatch.setattr(shorts_candidates, "gemini_generate", generate)
+    monkeypatch.setattr(shorts_candidates, "_generate_audio_candidate_content", generate_content)
+    monkeypatch.setattr(shorts_candidates, "alog_gemini_response", AsyncMock())
+    monkeypatch.setattr(shorts_candidates, "alog_gemini_run", AsyncMock())
+
+    result = await shorts_candidates.create_shorts_candidates(
+        audio,
+        {},
+        "Title",
+        "Author",
+        duration=120,
+    )
+
+    assert from_bytes.call_args.kwargs == {"data": payload, "mime_type": "audio/mpeg"}
+    assert generate_content.await_args.kwargs["contents"][0] == "audio-part"
+    assert len(result) == 1
+    assert result[0]["start_seconds"] == 0
+    assert result[0]["end_seconds"] == 40
+
+
+@pytest.mark.asyncio
+async def test_clips_candidates_reads_inline_audio_and_validates_response(monkeypatch, tmp_path: Path) -> None:
+    payload = b"x" * 2048
+    audio = _write_file(tmp_path / "clips.mp3", payload)
+    client = object()
+    from_bytes = Mock(return_value="audio-part")
+    response = SimpleNamespace(
+        text=(
+            '{"clip_candidates": [{"start": "00:00", "end": "06:00", '
+            '"title": "Candidate", "reason": "Reason", "kind": "interview", "hashtags": []}]}'
+        )
+    )
+    generate_content = AsyncMock(return_value=response)
+
+    async def generate(clients, callback):
+        return await callback(clients[0])
+
+    monkeypatch.setattr(shorts_candidates, "HAS_GEMINI", True)
+    monkeypatch.setattr(shorts_candidates, "GEMINI_CLIENTS", [client])
+    monkeypatch.setattr(
+        shorts_candidates,
+        "types",
+        SimpleNamespace(Part=SimpleNamespace(from_bytes=from_bytes)),
+    )
+    monkeypatch.setattr(shorts_candidates, "gemini_generate", generate)
+    monkeypatch.setattr(shorts_candidates, "_generate_audio_candidate_content", generate_content)
+    monkeypatch.setattr(shorts_candidates, "alog_gemini_response", AsyncMock())
+    monkeypatch.setattr(shorts_candidates, "alog_gemini_run", AsyncMock())
+
+    result = await shorts_candidates.create_clips_candidates(
+        audio,
+        {},
+        "Title",
+        "Author",
+        duration=900,
+    )
+
+    assert from_bytes.call_args.kwargs == {"data": payload, "mime_type": "audio/mpeg"}
+    assert generate_content.await_args.kwargs["contents"][0] == "audio-part"
+    assert len(result) == 1
+    assert result[0]["start_seconds"] == 0
+    assert result[0]["end_seconds"] == 360
 
 
 @pytest.mark.asyncio

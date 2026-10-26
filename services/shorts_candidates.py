@@ -154,6 +154,10 @@ async def _generate_audio_candidate_content(
         )
 
 
+def _file_size(path: Path) -> int:
+    return path.stat().st_size
+
+
 async def create_shorts_candidates(
     mp3_path: Path,
     ai_data: dict,
@@ -226,7 +230,7 @@ async def create_shorts_candidates(
             with contextlib.suppress(Exception):
                 await status_msg.edit_text(f"{prefix}✂️ Ищу лучшие фрагменты для Shorts...")
 
-        file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
+        file_size_mb = await asyncio.to_thread(_file_size, mp3_path) / (1024 * 1024)
         response = None
 
         if existing_audio_part is not None and existing_client is not None:
@@ -244,7 +248,7 @@ async def create_shorts_candidates(
                 response = None
 
         if response is None:
-            audio_bytes = mp3_path.read_bytes() if file_size_mb <= 20 else None
+            audio_bytes = await asyncio.to_thread(mp3_path.read_bytes) if file_size_mb <= 20 else None
 
             async def _upload(client):
                 if file_size_mb > 20:
@@ -525,7 +529,7 @@ async def create_clips_candidates(
 
         _structured_schema = clips_response_schema()
 
-        file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
+        file_size_mb = await asyncio.to_thread(_file_size, mp3_path) / (1024 * 1024)
         response = None
 
         # Используем уже загруженный audio_part (переиспользование из основного пайплайна)
@@ -544,7 +548,7 @@ async def create_clips_candidates(
                 response = None
 
         if response is None:
-            audio_bytes = mp3_path.read_bytes() if file_size_mb <= 20 else None
+            audio_bytes = await asyncio.to_thread(mp3_path.read_bytes) if file_size_mb <= 20 else None
 
             async def _upload(client):
                 if file_size_mb > 20:
