@@ -99,3 +99,31 @@ async def test_full_translation_not_sent_when_source_needs_no_translation(monkey
     )
 
     assert sent is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("content", [None, b""])
+async def test_full_translation_rejects_missing_or_empty_source(monkeypatch, tmp_path, content):
+    async def enabled(_update):
+        return True
+
+    monkeypatch.setattr(full_video, "factory_full_video_requested", enabled)
+    path = tmp_path / "sermon_factory_source.mp4"
+    if content is not None:
+        path.write_bytes(content)
+
+    class Message:
+        async def reply_video(self, **_kwargs):
+            raise AssertionError("missing or empty source must not be uploaded")
+
+    message = Message()
+    update = SimpleNamespace(effective_message=message, message=message)
+    sent = await full_video.send_factory_full_translation_if_enabled(
+        update,
+        path,
+        title="Проповедь",
+        duration=1200,
+        translation_required=True,
+    )
+
+    assert sent is False
