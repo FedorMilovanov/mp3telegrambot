@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 import math
@@ -234,17 +235,18 @@ async def fit_factory_long_clip_to_limit(
                     probe.duration,
                 )
                 return False
-            fitted_size = fitted.stat().st_size
+            fitted_size = (await asyncio.to_thread(fitted.stat)).st_size
             if fitted_size <= limit_bytes:
-                output_path.unlink(missing_ok=True)
+                await asyncio.to_thread(output_path.unlink, missing_ok=True)
                 fitted.replace(output_path)
+                output_size = (await asyncio.to_thread(output_path.stat)).st_size
                 logger.info(
                     "Factory long fitted to Telegram limit: attempt=%d bitrate=%dk "
                     "duration=%.3fs size=%.1fMB limit=%.1fMB",
                     attempt + 1,
                     target_kbps,
                     probe.duration,
-                    output_path.stat().st_size / (1024 * 1024),
+                    output_size / (1024 * 1024),
                     max_file_size_mb,
                 )
                 return True
