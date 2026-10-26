@@ -110,6 +110,8 @@
   source/stat/thumbnail/cleanup file I/O в event loop; остаются 196 findings.
 - Async I/O, четвёртый `ASYNC240` slice: thumbnail discovery и PDF size/cleanup
   переведены на worker threads; остаётся 191 finding.
+- Async I/O, пятый `ASYNC240` slice: FFmpeg silence/crop probes проверяют
+  исходник в worker thread; остаются 189 findings.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):
