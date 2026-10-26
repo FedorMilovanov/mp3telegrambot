@@ -74,6 +74,10 @@
 - Седьмой import-layer burn-down: 4 → 3 legacy-ребра. Общий Gemini transport,
   client rotation и transient retry routing перенесены из `core.globals` в
   `services.gemini_router`; process-wide config больше не импортирует services.
+- Восьмой import-layer burn-down: 3 → 0 legacy-рёбер. Standalone editorial
+  orchestration перенесён в pipelines, Factory env/backend policy принадлежит
+  execution-guard, неиспользуемый guarded wrapper удалён. `ignore_imports`
+  полностью убран: новые обратные зависимости падают без исключений.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

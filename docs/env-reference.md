@@ -151,7 +151,7 @@
 | `SHORTS_FACTORY_PUBLICATION_DESCRIPTION_TIMEOUT_SEC` | `services/shorts_factory_publication.py` | `12` | — | — |
 | `SHORTS_FACTORY_RETRY_CACHE_MAX_ITEMS` | `services/shorts_factory_retry_cache.py` | `2` | — | — |
 | `SHORTS_FACTORY_SOURCE_RETENTION_HOURS` | `pipelines/shorts_factory.py` | `24` | — | — |
-| `SHORTS_FACTORY_TRANSLATION_BACKEND` | `pipelines/shorts_factory.py` | `yandex_live` | — | — |
+| `SHORTS_FACTORY_TRANSLATION_BACKEND` | `services/shorts_factory_execution_guard.py` | `yandex_live` | — | — |
 | `SHORTS_FACTORY_WHISPER_MODEL` | `services/shorts_transcription.py` | `` | да | да |
 | `SPONSORBLOCK_REMOVE` | `pipelines/main_pipeline.py` | `` | да | — |
 | `SYNOPSIS_DENSITY_RETRY` | `services/telegraph.py` | `1` | да | — |

@@ -1,4 +1,4 @@
-"""Executable architecture boundaries and their temporary burn-down policy."""
+"""Executable architecture boundaries and their no-exceptions policy."""
 
 from __future__ import annotations
 
@@ -22,14 +22,11 @@ def test_contract_check_preserves_the_callers_logging(caplog) -> None:
     assert "caller logging survives import-linter" in caplog.text
 
 
-def test_legacy_ignores_are_exact_and_stale_entries_fail() -> None:
+def test_completed_contract_has_no_legacy_ignore_escape_hatch() -> None:
     parser = configparser.ConfigParser()
     with (ROOT / CONFIG).open(encoding="utf-8") as handle:
         parser.read_file(handle)
     contract = parser["importlinter:contract:production-layers"]
-    ignores = [line.strip() for line in contract["ignore_imports"].splitlines() if line.strip()]
 
-    assert ignores, "Remove the empty option as well when the burn-down is complete"
-    assert all("->" in item and "*" not in item for item in ignores)
-    assert len(ignores) == len(set(ignores))
+    assert "ignore_imports" not in contract
     assert contract["unmatched_ignore_imports_alerting"] == "error"

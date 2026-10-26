@@ -17,16 +17,10 @@ layers =
     services
     converters
     core
-# Burn-down list for the legacy edges documented in ARCHITECTURE.md.
-# Every entry is an exact module pair: wildcards could hide a new violation.
-# An entry that no longer matches a real import is an error, so cleanup must
-# remove its entry in the same PR. The target is an empty ignore_imports list.
-ignore_imports =
-    services.shorts_factory_execution_guard -> pipelines.shorts_factory
-    services.shorts_factory_source -> pipelines.shorts_factory
-    services.translation_editorial_runner -> pipelines.shorts_factory
+# Burn-down complete: there is no ignore_imports escape hatch. Every reverse
+# edge fails this contract, and stale ignores are errors if ever reintroduced.
 unmatched_ignore_imports_alerting = error
 broken_contract_guidance =
     Keep the direction handlers -> pipelines -> services -> converters -> core.
-    Do not add new ignore_imports entries. Remove a legacy edge and its exact
-    entry together; unmatched legacy entries intentionally fail the contract.
+    Do not reintroduce ignore_imports. Move orchestration upward or reusable
+    policy downward so the production graph remains layered without exceptions.
