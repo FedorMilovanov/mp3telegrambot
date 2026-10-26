@@ -108,6 +108,8 @@
   cleanup переведены на worker threads; остаются 198 findings.
 - Async I/O, третий `ASYNC240` slice: Clips/Shorts delivery больше не выполняет
   source/stat/thumbnail/cleanup file I/O в event loop; остаются 196 findings.
+- Async I/O, четвёртый `ASYNC240` slice: thumbnail discovery и PDF size/cleanup
+  переведены на worker threads; остаётся 191 finding.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

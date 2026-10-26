@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from io import BytesIO
@@ -63,6 +64,10 @@ def thumbnail_command(
     ]
 
 
+def _thumbnail_candidates(thumbs_dir: Path, media_id: str) -> list[Path]:
+    return list(thumbs_dir.glob(f"{media_id}_thumb*"))
+
+
 async def load_thumbnail(
     *,
     media_id: str,
@@ -82,7 +87,7 @@ async def load_thumbnail(
     rc_label = "rc" if cache_hit else "returncode"
 
     try:
-        existing = list(thumbs_dir.glob(f"{media_id}_thumb*"))
+        existing = await asyncio.to_thread(_thumbnail_candidates, thumbs_dir, media_id)
         if existing:
             thumbnail = deps.prepare(existing[0])
             logger.info("%s: используем %s", existing_label, existing[0].name)
@@ -108,7 +113,7 @@ async def load_thumbnail(
                 error,
             )
 
-        candidates = list(thumbs_dir.glob(f"{media_id}_thumb*"))
+        candidates = await asyncio.to_thread(_thumbnail_candidates, thumbs_dir, media_id)
         if candidates:
             thumbnail = deps.prepare(candidates[0])
             logger.info("%s скачана: %s", log_label, candidates[0].name)

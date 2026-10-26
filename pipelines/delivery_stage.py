@@ -56,6 +56,17 @@ def _pdf_token() -> str:
     return uuid.uuid4().hex[:6]
 
 
+def _pdf_size(path: Path) -> int | None:
+    if not path.exists():
+        return None
+    return path.stat().st_size
+
+
+def _unlink_pdf(path: Path) -> None:
+    with contextlib.suppress(Exception):
+        path.unlink(missing_ok=True)
+
+
 async def _generate_pdf(*args: Any, **kwargs: Any) -> str | None:
     """Ленивая граница необязательного PDF-генератора."""
     from services.pdf_generator import generate_sermon_pdf_async
@@ -335,8 +346,12 @@ async def send_pdf(request: DeliveryRequest, deps: DeliveryDeps) -> str:
                 urls=urls,
                 progress_callback=pdf_progress,
             )
-            if generated and Path(generated).exists():
-                size = Path(generated).stat().st_size
+            generated_path = Path(generated) if generated else None
+            pdf_size = None
+            if generated_path is not None:
+                pdf_size = await asyncio.to_thread(_pdf_size, generated_path)
+            if generated_path is not None and pdf_size is not None:
+                size = pdf_size
                 if request.cache_hit and not (MIN_PDF_BYTES < size < MAX_PDF_BYTES):
                     logger.warning("PDF (кэш): размер вне допустимого диапазона: %d байт", size)
                     await request.update.message.reply_text("❌ Не удалось создать PDF.")
@@ -351,7 +366,7 @@ async def send_pdf(request: DeliveryRequest, deps: DeliveryDeps) -> str:
                     outcome = "too_large"
                 else:
                     filename = f"{safe_filename(pdf_author)} — {safe_filename(pdf_title)}.pdf"
-                    with await asyncio.to_thread(Path(generated).open, "rb") as pdf_file:
+                    with await asyncio.to_thread(generated_path.open, "rb") as pdf_file:
                         await request.update.message.reply_document(
                             document=pdf_file,
                             filename=filename,
@@ -375,8 +390,7 @@ async def send_pdf(request: DeliveryRequest, deps: DeliveryDeps) -> str:
             outcome = "error"
     finally:
         if pdf_path:
-            with contextlib.suppress(Exception):
-                Path(pdf_path).unlink(missing_ok=True)
+            await asyncio.to_thread(_unlink_pdf, Path(pdf_path))
         if status_message:
             with contextlib.suppress(Exception):
                 await status_message.delete()
