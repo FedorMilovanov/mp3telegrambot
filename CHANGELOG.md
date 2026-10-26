@@ -80,6 +80,8 @@
   полностью убран: новые обратные зависимости падают без исключений.
 - Extended Ruff, волна 2a: безопасные `UP009` и `UP006` исправлены во всём
   дереве (142 находки), а `UP009`, `UP006` и `W293` включены в обычный gate.
+- Extended Ruff, волна 2b: все 73 `Optional[...]` переведены на PEP 604
+  `... | None`; освободившиеся typing imports удалены, `UP045` включён в gate.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

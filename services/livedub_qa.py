@@ -21,7 +21,6 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Optional
 
 from core.globals import (
     HAS_GEMINI,
@@ -45,7 +44,7 @@ _QA_UPLOAD_WAIT = 180
 _DURATION_TOLERANCE = 0.05
 
 
-def _ffprobe_json(path: Path) -> Optional[dict]:
+def _ffprobe_json(path: Path) -> dict | None:
     ffprobe = shutil.which("ffprobe")
     if not ffprobe:
         return None
@@ -77,7 +76,7 @@ def _mean_volume_db(
     path: Path,
     start: float = 0.0,
     dur: float = 120.0,
-) -> Optional[float]:
+) -> float | None:
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         return None
@@ -218,7 +217,7 @@ problem, should_be. Английские слова допускаются то�
 """
 
 
-def _extract_audio_for_qa(video_path: Path, out_path: Path) -> Optional[Path]:
+def _extract_audio_for_qa(video_path: Path, out_path: Path) -> Path | None:
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         return None
@@ -345,7 +344,7 @@ def srt_to_timed_text(srt_path: Path, max_chars: int = 12000) -> str:
     return "\n".join(out)
 
 
-def _parse_qa_json(text: str) -> Optional[dict]:
+def _parse_qa_json(text: str) -> dict | None:
     if not text:
         return None
     cleaned = re.sub(
@@ -369,16 +368,16 @@ def _parse_qa_json(text: str) -> Optional[dict]:
 
 async def _run_translation_qa_base(
     dub_video_path: Path,
-    original_audio_path: Optional[Path],
-    ai_data: Optional[dict],
+    original_audio_path: Path | None,
+    ai_data: dict | None,
     duration: int,
     model_name: str = "",
-    dub_srt_path: Optional[Path] = None,
-    dub_audio_path: Optional[Path] = None,
+    dub_srt_path: Path | None = None,
+    dub_audio_path: Path | None = None,
     existing_audio_part=None,
     existing_client=None,
     thinking_level: str = "high",
-) -> Optional[dict]:
+) -> dict | None:
     if not (HAS_GEMINI and GEMINI_CLIENTS and types is not None):
         logger.info("[LiveDubQA] Gemini недоступен — смысловая проверка пропущена")
         return None
@@ -702,16 +701,16 @@ async def _run_translation_qa_base(
 
 async def run_translation_qa(
     dub_video_path: Path,
-    original_audio_path: Optional[Path],
-    ai_data: Optional[dict],
+    original_audio_path: Path | None,
+    ai_data: dict | None,
     duration: int,
     model_name: str = "",
-    dub_srt_path: Optional[Path] = None,
-    dub_audio_path: Optional[Path] = None,
+    dub_srt_path: Path | None = None,
+    dub_audio_path: Path | None = None,
     existing_audio_part=None,
     existing_client=None,
     thinking_level: str = "high",
-) -> Optional[dict]:
+) -> dict | None:
     from services.livedub_long_qa import run_long_translation_qa
     from services.livedub_qa_hardening import (
         annotate_qa_availability,

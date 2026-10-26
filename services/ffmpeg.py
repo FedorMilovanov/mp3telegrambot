@@ -16,7 +16,6 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional, List, Tuple
 from urllib.parse import urlparse
 
 from services.async_process import run_cancellable_process
@@ -638,7 +637,7 @@ async def _detect_black_bars(video_path: Path, sample_start: float = 0.0) -> str
         return ""
 
 
-async def probe_video_language(video_url: str) -> Optional[str]:
+async def probe_video_language(video_url: str) -> str | None:
     """Определяет язык видео через yt-dlp metadata."""
     try:
         cmd = YTDLP_BASE_ARGS + ["--dump-json", video_url]

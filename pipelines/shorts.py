@@ -9,7 +9,7 @@ import shutil
 import time
 import uuid
 from pathlib import Path
-from typing import Optional, Any
+from typing import Any
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, InputFile
 
@@ -107,8 +107,8 @@ async def process_and_send_shorts(
     existing_client: Any = None,
     rutube_url: str = "",
     vk_url: str = "",
-    workdir: Optional[Path] = None,
-    livedub_video_path: Optional[Path] = None,
+    workdir: Path | None = None,
+    livedub_video_path: Path | None = None,
 ) -> None:
     """Render, transform, verify and deliver ordinary Shorts without runtime patches."""
     video_path: Path | None = None

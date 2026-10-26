@@ -33,7 +33,6 @@ import sys
 import tempfile
 from datetime import timedelta
 from pathlib import Path
-from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +89,7 @@ def _check_vot_cli() -> str:
     )
 
 
-def _run_subprocess(cmd_parts: list, cwd: Optional[Path] = None, timeout: int = 600):
+def _run_subprocess(cmd_parts: list, cwd: Path | None = None, timeout: int = 600):
     """Универсальный subprocess wrapper. Возвращает (stdout, stderr, returncode)."""
     # FIX AUDIT R4: npx-fallback возвращает argv[0]="/usr/bin/npx vot-cli-live"
     # одной строкой, а все вызовы добавляют свои аргументы — старое условие
@@ -160,7 +159,7 @@ def _vot_request_duration(duration: float) -> int:
     return int(float(duration))
 
 
-def _find_node() -> Optional[str]:
+def _find_node() -> str | None:
     for name in ("node", "node.exe"):
         p = shutil.which(name)
         if p:
@@ -168,7 +167,7 @@ def _find_node() -> Optional[str]:
     return None
 
 
-def _ensure_vot_helper() -> Optional[list]:
+def _ensure_vot_helper() -> list | None:
     """Возвращает команду [node, vot_live.mjs], если новый протокол доступен.
 
     При первом запуске сам ставит npm-зависимости (@vot.js/node) в
@@ -269,7 +268,7 @@ async def _get_audio_new_protocol(
     raise RuntimeError(f"vot_live.mjs exit code {rc}")
 
 
-def _find_latest_file(directory: Path, pattern: str) -> Optional[Path]:
+def _find_latest_file(directory: Path, pattern: str) -> Path | None:
     """Находит самый свежий файл по шаблону, пропуская НАШИ служебные артефакты.
 
     AUDIT ENG (2026-07-05): в одном workdir параллельно живут скачанный
@@ -534,7 +533,7 @@ async def get_live_dub_info(video_url: str) -> dict:
     return data
 
 
-async def get_translation_subtitles(video_url: str, output_dir: Path) -> Optional[Path]:
+async def get_translation_subtitles(video_url: str, output_dir: Path) -> Path | None:
     """Скачивает СУБТИТРЫ ПЕРЕВОДА (текст с таймкодами) через vot-cli-live.
 
     Это точный текст того, что озвучивает Яндекс, с миллисекундными
@@ -574,7 +573,7 @@ async def get_translation_subtitles(video_url: str, output_dir: Path) -> Optiona
     return None
 
 
-async def is_live_available(video_url: str) -> tuple[bool, Optional[str]]:
+async def is_live_available(video_url: str) -> tuple[bool, str | None]:
     """Проверяет, доступны ли для видео Живые голоса."""
     try:
         info = await get_live_dub_info(video_url)

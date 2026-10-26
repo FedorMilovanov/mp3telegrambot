@@ -33,12 +33,11 @@ import shutil
 import subprocess
 import threading  # FIX shorts_video
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
-def _pick_video_file(media_id: str) -> Optional[Path]:
+def _pick_video_file(media_id: str) -> Path | None:
     """Возвращает первый найденный видеофайл с предпочтительным расширением."""
     preferred_exts = [".mp4", ".mkv", ".webm", ".mov"]
     files = [p for p in DOWNLOAD_DIR.glob(f"{media_id}_video.*") if p.is_file()]
@@ -49,7 +48,7 @@ def _pick_video_file(media_id: str) -> Optional[Path]:
     return None
 
 
-async def _unowned_download_video_for_shorts(url: str, media_id: str, workdir: Optional[Path] = None) -> Optional[Path]:
+async def _unowned_download_video_for_shorts(url: str, media_id: str, workdir: Path | None = None) -> Path | None:
     """
     Скачивает видео в mp4 для вырезки Shorts.
     Использует bestvideo[height<=720]+bestaudio — оптимально для Shorts.
@@ -1743,8 +1742,8 @@ def build_short_caption(
 async def download_video_for_shorts(
     url: str,
     media_id: str,
-    workdir: Optional[Path] = None,
-) -> Optional[Path]:
+    workdir: Path | None = None,
+) -> Path | None:
     return await await_owned_coroutine(_unowned_download_video_for_shorts(url, media_id, workdir=workdir))
 
 
