@@ -1138,8 +1138,9 @@ FFmpeg silence/crop probes, шестой — Montage/Highlights LiveDub sources,
 седьмой — Factory full-video file validation, восьмой — Factory RU speech
 proof, девятый — Factory long-fit stat/cleanup, десятый — Factory editorial
 optional documents, одиннадцатый — Full LiveDub QA workdir/SRT discovery,
-двенадцатый — Quick LiveDub QA workdir/SRT/original discovery. Остаются 174,
-другие extended-правила и дальнейший ручной async review.
+двенадцатый — Quick LiveDub QA workdir/SRT/original discovery, тринадцатый —
+Long LiveDub QA source-file checks. Остаются 171, другие extended-правила и
+дальнейший ручной async review.
 
 **Решение:**
 

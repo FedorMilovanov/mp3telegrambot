@@ -126,6 +126,8 @@
   discovery переведено в worker threads; остаются 177 findings.
 - Async I/O, двенадцатый `ASYNC240` slice: Quick LiveDub QA workdir/SRT/original
   discovery переведено в worker threads; остаются 174 findings.
+- Async I/O, тринадцатый `ASYNC240` slice: Long LiveDub QA source-file checks
+  переведены в worker threads; остаются 171 findings.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

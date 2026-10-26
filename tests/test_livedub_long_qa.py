@@ -1,5 +1,7 @@
+import asyncio
 from pathlib import Path
 
+import services.livedub_long_qa as long_qa
 from services.livedub_long_qa import (
     _coverage_seconds,
     _offset_issues,
@@ -116,6 +118,82 @@ def test_missing_original_confidence_marker_is_preserved_separately():
     assert combined is not None
     assert combined["_low_confidence"] is True
     assert "_segmented_partial" not in combined
+
+
+def test_segmented_long_qa_uses_existing_local_sources(monkeypatch, tmp_path):
+    video = tmp_path / "dub.mp4"
+    original = tmp_path / "original.mp3"
+    russian = tmp_path / "clean-ru.mp3"
+    srt = tmp_path / "dub.srt"
+    for path in (video, original, russian, srt):
+        path.write_bytes(b"media")
+    monkeypatch.setenv("LIVEDUB_LONG_QA_THRESHOLD_SEC", "120")
+    extracted_from = []
+    sliced_from = []
+
+    def extract(source, _start, _length, output):
+        extracted_from.append(source)
+        output.write_bytes(b"segment")
+        return output
+
+    def slice_srt(source, _start, _length, _output):
+        sliced_from.append(source)
+        return None
+
+    monkeypatch.setattr(long_qa, "_extract_audio_segment", extract)
+    monkeypatch.setattr(long_qa, "_slice_srt", slice_srt)
+    calls = []
+
+    async def base_runner(**kwargs):
+        calls.append(kwargs)
+        return {"score": 100, "issues": []}
+
+    result = asyncio.run(
+        long_qa.run_long_translation_qa(
+            base_runner,
+            dub_video_path=video,
+            original_audio_path=original,
+            ai_data=None,
+            duration=121,
+            model_name="model",
+            dub_srt_path=srt,
+            dub_audio_path=russian,
+        )
+    )
+
+    assert result is not None
+    assert result["_segments_checked"] == 1
+    assert extracted_from == [original, russian]
+    assert sliced_from == [srt]
+    assert calls[0]["dub_audio_path"] is not None
+    assert calls[0]["dub_audio_path"].name == "dub-01.mp3"
+
+
+def test_long_qa_without_original_uses_full_qa_fallback(monkeypatch, tmp_path):
+    monkeypatch.setenv("LIVEDUB_LONG_QA_THRESHOLD_SEC", "120")
+    video = tmp_path / "dub.mp4"
+    video.write_bytes(b"video")
+    calls = []
+
+    async def base_runner(**kwargs):
+        calls.append(kwargs)
+        return {"score": 100, "issues": []}
+
+    result = asyncio.run(
+        long_qa.run_long_translation_qa(
+            base_runner,
+            dub_video_path=video,
+            original_audio_path=None,
+            ai_data=None,
+            duration=121,
+            model_name="model",
+        )
+    )
+
+    assert result == {"score": 100, "issues": []}
+    assert len(calls) == 1
+    assert calls[0]["dub_video_path"] == video
+    assert calls[0]["original_audio_path"] is None
 
 
 def test_long_qa_source_default_is_high_thinking():

@@ -38,6 +38,22 @@ def _env_int(name: str, default: int, low: int, high: int) -> int:
     return max(low, min(value, high))
 
 
+def _existing_file(path: Path | None) -> Path | None:
+    if not path:
+        return None
+    candidate = Path(path)
+    return candidate if candidate.is_file() else None
+
+
+def _segment_sources(
+    dub_audio_path: Path | None,
+    dub_srt_path: Path | None,
+    dub_video_path: Path,
+) -> tuple[Path, Path | None]:
+    russian_source = _existing_file(dub_audio_path) or Path(dub_video_path)
+    return russian_source, _existing_file(dub_srt_path)
+
+
 def segment_windows(duration: int, segment_sec: int = 480, overlap_sec: int = 20) -> list[tuple[int, int]]:
     """Return complete ``(start, length)`` coverage with boundary overlap."""
     total = max(0, int(duration or 0))
@@ -333,7 +349,7 @@ async def _run_long_qa(
     existing_client,
     thinking_level: str,
 ) -> dict | None:
-    original_source = Path(original_audio_path) if original_audio_path and Path(original_audio_path).is_file() else None
+    original_source = await asyncio.to_thread(_existing_file, original_audio_path)
     if original_source is None:
         logger.info("[LiveDubLongQA] локального оригинала нет — использую обычную полную QA")
         return await original_run(
@@ -365,8 +381,12 @@ async def _run_long_qa(
         except Exception:
             long_model = model_name
     long_thinking = os.getenv("LIVEDUB_LONG_QA_THINKING", "high").strip() or "high"
-    russian_source = Path(dub_audio_path) if dub_audio_path and Path(dub_audio_path).is_file() else Path(dub_video_path)
-    srt_source = Path(dub_srt_path) if dub_srt_path and Path(dub_srt_path).is_file() else None
+    russian_source, srt_source = await asyncio.to_thread(
+        _segment_sources,
+        dub_audio_path,
+        dub_srt_path,
+        dub_video_path,
+    )
 
     successful: list[tuple[int, int, dict[str, Any]]] = []
     with tempfile.TemporaryDirectory(prefix="mp3bot-lqa-") as temp_dir:
