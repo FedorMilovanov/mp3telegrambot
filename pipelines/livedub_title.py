@@ -229,7 +229,8 @@ async def _translate_livedub_title_for_caption(
         f"channel: {channel_name}\n"
     )
     try:
-        from core.globals import gemini_generate, make_text_config_smart
+        from core.globals import make_text_config_smart
+        from services.gemini_router import gemini_generate
 
         cfg = make_text_config_smart(
             temperature=0.1,

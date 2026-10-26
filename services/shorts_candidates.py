@@ -8,9 +8,9 @@ from core.globals import (
     HAS_GEMINI,
     GEMINI_API_KEY,
     GEMINI_CLIENTS,
-    gemini_generate,  # FIX shorts_candidates,
     make_audio_config,
 )
+from services.gemini_router import gemini_generate
 from core.database import GEMINI_MODEL  # FIX shorts_candidates
 from core.json_parser import (
     time_to_seconds,

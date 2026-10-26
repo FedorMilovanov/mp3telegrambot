@@ -22,7 +22,6 @@ layers =
 # An entry that no longer matches a real import is an error, so cleanup must
 # remove its entry in the same PR. The target is an empty ignore_imports list.
 ignore_imports =
-    core.globals -> services.gemini_capacity_control
     services.shorts_factory_execution_guard -> pipelines.shorts_factory
     services.shorts_factory_source -> pipelines.shorts_factory
     services.translation_editorial_runner -> pipelines.shorts_factory

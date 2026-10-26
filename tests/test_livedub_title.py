@@ -10,7 +10,7 @@ import pytest
 
 from core import globals as core_globals
 from pipelines import livedub_title as titles
-from services import livedub_info
+from services import gemini_router, livedub_info
 
 
 @pytest.fixture(autouse=True)
@@ -52,7 +52,7 @@ def _install_main_gemini(monkeypatch, response_text, light_card):
 
     monkeypatch.setattr(livedub_info, "build_livedub_info_card", fake_card)
     monkeypatch.setattr(core_globals, "make_text_config_smart", fake_config)
-    monkeypatch.setattr(core_globals, "gemini_generate", fake_router)
+    monkeypatch.setattr(gemini_router, "gemini_generate", fake_router)
     return calls
 
 
@@ -287,7 +287,7 @@ def test_light_and_main_gemini_failures_preserve_metadata_fallback(monkeypatch):
 
     monkeypatch.setattr(livedub_info, "build_livedub_info_card", failed_card)
     monkeypatch.setattr(core_globals, "make_text_config_smart", lambda **kwargs: kwargs)
-    monkeypatch.setattr(core_globals, "gemini_generate", failed_router)
+    monkeypatch.setattr(gemini_router, "gemini_generate", failed_router)
     expected = titles._fallback_livedub_ru_title("Assurance - Paul Washer", "", "", "")
     assert _translate("Assurance - Paul Washer", "", "", "") == expected
 

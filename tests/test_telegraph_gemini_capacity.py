@@ -7,6 +7,7 @@ import pytest
 
 from core import globals as core_globals
 from services import gemini_capacity_control as control
+from services import gemini_router
 from services import telegraph_pages as telegraph
 
 
@@ -32,7 +33,7 @@ def _prepare(monkeypatch, clients):
     monkeypatch.setenv("GEMINI_TRANSIENT_MAX_ATTEMPTS", "3")
     monkeypatch.setattr(control, "transient_retry_delay", lambda _attempt: 0.0)
     monkeypatch.setattr(control, "note_overload", lambda _delay: None)
-    monkeypatch.setattr(core_globals, "_current_client_idx", 0)
+    monkeypatch.setattr(gemini_router, "_current_client_idx", 0)
     monkeypatch.setattr(telegraph, "GEMINI_CLIENTS", clients)
     monkeypatch.setattr(telegraph, "make_text_config_smart", lambda **kwargs: kwargs)
     monkeypatch.setattr(telegraph, "alog_gemini_response", _noop_observe)

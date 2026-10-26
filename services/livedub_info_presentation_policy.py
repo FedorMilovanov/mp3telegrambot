@@ -145,7 +145,7 @@ async def _translate_title_second_chance(title_line: str) -> tuple[str, str] | N
 Исходная строка: {title_line}
 """.strip()
 
-    from core.globals import gemini_generate
+    from services.gemini_router import gemini_generate
 
     cfg = make_text_config_smart(
         max_output_tokens=600,

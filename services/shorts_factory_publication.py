@@ -159,7 +159,7 @@ async def _generate_descriptions(
     model = FACTORY_PUBLICATION_LIGHT_MODELS[0]
     attempts = [(model, client) for client in list(GEMINI_CLIENTS)]
 
-    from core.globals import gemini_generate
+    from services.gemini_router import gemini_generate
 
     clients = [client for _model, client in attempts]
 

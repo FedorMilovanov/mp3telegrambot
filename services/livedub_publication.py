@@ -171,7 +171,7 @@ async def _generate_quality_publication(source_line: str) -> dict[str, str] | No
 Исходная строка: {source}
 """.strip()
 
-    from core.globals import gemini_generate
+    from services.gemini_router import gemini_generate
 
     cfg = make_text_config_smart(
         max_output_tokens=1200,

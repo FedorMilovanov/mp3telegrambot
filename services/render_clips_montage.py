@@ -11,8 +11,8 @@ from core.globals import (
     make_text_config_smart,
     GEMINI_CLIENTS,
     HAS_GEMINI,  # FIX render
-    gemini_generate,  # FIX render
 )
+from services.gemini_router import gemini_generate
 from core.database import GEMINI_MODEL  # FIX render
 from services.ffmpeg import _get_video_encoder
 from services.ffmpeg import _find_silence_end  # FIX render
