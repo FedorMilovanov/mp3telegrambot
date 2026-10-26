@@ -24,6 +24,10 @@ async def factory_full_video_requested(update: Any) -> bool:
     return await get_shorts_factory_full_video(user_id)
 
 
+def _file_has_content(path: Path) -> bool:
+    return path.is_file() and path.stat().st_size > 0
+
+
 async def send_factory_full_translation_if_enabled(
     update: Any,
     video_path: Path,
@@ -40,7 +44,7 @@ async def send_factory_full_translation_if_enabled(
 
     message = getattr(update, "effective_message", None) or getattr(update, "message", None)
     path = Path(video_path)
-    if message is None or not path.is_file() or path.stat().st_size <= 0:
+    if message is None or not await asyncio.to_thread(_file_has_content, path):
         logger.warning("Factory full-video delivery skipped: missing message or file %s", path)
         return False
 
