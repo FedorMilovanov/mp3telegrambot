@@ -2132,7 +2132,7 @@ async def _edit_telegraph_page(page_url: str, title: str, author: str, nodes: li
             ok = bool(data.get("ok"))
             if ok:
                 try:
-                    from services.pdf_generator import invalidate_telegraph_url
+                    from core.telegraph_cache import invalidate_telegraph_url
 
                     invalidate_telegraph_url(page_url)
                 except Exception:

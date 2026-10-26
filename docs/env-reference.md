@@ -131,7 +131,7 @@
 | `PDF_BODY_FONT` | `services/pdf_generator.py` | `Merriweather` | да | — |
 | `PDF_FONTS_DIR` | `services/pdf_generator.py` | `` | да | — |
 | `PDF_SANS_FONT` | `services/pdf_generator.py` | `Manrope` | да | — |
-| `PDF_TELEGRAPH_CACHE_SIZE` | `services/pdf_generator.py` | `64` | — | — |
+| `PDF_TELEGRAPH_CACHE_SIZE` | `core/telegraph_cache.py` | `64` | — | — |
 | `PLAYLIST_DELAY_SEC` | `pipelines/playlist.py` | `1.0` | да | — |
 | `PORT` | `handlers/commands.py`, `main.py`, `services/bot_lifecycle.py` | `10000` | — | — |
 | `PROMPT_EXPERIMENT_TAG` | `core/generated_pages.py`, `pipelines/fresh_caption_stage.py` | `` | — | — |
