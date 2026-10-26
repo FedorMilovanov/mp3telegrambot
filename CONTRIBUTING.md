@@ -26,7 +26,7 @@ pre-commit install && pre-commit install --hook-type pre-push
 | `python tools/check_types.py` | `mypy --strict` по объявленному срезу (`core/`, `pipelines/`) | ~2 с (кэш) |
 | `python tools/check_import_layers.py` | направление production-импортов и burn-down legacy-рёбер | ~1 с |
 | `python tools/check_coverage_ratchet.py` | покрытие объявленных файлов не упало (нужен `coverage.xml`) | ~1 с |
-| `python tools/verify_repo.py` | compileall, генерируемые артефакты, pytest, ruff, типы, слои, `git diff --check` | ~100 с |
+| `python tools/verify_repo.py` | compileall, артефакты, pytest, ruff + format check, типы, слои, `git diff --check` | ~100 с |
 | `pre-commit run` | hooks на staged-файлах: форматирование, YAML, большие файлы, конфликты | ~10 с |
 
 Для проверки файлов уже созданных коммитов ветки используйте

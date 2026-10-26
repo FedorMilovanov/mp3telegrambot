@@ -82,6 +82,29 @@ def test_cli_emits_only_the_action_output_on_stdout(tmp_path: Path, capsys) -> N
     assert capsys.readouterr().out == "pure=false\n"
 
 
+def test_blame_ignore_revs_are_real_commits_and_git_accepts_the_ledger() -> None:
+    repo = Path(__file__).resolve().parents[1]
+    revisions = [
+        line.strip()
+        for line in (repo / ".git-blame-ignore-revs").read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
+    assert revisions
+    for revision in revisions:
+        assert len(revision) == 40
+        int(revision, 16)
+        _git(repo, "cat-file", "-e", f"{revision}^{{commit}}")
+        _git(repo, "merge-base", "--is-ancestor", revision, "HEAD")
+    _git(
+        repo,
+        "blame",
+        "--ignore-revs-file=.git-blame-ignore-revs",
+        "HEAD",
+        "--",
+        "services/telegraph.py",
+    )
+
+
 def test_ruff_never_rewrites_historical_cases_or_markdown_examples() -> None:
     config = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
     excluded = set(config["tool"]["ruff"]["exclude"])
