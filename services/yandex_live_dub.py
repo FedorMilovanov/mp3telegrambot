@@ -125,9 +125,9 @@ def _run_subprocess(cmd_parts: list, cwd: Path | None = None, timeout: int = 600
             check=False,
         )
     except FileNotFoundError as e:
-        raise RuntimeError(f"Команда не найдена: {cmd_parts[0]}. {e}")
-    except subprocess.TimeoutExpired:
-        raise RuntimeError(f"vot-cli-live timed out (> {timeout} сек)")
+        raise RuntimeError(f"Команда не найдена: {cmd_parts[0]}. {e}") from e
+    except subprocess.TimeoutExpired as e:
+        raise RuntimeError(f"vot-cli-live timed out (> {timeout} сек)") from e
     return proc.stdout, proc.stderr, proc.returncode
 
 
@@ -518,7 +518,7 @@ async def get_live_dub_info(video_url: str) -> dict:
 
     try:
         data = json.loads(stdout)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
         match = None
         for line in stdout.splitlines():
             line = line.strip()
@@ -526,7 +526,7 @@ async def get_live_dub_info(video_url: str) -> dict:
                 match = line
                 break
         if not match:
-            raise RuntimeError(f"Не удалось распарсить JSON: {stdout[:500]}")
+            raise RuntimeError(f"Не удалось распарсить JSON: {stdout[:500]}") from e
         data = json.loads(match)
 
     if isinstance(data, list) and data:

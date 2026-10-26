@@ -643,7 +643,9 @@ async def _gemini_text_request(
             )
             elapsed = time.time() - _start_time
             if elapsed >= _TIME_BUDGET:
-                raise asyncio.TimeoutError(f"Telegraph Gemini total time budget exceeded ({_TIME_BUDGET}s)")
+                raise asyncio.TimeoutError(
+                    f"Telegraph Gemini total time budget exceeded ({_TIME_BUDGET}s)"
+                ) from _schema_err
             resp = await asyncio.wait_for(
                 client.aio.models.generate_content(
                     model=model_name,

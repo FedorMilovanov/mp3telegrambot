@@ -50,6 +50,22 @@ def _pack(tmp_path: Path, *, with_candidates: bool = False) -> Path:
     )
 
 
+def test_immutable_review_race_collision_chains_file_exists(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(factory, "load_pack_manifest", lambda _path: {"review_pack_id": "sha256:" + "a" * 64})
+    real_open = Path.open
+
+    def racing_open(self, mode="r", *args, **kwargs):
+        if mode == "x" and self.parent == tmp_path:
+            self.write_text("different", encoding="utf-8")
+            raise FileExistsError(self)
+        return real_open(self, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", racing_open)
+    with pytest.raises(FileExistsError, match="path collision") as caught:
+        factory._write_immutable_review_files(tmp_path, "media", tmp_path / "pack.zip", {"full_sermon": {}})
+    assert isinstance(caught.value.__cause__, FileExistsError)
+
+
 def test_factory_editorial_defaults_pack_on_gemini_off_and_one_attempt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

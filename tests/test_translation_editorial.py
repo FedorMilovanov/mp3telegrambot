@@ -5,6 +5,8 @@ import json
 import zipfile
 from pathlib import Path
 
+import pytest
+
 import services.translation_editorial as editorial
 from services.translation_editorial import (
     PACK_SCHEMA_NAME,
@@ -117,6 +119,21 @@ def test_review_pack_is_small_verified_exchange_without_video_bytes(tmp_path: Pa
     assert "candidates.json" in names
     assert "translated.mp4" not in names
     assert manifest["review_pack_id"][7:19] in pack.name
+
+
+def test_review_pack_race_collision_chains_file_exists(monkeypatch, tmp_path: Path) -> None:
+    real_open = Path.open
+
+    def racing_open(self, mode="r", *args, **kwargs):
+        if mode == "xb" and self.name.startswith("abc123_translation_editorial_v1_"):
+            raise FileExistsError(self)
+        return real_open(self, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", racing_open)
+    monkeypatch.setattr(editorial, "load_pack_manifest", lambda _path: {"review_pack_id": "different"})
+    with pytest.raises(FileExistsError, match="filename collision") as caught:
+        _pack(tmp_path)
+    assert isinstance(caught.value.__cause__, FileExistsError)
 
 
 def test_review_pack_rerun_preserves_distinct_immutable_versions(tmp_path: Path) -> None:
