@@ -18,6 +18,18 @@ logger = logging.getLogger(__name__)
 _MAX_SUBTITLE_AUDIO_SECONDS = 180  # 3 minutes: longer than Shorts, skip entirely
 
 
+def _find_subtitle_audio(workdir: Path) -> Path | None:
+    actual_audio = None
+    for file in workdir.glob("original_audio.*"):
+        if file.suffix in {".srt", ".part", ".ytdl"}:
+            continue
+        actual_audio = file
+        break
+    if actual_audio is not None and actual_audio.exists():
+        return actual_audio
+    return None
+
+
 async def _translate_chunk_with_retry(chunk_segs, prev_context=""):
     """Translates a chunk of segments with retries and JSON enforcement across multiple Gemini keys."""
     if not GEMINI_CLIENTS:
@@ -122,7 +134,7 @@ async def create_gemini_subtitles(
     Returns:
         Path к SRT-файлу, или None если аудио слишком длинное (>3 мин).
     """
-    workdir.mkdir(parents=True, exist_ok=True)
+    await asyncio.to_thread(workdir.mkdir, parents=True, exist_ok=True)
     audio_path = workdir / "original_audio"
     srt_path = workdir / "gemini_subs.srt"
 
@@ -151,14 +163,8 @@ async def create_gemini_subtitles(
             f"Не удалось скачать аудио (yt-dlp rc={proc.returncode}). "
             f"stderr: {proc.stderr[-500:] if proc.stderr else ''}"
         )
-    actual_audio = None
-    for file in workdir.glob("original_audio.*"):
-        if file.suffix in {".srt", ".part", ".ytdl"}:
-            continue
-        actual_audio = file
-        break
-
-    if not actual_audio or not actual_audio.exists():
+    actual_audio = await asyncio.to_thread(_find_subtitle_audio, workdir)
+    if actual_audio is None:
         raise RuntimeError(f"Не удалось скачать аудио. stderr: {proc.stderr[-500:] if proc.stderr else ''}")
 
     # 2. Длительность — если больше лимита, субтитры не делаем

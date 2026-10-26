@@ -1140,8 +1140,9 @@ proof, девятый — Factory long-fit stat/cleanup, десятый — Fact
 optional documents, одиннадцатый — Full LiveDub QA workdir/SRT discovery,
 двенадцатый — Quick LiveDub QA workdir/SRT/original discovery, тринадцатый —
 Long LiveDub QA source-file checks, четырнадцатый — LiveDub QA
-SRT/RU/original source-exists checks. Остаются 168, другие extended-правила и
-дальнейший ручной async review.
+SRT/RU/original source-exists checks, пятнадцатый — ENG subtitles
+workdir/audio discovery. Остаются 166, другие extended-правила и дальнейший
+ручной async review.
 
 **Решение:**
 
