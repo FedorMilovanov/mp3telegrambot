@@ -56,6 +56,7 @@ def _run(command: list[str], *, timeout: int = 1800) -> subprocess.CompletedProc
         encoding="utf-8",
         errors="replace",
         timeout=timeout,
+        check=False,
     )
     if result.returncode != 0:
         rendered = " ".join(command)
@@ -343,6 +344,7 @@ def _ssim(reference: Path, distorted: Path) -> float:
         encoding="utf-8",
         errors="replace",
         timeout=1800,
+        check=False,
     )
     if result.returncode != 0:
         raise RuntimeError((result.stderr or "")[-2000:])

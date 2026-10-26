@@ -193,6 +193,7 @@ def probe_media(path: Path, *, timeout: int = 20) -> MediaProbe | None:
             encoding="utf-8",
             errors="replace",
             timeout=timeout,
+            check=False,
         )
         if process.returncode != 0:
             return None

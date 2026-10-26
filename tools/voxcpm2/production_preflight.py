@@ -39,6 +39,7 @@ def probe_duration(path: Path) -> float:
         text=True,
         encoding="utf-8",
         errors="replace",
+        check=False,
     )
     if proc.returncode != 0:
         raise PreflightError(f"ffprobe could not read source video: {path}\n{proc.stderr[-1000:]}")
@@ -104,6 +105,7 @@ def compile_script(python_exe: Path, script: Path) -> None:
         text=True,
         encoding="utf-8",
         errors="replace",
+        check=False,
     )
     if proc.returncode != 0:
         raise PreflightError(f"Python syntax check failed: {script}\n{(proc.stderr or proc.stdout)[-2000:]}")

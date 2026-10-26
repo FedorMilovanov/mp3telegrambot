@@ -60,6 +60,7 @@ def _generate_source(path: Path) -> None:
         encoding="utf-8",
         errors="replace",
         timeout=300,
+        check=False,
     )
     if process.returncode != 0:
         raise RuntimeError((process.stderr or process.stdout or "")[-3000:])

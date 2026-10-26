@@ -39,6 +39,7 @@ def run_checked(command: list[str]) -> None:
         text=True,
         encoding="utf-8",
         errors="replace",
+        check=False,
     )
     if proc.returncode != 0:
         tail = (proc.stderr or proc.stdout or "")[-4000:]
@@ -62,6 +63,7 @@ def probe_duration(path: Path) -> float:
         text=True,
         encoding="utf-8",
         errors="replace",
+        check=False,
     )
     if proc.returncode != 0:
         raise RuntimeError(f"ffprobe could not read: {path}")

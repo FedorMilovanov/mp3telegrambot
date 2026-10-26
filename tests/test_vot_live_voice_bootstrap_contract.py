@@ -24,6 +24,7 @@ def test_vot_live_helper_has_valid_node_syntax() -> None:
         capture_output=True,
         text=True,
         timeout=30,
+        check=False,
     )
     assert proc.returncode == 0, proc.stderr
 

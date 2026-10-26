@@ -84,6 +84,7 @@ def test_generated_artifacts_are_in_sync() -> None:
         cwd=ROOT,
         capture_output=True,
         text=True,
+        check=False,
     )
     assert result.returncode == 0, result.stderr
 

@@ -296,6 +296,7 @@ def _h264_nvenc_available_sync(ffmpeg: str) -> bool:
             encoding="utf-8",
             errors="replace",
             timeout=8,
+            check=False,
         )
         combined = (result.stdout or "") + (result.stderr or "")
         _H264_NVENC_AVAILABLE = result.returncode == 0 and "h264_nvenc" in combined

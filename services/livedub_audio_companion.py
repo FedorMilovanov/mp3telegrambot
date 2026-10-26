@@ -121,11 +121,10 @@ def _run_text(command: list[str], *, timeout: int) -> subprocess.CompletedProces
         "encoding": "utf-8",
         "errors": "replace",
         "timeout": timeout,
-        "check": False,
     }
     if os.name == "nt":
         kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-    return subprocess.run(command, **kwargs)
+    return subprocess.run(command, **kwargs, check=False)
 
 
 def _probe_audio(path: Path) -> tuple[bool, int]:

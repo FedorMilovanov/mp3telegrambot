@@ -172,6 +172,7 @@ def measure_loudness(path: Path, timeout: int = 600) -> float | None:
             ],
             timeout=timeout,
             **kwargs,
+            check=False,
         )
         m = re.search(r'"input_i"\s*:\s*"(-?[\d.]+)"', proc.stderr or "")
         if m:
@@ -206,7 +207,7 @@ def _run_ffmpeg(args: list[str], timeout: int = 1800) -> tuple[bool, str]:
     if os.name == "nt":
         kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
     try:
-        proc = subprocess.run([ffmpeg, *args], timeout=timeout, **kwargs)
+        proc = subprocess.run([ffmpeg, *args], timeout=timeout, **kwargs, check=False)
         if proc.returncode != 0:
             return False, (proc.stderr or "")[-600:]
         return True, ""
@@ -236,6 +237,7 @@ def probe_media_duration(path: Path, timeout: int = 60) -> float | None:
             timeout=timeout,
             encoding="utf-8",
             errors="replace",
+            check=False,
         )
         if proc.returncode == 0:
             dur = float((proc.stdout or "").strip() or "0")
@@ -285,6 +287,7 @@ def has_video_stream(path: Path) -> bool:
             ],
             timeout=60,
             **kwargs,
+            check=False,
         )
         return proc.returncode == 0 and "video" in (proc.stdout or "").lower()
     except Exception as e:
@@ -734,7 +737,7 @@ def probe_video_meta(path: Path) -> dict:
             kwargs: dict = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
             if os.name == "nt":
                 kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-            proc = subprocess.run([ffmpeg, "-i", str(path)], timeout=60, **kwargs)
+            proc = subprocess.run([ffmpeg, "-i", str(path)], timeout=60, **kwargs, check=False)
             err = proc.stderr or ""
             m = re.search(r"Duration:\s*(\d+):(\d+):(\d+)", err)
             if m:
@@ -766,6 +769,7 @@ def probe_video_meta(path: Path) -> dict:
             timeout=60,
             encoding="utf-8",
             errors="replace",
+            check=False,
         )
         data = _json.loads(proc.stdout or "{}")
         streams = data.get("streams") or [{}]
@@ -807,6 +811,7 @@ def make_video_thumbnail(video_path: Path, at_sec: float = 3.0) -> Path | None:
             ],
             timeout=60,
             **kwargs,
+            check=False,
         )
         if proc.returncode == 0 and out.exists() and 0 < out.stat().st_size < 200 * 1024:
             return out
