@@ -13,7 +13,6 @@ import time
 
 from core.text_utils import normalize_author_name, normalize_title_text  # FIX search
 from core.database import get_channel_mapping  # FIX search
-from core.url_utils import get_youtube_video_url  # FIX search
 
 logger = logging.getLogger(__name__)
 
@@ -902,61 +901,6 @@ async def find_alternative_links(
 
 
 # ─── Share-текст и клавиатура ─────────────────────────────────
-
-
-def build_telegraph_links(
-    telegraph_url="",
-    quotes_tg_url="",
-    questions_tg_url="",
-    terms_tg_url="",
-    study_tg_url="",
-    reflection_tg_url="",
-) -> str:
-    items = []
-    if telegraph_url:
-        items.append(
-            f'├ <tg-emoji emoji-id="5204459709356069827">📝</tg-emoji> <a href="{telegraph_url}">Читать конспект</a>'
-        )
-    if study_tg_url:
-        items.append(
-            f'├ <tg-emoji emoji-id="5328226699593142053">📖</tg-emoji> <a href="{study_tg_url}">Разбор материала</a>'
-        )
-    elif quotes_tg_url:
-        # Legacy: показываем Аналитику только если нет новой страницы Разбора
-        items.append(f'├ 🧠 <a href="{quotes_tg_url}">Аналитика</a>')
-    if reflection_tg_url:
-        items.append(
-            f'├ <tg-emoji emoji-id="5283180056095527519">🙏</tg-emoji> <a href="{reflection_tg_url}">Размышление и применение</a>'
-        )
-    elif questions_tg_url:
-        # Legacy: показываем Вопросы только если нет новой страницы Размышления
-        items.append(
-            f'├ <tg-emoji emoji-id="5283180056095527519">❓</tg-emoji> <a href="{questions_tg_url}">Размышление и применение</a>'
-        )
-    if terms_tg_url:
-        items.append(f'├ 📚 <a href="{terms_tg_url}">Термины</a>')
-    if not items:
-        return ""
-    items[-1] = items[-1].replace("├", "└", 1)
-    return "\n".join(items)
-
-
-def build_platform_links(url: str = "", rutube_url: str = "", vk_url: str = "") -> str:
-    # Премиум emoji-id для справки:
-    # YouTube:  5463206079913533096  (оставлен как tg-emoji)
-    # RuTube:   5321388265549373570  (заменён на обычный 🎬)
-    # VK:       5278229754099540071  (заменён на обычный 🎦)
-    parts = []
-    if url:
-        yt = get_youtube_video_url(url)
-        parts.append(f'<tg-emoji emoji-id="5463206079913533096">🎥</tg-emoji> <a href="{yt}">YouTube</a>')
-    if rutube_url:
-        parts.append(f'<tg-emoji emoji-id="5321388265549373570">🎬</tg-emoji> <a href="{rutube_url}">RuTube</a>')
-    if vk_url:
-        parts.append(f'<tg-emoji emoji-id="5278229754099540071">🎦</tg-emoji> <a href="{vk_url}">VK</a>')
-    if not parts:
-        return ""
-    return "\n".join(parts)
 
 
 # AUDIT M19: SETTINGS_GROUPS lives in core/database.py — dead alias removed.
