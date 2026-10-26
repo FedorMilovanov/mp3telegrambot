@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 from collections.abc import Awaitable, Callable
@@ -11,6 +12,19 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 FullQaResult = tuple[Path, dict[str, Any] | None, str]
+
+
+def _path_exists(path: Path) -> bool:
+    return path.exists()
+
+
+def _latest_srt(workdir: Path) -> Path | None:
+    candidates = sorted(
+        (path for path in workdir.glob("*.srt") if path.name != "gemini_subs.srt"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    return candidates[0] if candidates else None
 
 
 async def run_livedub_full_qa(
@@ -68,13 +82,8 @@ async def run_livedub_full_qa(
         dub_srt = None
         clean_ru = None
         try:
-            if workdir and workdir.exists():
-                srt_candidates = sorted(
-                    (path for path in workdir.glob("*.srt") if path.name != "gemini_subs.srt"),
-                    key=lambda path: path.stat().st_mtime,
-                    reverse=True,
-                )
-                dub_srt = srt_candidates[0] if srt_candidates else None
+            if workdir is not None and await asyncio.to_thread(_path_exists, workdir):
+                dub_srt = await asyncio.to_thread(_latest_srt, workdir)
                 try:
                     from services.livedub_mix import find_pro_tracks
 
