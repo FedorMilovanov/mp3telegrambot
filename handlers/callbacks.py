@@ -406,7 +406,7 @@ async def handle_callback(update, context) -> None:
             return
 
         await query.answer(f"✂️ {label}, перерезаю...")
-        if not video_path.exists():
+        if not await asyncio.to_thread(_path_exists, video_path):
             # Исходник удалён после отправки шортов — перекачиваем по yt_url.
             yt_url = rec.get("yt_url", "")
             if not yt_url:
@@ -586,7 +586,7 @@ async def _handle_strim_retrim(
 
         _new_nosub_path = rec.get("video_path_nosub", "")
         _new_nosub_buttons = []
-        if _new_nosub_path and Path(_new_nosub_path).exists():
+        if _new_nosub_path and await asyncio.to_thread(_path_exists, Path(_new_nosub_path)):
             _new_nosub_buttons = [InlineKeyboardButton("🚫Sub", callback_data=f"strim:nosub:{new_short_id}")]
         new_trim_keyboard = InlineKeyboardMarkup(
             [

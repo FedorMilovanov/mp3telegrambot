@@ -138,6 +138,8 @@
   переведён в worker threads; остаются 154 findings.
 - Async I/O, восемнадцатый `ASYNC240` slice: no-sub callback file check
   переведён в worker thread; остаются 153 findings.
+- Async I/O, девятнадцатый `ASYNC240` slice: retrim source/no-sub checks
+  переведены в worker threads; остаются 151 findings.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):
