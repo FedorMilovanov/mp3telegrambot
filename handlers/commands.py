@@ -105,6 +105,14 @@ def _pdf_file_is_deliverable(path: Path) -> bool:
     return path.exists() and 200 < path.stat().st_size < 49 * 1024 * 1024
 
 
+def _list_directory(path: Path) -> list[Path]:
+    return list(path.glob("*"))
+
+
+def _file_size(path: str | Path) -> int:
+    return Path(path).stat().st_size
+
+
 def _start_keyboard(is_admin: bool) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton("🎛 Все режимы", callback_data="mode_menu:home")]]
     if is_admin:
@@ -638,20 +646,20 @@ async def disk_command(update, context):
         def _fmt(bytes):
             return f"{bytes / (1024**3):.1f} ГБ"
 
-        du_dl = _sh.disk_usage(DOWNLOAD_DIR)
+        du_dl = await asyncio.to_thread(_sh.disk_usage, DOWNLOAD_DIR)
         lines.append(f"<b>Downloads:</b>")
         lines.append(f"  Свободно: {_fmt(du_dl.free)}")
         lines.append(f"  Всего: {_fmt(du_dl.total)}")
 
-        du_tmp = _sh.disk_usage(_tf.gettempdir())
+        du_tmp = await asyncio.to_thread(_sh.disk_usage, _tf.gettempdir())
         lines.append(f"\n<b>System Temp:</b>")
         lines.append(f"  Свободно: {_fmt(du_tmp.free)}")
 
         # Count files
-        dl_files = list(DOWNLOAD_DIR.glob("*"))
+        dl_files = await asyncio.to_thread(_list_directory, DOWNLOAD_DIR)
         lines.append(f"\n<b>Файлов в downloads:</b> {len(dl_files)}")
 
-        db_size = Path(DB_PATH).stat().st_size / 1024
+        db_size = await asyncio.to_thread(_file_size, DB_PATH) / 1024
         lines.append(f"<b>Размер БД:</b> {db_size:.0f} КБ")
 
     except Exception as e:

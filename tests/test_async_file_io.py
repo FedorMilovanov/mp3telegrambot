@@ -180,6 +180,24 @@ async def test_pdf_command_rejects_undersized_output_and_cleans_file(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_disk_command_reports_file_count_and_database_size(monkeypatch, tmp_path: Path) -> None:
+    downloads = tmp_path / "downloads"
+    _write_file(downloads / "one.mp3", b"one")
+    _write_file(downloads / "two.mp4", b"two")
+    database = _write_file(tmp_path / "bot.db", b"x" * 2048)
+    update = _update()
+    monkeypatch.setattr(commands, "ADMIN_IDS", {123})
+    monkeypatch.setattr(commands, "DOWNLOAD_DIR", downloads)
+    monkeypatch.setattr(commands, "DB_PATH", str(database))
+
+    await commands.disk_command(update, SimpleNamespace())
+
+    text = update.message.reply_text.await_args.args[0]
+    assert "<b>Файлов в downloads:</b> 2" in text
+    assert "<b>Размер БД:</b> 2 КБ" in text
+
+
+@pytest.mark.asyncio
 async def test_eng_subtitles_writes_expected_srt_in_worker_thread(monkeypatch, tmp_path: Path) -> None:
     _write_file(tmp_path / "original_audio.m4a", b"audio")
     segment = SimpleNamespace(start=0.0, end=1.5, text="Hello\nworld")
