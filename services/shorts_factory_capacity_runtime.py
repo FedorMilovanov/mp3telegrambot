@@ -9,6 +9,7 @@ runtime rebinding is used.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from pathlib import Path
 from typing import Any
@@ -405,10 +406,8 @@ async def create_factory_plan_resumable(
         finally:
             upload_in_progress = False
             if uploaded_name:
-                try:
+                with contextlib.suppress(Exception):
                     await client.aio.files.delete(name=uploaded_name)
-                except Exception:
-                    pass
 
     capacity_failures = sum(1 for outcome in client_outcomes if outcome == "capacity")
     skip_detail = f" same_project_domain_skipped={same_project_domain_skipped};" if same_project_domain_skipped else ""

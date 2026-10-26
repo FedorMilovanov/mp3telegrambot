@@ -42,6 +42,7 @@ from core.candidate_schema import (
 from core.observability import alog_gemini_response, alog_gemini_run
 
 import asyncio
+import contextlib
 import json  # FIX shorts_candidates
 import logging
 import re
@@ -222,10 +223,8 @@ async def create_shorts_candidates(
         )
 
         if status_msg:
-            try:
+            with contextlib.suppress(Exception):
                 await status_msg.edit_text(f"{prefix}✂️ Ищу лучшие фрагменты для Shorts...")
-            except Exception:
-                pass
 
         file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
         response = None
@@ -281,10 +280,8 @@ async def create_shorts_candidates(
                     )
                 finally:
                     if _uploaded:
-                        try:
+                        with contextlib.suppress(Exception):
                             await client.aio.files.delete(name=audio_part.name)
-                        except Exception:
-                            pass
 
             async def _call_shorts(client):
                 return await _shorts_with_client(client)
@@ -583,10 +580,8 @@ async def create_clips_candidates(
                     )
                 finally:
                     if _uploaded:
-                        try:
+                        with contextlib.suppress(Exception):
                             await client.aio.files.delete(name=audio_part.name)
-                        except Exception:
-                            pass
 
             async def _call_clips(client):
                 return await _clips_with_client(client)

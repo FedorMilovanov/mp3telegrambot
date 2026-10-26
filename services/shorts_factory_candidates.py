@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import math
@@ -526,10 +527,8 @@ async def create_factory_plan(
             )
         finally:
             if uploaded_name:
-                try:
+                with contextlib.suppress(Exception):
                     await client.aio.files.delete(name=uploaded_name)
-                except Exception:
-                    pass
 
     raise RuntimeError(f"All Gemini clients failed strict Shorts Factory review: {last_error}")
 

@@ -9,6 +9,7 @@ more verbatim structured Russian transcript.
 
 from __future__ import annotations
 
+import contextlib
 import html
 import logging
 import os
@@ -283,10 +284,8 @@ async def download_youtube_transcript_text(
         workdir = Path(workdir)
         workdir.mkdir(parents=True, exist_ok=True)
         for old in workdir.glob("yt_transcript*.vtt"):
-            try:
+            with contextlib.suppress(OSError):
                 old.unlink()
-            except OSError:
-                pass
         stem = workdir / "yt_transcript_%(id)s"
         lang_root = (lang or "en").split("-", 1)[0].lower()
         sub_langs = os.getenv("SYNOPSIS_YT_TRANSCRIPT_LANGS", "").strip()
@@ -321,10 +320,8 @@ async def download_youtube_transcript_text(
 
         for auto in (False, True):
             for old in workdir.glob("yt_transcript*.vtt"):
-                try:
+                with contextlib.suppress(OSError):
                     old.unlink()
-                except OSError:
-                    pass
             source_kind = "auto" if auto else "manual"
             logger.info(
                 "[SynopsisTranscript] yt-dlp %s subtitles: langs=%s",

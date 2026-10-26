@@ -77,6 +77,7 @@ from services.telegraph_edit import (
 )
 
 import asyncio
+import contextlib
 import json  # FIX telegraph
 import logging
 import os
@@ -1008,10 +1009,8 @@ async def create_telegraph_synopsis(
         ):
             try:
                 _min_section_chars = 700
-                try:
+                with contextlib.suppress(Exception):
                     _min_section_chars = max(650, int(str(_syn_profile.section_len).split("-", 1)[0]))
-                except Exception:
-                    pass
                 _density_retry_prompt = (
                     prompt
                     + "\n\nТвой предыдущий Synopsis был СЛИШКОМ СЖАТЫМ для длительности материала. "
@@ -1447,10 +1446,8 @@ async def create_telegraph_synopsis(
     finally:
         # FIX: cleanup uploaded Gemini files to prevent file leak
         for _cl_client, _cl_name in _synopsis_uploaded_files:
-            try:
+            with contextlib.suppress(Exception):
                 _spawn_safe_delete(_cl_client, _cl_name)
-            except Exception:
-                pass
 
 
 # ─── Видимая длина HTML-caption и умная обрезка ──────────────

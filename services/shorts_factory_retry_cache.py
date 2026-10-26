@@ -8,6 +8,7 @@ ContextVar, installer or runtime rebinding is used.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import logging
@@ -267,10 +268,8 @@ async def _store_analysis_audio(
     _set_cache_path_active(final, True)
     try:
         if not final.exists():
-            try:
+            with contextlib.suppress(FileExistsError):
                 await asyncio.to_thread(copy_or_link, source, final)
-            except FileExistsError:
-                pass
         payload = {
             "policy": FACTORY_CACHE_POLICY,
             "created_at": time.time(),

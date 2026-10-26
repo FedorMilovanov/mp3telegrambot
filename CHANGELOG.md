@@ -96,6 +96,8 @@
   после двух slices остаются 107 findings в pipelines/services.
 - Extended Ruff, волна 2f (pipelines): ещё 40 `SIM105` заменены, включая
   cancellation-safe teardown; после трёх slices остаются 67 service findings.
+- Extended Ruff, волна 2f (Shorts/PDF/transcript services): ещё 25 `SIM105`
+  заменены; остаются 42 LiveDub/process service findings до включения gate.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

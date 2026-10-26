@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import math
 import os
@@ -95,10 +96,8 @@ def _cleanup_fit_artifacts(fitted: Path, passlog: Path) -> None:
     paths = [fitted]
     paths.extend(passlog.parent.glob(passlog.name + "*"))
     for path in paths:
-        try:
+        with contextlib.suppress(OSError):
             path.unlink(missing_ok=True)
-        except OSError:
-            pass
 
 
 def _two_pass_commands(
