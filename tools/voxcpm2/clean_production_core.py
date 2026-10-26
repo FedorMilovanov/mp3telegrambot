@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Clean production core for Dub Studio.
 
 The bot and manual PowerShell launch share the same direct renderer and master.

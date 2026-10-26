@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Fail-closed provisioning check for the Windows weighted-TTS runner.
 
 This module never registers a GitHub runner and never accepts a registration

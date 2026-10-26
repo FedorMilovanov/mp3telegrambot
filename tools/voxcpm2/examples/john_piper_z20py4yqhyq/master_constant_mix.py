@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Constant-original Dub master with post-AAC delivery verification.
 
 The English branch is always mixed at the requested linear coefficient. It is

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """VoxCPM2 adapter implementing the generic speech-backend contract."""
 
 from __future__ import annotations

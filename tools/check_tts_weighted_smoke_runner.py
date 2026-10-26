@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Validate a trusted weighted-TTS runner without loading model weights."""
 
 from __future__ import annotations

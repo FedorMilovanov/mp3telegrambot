@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Durable per-segment seed epochs for deterministic VoxCPM recovery.
 
 A failed segment must not regenerate the same five deterministic candidates on

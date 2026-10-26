@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Timing and timeline utilities for direct speech-backend production.
 
 The low-level model call is owned by the selected backend session; the legacy

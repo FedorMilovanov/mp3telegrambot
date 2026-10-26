@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Final fail-closed audit layer for every direct VoxCPM2 CLI invocation.
 
 This layer closes gaps that can exist between raw JSON input, the already

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Canonical user-visible settings for clean Dub Studio routes."""
 
 from __future__ import annotations

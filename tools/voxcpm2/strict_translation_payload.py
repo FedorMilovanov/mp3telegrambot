@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Fail-closed JSON contracts for Russian translation/editor passes."""
 
 from __future__ import annotations

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Validate an already registered weighted-TTS Windows self-hosted runner."""
 
 from __future__ import annotations

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Build a durable, privacy-safe attestation for one real weighted TTS run.
 
 The source doctor and synthesis reports remain ephemeral.  This module copies

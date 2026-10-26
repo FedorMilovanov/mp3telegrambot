@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Configuration contracts for built-in speech backend adapters."""
 
 from __future__ import annotations

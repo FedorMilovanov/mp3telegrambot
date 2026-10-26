@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Rebuild selected Dub Studio audio segments without translation or title work."""
 
 from __future__ import annotations

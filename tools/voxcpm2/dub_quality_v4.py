@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Quality-first policies shared by Gemini and ready-SRT Dub Studio modes.
 
 The successful no-bot NoChew renderer used short, deterministic candidates and

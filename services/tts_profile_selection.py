@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Safe selection and durable binding of production TTS model profiles."""
 
 from __future__ import annotations

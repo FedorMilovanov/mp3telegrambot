@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Transactional release gate for calm and controlled expressive references."""
 
 from __future__ import annotations

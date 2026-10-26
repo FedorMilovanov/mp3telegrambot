@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Built-in pinned TTS profiles loaded from repository-owned manifests."""
 
 from __future__ import annotations

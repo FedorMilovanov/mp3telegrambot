@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Shared Russian-only master coefficients for direct monolithic dubbing.
 
 The original sermon track is speech-bearing in both mid and side channels.  A

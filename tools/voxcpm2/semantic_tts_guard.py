@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Semantic guard for VoxCPM2 dubbing.
 
 The legacy renderer judged candidates only by duration, silence and clipping. This

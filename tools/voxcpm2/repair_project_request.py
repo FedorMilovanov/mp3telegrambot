@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Repair and document one Dub Studio TTS request safely.
 
 This utility removes conflicting flat TTS keys, writes the canonical nested

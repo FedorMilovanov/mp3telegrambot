@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Audio-only and segment-only repair controls for completed Dub Studio projects."""
 
 from __future__ import annotations

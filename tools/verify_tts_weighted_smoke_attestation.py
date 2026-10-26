@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Verify one downloaded weighted-TTS attestation artifact fail-closed."""
 
 from __future__ import annotations

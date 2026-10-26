@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Rhetoric-preserving Russian translation for expressive spoken dubbing.
 
 This is a preparation-stage editor, not a TTS wrapper. It keeps factual and

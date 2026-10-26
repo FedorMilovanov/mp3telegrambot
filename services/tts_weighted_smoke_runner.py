@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Fail-fast doctor for a trusted weighted-TTS self-hosted runner.
 
 The doctor deliberately stops before ``SpeechBackend.open_session()``. It proves

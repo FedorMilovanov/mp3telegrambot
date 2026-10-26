@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Safely migrate legacy long audio islands into short phrase windows."""
 
 from __future__ import annotations

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Source-owned Russian-only master for direct ready-SRT dubbing.
 
 Direct dubbing must never mix the speech-bearing original soundtrack under the

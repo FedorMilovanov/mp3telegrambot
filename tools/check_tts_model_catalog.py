@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Validate declarative TTS model manifests and adapter conformance."""
 
 from __future__ import annotations

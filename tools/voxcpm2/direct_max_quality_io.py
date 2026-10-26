@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Single direct VoxCPM2 CPU renderer for maximum-quality short-form dubbing.
 
 The Telegram bot and manual PowerShell runs invoke this exact CLI. It does not

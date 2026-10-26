@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """One-action YouTube Shorts -> Russian speech-backend production pipeline.
 
 The bot process only queues this module. This process downloads the source,

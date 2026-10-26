@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """One-speaker continuity contract for independently synthesized Dub segments.
 
 VoxCPM still renders bounded SRT windows, but every accepted candidate must stay

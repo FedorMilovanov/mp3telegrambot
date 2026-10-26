@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Cross-language source-prosody diagnostics for independently rendered breaths.
 
 English and Russian windows may share timeline anchors but not lexical stress,

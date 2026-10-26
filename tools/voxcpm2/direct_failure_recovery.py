@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Advance exact-input retry state for structured universal early stops."""
 
 from __future__ import annotations

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Strict, code-free loader for repository-owned TTS model profile manifests."""
 
 from __future__ import annotations

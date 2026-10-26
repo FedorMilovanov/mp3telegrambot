@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Run the proven Quality v4 renderer over the professional v4.5 adapter."""
 
 from __future__ import annotations

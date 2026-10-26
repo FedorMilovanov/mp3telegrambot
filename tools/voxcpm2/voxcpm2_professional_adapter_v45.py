@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Candidate-quality adapter loaded underneath the proven v4 renderer."""
 
 from __future__ import annotations

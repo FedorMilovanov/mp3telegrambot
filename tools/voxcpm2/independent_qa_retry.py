@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Bounded segment-only recovery after independent direct-render QA.
 
 The clean renderer already performs two seed rounds and preserves every accepted
