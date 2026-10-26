@@ -32,6 +32,14 @@ def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _read_bytes(path: Path) -> bytes:
+    return path.read_bytes()
+
+
+def _path_exists(path: Path) -> bool:
+    return path.exists()
+
+
 def _matching_paths(directory: Path, pattern: str) -> list[Path]:
     return list(directory.glob(pattern))
 
@@ -304,6 +312,42 @@ async def test_legacy_video_returns_discovered_path(monkeypatch, tmp_path: Path,
     result = await yandex_live_dub.get_live_dub_video("https://example.invalid/video", tmp_path)
 
     assert result == downloaded
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [(b"processed", True), (b"", False)],
+    ids=["nonempty-output", "empty-output"],
+)
+@pytest.mark.asyncio
+async def test_normalize_transform_validates_output(
+    monkeypatch,
+    tmp_path: Path,
+    payload: bytes,
+    expected: bool,
+) -> None:
+    input_path = _write_file(tmp_path / "input.mp4", b"input")
+    output_path = tmp_path / "processed.mp4"
+    commands = []
+
+    async def run(command, **_kwargs):
+        commands.append(list(command))
+        _write_file(output_path, payload)
+        return SimpleNamespace(returncode=0, stderr="")
+
+    monkeypatch.setattr(shorts_video._impl.shutil, "which", lambda _name: "ffmpeg")
+    monkeypatch.setattr(shorts_video._impl, "run_cancellable_process", run)
+
+    result = await shorts_video.postprocess_short(input_path, output_path)
+
+    assert result is expected
+    assert len(commands) == 1
+    codec_index = commands[0].index("-c:v")
+    assert commands[0][codec_index + 1] == "copy"
+    if expected:
+        assert _read_bytes(output_path) == payload
+    else:
+        assert not _path_exists(output_path)
 
 
 @pytest.mark.asyncio

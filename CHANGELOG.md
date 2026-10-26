@@ -166,6 +166,10 @@
 - Async I/O, тридцатый `ASYNC240` slice: LiveDub QA temporary-original cleanup
   подтверждён тестом; cancellation-safe synchronous unlink сохранён с точечным
   обоснованным `noqa`, остаются 123 findings.
+- Async I/O, тридцать первый `ASYNC240` slice: Shorts normalize/transform
+  input/output и same-path no-op checks переведены в worker threads;
+  nonempty-output commit и empty-output cleanup подтверждены тестами,
+  остаются 116 findings.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):
