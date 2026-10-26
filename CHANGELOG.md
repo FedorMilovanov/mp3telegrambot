@@ -92,6 +92,8 @@
   уже обработанных exits. Все 24 `B904` закрыты, правило включено в gate.
 - Extended Ruff, волна 2f (tools/tests slice): 11 `try/except/pass` заменены
   `contextlib.suppress`; оставшиеся 134 production findings разбираются по слоям.
+- Extended Ruff, волна 2f (entry/core/handlers): ещё 27 `SIM105` заменены;
+  после двух slices остаются 107 findings в pipelines/services.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

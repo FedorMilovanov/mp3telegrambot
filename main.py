@@ -77,6 +77,7 @@ from handlers.commands import status_command  # round 32
 from handlers.mode_command import mode_command, handle_mode_callback
 
 import asyncio
+import contextlib
 import logging
 import os
 import signal
@@ -488,10 +489,8 @@ async def run_bot_async():
                 logger.warning("⚠️ Автостарт Bot API: exe не найден: %s (LOCAL_BOT_API_EXE)", _exe)
                 return False
             _data = os.getenv("LOCAL_BOT_API_DATA_DIR", r"C:\ProgramData\TelegramBotAPI\data")
-            try:
+            with contextlib.suppress(OSError):
                 _P(_data).mkdir(parents=True, exist_ok=True)
-            except OSError:
-                pass
             # FIX 2026-06-11b: лог сервера в файл (был DEVNULL — при падении
             # сервера мы не видели ПРИЧИНУ: битые ключи, занятый порт, права).
             _srv_log_path = _P(_data).parent / "botapi-server.log"
@@ -611,10 +610,8 @@ async def run_bot_async():
                 if _pr.poll() is None:
                     return True, ""
                 _tail = ""
-                try:
+                with contextlib.suppress(OSError):
                     _tail = _log_path.read_text(encoding="utf-8", errors="replace")[-2000:]
-                except OSError:
-                    pass
                 return False, _tail
 
             try:
@@ -634,10 +631,8 @@ async def run_bot_async():
                         / "TelegramBotAPI"
                         / "data"
                     )
-                    try:
+                    with contextlib.suppress(OSError):
                         _user_data.mkdir(parents=True, exist_ok=True)
-                    except OSError:
-                        pass
                     _user_log = _user_data.parent / "botapi-server.log"
                     logger.warning(
                         "⚠️ Нет прав на %s (создан от админа). Перезапускаю сервер с "
@@ -1071,10 +1066,8 @@ async def run_bot_async():
             if not ADMIN_IDS:
                 return
             interval_hours = 6.0
-            try:
+            with contextlib.suppress(ValueError):
                 interval_hours = float(os.getenv("MAINTENANCE_ALERT_INTERVAL_HOURS", "6").strip() or 6)
-            except ValueError:
-                pass
             if not runtime_status.alert_is_due(interval_hours):
                 return
             text = (
@@ -1199,10 +1192,8 @@ def run_bot():
                 _net_fail_streak = 0
                 logger.error(f"run_bot завершился с ошибкой: {e}", exc_info=True)
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 loop.close()
-            except Exception:
-                pass
         _delay = min(restart_delay * (2 ** min(_net_fail_streak, 4)), 60) if _net_fail_streak else restart_delay
         logger.warning(f"🔄 Бот перезапускается через {_delay} сек...")
         time.sleep(_delay)
@@ -1229,10 +1220,8 @@ def main():
         _STOP_EVENT.set()
 
     for _sig in (signal.SIGTERM, signal.SIGINT):
-        try:
+        with contextlib.suppress(ValueError, RuntimeError, OSError):
             signal.signal(_sig, _sig_stop)
-        except (ValueError, RuntimeError, OSError):
-            pass
 
     # /stop и SIGTERM: после выхода run_bot() из цикла бот-поток завершается,
     # но waitress в main thread продолжал бы жить вечно — процесс «зависал»,

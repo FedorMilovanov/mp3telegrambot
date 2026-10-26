@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import contextlib
 import os
 import runpy
 
@@ -60,10 +61,8 @@ def _print_banner() -> None:
         print(_BANNER, flush=True)
     except Exception:
         # На случай экзотических stdout (например, без поддержки UTF-8 в cp1251)
-        try:
+        with contextlib.suppress(Exception):
             print(_BANNER.encode("ascii", "replace").decode("ascii"))
-        except Exception:
-            pass
 
 
 def main() -> None:

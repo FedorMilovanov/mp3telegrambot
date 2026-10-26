@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sqlite3
 import sys
@@ -12,10 +13,8 @@ from pathlib import Path
 def _configure_stdio() -> None:
     """Make every early startup diagnostic safe on Windows legacy consoles."""
     for stream in (sys.stdout, sys.stderr):
-        try:
+        with contextlib.suppress(AttributeError, OSError):
             stream.reconfigure(encoding="utf-8", errors="backslashreplace")
-        except (AttributeError, OSError):
-            pass
 
 
 _configure_stdio()
