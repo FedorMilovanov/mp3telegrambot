@@ -416,16 +416,19 @@ class SourceAudioDeferral:
         if not self.enabled:
             return await message.reply_audio(audio=audio, **kwargs)
 
-        source = Path(fallback_path) if fallback_path else None
-        if source is None or not source.is_file():
-            name = getattr(audio, "name", None)
-            if isinstance(name, str) and Path(name).is_file():
-                source = Path(name)
-        if source is None or not source.is_file():
-            raise RuntimeError("ENG Full source MP3 cannot be deferred without a local file")
+        def _resolve_source() -> Path:
+            candidate = Path(fallback_path) if fallback_path else None
+            if candidate is None or not candidate.is_file():
+                name = getattr(audio, "name", None)
+                if isinstance(name, str) and Path(name).is_file():
+                    candidate = Path(name)
+            if candidate is None or not candidate.is_file():
+                raise RuntimeError("ENG Full source MP3 cannot be deferred without a local file")
+            return candidate
 
+        source = await asyncio.to_thread(_resolve_source)
         root = Path(tempfile.gettempdir()) / "mp3bot_livedub_deferred"
-        root.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(root.mkdir, parents=True, exist_ok=True)
         destination = root / (f"{self.chat_id}_{self.reply_to}_{uuid.uuid4().hex[:8]}_{source.name}")
         await asyncio.to_thread(shutil.copy2, source, destination)
 

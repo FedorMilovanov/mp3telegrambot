@@ -10,6 +10,7 @@ a still image.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 import os
@@ -283,7 +284,9 @@ async def _is_static_video_confident(
         return False
 
     ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg or not video_path.exists():
+    if not ffmpeg:
+        return False
+    if not await asyncio.to_thread(video_path.exists):
         return False
 
     probe = _env_float("SHORTS_STATIC_PROBE_SECONDS", probe_seconds, 4.0, 15.0)
