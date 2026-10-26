@@ -460,6 +460,10 @@ def build_mix_filter(
     )
 
 
+def _mix_output_is_ready(path: Path) -> bool:
+    return path.exists() and path.stat().st_size > 10240
+
+
 async def mix_tracks(
     orig_video: Path, ru_audio: Path, out_path: Path, ru_extra_expr: str = "", en_extra_expr: str = ""
 ) -> Path | None:
@@ -473,7 +477,7 @@ async def mix_tracks(
     роликов дополнительно замораживаем последний кадр, чтобы Telegram точно
     не закончил видео раньше, чем прозвучит последняя русская фраза.
     """
-    if not has_video_stream(orig_video):
+    if not await asyncio.to_thread(has_video_stream, orig_video):
         logger.warning(
             "[LiveDubMix] входной оригинал не содержит видеопотока: %s — локальный DUB-микс невозможен",
             Path(orig_video).name,
@@ -609,7 +613,7 @@ async def mix_tracks(
         if not ok:
             logger.warning("[LiveDubMix] простой микс тоже не удался: %s", err)
             return None
-    if out_path.exists() and out_path.stat().st_size > 10240:
+    if await asyncio.to_thread(_mix_output_is_ready, out_path):
         return out_path
     return None
 

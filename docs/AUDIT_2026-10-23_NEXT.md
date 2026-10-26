@@ -1152,8 +1152,9 @@ LiveDub download discovery (`services/yandex_live_dub.py` очищен), два�
 (`services/shorts_factory_candidates.py` очищен), двадцать шестой —
 Shorts/Clips candidate audio input (`services/shorts_candidates.py` очищен),
 двадцать седьмой — Shorts subtitle burn file I/O
-(`services/shorts_subtitle_burn.py` очищен). Остаются 128, другие
-extended-правила и дальнейший ручной async review.
+(`services/shorts_subtitle_burn.py` очищен), двадцать восьмой — LiveDub mix
+output validation. Остаются 126, другие extended-правила и дальнейший ручной
+async review.
 
 **Решение:**
 

@@ -10,6 +10,7 @@ import pytest
 from handlers import commands
 from services import (
     eng_subtitles,
+    livedub_mix,
     pdf_generator,
     render_clips_montage,
     shorts_candidates,
@@ -302,6 +303,60 @@ async def test_legacy_video_returns_discovered_path(monkeypatch, tmp_path: Path,
     result = await yandex_live_dub.get_live_dub_video("https://example.invalid/video", tmp_path)
 
     assert result == downloaded
+
+
+@pytest.mark.asyncio
+async def test_mix_tracks_rejects_audio_only_original(monkeypatch, tmp_path: Path) -> None:
+    run_ffmpeg = Mock()
+    monkeypatch.setattr(livedub_mix, "has_video_stream", lambda _path: False)
+    monkeypatch.setattr(livedub_mix, "_run_ffmpeg", run_ffmpeg)
+
+    result = await livedub_mix.mix_tracks(
+        tmp_path / "original.m4a",
+        tmp_path / "translation.mp3",
+        tmp_path / "mixed.mp4",
+    )
+
+    assert result is None
+    run_ffmpeg.assert_not_called()
+
+
+@pytest.mark.parametrize("output", [b"x" * 10241, b"x", None], ids=["ready", "undersized", "missing"])
+@pytest.mark.asyncio
+async def test_mix_tracks_validates_generated_output(monkeypatch, tmp_path: Path, output: bytes | None) -> None:
+    original = _write_file(tmp_path / "original.mp4", b"video")
+    translated = _write_file(tmp_path / "translation.mp3", b"audio")
+    output_path = tmp_path / "mixed.mp4"
+    calls: list[list[str]] = []
+    monkeypatch.setattr(livedub_mix, "has_video_stream", lambda _path: True)
+    monkeypatch.setattr(livedub_mix, "measure_loudness", lambda _path: -20.0)
+    monkeypatch.setattr(livedub_mix, "probe_media_duration", lambda _path: 10.0)
+    monkeypatch.setattr(
+        livedub_mix,
+        "get_mix_params",
+        lambda: {
+            "orig_volume": 0.45,
+            "trans_volume": 1.3,
+            "delay_ms": 0,
+            "tail_margin_ms": 0,
+            "tail_freeze_max_sec": 0,
+            "voice_eq": False,
+            "rnnoise_model": "",
+        },
+    )
+
+    def run_ffmpeg(args: list[str]):
+        calls.append(args)
+        if output is not None:
+            output_path.write_bytes(output)
+        return True, ""
+
+    monkeypatch.setattr(livedub_mix, "_run_ffmpeg", run_ffmpeg)
+
+    result = await livedub_mix.mix_tracks(original, translated, output_path)
+
+    assert (result == output_path) if output is not None and len(output) > 10240 else (result is None)
+    assert len(calls) == 1
 
 
 @pytest.mark.asyncio
