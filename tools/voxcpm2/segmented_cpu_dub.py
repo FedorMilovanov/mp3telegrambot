@@ -511,10 +511,10 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         print("Stopped by user", file=sys.stderr)
-        raise SystemExit(130)
+        raise SystemExit(130) from None
     except Exception as exc:
         import traceback
 
         print(f"ERROR: {exc}", file=sys.stderr)
         traceback.print_exc()
-        raise SystemExit(1)
+        raise SystemExit(1) from None

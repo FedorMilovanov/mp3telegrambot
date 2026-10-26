@@ -205,4 +205,4 @@ if __name__ == "__main__":
         raise SystemExit(main())
     except PreflightError as exc:
         print(f"PREFLIGHT FAILED: {exc}", file=sys.stderr)
-        raise SystemExit(1)
+        raise SystemExit(1) from None

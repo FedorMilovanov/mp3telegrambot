@@ -87,8 +87,9 @@
   caller `check`, а `PLW1510` включён в обычный gate.
 - Extended Ruff, волна 2d: 28 redundant assignments перед `return` заменены
   прямым возвратом того же выражения; `RET504` включён в обычный gate.
-- Extended Ruff, волна 2e (runtime slice): 10 исключений получили явный
-  `raise ... from cause`; 14 CLI exit sites оставлены следующему узкому этапу.
+- Extended Ruff, волна 2e: 10 runtime raises получили явный `from cause`;
+  ещё 14 CLI sites используют `from cause` для аргументов и `from None` для
+  уже обработанных exits. Все 24 `B904` закрыты, правило включено в gate.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

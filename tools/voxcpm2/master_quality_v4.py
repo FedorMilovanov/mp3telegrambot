@@ -244,4 +244,4 @@ if __name__ == "__main__":
 
         print(f"ОШИБКА MASTER QUALITY V4: {exc}", file=sys.stderr)
         traceback.print_exc()
-        raise SystemExit(1)
+        raise SystemExit(1) from None

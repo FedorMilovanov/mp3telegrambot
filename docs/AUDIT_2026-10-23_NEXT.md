@@ -1126,9 +1126,9 @@ commit, а на pre-push/tag ref остаётся read-only `verify_repo.py`, п
 pytest и coverage ratchet прошли. Волна 2a закрыта: 142 безопасные находки
 `UP009`/`UP006` устранены, а `UP009`, `UP006` и `W293` добавлены в обычный
 Ruff gate. Волны 2b–2d закрыли 73 `UP045`, 35 `PLW1510` и 28 `RET504`;
-subprocess semantics и возвращаемые выражения сохранены. Волна 2e начата:
-10 runtime `B904` получили явный exception cause; остались 14 CLI sites,
-`SIM105`, другие extended-правила, волна 3 и ручной разбор `ASYNC240`.
+subprocess semantics и возвращаемые выражения сохранены. Волна 2e закрыла
+все 24 `B904`: runtime causes сохранены, обработанные CLI exits не дублируют
+context. Остались `SIM105`, другие extended-правила, волна 3 и `ASYNC240`.
 
 **Решение:**
 
