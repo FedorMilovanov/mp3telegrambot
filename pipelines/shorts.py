@@ -3,8 +3,9 @@
 
 from __future__ import annotations
 
-import json
+import asyncio
 import contextlib
+import json
 import logging
 import shutil
 import time
@@ -93,6 +94,30 @@ def _unlink(path: Path | None) -> None:
         path.unlink(missing_ok=True)
 
 
+def _existing_input_file(path: Path) -> InputFile | None:
+    if not path.exists():
+        return None
+    return InputFile(path.read_bytes(), filename=path.name)
+
+
+def _cleanup_short_files(
+    short_paths: list[Path],
+    poster_paths: list[Path],
+    video_path: Path | None,
+    livedub_source: Path | None,
+    keep_for_montage: bool,
+) -> None:
+    for path in (*short_paths, *poster_paths):
+        _unlink(path)
+    if video_path:
+        try:
+            borrowed = livedub_source is not None and video_path == livedub_source
+            if not keep_for_montage and not borrowed:
+                video_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 async def process_and_send_shorts(
     url: str,
     media_id: str,
@@ -123,7 +148,7 @@ async def process_and_send_shorts(
 
         if livedub_video_path:
             candidate_source = Path(livedub_video_path)
-            if candidate_source.exists():
+            if await asyncio.to_thread(candidate_source.exists):
                 livedub_source = candidate_source
                 duration = await probe_livedub_source_duration(
                     livedub_source,
@@ -411,29 +436,23 @@ async def process_and_send_shorts(
             thumb = None
             if do_title_poster:
                 try:
-                    if (
-                        await create_short_title_poster(
-                            current_path,
-                            poster_path,
-                            str(candidate.get("title") or ""),
-                            delivery_duration,
-                        )
-                        and poster_path.exists()
+                    if await create_short_title_poster(
+                        current_path,
+                        poster_path,
+                        str(candidate.get("title") or ""),
+                        delivery_duration,
                     ):
-                        thumb = InputFile(poster_path.read_bytes(), filename=poster_path.name)
+                        thumb = await asyncio.to_thread(_existing_input_file, poster_path)
                 except Exception as exc:
                     logger.warning("Shorts %d/%d title poster failed: %s", index, total, exc)
             if thumb is None and do_snapshot:
                 try:
-                    if (
-                        await create_short_snapshot(
-                            current_path,
-                            snapshot_path,
-                            delivery_duration,
-                        )
-                        and snapshot_path.exists()
+                    if await create_short_snapshot(
+                        current_path,
+                        snapshot_path,
+                        delivery_duration,
                     ):
-                        thumb = InputFile(snapshot_path.read_bytes(), filename=snapshot_path.name)
+                        thumb = await asyncio.to_thread(_existing_input_file, snapshot_path)
                 except Exception as exc:
                     logger.warning("Shorts %d/%d snapshot failed: %s", index, total, exc)
 
@@ -518,15 +537,14 @@ async def process_and_send_shorts(
         with contextlib.suppress(Exception):
             await update.message.reply_text(f"✂️ Ошибка при подготовке Shorts: {str(exc)[:150]}")
     finally:
-        for path in (*short_paths, *poster_paths):
-            _unlink(path)
-        if video_path:
-            try:
-                borrowed = livedub_source is not None and video_path == livedub_source
-                if not keep_for_montage and not borrowed:
-                    video_path.unlink(missing_ok=True)
-            except OSError:
-                pass
+        await asyncio.to_thread(
+            _cleanup_short_files,
+            short_paths,
+            poster_paths,
+            video_path,
+            livedub_source,
+            keep_for_montage,
+        )
 
 
 __all__ = ["process_and_send_shorts"]

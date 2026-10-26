@@ -6,14 +6,21 @@
 
 import pathlib
 
+from telegram import InputFile
 
-def test_clips_thumbnail_uses_inputfile():
+from pipelines.clips import _existing_input_file
+
+
+def test_clips_thumbnail_uses_inputfile(tmp_path):
     # AUDIT R25: open()+`.name=` падал на py3.13 (BufferedReader.name read-only).
     # InputFile(read_bytes()) keeps bytes in memory and does not retain a handle.
-    src = pathlib.Path("pipelines/clips.py").read_text(encoding="utf-8")
-    assert "snap_path.read_bytes()" in src
-    assert "filename=snap_path.name" in src
-    assert "thumb_buf.name =" not in src
+    path = tmp_path / "snapshot.png"
+    assert _existing_input_file(path) is None
+    path.write_bytes(b"thumbnail")
+    thumbnail = _existing_input_file(path)
+    assert isinstance(thumbnail, InputFile)
+    assert thumbnail.input_file_content == b"thumbnail"
+    assert thumbnail.filename == path.name
 
 
 def test_montage_poster_thumbnail_uses_inputfile():

@@ -106,6 +106,8 @@
   в worker threads; остаются 202 findings для следующих модульных slices.
 - Async I/O, второй `ASYNC240` slice: Factory source/deferral/static probes и
   cleanup переведены на worker threads; остаются 198 findings.
+- Async I/O, третий `ASYNC240` slice: Clips/Shorts delivery больше не выполняет
+  source/stat/thumbnail/cleanup file I/O в event loop; остаются 196 findings.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):
