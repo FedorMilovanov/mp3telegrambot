@@ -36,11 +36,11 @@ from core.url_utils import get_youtube_timestamp_url  # AUDIT R15: mini-outline 
 from core.globals import (
     TELEGRAPH_TOKEN,
     GEMINI_CLIENTS,
-    gemini_generate,  # FIX telegraph,
     make_audio_config,
     is_quota_error,
     is_overload_error,
 )
+from services.gemini_router import gemini_generate
 from core.database import GEMINI_MODEL  # FIX telegraph
 from core.model_catalog import fallback_model
 from core.telegraph_contract import (

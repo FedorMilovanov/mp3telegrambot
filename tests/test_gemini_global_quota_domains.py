@@ -46,9 +46,9 @@ def _install_import_stubs() -> None:
 
 _install_import_stubs()
 
-from core import globals as core_globals
 from services import gemini_capacity_control as capacity_control
 from services import gemini_quota_domains as quota_domains
+from services import gemini_router
 
 
 class _ServiceError(RuntimeError):
@@ -81,13 +81,13 @@ def _install_capacity_stubs(monkeypatch) -> None:
     monkeypatch.setattr(capacity_control, "is_timeout_error", lambda exc: False)
     monkeypatch.setattr(capacity_control, "transient_retry_delay", lambda used: 0.0)
     monkeypatch.setattr(capacity_control, "note_overload", lambda delay: None)
-    monkeypatch.setattr(core_globals, "_current_client_idx", 0)
+    monkeypatch.setattr(gemini_router, "_current_client_idx", 0)
 
 
 def _install_known_clients(monkeypatch, domains: list[str]):
     clients = [SimpleNamespace(name=f"client-{index}") for index in range(len(domains))]
-    monkeypatch.setattr(core_globals, "GEMINI_CLIENTS", clients)
-    monkeypatch.setattr(core_globals, "GEMINI_CLIENT_QUOTA_DOMAINS", domains)
+    monkeypatch.setattr(gemini_router, "GEMINI_CLIENTS", clients)
+    monkeypatch.setattr(gemini_router, "GEMINI_CLIENT_QUOTA_DOMAINS", domains)
     return clients
 
 
@@ -131,7 +131,7 @@ def test_global_route_skips_known_same_domain_after_project_scoped_429(monkeypat
             )
         return "ok"
 
-    result = asyncio.run(core_globals.gemini_generate([first, second, third], fn))
+    result = asyncio.run(gemini_router.gemini_generate([first, second, third], fn))
 
     assert result == "ok"
     assert calls == ["client-0", "client-2"]
@@ -148,7 +148,7 @@ def test_global_route_generic_429_still_rotates_to_same_labeled_domain(monkeypat
             raise _ServiceError(429, "RESOURCE_EXHAUSTED")
         return "ok"
 
-    result = asyncio.run(core_globals.gemini_generate([first, second], fn))
+    result = asyncio.run(gemini_router.gemini_generate([first, second], fn))
 
     assert result == "ok"
     assert calls == ["client-0", "client-1"]
@@ -170,7 +170,7 @@ def test_unknown_client_list_disables_same_project_suppression(monkeypatch) -> N
             )
         return "ok"
 
-    result = asyncio.run(core_globals.gemini_generate([first, second], fn))
+    result = asyncio.run(gemini_router.gemini_generate([first, second], fn))
 
     assert result == "ok"
     assert calls == ["external-0", "external-1"]
@@ -193,7 +193,7 @@ def test_same_domain_skip_never_logs_or_raises_local_label(monkeypatch, caplog) 
 
     caplog.set_level(logging.INFO)
     with pytest.raises(_ServiceError) as raised:
-        asyncio.run(core_globals.gemini_generate([first, second, third], fn))
+        asyncio.run(gemini_router.gemini_generate([first, second, third], fn))
 
     assert calls == ["client-0"]
     assert "private-domain-name" not in str(raised.value)
@@ -215,7 +215,7 @@ def test_503_budget_semantics_remain_same_client_retry_then_rotate(monkeypatch) 
             raise _ServiceError(503, "UNAVAILABLE: high demand")
         return "ok"
 
-    result = asyncio.run(core_globals.gemini_generate([first, second, third], fn))
+    result = asyncio.run(gemini_router.gemini_generate([first, second, third], fn))
 
     assert result == "ok"
     assert calls == ["client-0", "client-0", "client-1"]
@@ -231,7 +231,7 @@ def test_response_validator_rotates_semantic_rejection_within_global_budget(monk
         return SimpleNamespace(accepted=client is third)
 
     result = asyncio.run(
-        core_globals.gemini_generate(
+        gemini_router.gemini_generate(
             [first, second, third],
             fn,
             response_validator=lambda response: response.accepted,
@@ -253,7 +253,7 @@ def test_response_validator_cannot_expand_global_retry_budget(monkeypatch) -> No
 
     with pytest.raises(RuntimeError, match="response rejected"):
         asyncio.run(
-            core_globals.gemini_generate(
+            gemini_router.gemini_generate(
                 clients,
                 fn,
                 response_validator=lambda response: response.accepted,

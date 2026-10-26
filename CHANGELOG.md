@@ -71,6 +71,9 @@
 - Шестой import-layer burn-down: 11 → 4 legacy-рёбра. Dub Studio registration
   принадлежит `handlers.dub_studio_registration`, а output discovery/delivery —
   `services.dub_delivery`; runtime больше не импортирует UI handlers.
+- Седьмой import-layer burn-down: 4 → 3 legacy-ребра. Общий Gemini transport,
+  client rotation и transient retry routing перенесены из `core.globals` в
+  `services.gemini_router`; process-wide config больше не импортирует services.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

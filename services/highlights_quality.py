@@ -29,9 +29,9 @@ from core.database import GEMINI_MODEL
 from core.globals import (
     GEMINI_CLIENTS,
     HAS_GEMINI,
-    gemini_generate,
     make_text_config_smart,
 )
+from services.gemini_router import gemini_generate
 from services.async_process import run_cancellable_process
 from services.ffmpeg import _get_video_encoder
 from services.shorts_video import HAS_FASTER_WHISPER, transcribe_short_clip

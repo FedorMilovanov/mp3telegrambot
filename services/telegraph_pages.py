@@ -9,11 +9,11 @@ from core.globals import (
     HAS_GEMINI,
     GEMINI_API_KEY,
     GEMINI_CLIENTS,
-    gemini_generate,  # FIX telegraph_pages
     is_overload_error,
     is_quota_error,
     make_text_config_smart,
 )
+from services.gemini_router import gemini_generate
 from core.database import GEMINI_MODEL  # FIX telegraph_pages
 from core.text_utils import (
     _scrub_inline,
@@ -567,7 +567,7 @@ async def _gemini_text_request(
 
     Telegraph owns prompt/config/schema compatibility only. Client rotation,
     timeout/503 recovery and the initial+2 transient budget are owned by
-    core.globals.gemini_generate; API-key count therefore cannot multiply one
+    services.gemini_router.gemini_generate; API-key count therefore cannot multiply one
     transient failure. Model downgrade and model-global quota blacklists are
     forbidden on this semantic route.
     """

@@ -4,7 +4,7 @@
 These fields are user-visible semantic output: Telegram/YouTube copy, compact
 meaning summaries, theological terms and Scripture references. The module owns
 the exact Gemini 3.8/HIGH semantic route but delegates transport/retry/capacity
-to core.globals.gemini_generate, so it cannot start an independent retry storm.
+to services.gemini_router.gemini_generate, so it cannot start an independent retry storm.
 """
 
 from __future__ import annotations
@@ -18,7 +18,8 @@ import re
 from pathlib import Path
 from typing import Any
 
-from core.globals import GEMINI_CLIENTS, gemini_generate, make_text_config_smart
+from core.globals import GEMINI_CLIENTS, make_text_config_smart
+from services.gemini_router import gemini_generate
 from core.model_catalog import MODEL_PRIMARY as DEFAULT_INFO_MODEL
 from core.text_utils import (
     _scrub_inline,

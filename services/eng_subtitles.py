@@ -42,7 +42,7 @@ async def _translate_chunk_with_retry(chunk_segs, prev_context=""):
 
     prompt = "\n".join(prompt_lines)
 
-    from core.globals import gemini_generate
+    from services.gemini_router import gemini_generate
 
     cfg = make_text_config_smart(
         max_output_tokens=16000,
