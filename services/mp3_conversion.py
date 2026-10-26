@@ -17,6 +17,23 @@ from services.async_process import run_cancellable_process
 logger = logging.getLogger(__name__)
 
 
+def _source_is_valid(source: Path) -> bool:
+    return source.is_file() and source.stat().st_size > 0
+
+
+def _ensure_distinct_paths(source: Path, output: Path) -> None:
+    try:
+        if source.resolve(strict=False) == output.resolve(strict=False):
+            raise ValueError("MP3 source and output paths must differ")
+    except OSError as exc:
+        if source.absolute() == output.absolute():
+            raise ValueError("MP3 source and output paths must differ") from exc
+
+
+def _output_is_current(output: Path, source: Path) -> bool:
+    return output.is_file() and output.stat().st_mtime >= source.stat().st_mtime
+
+
 async def _probe_audio_file(path: Path) -> bool:
     ffprobe = shutil.which("ffprobe")
     path = Path(path)
@@ -61,22 +78,18 @@ async def reencode_mp3_atomic(
     """Create a proved MP3 and atomically publish it without risking the source."""
     source = Path(source_path)
     output = Path(output_path)
-    if not source.is_file() or source.stat().st_size <= 0:
+    if not await asyncio.to_thread(_source_is_valid, source):
         return False
-    try:
-        if source.resolve(strict=False) == output.resolve(strict=False):
-            raise ValueError("MP3 source and output paths must differ")
-    except OSError as exc:
-        if source.absolute() == output.absolute():
-            raise ValueError("MP3 source and output paths must differ") from exc
+    await asyncio.to_thread(_ensure_distinct_paths, source, output)
 
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         return False
     bitrate = max(32, min(int(bitrate_kbps), 320))
-    output.parent.mkdir(parents=True, exist_ok=True)
+    await asyncio.to_thread(output.parent.mkdir, parents=True, exist_ok=True)
 
-    if output.is_file() and output.stat().st_mtime >= source.stat().st_mtime and await _probe_audio_file(output):
+    output_is_current = await asyncio.to_thread(_output_is_current, output, source)
+    if output_is_current and await _probe_audio_file(output):
         return True
 
     temp = output.with_name(f"{output.stem}.part-{os.getpid()}-{uuid.uuid4().hex[:8]}.mp3")

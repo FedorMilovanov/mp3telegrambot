@@ -1142,8 +1142,8 @@ optional documents, одиннадцатый — Full LiveDub QA workdir/SRT dis
 Long LiveDub QA source-file checks, четырнадцатый — LiveDub QA
 SRT/RU/original source-exists checks, пятнадцатый — ENG subtitles
 workdir/audio discovery, шестнадцатый — ENG original-video reuse/download
-discovery. Остаются 163, другие extended-правила и дальнейший ручной async
-review.
+discovery, семнадцатый — MP3 source/path/cache preflight. Остаются 154, другие
+extended-правила и дальнейший ручной async review.
 
 **Решение:**
 

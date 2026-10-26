@@ -134,6 +134,8 @@
   discovery переведено в worker threads; остаются 166 findings.
 - Async I/O, шестнадцатый `ASYNC240` slice: ENG original-video reuse/download
   discovery переведено в worker threads; остаются 163 findings.
+- Async I/O, семнадцатый `ASYNC240` slice: MP3 source/path/cache preflight
+  переведён в worker threads; остаются 154 findings.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):
