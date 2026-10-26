@@ -37,6 +37,9 @@ _REPLACED_CASES = {
     # the historical module remains byte-stable through repository formatting.
     "test_vot_cli_retries_for_long_translations",
     "test_merge_video_uses_new_protocol_before_old_vot_merge",
+    # The exact source-layout guard assertion is replaced by executed audio-only
+    # and generated-output behavior in test_async_file_io.py after the offload.
+    "test_livedub_mix_guards_audio_only_original",
     # P0-3: title implementation and HTML delivery now have separate source
     # owners; the two-module replacement lives in test_livedub_title.py.
     "test_livedub_send_video_caption_includes_title_and_html_parse_mode",
