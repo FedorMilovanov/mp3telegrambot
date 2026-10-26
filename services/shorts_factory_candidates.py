@@ -432,6 +432,12 @@ async def _run_pass(client, *, model: str, audio_part, prompt: str, max_tokens: 
     return _parse_json_payload(await _response_text(response))
 
 
+def _factory_audio_file_size(path: Path) -> int:
+    if not path.exists() or path.stat().st_size < 1024:
+        raise RuntimeError("Audio file for Shorts Factory is missing or empty")
+    return path.stat().st_size
+
+
 async def create_factory_plan(
     mp3_path: Path,
     *,
@@ -443,14 +449,13 @@ async def create_factory_plan(
     """Run strict scout, editorial judge and boundary-audit passes."""
     if not HAS_GEMINI or not GEMINI_CLIENTS or types is None:
         raise RuntimeError("Gemini is unavailable; SHORTS FACTORY MAX requires Gemini")
-    if not mp3_path.exists() or mp3_path.stat().st_size < 1024:
-        raise RuntimeError("Audio file for Shorts Factory is missing or empty")
+    audio_size = await asyncio.to_thread(_factory_audio_file_size, mp3_path)
 
     from core.globals import GEMINI_CLIENT_QUOTA_DOMAINS
     from services.gemini_quota_domains import ProjectQuotaDomainTracker
 
     model = shorts_factory_model()
-    file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
+    file_size_mb = audio_size / (1024 * 1024)
     last_error: Exception | None = None
     quota_tracker = ProjectQuotaDomainTracker(
         GEMINI_CLIENTS,
@@ -469,7 +474,7 @@ async def create_factory_plan(
         try:
             if file_size_mb <= 20:
                 audio_part = types.Part.from_bytes(
-                    data=mp3_path.read_bytes(),
+                    data=await asyncio.to_thread(mp3_path.read_bytes),
                     mime_type="audio/mpeg",
                 )
             else:

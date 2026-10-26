@@ -1147,8 +1147,10 @@ no-sub callback file check, девятнадцатый — retrim source/no-sub 
 двадцатый — archive/segment export file checks, двадцать первый — PDF output
 preflight, двадцать второй — disk diagnostics, двадцать третий — status
 DB/backup и PDF cleanup (`handlers/commands.py` очищен), двадцать четвёртый —
-LiveDub download discovery (`services/yandex_live_dub.py` очищен). Остаются 140,
-другие extended-правила и дальнейший ручной async review.
+LiveDub download discovery (`services/yandex_live_dub.py` очищен), двадцать
+пятый — Shorts Factory audio preflight/input
+(`services/shorts_factory_candidates.py` очищен). Остаются 136, другие
+extended-правила и дальнейший ручной async review.
 
 **Решение:**
 

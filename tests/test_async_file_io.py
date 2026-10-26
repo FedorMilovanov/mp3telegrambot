@@ -8,7 +8,14 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from handlers import commands
-from services import eng_subtitles, pdf_generator, render_clips_montage, shorts_video, yandex_live_dub
+from services import (
+    eng_subtitles,
+    pdf_generator,
+    render_clips_montage,
+    shorts_factory_candidates,
+    shorts_video,
+    yandex_live_dub,
+)
 from services import translation_editorial_factory as editorial_factory
 
 
@@ -294,6 +301,69 @@ async def test_legacy_video_returns_discovered_path(monkeypatch, tmp_path: Path,
     result = await yandex_live_dub.get_live_dub_video("https://example.invalid/video", tmp_path)
 
     assert result == downloaded
+
+
+@pytest.mark.asyncio
+async def test_factory_plan_rejects_undersized_audio(monkeypatch, tmp_path: Path) -> None:
+    audio = _write_file(tmp_path / "small.mp3", b"tiny")
+    monkeypatch.setattr(shorts_factory_candidates, "HAS_GEMINI", True)
+    monkeypatch.setattr(shorts_factory_candidates, "GEMINI_CLIENTS", [object()])
+    monkeypatch.setattr(shorts_factory_candidates, "types", SimpleNamespace())
+
+    with pytest.raises(RuntimeError, match="missing or empty"):
+        await shorts_factory_candidates.create_factory_plan(
+            audio,
+            title="Title",
+            performer="Author",
+            duration=120,
+        )
+
+
+@pytest.mark.asyncio
+async def test_factory_plan_reads_inline_audio_and_returns_validated_plan(monkeypatch, tmp_path: Path) -> None:
+    payload = b"x" * 2048
+    audio = _write_file(tmp_path / "audio.mp3", payload)
+    from_bytes = Mock(return_value="audio-part")
+    run_pass = AsyncMock(side_effect=["scout", "judge", "audited"])
+
+    class QuotaTracker:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        def should_skip(self, *_args, **_kwargs) -> bool:
+            return False
+
+        def record_project_scoped_error(self, *_args, **_kwargs) -> None:
+            pass
+
+    monkeypatch.setattr(shorts_factory_candidates, "HAS_GEMINI", True)
+    monkeypatch.setattr(shorts_factory_candidates, "GEMINI_CLIENTS", [object()])
+    monkeypatch.setattr(
+        shorts_factory_candidates,
+        "types",
+        SimpleNamespace(Part=SimpleNamespace(from_bytes=from_bytes)),
+    )
+    monkeypatch.setattr(shorts_factory_candidates, "shorts_factory_model", lambda: "factory-model")
+    monkeypatch.setattr(shorts_factory_candidates, "_run_pass", run_pass)
+    monkeypatch.setattr(
+        shorts_factory_candidates,
+        "validate_factory_plan",
+        lambda *_args, **_kwargs: {"shorts_candidates": [{"start": 1}], "long_candidates": []},
+    )
+    monkeypatch.setattr("services.gemini_quota_domains.ProjectQuotaDomainTracker", QuotaTracker)
+
+    plan = await shorts_factory_candidates.create_factory_plan(
+        audio,
+        title="Title",
+        performer="Author",
+        duration=120,
+    )
+
+    assert from_bytes.call_args.kwargs == {"data": payload, "mime_type": "audio/mpeg"}
+    assert run_pass.await_count == 3
+    assert plan["model"] == "factory-model"
+    assert plan["review_passes"] == 3
+    assert plan["strict_quality"] is True
 
 
 @pytest.mark.asyncio
