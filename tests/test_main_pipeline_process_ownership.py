@@ -51,7 +51,21 @@ def test_recompression_uses_atomic_mp3_conversion_owner() -> None:
 
     assert "from services.mp3_conversion import reencode_mp3_64k_atomic" in stage
     assert "await reencode_mp3_64k_atomic(path, target)" in stage
-    assert "path.unlink(missing_ok=True)" in stage
+    squeeze = next(
+        node
+        for node in ast.walk(ast.parse(stage))
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "_squeeze"
+    )
+    cleanup_offloads = [
+        node
+        for node in ast.walk(squeeze)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "to_thread"
+        and any(isinstance(arg, ast.Attribute) and arg.attr == "unlink" for arg in node.args)
+    ]
+    assert len(cleanup_offloads) == 1
+    assert any(isinstance(node, ast.Await) and node.value in cleanup_offloads for node in ast.walk(squeeze))
     assert "_recompress_proc" not in stage
     assert "ffmpeg -i" not in stage
 

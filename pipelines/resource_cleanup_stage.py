@@ -38,8 +38,13 @@ async def cleanup_pipeline_resources(
         except Exception:
             pass
 
-    if workdir is not None and workdir.exists():
-        shutil.rmtree(workdir, ignore_errors=True)
+    if workdir is not None:
+
+        def _remove_workdir() -> None:
+            if workdir.exists():
+                shutil.rmtree(workdir, ignore_errors=True)
+
+        await asyncio.to_thread(_remove_workdir)
 
     # The Gemini audio part must outlive synopsis/Shorts/Clips and is deleted
     # only here, after all downstream users have finished.

@@ -156,7 +156,7 @@ async def _repair_binding(
         raise ValueError("repair provenance does not belong to the supplied review.json")
     return (
         {
-            "local_path": str(sidecar_path.resolve(strict=False)),
+            "local_path": str(await asyncio.to_thread(sidecar_path.resolve, strict=False)),
             "sha256": await asyncio.to_thread(sha256_file, sidecar_path),
             "repair_result_id": provenance.get("repair_result_id"),
         },

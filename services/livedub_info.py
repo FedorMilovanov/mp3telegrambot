@@ -208,10 +208,19 @@ async def build_livedub_info_card(
     timed_text = ""
     evidence = ""
     try:
-        if dub_srt_path and Path(dub_srt_path).exists():
+
+        def _read_srt_evidence() -> tuple[str, str]:
+            if not dub_srt_path:
+                return "", ""
             srt_path = Path(dub_srt_path)
-            timed_text = sampled_srt_to_timed_text(srt_path, max_chars=7000)
-            evidence = full_srt_evidence(srt_path)
+            if not srt_path.exists():
+                return "", ""
+            return (
+                sampled_srt_to_timed_text(srt_path, max_chars=7000),
+                full_srt_evidence(srt_path),
+            )
+
+        timed_text, evidence = await asyncio.to_thread(_read_srt_evidence)
     except Exception as exc:
         logger.info("[LiveDubInfo] SRT read failed: %s", str(exc)[:120])
 
