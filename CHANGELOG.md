@@ -299,6 +299,10 @@
   handlers в `core`; fallback-returns сохранены, JSON parsing сужен до
   `JSONDecodeError`, logging filter при сбое маскирования стал fail-closed.
   708 focused tests зелёные. `S110` — 42, extended census — 312.
+- Extended Ruff, diagnostic fallback slice: пять `S110` в encoder/language
+  probes и `/status` заменены явной debug-диагностикой; NVENC→CPU, `None`
+  и обязательные секции статуса сохранены. 75 focused tests зелёные.
+  `S110` — 37, extended census — 307.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):
