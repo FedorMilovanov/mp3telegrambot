@@ -5,10 +5,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from tools.voxcpm2 import direct_retry_epoch
-from tools.voxcpm2 import direct_surgical_io
+from tools.voxcpm2 import direct_retry_epoch as direct_retry_epoch
+from tools.voxcpm2 import direct_surgical_io as direct_surgical_io
 from tools.voxcpm2 import direct_surgical_polish_v2 as polish
-from tools.voxcpm2 import direct_timing_guard as guard
+from tools.voxcpm2 import direct_timing_guard
+
+guard = direct_timing_guard
 
 POLICY = "voxcpm2-surgical-runtime-v2"
 _PROGRESS_POLICY = "candidate-aware-project-progress-v2"
