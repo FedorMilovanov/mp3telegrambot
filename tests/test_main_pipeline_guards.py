@@ -9,8 +9,6 @@
 
 from __future__ import annotations
 
-import asyncio
-
 import pytest
 
 from pipelines import main_pipeline, media_guards as guards

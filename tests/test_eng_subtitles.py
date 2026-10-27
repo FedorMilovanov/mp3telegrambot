@@ -1,8 +1,5 @@
 import pytest
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
-from pathlib import Path
-import json
+from unittest.mock import AsyncMock, MagicMock
 
 from services.eng_subtitles import _translate_chunk_with_retry
 

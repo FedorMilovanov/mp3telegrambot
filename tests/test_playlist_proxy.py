@@ -1,7 +1,6 @@
 """Regression tests: playlist.py must pass proxy and safe cookies to yt-dlp Python API."""
 
 from pathlib import Path
-import re
 
 
 def test_playlist_imports_proxy_helper():
