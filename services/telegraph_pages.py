@@ -6,8 +6,6 @@ Analytics, Questions, Terms, Study Analysis, Reflection.
 """
 
 from core.globals import (
-    HAS_GEMINI,
-    GEMINI_API_KEY,
     GEMINI_CLIENTS,
     is_overload_error,
     is_quota_error,
@@ -60,7 +58,6 @@ from converters.md_telegraph import _build_related_materials_nodes
 from services import gemini_capacity_control as capacity_control
 
 import asyncio
-from typing import Optional, List, Tuple
 import json
 from dataclasses import dataclass  # FIX telegraph_pages
 import logging

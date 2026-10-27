@@ -5,7 +5,6 @@ Telegraph publisher — публикация с рекурсивным дроб�
 """
 
 from core.text_utils import (
-    _strip_meta_lines,
     normalize_author_name,
     title_case_fragment,
     normalize_title_text,  # FIX telegraph
@@ -15,7 +14,6 @@ from converters.md_telegraph import (
     _section_to_nodes_v2,
     _build_toc_nodes_v2,
     _build_nav_nodes_v2,
-    _split_sections_smart,
     _create_telegraph_page_single,
     _final_telegraph_polish,
     _postprocess_telegraph_nodes,

@@ -15,12 +15,8 @@ reacting to noise.
 from __future__ import annotations
 
 from dataclasses import dataclass
-import sqlite3
 from core.database import _db_conn
 import time
-from typing import Any
-
-from core.globals import DB_PATH
 
 
 @dataclass(frozen=True)

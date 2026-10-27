@@ -15,8 +15,6 @@ Gemini Audio Analyzer — анализ аудио через Gemini API.
 """
 
 from core.globals import (
-    HAS_GEMINI,
-    GEMINI_API_KEY,
     GEMINI_CLIENTS,
     GEMINI_CLIENT_QUOTA_DOMAINS,
     is_quota_error,
