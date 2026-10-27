@@ -7,13 +7,8 @@ This module exposes shared calculations plus the still-separate generic prefligh
 
 from __future__ import annotations
 
-import json
 import re
-from collections.abc import MutableMapping
-from pathlib import Path
 from typing import Any
-
-from tools.voxcpm2 import direct_timing_guard
 
 POLICY = "voxcpm2-universal-production-hardening-v1"
 _PROGRESS_POLICY = "candidate-aware-project-progress-v1"

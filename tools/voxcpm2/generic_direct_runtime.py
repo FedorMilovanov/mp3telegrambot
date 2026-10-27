@@ -30,7 +30,6 @@ from tools.voxcpm2 import semantic_block_runtime
 from tools.voxcpm2 import generic_short_production as pipeline
 from tools.voxcpm2.generic_project_runtime import (
     _hardlink_or_copy,
-    _run_voxcpm_and_master,
     _telegram_entry,
     current_project_id,
     generate_russian_title,

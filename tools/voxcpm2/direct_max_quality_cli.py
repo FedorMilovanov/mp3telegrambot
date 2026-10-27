@@ -863,10 +863,7 @@ def _render_main() -> None:
 from tools.voxcpm2 import direct_universal_runtime as universal_runtime
 from tools.voxcpm2 import direct_surgical_runtime as surgical_runtime
 from tools.voxcpm2 import direct_final_audit_v3 as final_audit
-from tools.voxcpm2.direct_failure_recovery import (
-    POLICY as EARLY_STOP_RECOVERY_POLICY,
-    run_with_failure_recovery,
-)
+from tools.voxcpm2.direct_failure_recovery import run_with_failure_recovery
 
 UNIVERSAL_RUNTIME_POLICY = universal_runtime.POLICY
 _UNIVERSAL_STATE: dict[str, Any] = {
@@ -1553,9 +1550,6 @@ def prepare_reference(source: Path, output: Path, sf_module: Any) -> dict[str, A
 _BASE_ALL = tuple(globals().get("__all__", ()))
 
 from dataclasses import replace
-
-
-import types
 
 
 from tools.voxcpm2 import direct_monolith_contract
