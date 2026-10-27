@@ -1487,7 +1487,7 @@ async def _unowned_create_short_title_poster(
         from PIL import Image, ImageDraw, ImageFont
 
         ffmpeg = shutil.which("ffmpeg")
-        if not ffmpeg or not video_path.exists():
+        if not ffmpeg or not await asyncio.to_thread(_path_exists, video_path):
             return False
 
         seek_time = max(1.0, clip_duration_seconds * 0.25)
@@ -1508,8 +1508,9 @@ async def _unowned_create_short_title_poster(
             str(frame_path),
         ]
         proc = await run_cancellable_process(cmd, timeout=60, text=True)
-        if proc.returncode != 0 or not frame_path.exists() or frame_path.stat().st_size == 0:
-            frame_path.unlink(missing_ok=True)
+        frame_size = await asyncio.to_thread(_file_size_or_zero, frame_path) if proc.returncode == 0 else 0
+        if frame_size == 0:
+            await await_owned_coroutine(asyncio.to_thread(_unlink_missing, frame_path))
             return False
 
         def _draw_poster() -> bool:
@@ -1601,9 +1602,10 @@ async def _unowned_create_short_title_poster(
                 return False
 
         result = await await_owned_coroutine(asyncio.to_thread(_draw_poster))
-        frame_path.unlink(missing_ok=True)
+        await await_owned_coroutine(asyncio.to_thread(_unlink_missing, frame_path))
 
-        if result and poster_path.exists() and poster_path.stat().st_size > 0:
+        poster_size = await asyncio.to_thread(_file_size_or_zero, poster_path) if result else 0
+        if poster_size > 0:
             logger.info(f"Title poster: {poster_path.name}")
             return True
         return False
@@ -1631,7 +1633,7 @@ async def _unowned_create_short_snapshot(
         ffmpeg = shutil.which("ffmpeg")
         if not ffmpeg:
             return False
-        if not video_path.exists():
+        if not await asyncio.to_thread(_path_exists, video_path):
             return False
 
         seek_time = max(1.0, clip_duration_seconds * 0.30)
@@ -1649,7 +1651,8 @@ async def _unowned_create_short_snapshot(
             str(snapshot_path),
         ]
         proc = await run_cancellable_process(cmd, timeout=60, text=True)
-        if proc.returncode != 0 or not snapshot_path.exists() or snapshot_path.stat().st_size == 0:
+        snapshot_size = await asyncio.to_thread(_file_size_or_zero, snapshot_path) if proc.returncode == 0 else 0
+        if snapshot_size == 0:
             logger.warning(f"create_short_snapshot: не удалось извлечь кадр из {video_path.name}")
             return False
 

@@ -211,6 +211,10 @@
 - Async I/O, сорок третий `ASYNC240` slice: legacy Shorts transcribe/burn source
   checks, ASS cleanup и output validation используют workers; Russian Whisper и
   WAV/ASS cleanup подтверждены тестами, остаются 27 findings.
+- Async I/O, сорок четвёртый `ASYNC240` slice: Shorts poster/snapshot source,
+  frame cleanup и output validation используют workers;
+  `services/shorts_video_impl.py` и весь production/tools census очищены,
+  остаются 21 test finding.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):
