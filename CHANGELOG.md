@@ -201,6 +201,10 @@
 - Async I/O, сороковой `ASYNC240` slice: Factory evidence и download candidate
   discovery используют owned workers; mtime ordering, <=1080p validation и
   cancellation cleanup подтверждены тестами, остаются 61 finding.
+- Async I/O, сорок первый `ASYNC240` slice: Factory normalize/LONG source checks
+  и output cleanup используют owned workers; `-c:v copy`, NVENC→CPU fallback и
+  cancellation cleanup сохранены, `services/shorts_factory_video_quality.py`
+  очищен, остаются 47 findings.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):
