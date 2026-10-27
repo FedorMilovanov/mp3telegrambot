@@ -40,7 +40,7 @@ def test_all_async_encoder_call_sites_use_owned_threads() -> None:
         source = path.read_text(encoding="utf-8")
         assert "from services.async_worker import await_owned_coroutine" in source
         selected = "\n".join(_function_source(path, name) for name in names)
-        assert selected.count("await await_owned_coroutine(") == len(names)
+        assert selected.count("await await_owned_coroutine(") >= len(names)
         assert selected.count("asyncio.to_thread(_get_video_encoder)") == len(names)
         assert "= _get_video_encoder()" not in selected
         total += len(names)

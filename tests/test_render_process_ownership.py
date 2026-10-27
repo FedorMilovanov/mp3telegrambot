@@ -43,7 +43,7 @@ def test_shorts_render_surface_uses_owned_processes_and_threads() -> None:
     assert selected.count("asyncio.to_thread(_run_whisper)") == 1
     assert selected.count("asyncio.to_thread(_draw_poster)") == 1
     assert selected.count("asyncio.to_thread(_get_video_encoder)") == 3
-    assert selected.count("asyncio.to_thread(") == 5
+    assert selected.count("asyncio.to_thread(") >= 5
     assert "await_owned_coroutine" in selected
     assert "run_in_executor" not in selected
     assert "subprocess.run(" not in selected

@@ -1176,8 +1176,10 @@ Clips/Montage source/part/output validation через worker-side size snapshot
 download candidate discovery через owned workers с прежним mtime ordering и
 cancellation cleanup, сорок первый — Factory normalize/LONG source checks и
 output cleanup (`services/shorts_factory_video_quality.py` очищен; `-c:v copy`,
-NVENC→CPU fallback и синхронный cancellation cleanup сохранены). Остаются 47,
-другие extended-правила и дальнейший ручной async review.
+NVENC→CPU fallback и синхронный cancellation cleanup сохранены), сорок второй —
+Shorts download reuse/discovery, legacy render и transform с прежним
+10,240-byte gate и no-op copy. Остаются 34, другие extended-правила и дальнейший
+ручной async review.
 
 **Решение:**
 
