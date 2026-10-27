@@ -441,9 +441,6 @@ __all__ = [
 _BASE_ALL = tuple(globals().get("__all__", ()))
 
 
-import types
-
-
 _window_score = _window_score
 
 POLICY = "continuous-clean-reference-v3"

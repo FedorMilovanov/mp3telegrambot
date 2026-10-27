@@ -358,10 +358,6 @@ __all__ = ["POLICY", "detect_late_broadband_tail"]
 
 _BASE_ALL = tuple(globals().get("__all__", ()))
 
-from pathlib import Path
-
-import types
-
 
 POLICY = "late-broadband-tail-v5"
 

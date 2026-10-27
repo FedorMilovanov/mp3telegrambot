@@ -454,9 +454,6 @@ __all__ = [
 _BASE_ALL = tuple(globals().get("__all__", ()))
 
 
-import types
-
-
 ALIGNMENT_POLICY = "russian-reference-to-mixed-alignment-v2"
 
 
