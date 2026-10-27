@@ -348,7 +348,7 @@ async def status_command(update, context):
         _enc, _, _ = _get_video_encoder()
         lines.append(f"🎬 Энкодер: {html_mod.escape(str(_enc))}")
     except Exception:
-        pass
+        logger.debug("Encoder status unavailable; omitting encoder line", exc_info=True)
     try:
         from services.livedub_mix import get_mix_params as _ld_mix_params
         from core.database import current_livedub_file_id_cache_fingerprint as _ld_fingerprint
@@ -363,7 +363,7 @@ async def status_command(update, context):
             f"cache={html_mod.escape(str(_ld_fingerprint()))}"
         )
     except Exception:
-        pass
+        logger.debug("LiveDub status unavailable; omitting LiveDub line", exc_info=True)
     # API-режим
     _tg_proxy = bool(os.getenv("TELEGRAM_PROXY_URL", "").strip())
     _local_proxy = bool(

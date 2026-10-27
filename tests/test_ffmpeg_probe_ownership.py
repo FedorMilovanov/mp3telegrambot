@@ -114,3 +114,50 @@ async def test_language_probe_uses_owned_ytdlp_metadata(monkeypatch) -> None:
     command, kwargs = calls[0]
     assert command[-2:] == ["--dump-json", "https://example.invalid/video"]
     assert kwargs == {"timeout": 30, "text": True}
+
+
+def test_av1_probe_failure_falls_through_to_h264(monkeypatch) -> None:
+    monkeypatch.delenv("VIDEO_FORCE_CPU", raising=False)
+    monkeypatch.setattr(ffmpeg, "_VIDEO_ENCODER", None)
+    monkeypatch.setattr(ffmpeg.shutil, "which", lambda _name: "/usr/bin/ffmpeg")
+    calls: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        calls.append(list(command))
+        if "av1_nvenc" in command:
+            raise OSError("AV1 is unavailable")
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(ffmpeg.subprocess, "run", fake_run)
+
+    encoder, _quality, _preset = ffmpeg._get_video_encoder()
+
+    assert encoder == "h264_nvenc"
+    assert ["av1_nvenc" in command for command in calls] == [True, False]
+    assert "h264_nvenc" in calls[1]
+
+
+def test_h264_probe_failure_uses_cpu_fallback(monkeypatch) -> None:
+    monkeypatch.delenv("VIDEO_FORCE_CPU", raising=False)
+    monkeypatch.delenv("VIDEO_CPU_PRESET", raising=False)
+    monkeypatch.setattr(ffmpeg, "_VIDEO_ENCODER", None)
+    monkeypatch.setattr(ffmpeg.shutil, "which", lambda _name: "/usr/bin/ffmpeg")
+
+    def fake_run(command, **kwargs):
+        if "h264_nvenc" in command:
+            raise OSError("H.264 NVENC is unavailable")
+        return subprocess.CompletedProcess(command, 1)
+
+    monkeypatch.setattr(ffmpeg.subprocess, "run", fake_run)
+
+    assert ffmpeg._get_video_encoder() == ("libx264", ["-crf", "23"], ["-preset", "veryfast"])
+
+
+@pytest.mark.asyncio
+async def test_language_probe_failure_returns_none(monkeypatch) -> None:
+    async def fake_owner(command, **kwargs):
+        raise RuntimeError("metadata probe failed")
+
+    monkeypatch.setattr(ffmpeg, "run_cancellable_process", fake_owner)
+
+    assert await ffmpeg.probe_video_language("https://example.invalid/video") is None

@@ -1238,6 +1238,9 @@ SQL/prompt/f-string values, source-substring контракты и executable AS
 сохранены, JSON parsing сужен до `JSONDecodeError`, logging filter при сбое
 маскирования стал fail-closed. 708 focused tests зелёные. Остаются 312 extended
 находок, включая 42 `S110` и 97 `E402`.
+Diagnostic fallback slice удалил ещё пять `S110` в encoder/language probes и
+`/status`; NVENC→CPU, `None` и обязательные секции статуса сохранены. 75 focused
+tests зелёные. Текущий census — 307, включая 37 `S110`.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

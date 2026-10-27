@@ -422,7 +422,7 @@ def _get_video_encoder() -> tuple[str, list[str], list[str]]:
                 logger.info("Video encoder: av1_nvenc (NVIDIA AV1) ✅")
                 return "av1_nvenc", ["-rc", "vbr", "-cq", "25", "-b:v", "0", "-spatial-aq", "1"], ["-preset", "p5"]
         except Exception:
-            pass
+            logger.debug("AV1 NVENC probe failed; trying H.264 NVENC", exc_info=True)
 
         # Пробуем H264 NVENC
         try:
@@ -442,7 +442,7 @@ def _get_video_encoder() -> tuple[str, list[str], list[str]]:
                     ["-preset", "p5", "-tune", "hq"],
                 )
         except Exception:
-            pass
+            logger.debug("H.264 NVENC probe failed; using CPU encoder", exc_info=True)
 
     _VIDEO_ENCODER = "libx264"
     logger.info("Video encoder: libx264 (CPU fallback)")
@@ -652,7 +652,7 @@ async def probe_video_language(video_url: str) -> str | None:
                 # yt-dlp часто возвращает 'en', 'ru', 'de'
                 return str(lang).lower()
     except Exception:
-        pass
+        logger.debug("yt-dlp language probe failed; language is unknown", exc_info=True)
     return None
 
 
