@@ -289,6 +289,10 @@
 - Extended Ruff, пятый ручной `E501` slice: устранены 78 findings в 19 prompt
   string tokens; prompt values, source-substring контракт и executable AST
   сохранены, 573 focused tests зелёные. `E501` — 40, extended census — 366.
+- Extended Ruff, шестой ручной `E501` slice: последние 40 findings устранены в
+  27 string tokens в 14 modules; SQL/prompt/f-string values, source-substring
+  контракты и executable AST сохранены, 1099 focused tests зелёные (1 platform
+  skip). `E501` = 0, extended census — 326.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

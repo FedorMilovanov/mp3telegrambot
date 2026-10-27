@@ -305,10 +305,14 @@ def validate_factory_plan(
 
 
 def _scout_prompt(title: str, performer: str, duration: int, source_language: str) -> str:
-    return f"""
-Ты — главный редактор и режиссёр нарезки. Проанализируй ВСЮ аудиодорожку целиком и создай только план сильнейших самостоятельных видеофрагментов.
+    return (
+        f"""
+Ты — главный редактор и режиссёр нарезки. Проанализируй ВСЮ аудиодорожку целиком """
+        f"""и создай только план сильнейших самостоятельных видеофрагментов.
 
-Это режим SHORTS FACTORY MAX. Нельзя делать конспект, Telegraph-страницы, вопросы, общий пересказ или дешёвую поверхностную выборку. Задача — найти точные монтажные границы и лучшие законченные смысловые фрагменты.
+Это режим SHORTS FACTORY MAX. Нельзя делать конспект, Telegraph-страницы, """
+        f"""вопросы, общий пересказ или дешёвую поверхностную выборку. Задача — найти точные """
+        f"""монтажные границы и лучшие законченные смысловые фрагменты.
 
 ИСТОЧНИК:
 - исходное название: {title}
@@ -320,7 +324,8 @@ def _scout_prompt(title: str, performer: str, duration: int, source_language: st
 1. shorts_candidates: 5–8 сильных самостоятельных фрагментов длиной 35–177 секунд.
 2. long_candidates: 2–4 законченных смысловых фрагмента длиной 300–897 секунд.
 
-Почему потолок ниже публичных 180/900 секунд: рендер должен сохранить начало мысли и добавить полный хвост Яндекс LiveDub, не выходя за итоговые 3/15 минут.
+Почему потолок ниже публичных 180/900 секунд: рендер должен сохранить начало """
+        f"""мысли и добавить полный хвост Яндекс LiveDub, не выходя за итоговые 3/15 минут.
 
 КРИТЕРИИ КАЧЕСТВА:
 - прослушай весь материал, не выбирай только начало;
@@ -334,14 +339,19 @@ def _scout_prompt(title: str, performer: str, duration: int, source_language: st
 - start_seconds/end_seconds должны соответствовать реальному аудио, а не приблизительному таймлайну;
 - на первом проходе boundary_verified всегда false: финальное подтверждение выполняет отдельный аудитор.
 
-Верни СТРОГО JSON с полями metadata, shorts_candidates и long_candidates. Каждый кандидат содержит start_seconds, end_seconds, title_ru, hook_ru, reason_ru, kind, hashtags, quality_score, boundary_verified.
-""".strip()
+Верни СТРОГО JSON с полями metadata, shorts_candidates и long_candidates. Каждый """
+        f"""кандидат содержит start_seconds, end_seconds, title_ru, hook_ru, reason_ru, kind,"""
+        f""" hashtags, quality_score, boundary_verified.
+"""
+    ).strip()
 
 
 def _judge_prompt(scout_plan: dict[str, Any], duration: int) -> str:
     plan_json = json.dumps(scout_plan, ensure_ascii=False, separators=(",", ":"))
-    return f"""
-Ты — второй независимый старший редактор. Повторно прослушай исходную аудиодорожку и не доверяй первому плану автоматически.
+    return (
+        f"""
+Ты — второй независимый старший редактор. Повторно прослушай исходную """
+        f"""аудиодорожку и не доверяй первому плану автоматически.
 
 Длительность источника: {duration} секунд.
 ПЕРВИЧНЫЙ ПЛАН:
@@ -358,19 +368,22 @@ def _judge_prompt(scout_plan: dict[str, Any], duration: int) -> str:
 - не добавляй конспект, вопросы, Telegraph или материалы вне нарезки.
 
 Верни тот же строгий JSON-формат с metadata, shorts_candidates и long_candidates.
-""".strip()
+"""
+    ).strip()
 
 
 def _boundary_prompt(judged_plan: dict[str, Any], duration: int) -> str:
     plan_json = json.dumps(judged_plan, ensure_ascii=False, separators=(",", ":"))
-    return f"""
+    return (
+        f"""
 Ты — третий независимый аудитор монтажных границ. Это финальный контроль качества SHORTS FACTORY MAX.
 
 Длительность источника: {duration} секунд.
 ОТОБРАННЫЙ ПЛАН:
 {plan_json}
 
-Для КАЖДОГО кандидата заново прослушай минимум 12 секунд до start_seconds и 12 секунд после end_seconds, насколько позволяет источник.
+Для КАЖДОГО кандидата заново прослушай минимум 12 секунд до start_seconds и 12 """
+        f"""секунд после end_seconds, насколько позволяет источник.
 
 Обязательные действия:
 - начало должно включать подводку, необходимую для понимания, но не пустой переход;
@@ -384,7 +397,8 @@ def _boundary_prompt(judged_plan: dict[str, Any], duration: int) -> str:
 - не делай новый смысловой пересказ и не добавляй новые кандидаты вне отобранного плана.
 
 Верни тот же строгий JSON. В финальном ответе каждый сохранённый кандидат обязан иметь boundary_verified=true.
-""".strip()
+"""
+    ).strip()
 
 
 async def _wait_uploaded_file(client, uploaded):

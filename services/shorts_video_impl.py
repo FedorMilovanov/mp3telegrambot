@@ -1110,7 +1110,8 @@ def _get_whisper_model(model_size: str | None = None):
                 _whisper_model = _WM(model_size, device=_whisper_device, compute_type=_whisper_compute)
             except Exception as e:
                 logger.warning(
-                    f"Failed to load Whisper on {_whisper_device} with {_whisper_compute}. Fallback to CPU/int8. Error: {e}"
+                    f"Failed to load Whisper on {_whisper_device} with {_whisper_compute}. Fallback to "
+                    f"CPU/int8. Error: {e}"
                 )
                 _whisper_device = "cpu"
                 _whisper_compute = "int8"

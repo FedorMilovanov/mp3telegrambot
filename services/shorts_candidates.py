@@ -217,7 +217,8 @@ async def create_shorts_candidates(
             questions_block=f"- questions:\n{questions}\n" if questions.strip() else "",
             speed_limits=(
                 f"\n\nУСКОРЕНИЕ: видео будет ускорено в {speed}x раз. "
-                f"Выбирай фрагменты до {_shorts_max} секунд — после ускорения это станет {round(_shorts_max / speed)}s. "
+                f"Выбирай фрагменты до {_shorts_max} секунд — после ускорения это станет "
+                f"{round(_shorts_max / speed)}s. "
                 f"Желательный диапазон исходника: 35–{_ideal_max} секунд."
             )
             if _use_speed

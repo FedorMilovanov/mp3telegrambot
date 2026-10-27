@@ -38,10 +38,14 @@ async def _translate_chunk_with_retry(chunk_segs, prev_context=""):
     prompt_lines = [
         "You are an expert subtitle translator. Translate these English subtitle segments into Russian.",
         "Rules:",
-        "1. Preserve exact ID numbers from the input — output EXACTLY one JSON key per input ID, never merge two IDs into one.",
+        "1. Preserve exact ID numbers from the input — output EXACTLY one JSON key per "
+        "input ID, never merge two IDs into one.",
         "2. Ensure theological, technical, and colloquial terms are accurate and sound natural in Russian.",
-        "3. Keep each individual translation concise to fit nicely on a video screen (smooth out stutters WITHIN one segment's own text — never by dropping or merging a neighboring ID).",
-        "4. Output strictly a JSON object where keys are the IDs (as strings) and values are the translated Russian text.",
+        "3. Keep each individual translation concise to fit nicely on a video screen "
+        "(smooth out stutters WITHIN one segment's own text — "
+        "never by dropping or merging a neighboring ID).",
+        "4. Output strictly a JSON object where keys are the IDs (as strings) and values "
+        "are the translated Russian text.",
         "5. Do NOT output any markdown, explanations, or text outside the JSON object.",
     ]
     if prev_context:
@@ -383,7 +387,10 @@ async def _burn_subtitles(video_path: Path, srt_path: Path, ffmpeg: str) -> Path
     output_path = video_path.with_suffix(".sub.mp4")
     # ffmpeg subtitles= требует экранирования спецсимволов пути
     srt_arg = str(srt_path).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
-    style = "FontName=Arial,FontSize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,BorderStyle=3,Outline=1,Shadow=0,MarginV=20"
+    style = (
+        "FontName=Arial,FontSize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,"
+        "BorderStyle=3,Outline=1,Shadow=0,MarginV=20"
+    )
     # NVENC если доступен (у пользователя рабочий ASIC) — прожиг быстрее
     # и без нагрузки на CPU; качество формулы p5+hq уже выверено.
     from services.ffmpeg import _get_video_encoder
@@ -487,7 +494,8 @@ async def merge_subtitles(video_path: Path, srt_path: Path, is_fallback: bool = 
         return output_path
 
     logger.warning(
-        f"[EngSubtitles] Ошибка склейки субтитров (default flag). Пробуем без default. stderr: {proc.stderr[-300:] if proc.stderr else ''}"
+        f"[EngSubtitles] Ошибка склейки субтитров (default flag). Пробуем без default. "
+        f"stderr: {proc.stderr[-300:] if proc.stderr else ''}"
     )
 
     # Резервный fallback - без disposition и без mov_text если контейнер конфликтует

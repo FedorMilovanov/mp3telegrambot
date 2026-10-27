@@ -60,7 +60,8 @@ def get_gemini_task_health(task: str, *, hours: int = 24, min_samples: int = 3) 
                 SELECT COUNT(*) AS total,
                        SUM(CASE WHEN json_valid = 0 THEN 1 ELSE 0 END) AS json_invalid,
                        SUM(CASE WHEN error != '' THEN 1 ELSE 0 END) AS errors,
-                       SUM(CASE WHEN finish_reason LIKE '%MAX_TOKENS%' OR error = 'max_tokens' THEN 1 ELSE 0 END) AS max_tokens
+                       SUM(CASE WHEN finish_reason LIKE '%MAX_TOKENS%' OR error """
+                """= 'max_tokens' THEN 1 ELSE 0 END) AS max_tokens
                 FROM gemini_runs
                 WHERE ts >= ? AND task = ?
                 """,

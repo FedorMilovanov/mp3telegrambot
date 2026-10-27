@@ -247,7 +247,8 @@ async def _cmd_prepare(args: argparse.Namespace) -> int:
             timeline_metadata={
                 "original_srt": "source_timeline",
                 "russian_whisper": "source_video_timeline",
-                "note": "Manual prepare does not assume a provider delay; compare semantic sequence, not equal cue numbers.",
+                "note": "Manual prepare does not assume a provider delay; compare semantic sequence, not "
+                "equal cue numbers.",
             },
         )
     manifest = load_verified_review_pack(pack)
