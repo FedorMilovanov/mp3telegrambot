@@ -8,11 +8,8 @@ Tests for v3 minor-debt patch 2:
 
 import os
 import pathlib
-import sqlite3
 import subprocess
 import sys
-import tempfile
-import logging
 
 
 # ---------------------------------------------------------------------------

@@ -6,7 +6,6 @@
 (VK поймал 0.90). Причина — кэширование листинга, обрезанного ранним выходом.
 """
 
-import time
 from pathlib import Path
 
 import services.search as S

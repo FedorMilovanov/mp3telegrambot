@@ -4,10 +4,7 @@ V3 minor debt: normalize_hashtag was duplicated in shorts_candidates.py and
 json_parser.py.  Moved to core/text_utils as single source of truth.
 """
 
-import ast
 import pathlib
-
-import pytest
 
 from core.text_utils import normalize_hashtag
 

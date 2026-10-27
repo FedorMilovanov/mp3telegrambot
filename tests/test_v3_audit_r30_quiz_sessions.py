@@ -4,7 +4,6 @@
 счёт в конце. Продвижение через PollAnswerHandler.
 """
 
-import asyncio
 import types
 from pathlib import Path
 
