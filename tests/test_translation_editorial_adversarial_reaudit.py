@@ -11,7 +11,6 @@ from services.translation_editorial import build_review_pack, load_pack_manifest
 from services.translation_editorial_composition import (
     build_composition_template,
     refresh_composition_id,
-    validate_composition_document,
 )
 
 

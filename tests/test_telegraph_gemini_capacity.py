@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
-from core import globals as core_globals
 from services import gemini_capacity_control as control
 from services import gemini_router
 from services import telegraph_pages as telegraph

@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-from core.model_catalog import MODEL_PRIMARY, MODEL_UTILITY
+from core.model_catalog import MODEL_PRIMARY
 from services import env_policy, gemini_max_quality, livedub_quality_runtime
 
 ENV_EXAMPLE = Path(".env.example")

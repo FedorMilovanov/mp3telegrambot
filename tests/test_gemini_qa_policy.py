@@ -120,7 +120,6 @@ def test_explicit_emergency_escape_can_disable_confirmation(monkeypatch):
 def test_source_owned_runtime_routes_agree_on_gemini_38(monkeypatch):
     from core.model_catalog import (
         MODEL_PRIMARY,
-        MODEL_UTILITY,
         POLICY as CATALOG_POLICY,
     )
     from services.gemini_max_quality import configure_max_quality_env

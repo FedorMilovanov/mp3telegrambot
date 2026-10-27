@@ -101,6 +101,8 @@ def test_prompt_rules_module_exists():
     assert INLINE_TIMESTAMP_RULES, "INLINE_TIMESTAMP_RULES must not be empty"
     assert STRICT_BANS, "STRICT_BANS must not be empty"
     assert AUTHOR_NAMING_RULE, "AUTHOR_NAMING_RULE must not be empty"
+    assert JSON_OUTPUT_RULE, "JSON_OUTPUT_RULE must not be empty"
+    assert SECTION_TITLE_RULE, "SECTION_TITLE_RULE must not be empty"
 
 
 def test_prompt_rules_inline_timestamp_content():
@@ -139,6 +141,8 @@ def test_synopsis_v2_contains_shared_rules():
     # Content of shared rules must be embedded
     assert "ПРАВИЛО INLINE-ТАЙМКОДОВ" in SYNOPSIS_PROMPT_V2
     assert "СТРОГИЕ ЗАПРЕТЫ" in SYNOPSIS_PROMPT_V2
+    assert INLINE_TIMESTAMP_RULES in SYNOPSIS_PROMPT_V2
+    assert STRICT_BANS in SYNOPSIS_PROMPT_V2
 
 
 def test_synopsis_v2_format_still_works():

@@ -227,6 +227,9 @@
 - Extended Ruff, второй ручной `F401` slice: удалены ещё 17 stdlib imports
   в 14 test modules; project imports оставлены для отдельной проверки,
   `F401` снижен до 165, общий extended census — 676.
+- Extended Ruff, третий ручной `F401` slice: test-level census очищен;
+  устаревшие runtime-layout imports удалены, prompt constants связаны с явными
+  assertions. Общий `F401` — 152, extended census — 663.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

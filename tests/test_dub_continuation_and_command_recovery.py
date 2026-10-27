@@ -7,7 +7,6 @@ from handlers.dub_multicommand import (
     STALE_CARD_POLICY,
     parse_dub_command_lines,
 )
-from tools.voxcpm2 import direct_max_quality_render
 from tools.voxcpm2.direct_source_prosody import _defer_short_continuation
 from tools.voxcpm2.direct_timeline_compaction import (
     MIN_COMPACTION_GAP_SECONDS,

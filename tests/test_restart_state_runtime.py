@@ -7,7 +7,6 @@ from types import SimpleNamespace
 
 from services import bot_lifecycle
 from services import livedub_delivery_coordinator as delivery
-from services import operator_runtime_status as operator_status
 from services import restart_state_runtime as restart
 
 
