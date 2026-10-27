@@ -1209,9 +1209,11 @@ modules; `DEFAULT_MODEL_PROFILE_ID` и availability-loaded `WhisperModel`
 зелёные. Десятый slice удалил 18 unused imports из command/callback handlers;
 351 focused test зелёный. Одиннадцатый slice удалил 12 unused imports в пяти
 VoxCPM2 runtime modules; alias-aware AST подтвердил и сохранил три surgical
-facade-импорта. 193 focused tests зелёные. Остаются 560 extended находок,
-включая 51 `F401` и 108 `E402`. Lazy imports и security-правила разбираются
-отдельно, без autofix.
+facade-импорта. 193 focused tests зелёные. Двенадцатый slice удалил семь
+unused imports в repo/VoxCPM2 tools; публичный `clean_production_core.subprocess`
+сохранён как explicit re-export, 226 focused tests зелёные. Остаются 552
+extended находки, включая 43 `F401` и 108 `E402`. Lazy imports и
+security-правила разбираются отдельно, без autofix.
 
 **Решение:**
 

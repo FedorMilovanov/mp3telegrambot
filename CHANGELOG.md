@@ -255,6 +255,9 @@
 - Extended Ruff, одиннадцатый ручной `F401` slice: удалены 12 unused imports в
   пяти VoxCPM2 runtime modules; три используемых surgical facade-импорта
   сохранены. `F401` — 51, `E402` — 108, extended census — 560.
+- Extended Ruff, двенадцатый ручной `F401` slice: удалены семь unused imports в
+  repo/VoxCPM2 tools; публичный `clean_production_core.subprocess` сохранён как
+  explicit re-export. `F401` — 43, extended census — 552.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):
