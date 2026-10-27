@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from services.async_process import run_cancellable_process
+from services.async_worker import await_owned_coroutine
 from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
 from services.translation_editorial import sha256_file
 from services.translation_editorial_repair_provenance import verify_repair_provenance
@@ -498,6 +499,10 @@ def _file_size_or_zero(path: Path) -> int:
     return path.stat().st_size if path.exists() else 0
 
 
+def _resolved_local_paths(source_path: Path, output_path: Path) -> tuple[str, str]:
+    return str(source_path.resolve(strict=False)), str(output_path.resolve(strict=False))
+
+
 async def _verify_source(document: dict[str, Any]) -> tuple[Path, float]:
     source = document["source"]
     path = Path(str(source["local_path"]))
@@ -606,6 +611,26 @@ def _publish_new_file(temp_path: Path, final_path: Path) -> None:
         temp_path.unlink(missing_ok=True)
 
 
+def _publish_composition_result(
+    temp_sidecar: Path,
+    sidecar_path: Path,
+    temp_output: Path,
+    output_path: Path,
+    payload: str,
+) -> None:
+    temp_sidecar.write_text(payload, encoding="utf-8")
+    try:
+        with sidecar_path.open("x", encoding="utf-8") as stream:
+            stream.write(temp_sidecar.read_text(encoding="utf-8"))
+        try:
+            _publish_new_file(temp_output, output_path)
+        except Exception:
+            sidecar_path.unlink(missing_ok=True)
+            raise
+    finally:
+        temp_sidecar.unlink(missing_ok=True)
+
+
 async def _render_piece(
     document: dict[str, Any],
     piece: dict[str, Any],
@@ -632,7 +657,8 @@ async def _render_piece(
     fd, temp_name = tempfile.mkstemp(prefix=f".{safe_name}_", suffix=".mp4", dir=output_dir)
     os.close(fd)
     temp_output = Path(temp_name)
-    temp_output.unlink(missing_ok=True)
+    # No await here: the outer cleanup owner is not established until both temp files exist.
+    temp_output.unlink(missing_ok=True)  # noqa: ASYNC240
     fd, temp_sidecar_name = tempfile.mkstemp(
         prefix=f".{safe_name}_",
         suffix=".provenance.tmp",
@@ -671,7 +697,8 @@ async def _render_piece(
             str(temp_output),
         ]
         result = await run_cancellable_process(command, timeout=7200, text=True)
-        if result.returncode != 0 or not temp_output.exists() or temp_output.stat().st_size <= 1024:
+        output_size = await asyncio.to_thread(_file_size_or_zero, temp_output) if result.returncode == 0 else 0
+        if output_size <= 1024:
             raise RuntimeError(f"ffmpeg composition failed for {piece_id}")
         probe = await probe_media_async(temp_output)
         if not media_probe_is_deliverable(probe):
@@ -684,39 +711,41 @@ async def _render_piece(
                 f"actual={probe.duration:.3f}s"
             )
         output_sha = await asyncio.to_thread(sha256_file, temp_output)
+        source_local_path, output_local_path = await asyncio.to_thread(
+            _resolved_local_paths,
+            source_path,
+            output_path,
+        )
         provenance = {
             "schema_name": RESULT_SCHEMA_NAME,
             "schema_version": RESULT_SCHEMA_VERSION,
             "composition_id": document["composition_id"],
             "piece": _piece_media_payload(piece),
             "source": {
-                "local_path": str(source_path.resolve(strict=False)),
+                "local_path": source_local_path,
                 "sha256": document["source"]["sha256"],
                 "bytes": document["source"]["bytes"],
                 "duration_seconds": round(source_duration, 3),
             },
             "output": {
-                "local_path": str(output_path.resolve(strict=False)),
+                "local_path": output_local_path,
                 "sha256": output_sha,
-                "bytes": temp_output.stat().st_size,
+                "bytes": output_size,
                 "duration_seconds": round(float(probe.duration), 3),
             },
         }
         provenance["result_id"] = _canonical_sha256(_result_identity_payload(provenance))
-        temp_sidecar.write_text(
-            json.dumps(provenance, ensure_ascii=False, indent=2, allow_nan=False),
-            encoding="utf-8",
+        payload = json.dumps(provenance, ensure_ascii=False, indent=2, allow_nan=False)
+        await await_owned_coroutine(
+            asyncio.to_thread(
+                _publish_composition_result,
+                temp_sidecar,
+                sidecar_path,
+                temp_output,
+                output_path,
+                payload,
+            )
         )
-        try:
-            with sidecar_path.open("x", encoding="utf-8") as stream:
-                stream.write(temp_sidecar.read_text(encoding="utf-8"))
-            try:
-                _publish_new_file(temp_output, output_path)
-            except Exception:
-                sidecar_path.unlink(missing_ok=True)
-                raise
-        finally:
-            temp_sidecar.unlink(missing_ok=True)
         return await asyncio.to_thread(
             _load_verified_existing_result,
             document,
@@ -725,8 +754,9 @@ async def _render_piece(
             sidecar_path,
         )
     finally:
-        temp_output.unlink(missing_ok=True)
-        temp_sidecar.unlink(missing_ok=True)
+        # Owned publication has finished; cancellation must not skip either cleanup.
+        temp_output.unlink(missing_ok=True)  # noqa: ASYNC240
+        temp_sidecar.unlink(missing_ok=True)  # noqa: ASYNC240
 
 
 async def render_composition(

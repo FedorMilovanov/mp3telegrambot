@@ -1168,7 +1168,9 @@ cleanup сохранён с точечными `noqa`; `services/translation_edi
 тридцать шестой — Highlights render validation и failure cleanup через owned
 workers (cancellation cleanup сохранён синхронным;
 `services/highlights_quality.py` очищен), тридцать седьмой — composition source
-size/missing checks через один worker snapshot. Остаются 87, другие
+size/missing checks через один worker snapshot, тридцать восьмой — composition
+render validation, provenance paths и атомарная sidecar+media публикация
+(`services/translation_editorial_composition.py` очищен). Остаются 77, другие
 extended-правила и дальнейший ручной async review.
 
 **Решение:**
