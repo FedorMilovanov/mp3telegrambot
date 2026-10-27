@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from services.async_process import run_cancellable_process
+from services.async_worker import await_owned_coroutine
 from services.ffmpeg import YTDLP_BASE_ARGS, _find_silence_end
 from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
 
@@ -27,6 +28,31 @@ logger = logging.getLogger(__name__)
 
 FACTORY_VIDEO_FORMAT = "bestvideo[height<=1080]+bestaudio/best[height<=1080]"
 _H264_NVENC_AVAILABLE: bool | None = None
+
+
+def _path_is_file(path: Path) -> bool:
+    return path.is_file()
+
+
+def _file_size_or_zero(path: Path) -> int:
+    return path.stat().st_size if path.is_file() else 0
+
+
+def _remove_factory_downloads(target_dir: Path, prefix: str, source: Any) -> None:
+    source._remove_paths(target_dir.glob(f"{prefix}.*"))
+
+
+def _prepare_factory_download(target_dir: Path, prefix: str, source: Any) -> None:
+    target_dir.mkdir(parents=True, exist_ok=True)
+    _remove_factory_downloads(target_dir, prefix, source)
+
+
+def _factory_download_candidates(target_dir: Path, prefix: str, source: Any) -> list[Path]:
+    return sorted(
+        (path for path in target_dir.glob(f"{prefix}.*") if path.is_file() and not source._partial_media(path)),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
 
 
 def factory_normalize_only_uses_video_copy(
@@ -44,7 +70,7 @@ def factory_normalize_only_uses_video_copy(
 
 async def _ffprobe_evidence(path: Path) -> dict[str, Any]:
     ffprobe = shutil.which("ffprobe")
-    if not ffprobe or not path.is_file():
+    if not ffprobe or not await await_owned_coroutine(asyncio.to_thread(_path_is_file, path)):
         return {}
     command = [
         ffprobe,
@@ -105,7 +131,7 @@ async def log_factory_media_evidence(
         bitrate = int(float(fmt.get("bit_rate") or 0.0))
     except (TypeError, ValueError):
         bitrate = 0
-    size = path.stat().st_size if path.is_file() else 0
+    size = await await_owned_coroutine(asyncio.to_thread(_file_size_or_zero, path))
     stages = f" video_encode_stages={video_encode_stages}" if video_encode_stages is not None else ""
     logger.info(
         "Factory media evidence [%s]: file=%s resolution=%sx%s codec=%s fps=%s "
@@ -132,9 +158,8 @@ async def download_factory_video_1080(
     import services.shorts_factory_source as source
 
     target_dir = Path(workdir) if workdir is not None else source.DOWNLOAD_DIR
-    target_dir.mkdir(parents=True, exist_ok=True)
     prefix = f"{media_id}_factory_max_source"
-    source._remove_paths(target_dir.glob(f"{prefix}.*"))
+    await await_owned_coroutine(asyncio.to_thread(_prepare_factory_download, target_dir, prefix, source))
     output_template = target_dir / f"{prefix}.%(ext)s"
     command = (
         list(YTDLP_BASE_ARGS)
@@ -158,10 +183,8 @@ async def download_factory_video_1080(
         )
         if process.returncode != 0:
             raise RuntimeError("yt-dlp Factory <=1080p source download failed: " + source._stderr_tail(process))
-        candidates = sorted(
-            (path for path in target_dir.glob(f"{prefix}.*") if path.is_file() and not source._partial_media(path)),
-            key=lambda path: path.stat().st_mtime,
-            reverse=True,
+        candidates = await await_owned_coroutine(
+            asyncio.to_thread(_factory_download_candidates, target_dir, prefix, source)
         )
         for path in candidates:
             probe = await probe_media_async(path)
@@ -178,7 +201,8 @@ async def download_factory_video_1080(
             return path
         raise RuntimeError("yt-dlp completed without a verified Factory video+audio master <=1080p")
     except BaseException:
-        source._remove_paths(target_dir.glob(f"{prefix}.*"))
+        # Keep cancellation cleanup synchronous; no download worker remains active here.
+        _remove_factory_downloads(target_dir, prefix, source)
         raise
 
 
@@ -308,8 +332,6 @@ def _h264_nvenc_available_sync(ffmpeg: str) -> bool:
 async def _factory_h264_encoder(
     ffmpeg: str,
 ) -> tuple[str, list[str], list[str]]:
-    from services.async_worker import await_owned_coroutine
-
     has_nvenc = await await_owned_coroutine(asyncio.to_thread(_h264_nvenc_available_sync, ffmpeg))
     if has_nvenc:
         quality, preset = factory_h264_nvenc_quality_args()
