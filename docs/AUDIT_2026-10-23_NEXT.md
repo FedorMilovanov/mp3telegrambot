@@ -1222,7 +1222,9 @@ facade через explicit re-export/assignment и executed identity-contract;
 и executed identity-contract. `F401` = 0 и включён в обычный gate; 969 focused
 tests зелёных. Первый `E501` slice перенёс 24 overlong lines в десяти test
 modules с JSON/literal-equivalence проверками; 83 focused tests зелёные.
-Остаются 474 extended находки, включая 148 `E501` и 97 `E402`.
+Второй slice перенёс девять string/f-string lines в пяти `core` modules без
+изменения executable AST; 372 focused tests зелёные. Остаются 465 extended
+находок, включая 139 `E501` и 97 `E402`.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

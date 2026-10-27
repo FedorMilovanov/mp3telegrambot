@@ -204,6 +204,7 @@ def format_prompt_health_report() -> str:
             lines.append("leaky_literals: <code>" + ", ".join(item.leaky_literals[:5]) + "</code>")
     lines.append("")
     lines.append(
-        "Цель: постепенно снижать ratio, дубли финальных проверок и leaky_literals, не удаляя production guardrails без тестов."
+        "Цель: постепенно снижать ratio, дубли финальных проверок и leaky_literals, "
+        "не удаляя production guardrails без тестов."
     )
     return "\n".join(lines)

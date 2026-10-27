@@ -277,6 +277,9 @@
   десяти test modules; JSON fixtures сохранили parsed values, остальные strings
   проверены literal-equivalence. 83 focused tests зелёные. `E501` — 148,
   extended census — 474.
+- Extended Ruff, второй ручной `E501` slice: перенесены девять string/f-string
+  lines в пяти `core` modules; executable AST не изменился, 372 focused tests
+  зелёные. `E501` — 139, extended census — 465.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

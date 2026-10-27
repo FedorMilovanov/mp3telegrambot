@@ -243,7 +243,8 @@ def audit_synopsis_density(
             issues.append(
                 SynopsisQualityIssue(
                     "synopsis_author_voice_low",
-                    f"author_voice_markers={voice_markers} below minimum {min_voice}; preserve quotes, names, dates, examples",
+                    f"author_voice_markers={voice_markers} below minimum {min_voice}; "
+                    f"preserve quotes, names, dates, examples",
                 )
             )
     return issues

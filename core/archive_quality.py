@@ -325,7 +325,8 @@ def format_archive_quality_report(*, limit: int = 50, base_dir: Path | None = No
             fmt = ",".join(profile.formats)
             lines.append(
                 f"- {_h(profile.author)}: records=<code>{profile.total}</code> "
-                f"warnings=<code>{profile.warning_total}</code> formats=<code>{_h(fmt)}</code> — {_h(profile.recommendation)}"
+                f"warnings=<code>{profile.warning_total}</code> formats=<code>{_h(fmt)}</code> "
+                f"— {_h(profile.recommendation)}"
             )
     else:
         lines.append("- no author profile data")
@@ -412,7 +413,8 @@ def format_prompt_variant_comparison(
     lines = [
         "🧪 <b>Prompt variant comparison</b>",
         "",
-        f"left=<code>{_h(_norm(left_variant, 'default'))}</code> right=<code>{_h(_norm(right_variant, 'default'))}</code> records_limit=<code>{limit}</code>",
+        f"left=<code>{_h(_norm(left_variant, 'default'))}</code> "
+        f"right=<code>{_h(_norm(right_variant, 'default'))}</code> records_limit=<code>{limit}</code>",
     ]
     if not cmp.left or not cmp.right:
         lines.append("⚠️ " + _h(cmp.recommendation))
@@ -439,7 +441,8 @@ def format_prompt_variant_comparison(
     lines.append("Recommendation: " + _h(cmp.recommendation))
     lines.append("")
     lines.append(
-        "Archive warnings are a filter, not a final judge: always inspect sample pages manually before promoting a variant."
+        "Archive warnings are a filter, not a final judge: always inspect sample pages manually "
+        "before promoting a variant."
     )
     return "\n".join(lines)
 
@@ -656,12 +659,14 @@ def format_quality_records_report(
         lines.append(
             f"{idx}. <b>{_h(item.title)}</b> — {_h(item.author)}\n"
             f"   video=<code>{_h(item.video_id)}</code> variant=<code>{_h(item.prompt_variant)}</code> "
-            f"status=<code>{_h(item.publication_status)}</code> segments=<code>{_h(item.segments_status)}</code>{cov}{trim}\n"
+            f"status=<code>{_h(item.publication_status)}</code> "
+            f"segments=<code>{_h(item.segments_status)}</code>{cov}{trim}\n"
             f"   warnings=<code>{_h(warning_text)}</code>" + (f"\n   {link_text}" if link_text else "")
         )
     lines.append("")
     lines.append(
-        "Use /repairpage for deterministic Telegraph repair, or rerun with a prompt variant after inspecting the linked pages."
+        "Use /repairpage for deterministic Telegraph repair, or rerun with a prompt variant "
+        "after inspecting the linked pages."
     )
     return "\n".join(lines)
 
