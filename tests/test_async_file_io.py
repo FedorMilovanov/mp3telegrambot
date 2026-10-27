@@ -490,6 +490,157 @@ async def test_composition_source_rejects_size_drift_before_hash_or_probe(monkey
     probe.assert_not_called()
 
 
+def _composition_render_inputs(tmp_path: Path):
+    source_path = _write_file(tmp_path / "source.mp4", b"source" * 400)
+    document = {
+        "composition_id": "composition-id",
+        "source": {
+            "local_path": str(source_path),
+            "sha256": translation_editorial.sha256_file(source_path),
+            "bytes": 2400,
+            "duration_seconds": 30.0,
+        },
+    }
+    piece = {
+        "piece_id": "short-1",
+        "kind": "short",
+        "assembly_mode": "continuous",
+        "segments": [{"start_seconds": 0.0, "end_seconds": 10.0}],
+    }
+    return source_path, document, piece
+
+
+def _patch_composition_render_probe(monkeypatch):
+    probe = AsyncMock(return_value=SimpleNamespace(duration=10.0))
+    monkeypatch.setattr(editorial_composition, "probe_media_async", probe)
+    monkeypatch.setattr(editorial_composition, "media_probe_is_deliverable", lambda value: value is not None)
+    return probe
+
+
+@pytest.mark.asyncio
+async def test_composition_render_publishes_verified_output_and_cleans_temps(monkeypatch, tmp_path: Path) -> None:
+    source_path, document, piece = _composition_render_inputs(tmp_path)
+
+    async def run(command, **_kwargs):
+        _write_file(Path(command[-1]), b"rendered" * 300)
+        return SimpleNamespace(returncode=0, stderr="")
+
+    monkeypatch.setattr(editorial_composition, "run_cancellable_process", run)
+    _patch_composition_render_probe(monkeypatch)
+
+    result = await editorial_composition._render_piece(
+        document,
+        piece,
+        source_path=source_path,
+        source_duration=30.0,
+        output_dir=tmp_path,
+        ffmpeg="ffmpeg",
+    )
+
+    output_path = tmp_path / "short-1.mp4"
+    sidecar_path = tmp_path / "short-1.provenance.json"
+    assert result["piece_id"] == "short-1"
+    assert result["output_path"] == str(output_path)
+    assert result["provenance_path"] == str(sidecar_path)
+    assert result["output_bytes"] == 2400
+    assert _read_bytes(output_path) == b"rendered" * 300
+    assert json.loads(_read_text(sidecar_path))["output"]["bytes"] == 2400
+    assert not _matching_paths(tmp_path, ".short-1_*")
+
+
+@pytest.mark.parametrize(
+    ("payload", "returncode"),
+    [(None, 0), (b"", 0), (b"x" * 1024, 0), (b"x" * 2048, 1)],
+    ids=["missing", "empty", "threshold", "nonzero-return"],
+)
+@pytest.mark.asyncio
+async def test_composition_render_rejects_invalid_media_and_cleans_temps(
+    monkeypatch,
+    tmp_path: Path,
+    payload: bytes | None,
+    returncode: int,
+) -> None:
+    source_path, document, piece = _composition_render_inputs(tmp_path)
+
+    async def run(command, **_kwargs):
+        if payload is not None:
+            _write_file(Path(command[-1]), payload)
+        return SimpleNamespace(returncode=returncode, stderr="failed")
+
+    monkeypatch.setattr(editorial_composition, "run_cancellable_process", run)
+    probe = _patch_composition_render_probe(monkeypatch)
+
+    with pytest.raises(RuntimeError, match="ffmpeg composition failed"):
+        await editorial_composition._render_piece(
+            document,
+            piece,
+            source_path=source_path,
+            source_duration=30.0,
+            output_dir=tmp_path,
+            ffmpeg="ffmpeg",
+        )
+
+    probe.assert_not_called()
+    assert not _path_exists(tmp_path / "short-1.mp4")
+    assert not _path_exists(tmp_path / "short-1.provenance.json")
+    assert not _matching_paths(tmp_path, ".short-1_*")
+
+
+@pytest.mark.asyncio
+async def test_composition_render_cancellation_cleans_temps(monkeypatch, tmp_path: Path) -> None:
+    source_path, document, piece = _composition_render_inputs(tmp_path)
+
+    async def run(command, **_kwargs):
+        _write_file(Path(command[-1]), b"partial")
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(editorial_composition, "run_cancellable_process", run)
+
+    with pytest.raises(asyncio.CancelledError):
+        await editorial_composition._render_piece(
+            document,
+            piece,
+            source_path=source_path,
+            source_duration=30.0,
+            output_dir=tmp_path,
+            ffmpeg="ffmpeg",
+        )
+
+    assert not _path_exists(tmp_path / "short-1.mp4")
+    assert not _path_exists(tmp_path / "short-1.provenance.json")
+    assert not _matching_paths(tmp_path, ".short-1_*")
+
+
+@pytest.mark.asyncio
+async def test_composition_publish_failure_removes_new_sidecar_and_temps(monkeypatch, tmp_path: Path) -> None:
+    source_path, document, piece = _composition_render_inputs(tmp_path)
+
+    async def run(command, **_kwargs):
+        _write_file(Path(command[-1]), b"rendered" * 300)
+        return SimpleNamespace(returncode=0, stderr="")
+
+    def fail_publish(_temp_path, _final_path):
+        raise RuntimeError("publish failed")
+
+    monkeypatch.setattr(editorial_composition, "run_cancellable_process", run)
+    monkeypatch.setattr(editorial_composition, "_publish_new_file", fail_publish)
+    _patch_composition_render_probe(monkeypatch)
+
+    with pytest.raises(RuntimeError, match="publish failed"):
+        await editorial_composition._render_piece(
+            document,
+            piece,
+            source_path=source_path,
+            source_duration=30.0,
+            output_dir=tmp_path,
+            ffmpeg="ffmpeg",
+        )
+
+    assert not _path_exists(tmp_path / "short-1.mp4")
+    assert not _path_exists(tmp_path / "short-1.provenance.json")
+    assert not _matching_paths(tmp_path, ".short-1_*")
+
+
 def _patch_highlights_render_runtime(monkeypatch, run) -> None:
     monkeypatch.setattr(highlights_quality.shutil, "which", lambda _name: "ffmpeg")
     monkeypatch.setattr(

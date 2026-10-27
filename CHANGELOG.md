@@ -190,6 +190,10 @@
 - Async I/O, тридцать седьмой `ASYNC240` slice: composition source size/missing
   checks используют один worker snapshot; missing/threshold/size-drift paths
   подтверждены тестами, остаются 87 findings.
+- Async I/O, тридцать восьмой `ASYNC240` slice: composition render validation,
+  provenance paths и атомарная sidecar+media публикация переведены в workers;
+  cancellation-safe temp cleanup сохранён, `services/translation_editorial_composition.py`
+  очищен, остаются 77 findings.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):
