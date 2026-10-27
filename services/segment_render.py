@@ -11,7 +11,6 @@ import contextlib
 import html as html_mod
 import logging
 import uuid
-from pathlib import Path
 
 from core.database import asettings_get, get_max_file_size_mb
 from core.globals import DOWNLOAD_DIR

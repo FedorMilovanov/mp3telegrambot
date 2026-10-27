@@ -15,7 +15,6 @@ import os
 import re
 import socket
 import sqlite3
-import sys
 import time
 import uuid
 from contextlib import contextmanager
