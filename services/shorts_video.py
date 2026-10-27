@@ -69,6 +69,14 @@ def _finite_ceiling(value: float | int | None) -> float | None:
     return parsed if math.isfinite(parsed) else None
 
 
+def _path_exists(path: Path) -> bool:
+    return path.exists()
+
+
+def _file_is_nonempty(path: Path) -> bool:
+    return path.exists() and path.stat().st_size > 0
+
+
 async def download_video_for_shorts(
     url: str,
     media_id: str,
@@ -298,7 +306,7 @@ def _normalize_only_can_copy_video(*, normalize_audio: bool, speed: float) -> bo
 
 async def _normalize_audio_copy_video(input_path: Path, output_path: Path) -> bool:
     ffmpeg = _impl.shutil.which("ffmpeg")
-    if not ffmpeg or not input_path.exists():
+    if not ffmpeg or not await asyncio.to_thread(_path_exists, input_path):
         return False
     command = [
         ffmpeg,
@@ -328,7 +336,7 @@ async def _normalize_audio_copy_video(input_path: Path, output_path: Path) -> bo
             (process.stderr or "")[-800:],
         )
         return False
-    return output_path.exists() and output_path.stat().st_size > 0
+    return await asyncio.to_thread(_file_is_nonempty, output_path)
 
 
 async def _owned_short_transform(
@@ -347,7 +355,7 @@ async def _owned_short_transform(
     no_op = not normalize_audio and abs(speed_value - 1.0) <= 0.01
     if same_path:
         if no_op:
-            return input_path.exists() and input_path.stat().st_size > 0
+            return await asyncio.to_thread(_file_is_nonempty, input_path)
         _impl.logger.warning("postprocess_short: input_path and output_path must differ for transforms")
         return False
 
@@ -379,7 +387,7 @@ async def _owned_short_transform(
         _unlink_short_paths(output_path, protected=(input_path,))
         return False
 
-    if not result or not output_path.exists() or output_path.stat().st_size == 0:
+    if not result or not await asyncio.to_thread(_file_is_nonempty, output_path):
         _unlink_short_paths(output_path, protected=(input_path,))
         return False
     return True
