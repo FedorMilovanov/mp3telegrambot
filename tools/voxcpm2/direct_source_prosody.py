@@ -225,10 +225,6 @@ __all__ = [
 
 _BASE_ALL = tuple(globals().get("__all__", ()))
 
-from pathlib import Path
-
-import types
-
 
 from tools.voxcpm2 import source_prosody_policy
 

@@ -420,9 +420,6 @@ __all__ = [
 _BASE_ALL = tuple(globals().get("__all__", ()))
 
 
-import types
-
-
 from tools.voxcpm2 import direct_source_relative_continuity
 
 RESUME_POLICY = "nearest-accepted-checkpoint-identity-v1"

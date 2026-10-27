@@ -442,8 +442,6 @@ _BASE_ALL = tuple(globals().get("__all__", ()))
 
 import re
 
-import types
-
 
 from tools.voxcpm2 import russian_pronunciation
 

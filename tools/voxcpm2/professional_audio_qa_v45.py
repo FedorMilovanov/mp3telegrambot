@@ -354,9 +354,6 @@ def verify_timeline_v45(
 _BASE_ALL = tuple(globals().get("__all__", ()))
 
 
-import types
-
-
 from tools.voxcpm2 import timeline_onset_repair
 
 TIMING_REPAIR_POLICY = "cheap-timeline-onset-before-resynthesis-v1"

@@ -393,8 +393,6 @@ _BASE_ALL = tuple(globals().get("__all__", ()))
 
 import re
 
-from pathlib import Path
-
 
 from tools.voxcpm2 import source_prosody_policy
 
