@@ -205,6 +205,9 @@
   и output cleanup используют owned workers; `-c:v copy`, NVENC→CPU fallback и
   cancellation cleanup сохранены, `services/shorts_factory_video_quality.py`
   очищен, остаются 47 findings.
+- Async I/O, сорок второй `ASYNC240` slice: Shorts download reuse/discovery,
+  legacy render и transform используют workers; 10,240-byte gate и no-op copy
+  подтверждены тестами, остаются 34 findings.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

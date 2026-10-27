@@ -49,6 +49,31 @@ def _pick_video_file(media_id: str) -> Path | None:
     return None
 
 
+def _path_exists(path: Path) -> bool:
+    return path.exists()
+
+
+def _file_size_or_zero(path: Path) -> int:
+    return path.stat().st_size if path.exists() else 0
+
+
+def _unlink_missing(path: Path) -> None:
+    path.unlink(missing_ok=True)
+
+
+def _find_reusable_workdir_video(workdir: Path) -> Path | None:
+    if not workdir.exists():
+        return None
+    from services.eng_subtitles import _has_video_stream
+
+    for existing in workdir.glob("original_video.*"):
+        if existing.suffix.lower() in {".part", ".ytdl"}:
+            continue
+        if existing.is_file() and _has_video_stream(existing):
+            return existing
+    return None
+
+
 async def _unowned_download_video_for_shorts(url: str, media_id: str, workdir: Path | None = None) -> Path | None:
     """
     Скачивает видео в mp4 для вырезки Shorts.
@@ -60,17 +85,13 @@ async def _unowned_download_video_for_shorts(url: str, media_id: str, workdir: P
     # FIX AUDIT R4: пропускаем недокачанные (.part/.ytdl) и audio-only файлы
     # (original_video.f140.m4a) — как download_original_video в eng_subtitles,
     # иначе рендер шорта падал на crop-фильтре или выходил обрезанным.
-    if workdir and workdir.exists():
-        from services.eng_subtitles import _has_video_stream
+    if workdir is not None:
+        reusable = await await_owned_coroutine(asyncio.to_thread(_find_reusable_workdir_video, workdir))
+        if reusable is not None:
+            logger.info(f"Shorts reuse video from workdir: {reusable.name}")
+            return reusable
 
-        for existing in workdir.glob("original_video.*"):
-            if existing.suffix.lower() in {".part", ".ytdl"}:
-                continue
-            if existing.is_file() and _has_video_stream(existing):
-                logger.info(f"Shorts reuse video from workdir: {existing.name}")
-                return existing
-
-    existing = _pick_video_file(media_id)
+    existing = await await_owned_coroutine(asyncio.to_thread(_pick_video_file, media_id))
     if existing:
         return existing
     try:
@@ -88,7 +109,7 @@ async def _unowned_download_video_for_shorts(url: str, media_id: str, workdir: P
         if proc.returncode != 0:
             logger.warning(f"Shorts video download failed: {proc.stderr[-300:]}")
             return None
-        return _pick_video_file(media_id)
+        return await await_owned_coroutine(asyncio.to_thread(_pick_video_file, media_id))
     except Exception as e:
         logger.warning(f"Shorts download_video error: {e}")
         return None
@@ -151,7 +172,7 @@ async def _unowned_render_short_clip(
             logger.warning("render_short_clip: ffmpeg не найден")
             return False
 
-        if not source_video_path.exists():
+        if not await asyncio.to_thread(_path_exists, source_video_path):
             logger.warning(f"render_short_clip: исходный файл не найден: {source_video_path}")
             return False
 
@@ -270,26 +291,24 @@ async def _unowned_render_short_clip(
         async with _sched.gpu_render:
             proc = await run_cancellable_process(cmd, timeout=600, text=True)
 
+        output_size = await asyncio.to_thread(_file_size_or_zero, output_path) if proc.returncode == 0 else 0
         if proc.returncode != 0:
             stderr = (proc.stderr or "")[-1000:]
             logger.warning(f"render_short_clip ffmpeg error ({mode_label}): {stderr}")
             return False
 
-        if not output_path.exists() or output_path.stat().st_size == 0:
+        if output_size == 0:
             logger.warning("render_short_clip: выходной файл не создан или пуст")
             return False
 
         # Меньше 10KB для видео — явно битый файл (ffmpeg завершился без ошибки, но ничего не записал)
-        if output_path.stat().st_size < 10_240:
+        if output_size < 10_240:
             stderr = (proc.stderr or "")[-1000:]
-            logger.warning(
-                f"render_short_clip: файл подозрительно мал ({output_path.stat().st_size} байт). "
-                f"ffmpeg stderr: {stderr}"
-            )
-            output_path.unlink(missing_ok=True)
+            logger.warning(f"render_short_clip: файл подозрительно мал ({output_size} байт). ffmpeg stderr: {stderr}")
+            await await_owned_coroutine(asyncio.to_thread(_unlink_missing, output_path))
             return False
 
-        size_mb = output_path.stat().st_size / (1024 * 1024)
+        size_mb = output_size / (1024 * 1024)
         logger.info(
             f"Short rendered [{mode_label}] 9:16: {output_path.name} "
             f"({start_seconds}s..{end_seconds}s, {clip_duration}s, {size_mb:.1f}MB)"
@@ -328,7 +347,7 @@ async def _unowned_short_transform(
             logger.warning("postprocess_short: ffmpeg не найден")
             return False
 
-        if not input_path.exists():
+        if not await asyncio.to_thread(_path_exists, input_path):
             logger.warning(f"postprocess_short: входной файл не найден: {input_path}")
             return False
 
@@ -357,8 +376,7 @@ async def _unowned_short_transform(
 
         if not vf_arg and not af_arg:
             # Нечего делать — просто скопируем поток
-
-            shutil.copy2(input_path, output_path)
+            await await_owned_coroutine(asyncio.to_thread(shutil.copy2, input_path, output_path))
             return True
 
         _enc, _quality, _preset = await await_owned_coroutine(asyncio.to_thread(_get_video_encoder))
@@ -391,14 +409,15 @@ async def _unowned_short_transform(
 
         async with _sched.gpu_render:
             proc = await run_cancellable_process(cmd, timeout=600, text=True)
+        output_size = await asyncio.to_thread(_file_size_or_zero, output_path) if proc.returncode == 0 else 0
         if proc.returncode != 0:
             logger.warning(f"postprocess_short ffmpeg error: {(proc.stderr or '')[-800:]}")
             return False
-        if not output_path.exists() or output_path.stat().st_size == 0:
+        if output_size == 0:
             logger.warning("postprocess_short: выходной файл не создан или пуст")
             return False
 
-        size_mb = output_path.stat().st_size / (1024 * 1024)
+        size_mb = output_size / (1024 * 1024)
         logger.info(
             f"postprocess_short: normalize={normalize_audio} speed={speed} → {output_path.name} ({size_mb:.1f}MB)"
         )

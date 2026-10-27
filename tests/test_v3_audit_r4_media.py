@@ -68,12 +68,23 @@ def test_shorts_workdir_reuse_validates_video_stream():
         for node in tree.body
         if isinstance(node, ast.AsyncFunctionDef) and node.name == "_unowned_download_video_for_shorts"
     )
+    reuse_helper = next(
+        node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "_find_reusable_workdir_video"
+    )
     public_wrapper = next(
         node
         for node in tree.body
         if isinstance(node, ast.AsyncFunctionDef) and node.name == "download_video_for_shorts"
     )
-    reuse = ast.get_source_segment(src, implementation) or ""
+    reuse = "\n".join(
+        filter(
+            None,
+            (
+                ast.get_source_segment(src, implementation),
+                ast.get_source_segment(src, reuse_helper),
+            ),
+        )
+    )
     wrapper = ast.get_source_segment(src, public_wrapper) or ""
 
     assert "_has_video_stream" in reuse
