@@ -1174,8 +1174,10 @@ render validation, provenance paths и атомарная sidecar+media публ
 Clips/Montage source/part/output validation через worker-side size snapshots
 (`services/render_clips_montage.py` очищен), сороковой — Factory evidence и
 download candidate discovery через owned workers с прежним mtime ordering и
-cancellation cleanup. Остаются 61, другие extended-правила и дальнейший ручной
-async review.
+cancellation cleanup, сорок первый — Factory normalize/LONG source checks и
+output cleanup (`services/shorts_factory_video_quality.py` очищен; `-c:v copy`,
+NVENC→CPU fallback и синхронный cancellation cleanup сохранены). Остаются 47,
+другие extended-правила и дальнейший ручной async review.
 
 **Решение:**
 

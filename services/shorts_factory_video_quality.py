@@ -38,6 +38,15 @@ def _file_size_or_zero(path: Path) -> int:
     return path.stat().st_size if path.is_file() else 0
 
 
+def _unlink_missing(path: Path) -> None:
+    path.unlink(missing_ok=True)
+
+
+def _prepare_factory_output(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _unlink_missing(path)
+
+
 def _remove_factory_downloads(target_dir: Path, prefix: str, source: Any) -> None:
     source._remove_paths(target_dir.glob(f"{prefix}.*"))
 
@@ -212,10 +221,9 @@ async def normalize_factory_short_audio_copy_video(
 ) -> bool:
     """Normalize Factory speech audio without creating another video generation."""
     ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg or not input_path.is_file():
+    if not ffmpeg or not await await_owned_coroutine(asyncio.to_thread(_path_is_file, input_path)):
         return False
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.unlink(missing_ok=True)
+    await await_owned_coroutine(asyncio.to_thread(_prepare_factory_output, output_path))
     command = [
         ffmpeg,
         "-i",
@@ -240,22 +248,23 @@ async def normalize_factory_short_audio_copy_video(
     try:
         process = await run_cancellable_process(command, timeout=600, text=True)
     except asyncio.CancelledError:
-        output_path.unlink(missing_ok=True)
+        # Cancellation must not skip cleanup by suspending at a new await.
+        output_path.unlink(missing_ok=True)  # noqa: ASYNC240
         raise
     except Exception as exc:
         logger.warning("Factory normalize-only transform failed: %s", exc)
-        output_path.unlink(missing_ok=True)
+        await await_owned_coroutine(asyncio.to_thread(_unlink_missing, output_path))
         return False
     if process.returncode != 0:
         logger.warning(
             "Factory normalize-only ffmpeg error: %s",
             str(process.stderr or "")[-800:],
         )
-        output_path.unlink(missing_ok=True)
+        await await_owned_coroutine(asyncio.to_thread(_unlink_missing, output_path))
         return False
     probe = await probe_media_async(output_path)
     if not media_probe_is_deliverable(probe):
-        output_path.unlink(missing_ok=True)
+        await await_owned_coroutine(asyncio.to_thread(_unlink_missing, output_path))
         return False
     logger.info(
         "Factory Short normalize-only: -c:v copy; video encode stages are crop/scale + subtitle burn (2 total, not 3)"
@@ -402,7 +411,8 @@ async def _run_factory_long_command(
         async with resource_scheduler.gpu_render:
             process = await run_cancellable_process(command, timeout=900, text=True)
     except asyncio.CancelledError:
-        output_path.unlink(missing_ok=True)
+        # The GPU owner has stopped; clean its partial output before propagating.
+        output_path.unlink(missing_ok=True)  # noqa: ASYNC240
         raise
     except Exception as exc:
         return False, str(exc)
@@ -419,7 +429,7 @@ async def render_factory_long_h264(
 ) -> bool:
     """Render one Factory LONG to H.264, never above 1080p, in one video pass."""
     ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg or not source_video_path.is_file():
+    if not ffmpeg or not await await_owned_coroutine(asyncio.to_thread(_path_is_file, source_video_path)):
         return False
     try:
         start = float(start_seconds)
@@ -453,8 +463,7 @@ async def render_factory_long_h264(
         int(getattr(source_probe, "height", 0) or 0),
     )
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.unlink(missing_ok=True)
+    await await_owned_coroutine(asyncio.to_thread(_prepare_factory_output, output_path))
     command = _factory_long_command(
         ffmpeg=ffmpeg,
         source_video_path=source_video_path,
@@ -471,7 +480,8 @@ async def render_factory_long_h264(
     if not rendered and encoder == "h264_nvenc":
         global _H264_NVENC_AVAILABLE
         _H264_NVENC_AVAILABLE = False
-        output_path.unlink(missing_ok=True)
+        # Do not suspend between the failed GPU attempt and its one CPU retry.
+        output_path.unlink(missing_ok=True)  # noqa: ASYNC240
         cpu_quality, cpu_preset = factory_libx264_quality_args()
         logger.warning(
             "Factory LONG h264_nvenc runtime failed; retrying once with libx264: %s",
@@ -492,19 +502,19 @@ async def render_factory_long_h264(
 
     if not rendered:
         logger.warning("Factory LONG H.264 ffmpeg error: %s", error)
-        output_path.unlink(missing_ok=True)
+        await await_owned_coroutine(asyncio.to_thread(_unlink_missing, output_path))
         return False
 
     probe = await probe_media_async(output_path)
     if not media_probe_is_deliverable(probe):
-        output_path.unlink(missing_ok=True)
+        await await_owned_coroutine(asyncio.to_thread(_unlink_missing, output_path))
         return False
     assert probe is not None
     if int(getattr(probe, "width", 0) or 0) > 1920:
-        output_path.unlink(missing_ok=True)
+        await await_owned_coroutine(asyncio.to_thread(_unlink_missing, output_path))
         return False
     if int(getattr(probe, "height", 0) or 0) > 1080:
-        output_path.unlink(missing_ok=True)
+        await await_owned_coroutine(asyncio.to_thread(_unlink_missing, output_path))
         return False
     await log_factory_media_evidence(
         "long-output-h264",
