@@ -350,6 +350,51 @@ async def test_normalize_transform_validates_output(
         assert not _path_exists(output_path)
 
 
+@pytest.mark.parametrize(
+    ("public_name", "legacy_name", "extra_args"),
+    [
+        ("create_short_title_poster", "_LEGACY_CREATE_SHORT_TITLE_POSTER", ("Title", 30.0)),
+        ("create_short_snapshot", "_LEGACY_CREATE_SHORT_SNAPSHOT", (30.0,)),
+    ],
+    ids=["title-poster", "snapshot"],
+)
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [(b"generated", True), (b"", False)],
+    ids=["nonempty-output", "empty-output"],
+)
+@pytest.mark.asyncio
+async def test_optional_short_outputs_validate_generated_file(
+    monkeypatch,
+    tmp_path: Path,
+    public_name: str,
+    legacy_name: str,
+    extra_args: tuple,
+    payload: bytes,
+    expected: bool,
+) -> None:
+    input_path = _write_file(tmp_path / "input.mp4", b"input")
+    output_path = tmp_path / "optional.out"
+
+    async def produce(source: Path, destination: Path, *args):
+        assert source == input_path
+        assert destination == output_path
+        assert args == extra_args
+        _write_file(destination, payload)
+        return True
+
+    monkeypatch.setattr(shorts_video, legacy_name, produce)
+    produce_public = getattr(shorts_video, public_name)
+
+    result = await produce_public(input_path, output_path, *extra_args)
+
+    assert result is expected
+    if expected:
+        assert _read_bytes(output_path) == payload
+    else:
+        assert not _path_exists(output_path)
+
+
 @pytest.mark.asyncio
 async def test_translation_qa_cleans_temporary_original_and_qa_audio(monkeypatch, tmp_path: Path) -> None:
     dub_video = _write_file(tmp_path / "dub.mp4", b"video")

@@ -1157,8 +1157,10 @@ output validation, двадцать девятый — LiveDub QA-autofix file I
 (`services/livedub_mix.py` очищен), тридцатый — LiveDub QA temporary-original
 cleanup (синхронный cancellation-safe unlink с точечным `noqa`), тридцать
 первый — Shorts normalize/transform input/output и same-path no-op checks
-(nonempty-output commit и empty-output cleanup подтверждены тестами). Остаются
-116, другие extended-правила и дальнейший ручной async review.
+(nonempty-output commit и empty-output cleanup подтверждены тестами), тридцать
+второй — общий Shorts poster/snapshot output validator
+(`services/shorts_video.py` очищен). Остаются 114, другие extended-правила и
+дальнейший ручной async review.
 
 **Решение:**
 

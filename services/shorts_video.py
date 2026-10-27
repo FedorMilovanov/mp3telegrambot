@@ -414,7 +414,7 @@ async def _owned_optional_output(
         )
         _unlink_short_paths(output_path, protected=(input_path,))
         return False
-    if not result or not output_path.exists() or output_path.stat().st_size == 0:
+    if not result or not await asyncio.to_thread(_file_is_nonempty, output_path):
         _unlink_short_paths(output_path, protected=(input_path,))
         return False
     return True

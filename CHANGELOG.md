@@ -170,6 +170,9 @@
   input/output и same-path no-op checks переведены в worker threads;
   nonempty-output commit и empty-output cleanup подтверждены тестами,
   остаются 116 findings.
+- Async I/O, тридцать второй `ASYNC240` slice: общий Shorts poster/snapshot
+  output validator переведён в worker thread; success/empty paths обоих API
+  подтверждены тестами, `services/shorts_video.py` очищен, остаются 114 findings.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):
