@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from core.globals import (
     DOWNLOAD_DIR,
-    THUMBS_DIR,
     HAS_PILLOW,
     html_mod,  # FIX shorts_video
 )
@@ -434,7 +433,7 @@ async def _unowned_short_transform(
 # ── Субтитры для Shorts ───────────────────────────────────────
 
 try:
-    from faster_whisper import WhisperModel
+    from faster_whisper import WhisperModel as WhisperModel
 
     HAS_FASTER_WHISPER = True
 except ImportError:

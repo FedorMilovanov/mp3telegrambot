@@ -243,6 +243,9 @@
   Caption/Telegraph converters и трёх service modules; добавлен behavioral test
   для LiveDub audio fields, 447 focused tests зелёные. `F401` — 110,
   extended census — 621.
+- Extended Ruff, восьмой ручной `F401` slice: удалены семь unused imports в
+  entrypoint, Shorts и Clips modules; два используемых module API оформлены как
+  explicit re-exports. `F401` — 101, extended census — 612.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

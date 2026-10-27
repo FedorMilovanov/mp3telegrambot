@@ -32,7 +32,7 @@ from telegram.ext import (
 
 from core.database import ADMIN_IDS
 from services.dub_studio import DubStore, studio_root
-from services.speech_backends import DEFAULT_MODEL_PROFILE_ID
+from services.speech_backends import DEFAULT_MODEL_PROFILE_ID as DEFAULT_MODEL_PROFILE_ID
 from services.tts_profile_selection import (
     ProductionTTSProfileChoice,
     normalize_new_production_tts_request,

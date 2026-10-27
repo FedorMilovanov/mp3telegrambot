@@ -20,7 +20,6 @@ from core.database import (
     asettings_get,
     ashorts_speed_get,
     get_max_file_size_mb,
-    settings_get,
     short_trim_save,
 )
 

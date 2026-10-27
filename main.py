@@ -11,14 +11,12 @@ from core.globals import (
     BOT_TOKEN,
     LOCAL_BOT_API_URL,
     flask_app,
-    DB_PATH,
     GEMINI_CLIENTS,
     DAILY_LIMIT,
     COOLDOWN_SECONDS,
     _gemini_proxy_log,
 )
 from core.database import (
-    db_init,
     asettings_get,
     GEMINI_MODEL,
     WHITELIST_IDS,
