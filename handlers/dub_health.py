@@ -329,8 +329,10 @@ async def dubcheck_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     lines.extend(
         [
             "",
-            "Все действия требуют зелёные Clean Expressive NoChew, SoundFile, Whisper QA, FFmpeg, CPU Python, archive, storage и worker.",
-            "Только Gemini MAX требует рабочие Gemini keys; готовый SRT и аудиоремонт не отправляются на перевод или редактуру.",
+            "Все действия требуют зелёные Clean Expressive NoChew, SoundFile, Whisper QA, "
+            "FFmpeg, CPU Python, archive, storage и worker.",
+            "Только Gemini MAX требует рабочие Gemini keys; готовый SRT и аудиоремонт "
+            "не отправляются на перевод или редактуру.",
         ]
     )
     await update.effective_message.reply_text("\n".join(lines), parse_mode="HTML")

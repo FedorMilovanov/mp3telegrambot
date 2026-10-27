@@ -280,6 +280,9 @@
 - Extended Ruff, второй ручной `E501` slice: перенесены девять string/f-string
   lines в пяти `core` modules; executable AST не изменился, 372 focused tests
   зелёные. `E501` — 139, extended census — 465.
+- Extended Ruff, третий ручной `E501` slice: перенесены десять lines в
+  converters/handlers/main; HTML и сообщения сохранены, executable AST не
+  изменился, 375 focused tests зелёные. `E501` — 129, extended census — 455.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):
