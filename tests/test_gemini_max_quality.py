@@ -1,6 +1,6 @@
 """Regression contracts for the project-wide quality/cost policy."""
 
-from core.model_catalog import MODEL_PRIMARY, MODEL_UTILITY
+from core.model_catalog import MODEL_PRIMARY
 
 from pathlib import Path
 

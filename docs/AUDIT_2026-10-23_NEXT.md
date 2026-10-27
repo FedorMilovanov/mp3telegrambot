@@ -1191,10 +1191,11 @@ extended-правила и дальнейший ручной async review.
 `E402` 110, `S603` 103, `S110` 56, `PLW0603` 47, `S607` 23). Первый ручной
 `F401` slice удалил 12 явно неиспользуемых stdlib imports только в tests;
 118 focused tests подтвердили неизменное поведение. Второй slice удалил ещё
-17 stdlib imports в 14 test modules; 137 focused tests зелёные. Остаются 676
-extended находок, включая 165 `F401`; 13 test findings относятся к project
-imports и требуют отдельной проверки. Lazy imports и security-правила
-разбираются отдельно, без autofix.
+17 stdlib imports в 14 test modules; 137 focused tests зелёные. Третий slice
+удалил 9 устаревших/redundant project imports, а 4 prompt constants сохранил
+и связал с явными assertions; 56 focused tests зелёные, test-level `F401` = 0.
+Остаются 663 extended находки, включая 152 `F401` в production/tools. Lazy
+imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**
 

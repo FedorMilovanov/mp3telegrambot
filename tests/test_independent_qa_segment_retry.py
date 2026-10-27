@@ -6,10 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from services.dub_worker_release import (
-    INDEPENDENT_QA_RECOVERY_POLICY,
-    WORKER_RUNTIME,
-)
 from tools.voxcpm2 import independent_qa_retry as recovery
 
 
