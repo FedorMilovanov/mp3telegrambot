@@ -316,12 +316,14 @@ def build_telegraph_links(
         items.append(f'├ 🧠 <a href="{quotes_tg_url}">Аналитика</a>')
     if reflection_tg_url:
         items.append(
-            f'├ <tg-emoji emoji-id="5283180056095527519">🙏</tg-emoji> <a href="{reflection_tg_url}">Размышление и применение</a>'
+            f'├ <tg-emoji emoji-id="5283180056095527519">🙏</tg-emoji> '
+            f'<a href="{reflection_tg_url}">Размышление и применение</a>'
         )
     elif questions_tg_url:
         # Legacy: показываем Вопросы только если нет новой страницы Размышления
         items.append(
-            f'├ <tg-emoji emoji-id="5283180056095527519">❓</tg-emoji> <a href="{questions_tg_url}">Размышление и применение</a>'
+            f'├ <tg-emoji emoji-id="5283180056095527519">❓</tg-emoji> '
+            f'<a href="{questions_tg_url}">Размышление и применение</a>'
         )
     if terms_tg_url:
         items.append(f'├ 📚 <a href="{terms_tg_url}">Термины</a>')

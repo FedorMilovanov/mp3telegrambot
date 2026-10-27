@@ -504,7 +504,8 @@ async def dubtts_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             f"Backend: <code>{html.escape(choice.backend_id)}</code>\n"
             f"Revision: <code>{html.escape(choice.model_revision)}</code>\n"
             f"Fingerprint: <code>{html.escape(choice.fingerprint[:12])}</code>\n\n"
-            "Изменение разрешено только без active job. Параметры TTS нового профиля сброшены к его валидированным defaults.",
+            "Изменение разрешено только без active job. Параметры TTS нового профиля "
+            "сброшены к его валидированным defaults.",
             parse_mode="HTML",
         )
     except Exception as exc:

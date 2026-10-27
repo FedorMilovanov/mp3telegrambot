@@ -1223,8 +1223,9 @@ facade через explicit re-export/assignment и executed identity-contract;
 tests зелёных. Первый `E501` slice перенёс 24 overlong lines в десяти test
 modules с JSON/literal-equivalence проверками; 83 focused tests зелёные.
 Второй slice перенёс девять string/f-string lines в пяти `core` modules без
-изменения executable AST; 372 focused tests зелёные. Остаются 465 extended
-находок, включая 139 `E501` и 97 `E402`.
+изменения executable AST; 372 focused tests зелёные. Третий slice перенёс десять
+lines в converters/handlers/main с тем же AST-invariant; 375 focused tests
+зелёные. Остаются 455 extended находок, включая 129 `E501` и 97 `E402`.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

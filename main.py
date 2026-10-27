@@ -806,7 +806,8 @@ async def run_bot_async():
                 logger.warning(
                     "☁️ Локальный Bot API порт открыт, но /getMe не работает (%s). "
                     "Авто-fallback: перехожу на облачный Bot API через proxy=%s. "
-                    "Большие DUB/MP3 могут упереться в облачные лимиты Telegram; для 2GB нужен TUN/VPN + local Bot API.",
+                    "Большие DUB/MP3 могут упереться в облачные лимиты Telegram; "
+                    "для 2GB нужен TUN/VPN + local Bot API.",
                     _getme_last,
                     _cloud_fallback_proxy_url,
                 )

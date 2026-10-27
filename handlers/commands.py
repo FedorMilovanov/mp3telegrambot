@@ -1297,7 +1297,8 @@ async def archivefile_command(update, context):
     path = get_archive_export_path(kind)
     if not path or not await asyncio.to_thread(_path_exists, path):
         await update.message.reply_text(
-            "⚠️ Файл архива не найден. Варианты: <code>latest</code>, <code>all</code>, <code>jsonl</code>, <code>readme</code>, <code>sqlite</code>",
+            "⚠️ Файл архива не найден. Варианты: <code>latest</code>, <code>all</code>, "
+            "<code>jsonl</code>, <code>readme</code>, <code>sqlite</code>",
             parse_mode="HTML",
         )
         return
