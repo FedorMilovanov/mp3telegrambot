@@ -113,11 +113,13 @@ exclude = [
 # в gemini_analyze), E722 (bare except), F841 (неиспользуемые переменные).
 # F401 включён после repository-wide ручной чистки; compatibility re-exports
 # сохранены явными aliases/assignments, lazy imports не autofix'ятся.
+# E501 включён после шести ручных slices с неизменными executable AST.
 # 2026-10-26: extended-волны добавили B904/PLW1510/RET504/SIM105 и UP006/UP009/UP045/W293.
 # ASYNC230 добавлен после ручного переноса blocking open/write в worker threads.
 select = [
   "ASYNC230",
   "E9",
+  "E501",
   "F401",
   "F63",
   "F7",

@@ -293,6 +293,8 @@
   27 string tokens в 14 modules; SQL/prompt/f-string values, source-substring
   контракты и executable AST сохранены, 1099 focused tests зелёные (1 platform
   skip). `E501` = 0, extended census — 326.
+- `E501` включён в обязательный Ruff gate после достижения repository-wide
+  нуля; classifier и diff-cover не ослаблены.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

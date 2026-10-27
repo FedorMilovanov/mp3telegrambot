@@ -1232,8 +1232,8 @@ source-substring контракт и executable AST сохранены, 573 focu
 Шестой slice устранил последние 40 findings в 27 string tokens в 14 modules;
 SQL/prompt/f-string values, source-substring контракты и executable AST
 сохранены, 1099 focused tests зелёные (1 platform skip). `E501` = 0; остаются
-326 extended находок, включая 97 `E402`. Включение `E501` в обычный gate —
-отдельный config-only шаг после formatting-only PR.
+326 extended находок, включая 97 `E402`. После formatting-only PR правило
+`E501` включено в обычный Ruff gate без изменения classifier и diff-cover.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**
