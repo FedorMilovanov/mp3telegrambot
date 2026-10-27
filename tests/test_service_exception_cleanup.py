@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -137,6 +137,39 @@ def test_whisper_reset_releases_existing_model(monkeypatch) -> None:
 
     assert shorts_video_impl._whisper_model is None
     assert shorts_video_impl._whisper_model_name is None
+
+
+def test_whisper_reset_ignores_cuda_cleanup_failure(monkeypatch) -> None:
+    def _broken_cuda() -> bool:
+        raise RuntimeError("CUDA is unavailable")
+
+    fake_torch = SimpleNamespace(cuda=SimpleNamespace(is_available=_broken_cuda))
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    monkeypatch.setattr(shorts_video_impl, "_whisper_model", object())
+    monkeypatch.setattr(shorts_video_impl, "_whisper_model_name", "old")
+
+    shorts_video_impl._reset_whisper_model()
+
+    assert shorts_video_impl._whisper_model is None
+    assert shorts_video_impl._whisper_model_name is None
+
+
+def test_cuda_cache_cleanup_releases_and_synchronizes(monkeypatch) -> None:
+    empty_cache = Mock()
+    synchronize = Mock()
+    fake_torch = SimpleNamespace(
+        cuda=SimpleNamespace(
+            is_available=lambda: True,
+            empty_cache=empty_cache,
+            synchronize=synchronize,
+        )
+    )
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+
+    shorts_video_impl._clear_torch_cuda_cache()
+
+    empty_cache.assert_called_once_with()
+    synchronize.assert_called_once_with()
 
 
 def test_whisper_model_change_releases_previous_instance(monkeypatch) -> None:

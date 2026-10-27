@@ -303,6 +303,10 @@
   probes и `/status` заменены явной debug-диагностикой; NVENC→CPU, `None`
   и обязательные секции статуса сохранены. 75 focused tests зелёные.
   `S110` — 37, extended census — 307.
+- Extended Ruff, Whisper CUDA cleanup: три дублированных silent handler
+  объединены в `_clear_torch_cuda_cache`; сбой GPU cleanup остаётся нефатальным,
+  порядок reset/model/transcribe сохранён. 121 focused test зелёный.
+  `S110` — 34, extended census — 304.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

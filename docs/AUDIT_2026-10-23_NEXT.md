@@ -1241,6 +1241,9 @@ SQL/prompt/f-string values, source-substring контракты и executable AS
 Diagnostic fallback slice удалил ещё пять `S110` в encoder/language probes и
 `/status`; NVENC→CPU, `None` и обязательные секции статуса сохранены. 75 focused
 tests зелёные. Текущий census — 307, включая 37 `S110`.
+Whisper CUDA cleanup slice объединил три silent handler в одном helper; сбой GPU
+cleanup остаётся нефатальным, порядок reset/model/transcribe сохранён. 121 focused
+test зелёный. Текущий census — 304, включая 34 `S110`.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**
