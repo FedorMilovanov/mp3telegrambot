@@ -1206,8 +1206,9 @@ service modules; behavioral test покрыл LiveDub audio fields, 447 focused 
 modules; `DEFAULT_MODEL_PROFILE_ID` и availability-loaded `WhisperModel`
 сохранены через explicit re-exports, 759 focused tests зелёные. Девятый slice
 удалил 20 unused imports из `core.database` и `core.utils`; 305 focused tests
-зелёные. Остаются 592 extended находки, включая 81 `F401`. Lazy imports и
-security-правила разбираются отдельно, без autofix.
+зелёные. Десятый slice удалил 18 unused imports из command/callback handlers;
+351 focused test зелёный. Остаются 574 extended находки, включая 63 `F401`.
+Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**
 
