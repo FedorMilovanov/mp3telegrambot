@@ -126,6 +126,21 @@ def _invoke(
     return result, bot, calls, video, workdir
 
 
+def test_qa_asset_discovery_failure_is_nonfatal(tmp_path, monkeypatch):
+    def fail_exists(_path):
+        raise OSError("workdir unavailable")
+
+    monkeypatch.setattr("pipelines.livedub_full_qa_stage._path_exists", fail_exists)
+    qa = {"issues": []}
+
+    result, _bot, calls, video, _workdir = _invoke(tmp_path, monkeypatch, qa)
+
+    assert result == (video, qa, "")
+    kwargs = next(call[1] for call in calls if call[0] == "qa")
+    assert kwargs["dub_srt_path"] is None
+    assert kwargs["dub_audio_path"] is None
+
+
 def test_valid_cache_inputs_and_reused_part_reach_qa(tmp_path, monkeypatch):
     part = SimpleNamespace(name="audio-part")
     client = SimpleNamespace(name="client")

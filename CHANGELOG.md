@@ -307,6 +307,10 @@
   объединены в `_clear_torch_cuda_cache`; сбой GPU cleanup остаётся нефатальным,
   порядок reset/model/transcribe сохранён. 121 focused test зелёный.
   `S110` — 34, extended census — 304.
+- Extended Ruff, LiveDub stage fallbacks: четыре silent handler в cached
+  invalidation, QA asset discovery, failure notification и cover selection
+  получили диагностику; cleanup/reuse/delivery contracts сохранены. 203 focused
+  tests (202 passed, 1 skipped) зелёные. `S110` — 30, extended census — 300.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

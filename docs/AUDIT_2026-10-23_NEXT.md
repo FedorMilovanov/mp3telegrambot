@@ -1244,6 +1244,10 @@ tests зелёные. Текущий census — 307, включая 37 `S110`.
 Whisper CUDA cleanup slice объединил три silent handler в одном helper; сбой GPU
 cleanup остаётся нефатальным, порядок reset/model/transcribe сохранён. 121 focused
 test зелёный. Текущий census — 304, включая 34 `S110`.
+LiveDub stage slice удалил четыре `S110` в cached invalidation, QA assets,
+failure notification и cover selection; cleanup/reuse/delivery contracts
+сохранены. 203 focused tests (202 passed, 1 skipped) зелёные. Текущий census —
+300, включая 30 `S110`.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

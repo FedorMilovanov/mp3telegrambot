@@ -127,6 +127,21 @@ def test_missing_companions_rolls_back_invalidates_flushes_and_notifies(monkeypa
     assert "MP3-комплект устарел" in bot.messages[0]["text"]
 
 
+def test_invalidation_failure_still_flushes_and_notifies(monkeypatch):
+    bot = Bot()
+    calls = []
+
+    async def invalidate(*args):
+        calls.append(args)
+        raise RuntimeError("database unavailable")
+
+    events = _invoke(bot, monkeypatch, companions_ok=False, invalidate=invalidate)
+
+    assert calls == [("media1", "")]
+    assert ("flush", "cached LiveDub pair unavailable") in events
+    assert len(bot.messages) == 1
+
+
 def test_video_rejection_has_no_message_rollback_but_invalidates_pair(monkeypatch):
     bot = Bot(video_error=RuntimeError("stale file id"))
     events = _invoke(bot, monkeypatch)

@@ -53,7 +53,7 @@ async def deliver_cached_livedub(
 
             await adb_set_livedub_file_id(media_id, "")
         except Exception:
-            pass
+            logger.debug("Failed to invalidate rejected cached LiveDub file_id", exc_info=True)
         await flush_source_audio("cached LiveDub pair unavailable")
         with contextlib.suppress(Exception):
             await bot.send_message(
