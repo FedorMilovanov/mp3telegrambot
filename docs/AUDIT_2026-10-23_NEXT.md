@@ -1178,8 +1178,10 @@ cancellation cleanup, сорок первый — Factory normalize/LONG source 
 output cleanup (`services/shorts_factory_video_quality.py` очищен; `-c:v copy`,
 NVENC→CPU fallback и синхронный cancellation cleanup сохранены), сорок второй —
 Shorts download reuse/discovery, legacy render и transform с прежним
-10,240-byte gate и no-op copy. Остаются 34, другие extended-правила и дальнейший
-ручной async review.
+10,240-byte gate и no-op copy, сорок третий — legacy Shorts transcribe/burn
+source checks, ASS cleanup и output validation с прежними Russian Whisper и
+WAV/ASS cleanup. Остаются 27, другие extended-правила и дальнейший ручной async
+review.
 
 **Решение:**
 
