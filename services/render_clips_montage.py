@@ -6,8 +6,6 @@ build_clip_caption, render_montage_short, create_extras_candidates.
 """
 
 from core.globals import (
-    DOWNLOAD_DIR,
-    THUMBS_DIR,
     make_text_config_smart,
     GEMINI_CLIENTS,
     HAS_GEMINI,  # FIX render
@@ -19,7 +17,7 @@ from services.ffmpeg import _find_silence_end  # FIX render
 from services.ffmpeg import _is_static_video  # AUDIT R28
 from services.async_process import run_cancellable_process
 from services.async_worker import await_owned_coroutine
-from core.utils import cleanup_files, format_timestamp
+from core.utils import format_timestamp
 from services.shorts_video import _build_links_block  # FIX render
 from core.text_utils import _clean_field, title_case_fragment  # FIX render
 from core.core_utils import time_to_seconds  # FIX: moved to core_utils (был в json_parser)

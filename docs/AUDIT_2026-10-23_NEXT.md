@@ -1202,9 +1202,11 @@ Gemini, Shorts и Telegraph modules; 310 focused tests зелёные. Telegram
 re-exports и `html_mod` в `core.globals` сохранены как используемый API.
 Седьмой slice удалил 15 unused imports в Caption/Telegraph converters и трёх
 service modules; behavioral test покрыл LiveDub audio fields, 447 focused tests
-зелёные. Остаются 621 extended находка,
-включая 110 `F401`. Lazy imports и security-правила разбираются отдельно,
-без autofix.
+зелёные. Восьмой slice удалил семь unused imports в entrypoint, Shorts и Clips
+modules; `DEFAULT_MODEL_PROFILE_ID` и availability-loaded `WhisperModel`
+сохранены через explicit re-exports, 759 focused tests зелёные. Остаются 612
+extended находок, включая 101 `F401`. Lazy imports и security-правила
+разбираются отдельно, без autofix.
 
 **Решение:**
 
