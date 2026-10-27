@@ -1162,7 +1162,9 @@ cleanup (синхронный cancellation-safe unlink с точечным `noqa
 (`services/shorts_video.py` очищен), тридцать третий — Russian Whisper WAV
 validation и temporary-text writes через owned workers (cancellation-safe
 cleanup сохранён с точечными `noqa`; `services/translation_editorial.py`
-очищен). Остаются 107, другие extended-правила и дальнейший ручной async review.
+очищен), тридцать четвёртый — editorial CLI path resolution, source preflight
+и fail-closed output/provenance pair checks (`tools/translation_editorial.py`
+очищен). Остаётся 101, другие extended-правила и дальнейший ручной async review.
 
 **Решение:**
 
