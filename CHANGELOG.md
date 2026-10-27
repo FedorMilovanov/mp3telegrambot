@@ -295,6 +295,10 @@
   skip). `E501` = 0, extended census — 326.
 - `E501` включён в обязательный Ruff gate после достижения repository-wide
   нуля; classifier и diff-cover не ослаблены.
+- Extended Ruff, первый ручной `S110` slice: удалены 14 silent exception
+  handlers в `core`; fallback-returns сохранены, JSON parsing сужен до
+  `JSONDecodeError`, logging filter при сбое маскирования стал fail-closed.
+  708 focused tests зелёные. `S110` — 42, extended census — 312.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

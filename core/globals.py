@@ -9,6 +9,7 @@ import os
 import re
 import threading
 import time
+from collections.abc import MutableMapping
 from typing import Any
 from pathlib import Path
 
@@ -214,24 +215,29 @@ if _proxy_url:
         os.environ["NO_PROXY"] = _no_proxy
         os.environ["no_proxy"] = _no_proxy
 
-if os.name == "nt":
+
+def _configure_windows_executable_path(environ: MutableMapping[str, str]) -> None:
     try:
         import sys as _sys
 
-        _sysroot = os.environ.get("SystemRoot", r"C:\Windows")
+        _sysroot = environ.get("SystemRoot", r"C:\Windows")
         _front = [
             os.path.dirname(_sys.executable),
             os.path.join(_sysroot, "System32"),
             _sysroot,
         ]
-        _cur_path = os.environ.get("PATH", "")
+        _cur_path = environ.get("PATH", "")
         _cur_dirs = [p for p in _cur_path.split(os.pathsep) if p]
         _front = [d for d in _front if d]
         _front_norm = {os.path.normcase(x) for x in _front}
         _rest = [d for d in _cur_dirs if os.path.normcase(d) not in _front_norm]
-        os.environ["PATH"] = os.pathsep.join(_front + _rest)
+        environ["PATH"] = os.pathsep.join(_front + _rest)
     except Exception:
-        pass
+        logging.getLogger(__name__).debug("Windows PATH setup failed; keeping inherited PATH", exc_info=True)
+
+
+if os.name == "nt":
+    _configure_windows_executable_path(os.environ)
 
 gemini_client = None
 gemini_client_2 = None
@@ -561,7 +567,12 @@ class _TokenMaskFilter(logging.Filter):
                 exc_text = logging.Formatter().formatException(record.exc_info)
                 record.exc_text = self._mask(exc_text)
         except Exception:
-            pass
+            # Fail closed without recursive logging: the original record may contain secrets.
+            record.msg = "<log record withheld: masking failed>"
+            record.args = ()
+            record.exc_info = None
+            record.exc_text = None
+            record.stack_info = None
         return True
 
 

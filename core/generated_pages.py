@@ -51,10 +51,10 @@ def _json_list(value: Any) -> list[str]:
     if isinstance(value, str):
         try:
             parsed = json.loads(value)
-            if isinstance(parsed, list):
-                return [str(x).strip() for x in parsed if str(x).strip()]
-        except Exception:
-            pass
+        except json.JSONDecodeError:
+            parsed = None
+        if isinstance(parsed, list):
+            return [str(x).strip() for x in parsed if str(x).strip()]
         return [x.strip() for x in re.split(r"[,;\n]", value) if x.strip()]
     return [str(value).strip()]
 

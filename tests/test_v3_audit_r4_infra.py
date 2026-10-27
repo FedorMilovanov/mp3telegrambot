@@ -46,6 +46,35 @@ def test_token_mask_filter_masks_child_logger_record(monkeypatch):
     assert "***" in rec.getMessage()
 
 
+def test_token_mask_filter_withholds_record_when_masking_fails(monkeypatch):
+    from core.globals import _TokenMaskFilter
+
+    f = _TokenMaskFilter()
+
+    def _broken_mask(_: str) -> str:
+        raise RuntimeError("masker broke")
+
+    monkeypatch.setattr(f, "_mask", _broken_mask)
+    rec = logging.LogRecord(
+        name="services.search",
+        level=logging.ERROR,
+        pathname=__file__,
+        lineno=1,
+        msg="raw %s",
+        args=("SECRET",),
+        exc_info=(RuntimeError, RuntimeError("SECRET"), None),
+    )
+    rec.exc_text = "SECRET traceback"
+    rec.stack_info = "SECRET stack"
+
+    assert f.filter(rec) is True
+    assert rec.getMessage() == "<log record withheld: masking failed>"
+    assert rec.args == ()
+    assert rec.exc_info is None
+    assert rec.exc_text is None
+    assert rec.stack_info is None
+
+
 def test_token_mask_filter_masks_exception_traceback(monkeypatch):
     monkeypatch.setenv("BOT_TOKEN", "1234567890:AAASECRETTOKENVALUE")
     from core.globals import _TokenMaskFilter

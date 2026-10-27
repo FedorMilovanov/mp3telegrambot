@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import cast
 
 from core.database import _db_conn
@@ -50,7 +51,7 @@ def _get_user_mode_raw(user_id: int) -> str:
         if row and row[0] in VALID_MODES:
             return cast(str, row[0])
     except Exception:
-        pass
+        logging.getLogger(__name__).debug("Failed to read user mode; using rus", exc_info=True)
     return "rus"
 
 
@@ -75,7 +76,7 @@ def _get_shorts_factory_full_video_raw(user_id: int) -> bool:
         if row:
             return str(row[0]).strip().lower() in {"1", "true", "yes", "on"}
     except Exception:
-        pass
+        logging.getLogger(__name__).debug("Failed to read Shorts Factory full-video mode; using false", exc_info=True)
     return False
 
 
