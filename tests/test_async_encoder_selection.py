@@ -12,6 +12,10 @@ import pytest
 from services import render_clips_montage
 
 
+def _write_bytes(path: Path, payload: bytes) -> None:
+    path.write_bytes(payload)
+
+
 TARGETS = {
     Path("services/shorts_video_impl.py"): {
         "_unowned_render_short_clip",
@@ -78,7 +82,7 @@ async def test_slow_encoder_probe_does_not_block_event_loop(
         return target
 
     async def fake_owner(command, **kwargs):
-        Path(command[-1]).write_bytes(b"rendered")
+        await asyncio.to_thread(_write_bytes, Path(command[-1]), b"rendered")
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(render_clips_montage.shutil, "which", lambda name: "ffmpeg")

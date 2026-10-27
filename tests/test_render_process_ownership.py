@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import ast
+import asyncio
 import subprocess
 from pathlib import Path
 
 import pytest
 
 from services import render_clips_montage
+
+
+def _write_bytes(path: Path, payload: bytes) -> None:
+    path.write_bytes(payload)
 
 
 SHORTS_PATH = Path("services/shorts_video_impl.py")
@@ -92,7 +97,7 @@ async def test_render_clip_calls_tree_owner_with_existing_command_contract(
 
     async def fake_owner(command, **kwargs):
         calls.append((list(command), dict(kwargs)))
-        Path(command[-1]).write_bytes(b"rendered")
+        await asyncio.to_thread(_write_bytes, Path(command[-1]), b"rendered")
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(render_clips_montage.shutil, "which", lambda name: "ffmpeg")

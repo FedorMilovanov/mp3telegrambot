@@ -215,6 +215,9 @@
   frame cleanup и output validation используют workers;
   `services/shorts_video_impl.py` и весь production/tools census очищены,
   остаются 21 test finding.
+- Async I/O, сорок пятый `ASYNC240` slice: conversion/render async test doubles
+  выносят generated-output writes, audio probe и temporary-glob в workers;
+  assertions и cancellation cleanup не изменены, остаются 11 test findings.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

@@ -1,11 +1,24 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from services import mp3_conversion
+
+
+def _write_bytes(path: Path, payload: bytes) -> None:
+    path.write_bytes(payload)
+
+
+def _audio_file_is_nonempty(path: Path) -> bool:
+    return path.is_file() and path.stat().st_size > 1024
+
+
+def _glob_paths(directory: Path, pattern: str) -> list[Path]:
+    return list(directory.glob(pattern))
 
 
 @pytest.mark.asyncio
@@ -16,17 +29,18 @@ async def test_atomic_mp3_conversion_publishes_only_after_probe(monkeypatch, tmp
     monkeypatch.setattr(mp3_conversion.shutil, "which", lambda name: f"/{name}")
 
     async def fake_run(command, **_kwargs):
-        Path(command[-1]).write_bytes(b"encoded" * 4096)
+        await asyncio.to_thread(_write_bytes, Path(command[-1]), b"encoded" * 4096)
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     async def fake_probe(path):
-        return Path(path).is_file() and Path(path).stat().st_size > 1024
+        return await asyncio.to_thread(_audio_file_is_nonempty, Path(path))
 
     monkeypatch.setattr(mp3_conversion, "run_cancellable_process", fake_run)
     monkeypatch.setattr(mp3_conversion, "_probe_audio_file", fake_probe)
     assert await mp3_conversion.reencode_mp3_64k_atomic(source, output) is True
     assert output.is_file()
-    assert not list(tmp_path.glob("*.part-*.mp3"))
+    temporary_parts = await asyncio.to_thread(_glob_paths, tmp_path, "*.part-*.mp3")
+    assert not temporary_parts
 
 
 @pytest.mark.asyncio
@@ -85,7 +99,7 @@ async def test_atomic_mp3_conversion_keeps_existing_output_on_failed_probe(monke
     monkeypatch.setattr(mp3_conversion.shutil, "which", lambda name: f"/{name}")
 
     async def fake_run(command, **_kwargs):
-        Path(command[-1]).write_bytes(b"bad" * 4096)
+        await asyncio.to_thread(_write_bytes, Path(command[-1]), b"bad" * 4096)
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     async def fake_probe(_path):
