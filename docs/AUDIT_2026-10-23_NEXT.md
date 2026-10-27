@@ -1197,8 +1197,11 @@ extended-правила и дальнейший ручной async review.
 Четвёртый slice удалил шесть unused stdlib/typing imports в services после
 проверки external references; 87 focused tests зелёные. Пятый slice удалил
 семь unused stdlib/typing imports в Dub/LiveDub/speech/TTS modules; 157
-focused tests зелёные. Остаются 650 extended находок, включая 139 `F401`.
-Lazy imports и security-правила разбираются отдельно, без autofix.
+focused tests зелёные. Шестой slice удалил 14 unused imports в adaptive,
+Gemini, Shorts и Telegraph modules; 310 focused tests зелёные. Telegram
+re-exports и `html_mod` в `core.globals` сохранены как используемый API.
+Остаются 636 extended находок, включая 125 `F401`. Lazy imports и
+security-правила разбираются отдельно, без autofix.
 
 **Решение:**
 

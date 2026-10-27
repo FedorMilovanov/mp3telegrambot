@@ -6,7 +6,6 @@ Shorts Candidates — create_shorts_candidates, create_clips_candidates.
 
 from core.globals import (
     HAS_GEMINI,
-    GEMINI_API_KEY,
     GEMINI_CLIENTS,
     make_audio_config,
 )
@@ -25,7 +24,6 @@ from core.text_utils import (
 from core.utils import format_timestamp  # FIX shorts_candidates
 from core.prompts import (
     SHORTS_PROMPT,
-    EXTRAS_PROMPT,
     CLIPS_PROMPT,
     CLIPS_SERMON_PROMPT,
     CLIPS_MIN_SEC,
