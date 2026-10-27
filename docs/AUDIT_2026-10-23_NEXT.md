@@ -1200,8 +1200,11 @@ extended-правила и дальнейший ручной async review.
 focused tests зелёные. Шестой slice удалил 14 unused imports в adaptive,
 Gemini, Shorts и Telegraph modules; 310 focused tests зелёные. Telegram
 re-exports и `html_mod` в `core.globals` сохранены как используемый API.
-Остаются 636 extended находок, включая 125 `F401`. Lazy imports и
-security-правила разбираются отдельно, без autofix.
+Седьмой slice удалил 15 unused imports в Caption/Telegraph converters и трёх
+service modules; behavioral test покрыл LiveDub audio fields, 447 focused tests
+зелёные. Остаются 621 extended находка,
+включая 110 `F401`. Lazy imports и security-правила разбираются отдельно,
+без autofix.
 
 **Решение:**
 

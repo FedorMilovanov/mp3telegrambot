@@ -8,10 +8,7 @@ contains no import hook.
 from __future__ import annotations
 
 from core.study_quality import render_word_study_as_prose
-from services.study_synthesis_policy import (
-    TEACHERLY_STUDY_PROMPT,
-    validate_teacherly_study_policy,
-)
+from services.study_synthesis_policy import TEACHERLY_STUDY_PROMPT
 
 
 __all__ = [

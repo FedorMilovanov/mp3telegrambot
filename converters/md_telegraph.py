@@ -9,12 +9,9 @@ from core.structured_blocks import normalize_structured_block
 from core.text_utils import (
     _scrub_inline,
     _strip_meta_lines,
-    _has_dirty_meta,
-    normalize_author_name,
     normalize_common_typos,
     normalize_source_map_text,
     scrub_third_person_phrases,
-    title_case_fragment,
     join_title_author,
 )
 from core.source_titles import build_source_card, is_disallowed_source_author, render_source_card
@@ -26,7 +23,6 @@ from core.core_utils import (
     time_to_seconds,
     _fix_rtl_in_text,
     _md_parse_inline,
-    _polish_timestamps_in_text,
     normalize_misbolded_bullet_lead,
     unescape_markdown_markers,
 )  # FIX: circular imports
@@ -42,7 +38,7 @@ import json  # FIX markdown
 import logging  # FIX markdown
 import re
 import requests  # FIX markdown
-from typing import Any, Optional, List, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)  # FIX markdown
 

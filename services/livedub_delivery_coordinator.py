@@ -145,7 +145,7 @@ def _variant_caption(variant: str, body: str) -> str:
 
 async def _publication_audio_fields(card: dict[str, Any], variant: str) -> dict[str, Any]:
     from services.livedub_publication import format_audio_caption
-    from services.livedub_publication_core import canonical_author, metadata_text
+    from services.livedub_publication_core import metadata_text
 
     title = metadata_text(str(card.get("title") or "Переведённое видео")) or "Переведённое видео"
     author = metadata_text(str(card.get("author") or "")) or ""

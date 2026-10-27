@@ -239,6 +239,10 @@
 - Extended Ruff, шестой ручной `F401` slice: удалены 14 unused imports в
   adaptive-generation, Gemini, Shorts и Telegraph modules; Telegram re-exports
   в `core.globals` сохранены. `F401` — 125, extended census — 636.
+- Extended Ruff, седьмой ручной `F401` slice: удалены 15 unused imports в
+  Caption/Telegraph converters и трёх service modules; добавлен behavioral test
+  для LiveDub audio fields, 447 focused tests зелёные. `F401` — 110,
+  extended census — 621.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):
