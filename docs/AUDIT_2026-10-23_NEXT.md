@@ -1167,8 +1167,9 @@ cleanup сохранён с точечными `noqa`; `services/translation_edi
 очищен), тридцать пятый — Highlights audio-probe/candidate source preflights,
 тридцать шестой — Highlights render validation и failure cleanup через owned
 workers (cancellation cleanup сохранён синхронным;
-`services/highlights_quality.py` очищен). Остаются 90, другие extended-правила
-и дальнейший ручной async review.
+`services/highlights_quality.py` очищен), тридцать седьмой — composition source
+size/missing checks через один worker snapshot. Остаются 87, другие
+extended-правила и дальнейший ручной async review.
 
 **Решение:**
 

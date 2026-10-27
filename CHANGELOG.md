@@ -187,6 +187,9 @@
   failure cleanup переведены в owned workers; cancellation cleanup сохранён
   синхронным, все postconditions покрыты тестами, `services/highlights_quality.py`
   очищен, остаются 90 findings.
+- Async I/O, тридцать седьмой `ASYNC240` slice: composition source size/missing
+  checks используют один worker snapshot; missing/threshold/size-drift paths
+  подтверждены тестами, остаются 87 findings.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

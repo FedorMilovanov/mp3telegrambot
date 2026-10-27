@@ -24,6 +24,7 @@ from services import (
     translation_editorial,
     yandex_live_dub,
 )
+from services import translation_editorial_composition as editorial_composition
 from services import translation_editorial_factory as editorial_factory
 from tools import translation_editorial as editorial_cli
 
@@ -444,6 +445,49 @@ async def test_highlights_candidate_source_preflight(
     assert refined is None
     assert report["accepted"] is False
     assert report["reason"] == reason
+
+
+@pytest.mark.parametrize("payload", [None, b"", b"x" * 1024], ids=["missing", "empty", "threshold"])
+@pytest.mark.asyncio
+async def test_composition_source_rejects_missing_or_small_file(
+    monkeypatch,
+    tmp_path: Path,
+    payload: bytes | None,
+) -> None:
+    source_path = tmp_path / "source.mp4"
+    if payload is not None:
+        _write_file(source_path, payload)
+    document = {
+        "source": {
+            "local_path": str(source_path),
+            "bytes": len(payload or b""),
+        },
+    }
+    probe = AsyncMock()
+    monkeypatch.setattr(editorial_composition, "probe_media_async", probe)
+
+    with pytest.raises(FileNotFoundError, match="composition source missing/empty"):
+        await editorial_composition._verify_source(document)
+
+    probe.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_composition_source_rejects_size_drift_before_hash_or_probe(monkeypatch, tmp_path: Path) -> None:
+    source_path = _write_file(tmp_path / "source.mp4", b"x" * 2048)
+    document = {
+        "source": {
+            "local_path": str(source_path),
+            "bytes": 2049,
+        },
+    }
+    probe = AsyncMock()
+    monkeypatch.setattr(editorial_composition, "probe_media_async", probe)
+
+    with pytest.raises(RuntimeError, match="composition source size changed"):
+        await editorial_composition._verify_source(document)
+
+    probe.assert_not_called()
 
 
 def _patch_highlights_render_runtime(monkeypatch, run) -> None:
