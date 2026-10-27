@@ -28,7 +28,10 @@ def test_normalize_scripture_text_extracts_ref_quote_and_role():
     block = normalize_structured_block(
         {
             "type": "scripture",
-            "text": "**2 Тимофею 3:16–17:** *«Всё Писание богодухновенно»*\n\nЭтот текст задаёт стандарт достаточности Писания.",
+            "text": (
+                "**2 Тимофею 3:16–17:** *«Всё Писание богодухновенно»*"
+                "\n\nЭтот текст задаёт стандарт достаточности Писания."
+            ),
         }
     )
     assert block["type"] == "scripture"
@@ -81,7 +84,10 @@ def test_audit_uses_normalized_blocks_before_schema_warnings():
             "blocks": [
                 {
                     "type": "scripture",
-                    "text": "**2 Тимофею 3:16:** *«Всё Писание богодухновенно»*\n\nРаботает как основание достаточности.",
+                    "text": (
+                        "**2 Тимофею 3:16:** *«Всё Писание богодухновенно»*"
+                        + "\n\nРаботает как основание достаточности."
+                    ),
                 },
                 {
                     "type": "lexical_analysis",
@@ -106,7 +112,10 @@ def test_renderer_uses_normalized_blocks_for_aliases():
             [
                 {
                     "type": "scripture",
-                    "text": "**2 Тимофею 3:16:** *«Всё Писание богодухновенно»*\n\nРаботает как основание достаточности.",
+                    "text": (
+                        "**2 Тимофею 3:16:** *«Всё Писание богодухновенно»*"
+                        + "\n\nРаботает как основание достаточности."
+                    ),
                 },
                 {
                     "type": "theological_line",

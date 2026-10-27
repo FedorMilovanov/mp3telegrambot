@@ -26,7 +26,10 @@ def test_synopsis_organizational_announcement_filter_removes_only_leading_logist
     announcement = {
         "title": "Анонс конференции",
         "time": "0:00",
-        "content": "Регистрация на конференцию в Grand Rapids откроется сегодня. Reformation Heritage Books приглашает участников.",
+        "content": (
+            "Регистрация на конференцию в Grand Rapids откроется сегодня. "
+            "Reformation Heritage Books приглашает участников."
+        ),
     }
     sermon = {
         "title": "Дух Святой оживляет сухие кости",

@@ -88,7 +88,10 @@ def test_source_map_prefers_original_title_over_invented_russian_title():
     nodes = _section_to_nodes_v2(
         {
             "title": "Карта источников для дальнейшего изучения",
-            "content": "• Синклер Фергюсон, _«Искушение молитвой Господней»_ ( _Sinclair Ferguson, The Lord's Prayer_).\n\nОписание.",
+            "content": (
+                "• Синклер Фергюсон, _«Искушение молитвой Господней»_ "
+                "( _Sinclair Ferguson, The Lord's Prayer_).\n\nОписание."
+            ),
         }
     )
     card = next(n for n in nodes if isinstance(n, dict) and n.get("tag") == "p" and _flat(n).startswith("•"))

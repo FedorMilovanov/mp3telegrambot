@@ -21,7 +21,10 @@ def _flat(node):
 
 
 def test_json_parser_rejects_obvious_timestamps_beyond_duration_plus_small_tolerance():
-    raw = '{"real_author":"A","real_title":"T","format":"sermon","main_topic":"M","timestamps":[{"time":"10:20","topic":"ok"},{"time":"11:00","topic":"too far"}]}'
+    raw = (
+        '{"real_author":"A","real_title":"T","format":"sermon","main_topic":"M",'
+        '"timestamps":[{"time":"10:20","topic":"ok"},{"time":"11:00","topic":"too far"}]}'
+    )
     parsed = _parse_gemini_response(raw, duration=630)
     assert parsed is not None
     assert "10:20 ok" in parsed["timestamps"]

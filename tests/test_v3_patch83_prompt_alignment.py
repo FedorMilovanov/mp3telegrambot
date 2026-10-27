@@ -35,7 +35,10 @@ def test_content_audit_removes_editorial_position_leak_variants():
     sections = [
         {
             "title": "T",
-            "content": "Редакторская позиция канала помогает понять цессационизм. Конфессиональная рамка канала дана для анализа. Основной тезис остаётся.",
+            "content": (
+                "Редакторская позиция канала помогает понять цессационизм. "
+                "Конфессиональная рамка канала дана для анализа. Основной тезис остаётся."
+            ),
         }
     ]
     out, _, issues = audit_expanded_sections(sections, label="StudyAnalysis")
