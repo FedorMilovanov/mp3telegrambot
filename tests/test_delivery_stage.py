@@ -29,6 +29,10 @@ from pipelines.delivery_stage import (
 )
 
 
+def _path_exists(path: Path) -> bool:
+    return path.exists()
+
+
 class StatusMessage:
     def __init__(self) -> None:
         self.edits: list[str] = []
@@ -532,7 +536,8 @@ async def test_pdf_success_progress_document_and_cleanup(tmp_path: Path) -> None
     assert document["caption"] == "📄 <b>PDF-версия материала</b>"
     assert document["parse_mode"] == "HTML"
     assert len(document["content"]) == 500
-    assert not Path(fakes.pdf_kwargs["output_path"]).exists()
+    pdf_path = Path(fakes.pdf_kwargs["output_path"])
+    assert not await asyncio.to_thread(_path_exists, pdf_path)
 
 
 @pytest.mark.asyncio

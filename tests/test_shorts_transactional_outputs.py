@@ -10,6 +10,10 @@ import pytest
 from services import shorts_video
 
 
+def _write_bytes(path: Path, payload: bytes) -> None:
+    path.write_bytes(payload)
+
+
 SOURCE_PATH = Path("services/shorts_video.py")
 FUNCTIONS = (
     "_owned_render_short_clip",
@@ -98,7 +102,7 @@ async def test_render_cancellation_removes_partial_output(
     output_path.write_bytes(b"old short")
 
     async def cancelled_owner(command, **kwargs):
-        Path(command[-1]).write_bytes(b"partial short")
+        await asyncio.to_thread(_write_bytes, Path(command[-1]), b"partial short")
         raise asyncio.CancelledError
 
     _configure_render(monkeypatch, cancelled_owner)
@@ -160,7 +164,7 @@ async def test_transform_cancellation_removes_partial_output(
     output_path.write_bytes(b"old processed")
 
     async def cancelled_owner(command, **kwargs):
-        Path(command[-1]).write_bytes(b"partial processed")
+        await asyncio.to_thread(_write_bytes, Path(command[-1]), b"partial processed")
         raise asyncio.CancelledError
 
     monkeypatch.setattr(shorts_video._impl.shutil, "which", lambda name: "ffmpeg")

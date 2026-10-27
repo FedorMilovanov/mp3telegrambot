@@ -1182,10 +1182,10 @@ Shorts download reuse/discovery, legacy render и transform с прежним
 source checks, ASS cleanup и output validation с прежними Russian Whisper и
 WAV/ASS cleanup, сорок четвёртый — Shorts poster/snapshot source, frame cleanup
 и output validation, сорок пятый — conversion/render async test doubles с
-worker-side generated-output writes, audio probe и temporary-glob.
-`services/shorts_video_impl.py` и весь production/tools census очищены;
-остаются 11 test findings, другие extended-правила и дальнейший ручной async
-review.
+worker-side generated-output writes, audio probe и temporary-glob, сорок
+шестой — оставшиеся delivery/segment/Shorts/Factory/editorial test doubles.
+Общий `ASYNC240` census очищен до нуля без новых suppressions; остаются другие
+extended-правила и дальнейший ручной async review.
 
 **Решение:**
 

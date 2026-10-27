@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -6,6 +7,10 @@ import pytest
 import services.shorts_factory_long_fit as long_fit
 
 _GIB = 1024**3
+
+
+def _write_bytes(path: Path, payload: bytes) -> None:
+    path.write_bytes(payload)
 
 
 def _probe(duration):
@@ -88,7 +93,7 @@ async def test_two_pass_fit_replaces_oversized_output_after_proof(monkeypatch, t
     async def fake_run(command, **kwargs):
         commands.append(list(command))
         if command[command.index("-pass") + 1] == "2":
-            Path(command[-1]).write_bytes(b"f" * 4096)
+            await asyncio.to_thread(_write_bytes, Path(command[-1]), b"f" * 4096)
         return SimpleNamespace(returncode=0, stderr="")
 
     async def fake_probe(path):
@@ -124,7 +129,7 @@ async def test_two_pass_fit_rejects_truncated_result(monkeypatch, tmp_path):
 
     async def fake_run(command, **kwargs):
         if command[command.index("-pass") + 1] == "2":
-            Path(command[-1]).write_bytes(b"f" * 4096)
+            await asyncio.to_thread(_write_bytes, Path(command[-1]), b"f" * 4096)
         return SimpleNamespace(returncode=0, stderr="")
 
     async def fake_probe(_path):
