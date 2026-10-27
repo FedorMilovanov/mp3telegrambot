@@ -273,6 +273,10 @@
   из `main_pipeline`; девять LiveDub compatibility-имён сохранены explicit
   re-exports и executed identity-contract. `F401` = 0 и включён в обычный gate;
   969 focused tests зелёных, extended census — 498.
+- Extended Ruff, первый ручной `E501` slice: перенесены 24 overlong lines в
+  десяти test modules; JSON fixtures сохранили parsed values, остальные strings
+  проверены literal-equivalence. 83 focused tests зелёные. `E501` — 148,
+  extended census — 474.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

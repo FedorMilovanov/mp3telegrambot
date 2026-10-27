@@ -1220,7 +1220,9 @@ facade через explicit re-export/assignment и executed identity-contract;
 73 focused tests зелёные. Шестнадцатый slice удалил 18 unused imports из
 `main_pipeline`; девять LiveDub compatibility-имён сохранены explicit re-exports
 и executed identity-contract. `F401` = 0 и включён в обычный gate; 969 focused
-tests зелёных. Остаются 498 extended находок, включая 97 `E402`.
+tests зелёных. Первый `E501` slice перенёс 24 overlong lines в десяти test
+modules с JSON/literal-equivalence проверками; 83 focused tests зелёные.
+Остаются 474 extended находки, включая 148 `E501` и 97 `E402`.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

@@ -47,7 +47,10 @@ def test_search_caps_long_video_duration_mismatch_for_vk():
 
 
 def test_markdown_separator_normalization_preserves_paragraph_breaks_and_spacing():
-    text = "• **2 Коринфянам 5:14:** цитата / / Вторая глава объясняет. книгеNine Marks Faith Alone.Глубоко\n-Достаточность"
+    text = (
+        "• **2 Коринфянам 5:14:** цитата / / Вторая глава объясняет. "
+        "книгеNine Marks Faith Alone.Глубоко\n-Достаточность"
+    )
     normalized = normalize_generated_markdown_separators(text)
     assert "цитата\n\nВторая глава" in normalized
     assert "книге Nine" in normalized
