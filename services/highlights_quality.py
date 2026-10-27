@@ -474,13 +474,17 @@ def _probe_windows(
     return windows
 
 
+def _path_exists(path: Path) -> bool:
+    return path.exists()
+
+
 async def _build_audio_probe(
     source_video_path: Path,
     windows: list[dict],
     work_dir: Path,
 ) -> Path | None:
     ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg or not source_video_path.exists() or not windows:
+    if not ffmpeg or not await asyncio.to_thread(_path_exists, source_video_path) or not windows:
         return None
 
     part_paths: list[Path] = []
@@ -718,7 +722,7 @@ async def refine_highlights_candidate(
     if not HAS_FASTER_WHISPER:
         report["reason"] = "whisper_unavailable"
         return None, report
-    if not source_video_path.exists():
+    if not await asyncio.to_thread(_path_exists, source_video_path):
         report["reason"] = "source_missing"
         return None, report
 
