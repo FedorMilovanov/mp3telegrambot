@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from core.bgutil_pin import BGUTIL_VERSION as PIN

@@ -1187,6 +1187,13 @@ worker-side generated-output writes, audio probe и temporary-glob, сорок
 Общий `ASYNC240` census очищен до нуля без новых suppressions; остаются другие
 extended-правила и дальнейший ручной async review.
 
+Свежий extended census после `ASYNC240`: 705 находок (`E501` 172, `F401` 194,
+`E402` 110, `S603` 103, `S110` 56, `PLW0603` 47, `S607` 23). Первый ручной
+`F401` slice удалил 12 явно неиспользуемых stdlib imports только в tests;
+118 focused tests подтвердили неизменное поведение. Остаются 693 extended
+находки, включая 182 `F401`; lazy imports и security-правила разбираются
+отдельно, без autofix.
+
 **Решение:**
 
 1. ✅ **Волна 1 (один коммит):** `ruff format .` + SHA в `.git-blame-ignore-revs`,
