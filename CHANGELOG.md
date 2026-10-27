@@ -183,6 +183,10 @@
 - Async I/O, тридцать пятый `ASYNC240` slice: Highlights audio-probe/candidate
   source preflights переведены в worker threads; missing/existing-source paths
   подтверждены тестами, остаются 99 findings.
+- Async I/O, тридцать шестой `ASYNC240` slice: Highlights render validation и
+  failure cleanup переведены в owned workers; cancellation cleanup сохранён
+  синхронным, все postconditions покрыты тестами, `services/highlights_quality.py`
+  очищен, остаются 90 findings.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

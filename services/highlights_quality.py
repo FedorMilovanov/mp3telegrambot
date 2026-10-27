@@ -33,6 +33,7 @@ from core.globals import (
 )
 from services.gemini_router import gemini_generate
 from services.async_process import run_cancellable_process
+from services.async_worker import await_owned_coroutine
 from services.ffmpeg import _get_video_encoder
 from services.shorts_video import HAS_FASTER_WHISPER, transcribe_short_clip
 
@@ -478,6 +479,14 @@ def _path_exists(path: Path) -> bool:
     return path.exists()
 
 
+def _unlink_missing(path: Path) -> None:
+    path.unlink(missing_ok=True)
+
+
+def _nonempty_file_size(path: Path) -> int:
+    return path.stat().st_size if path.exists() else 0
+
+
 async def _build_audio_probe(
     source_video_path: Path,
     windows: list[dict],
@@ -887,11 +896,11 @@ async def render_verified_highlights(
     FFmpeg is still writing in a background executor thread.
     """
     ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg or not source_video_path.exists() or not fragments:
+    if not ffmpeg or not await asyncio.to_thread(_path_exists, source_video_path) or not fragments:
         return False
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.unlink(missing_ok=True)
+    await await_owned_coroutine(asyncio.to_thread(_unlink_missing, output_path))
     try:
         encoder, quality, preset = _get_video_encoder()
         input_args: list[str] = []
@@ -980,30 +989,32 @@ async def render_verified_highlights(
                 timeout=600,
                 text=True,
             )
-        if proc.returncode != 0 or not output_path.exists() or output_path.stat().st_size == 0:
+        output_size = await asyncio.to_thread(_nonempty_file_size, output_path) if proc.returncode == 0 else 0
+        if output_size <= 0:
             logger.warning(
                 "Verified highlights render failed: %s",
                 (proc.stderr or "")[-1000:],
             )
-            output_path.unlink(missing_ok=True)
+            await await_owned_coroutine(asyncio.to_thread(_unlink_missing, output_path))
             return False
 
         logger.info(
             "Verified highlights rendered: %s fragments=%d size=%.1fMB",
             output_path.name,
             len(fragments),
-            output_path.stat().st_size / (1024 * 1024),
+            output_size / (1024 * 1024),
         )
         return True
     except asyncio.CancelledError:
-        output_path.unlink(missing_ok=True)
+        # Cancellation must not skip cleanup by suspending at a new await.
+        output_path.unlink(missing_ok=True)  # noqa: ASYNC240
         raise
     except subprocess.TimeoutExpired:
-        output_path.unlink(missing_ok=True)
+        await await_owned_coroutine(asyncio.to_thread(_unlink_missing, output_path))
         logger.warning("render_verified_highlights: ffmpeg timeout")
         return False
     except Exception as exc:
-        output_path.unlink(missing_ok=True)
+        await await_owned_coroutine(asyncio.to_thread(_unlink_missing, output_path))
         logger.warning(
             "render_verified_highlights error: %s: %s",
             type(exc).__name__,

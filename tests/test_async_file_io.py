@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -443,6 +444,115 @@ async def test_highlights_candidate_source_preflight(
     assert refined is None
     assert report["accepted"] is False
     assert report["reason"] == reason
+
+
+def _patch_highlights_render_runtime(monkeypatch, run) -> None:
+    monkeypatch.setattr(highlights_quality.shutil, "which", lambda _name: "ffmpeg")
+    monkeypatch.setattr(
+        highlights_quality,
+        "_get_video_encoder",
+        lambda: ("libx264", ["-crf", "23"], ["-preset", "veryfast"]),
+    )
+    monkeypatch.setattr(highlights_quality, "run_cancellable_process", run)
+
+
+@pytest.mark.asyncio
+async def test_highlights_render_commits_nonempty_output(monkeypatch, tmp_path: Path) -> None:
+    source_path = _write_file(tmp_path / "source.mp4", b"source")
+    output_path = _write_file(tmp_path / "nested" / "highlight.mp4", b"stale")
+    commands = []
+
+    async def run(command, **_kwargs):
+        commands.append(list(command))
+        _write_file(output_path, b"rendered")
+        return SimpleNamespace(returncode=0, stderr="")
+
+    _patch_highlights_render_runtime(monkeypatch, run)
+
+    result = await highlights_quality.render_verified_highlights(
+        source_path,
+        output_path,
+        [{"start_seconds": 0.0, "end_seconds": 5.0}],
+    )
+
+    assert result is True
+    assert _read_bytes(output_path) == b"rendered"
+    assert _read_bytes(source_path) == b"source"
+    assert len(commands) == 1
+    assert "concat=n=1:v=1:a=1[outv][outa]" in commands[0][commands[0].index("-filter_complex") + 1]
+
+
+@pytest.mark.asyncio
+async def test_highlights_render_missing_source_preserves_existing_output(monkeypatch, tmp_path: Path) -> None:
+    source_path = tmp_path / "missing.mp4"
+    output_path = _write_file(tmp_path / "highlight.mp4", b"existing")
+    run = AsyncMock()
+    _patch_highlights_render_runtime(monkeypatch, run)
+
+    result = await highlights_quality.render_verified_highlights(
+        source_path,
+        output_path,
+        [{"start_seconds": 0.0, "end_seconds": 5.0}],
+    )
+
+    assert result is False
+    assert _read_bytes(output_path) == b"existing"
+    run.assert_not_called()
+
+
+@pytest.mark.parametrize("failure", ["empty", "returncode", "timeout", "error"])
+@pytest.mark.asyncio
+async def test_highlights_render_failure_cleans_partial_output(
+    monkeypatch,
+    tmp_path: Path,
+    failure: str,
+) -> None:
+    source_path = _write_file(tmp_path / "source.mp4", b"source")
+    output_path = tmp_path / "highlight.mp4"
+
+    async def run(command, **_kwargs):
+        _write_file(output_path, b"" if failure == "empty" else b"partial")
+        if failure == "returncode":
+            return SimpleNamespace(returncode=1, stderr="failed")
+        if failure == "timeout":
+            raise subprocess.TimeoutExpired(command, 600)
+        if failure == "error":
+            raise RuntimeError("render failed")
+        return SimpleNamespace(returncode=0, stderr="")
+
+    _patch_highlights_render_runtime(monkeypatch, run)
+
+    result = await highlights_quality.render_verified_highlights(
+        source_path,
+        output_path,
+        [{"start_seconds": 0.0, "end_seconds": 5.0}],
+    )
+
+    assert result is False
+    assert not _path_exists(output_path)
+    assert _read_bytes(source_path) == b"source"
+
+
+@pytest.mark.asyncio
+async def test_highlights_render_cancellation_cleans_partial_output(monkeypatch, tmp_path: Path) -> None:
+    source_path = _write_file(tmp_path / "source.mp4", b"source")
+    output_path = tmp_path / "highlight.mp4"
+
+    async def run(_command, **_kwargs):
+        _write_file(output_path, b"partial")
+        raise asyncio.CancelledError
+
+    _patch_highlights_render_runtime(monkeypatch, run)
+
+    with pytest.raises(asyncio.CancelledError):
+        await highlights_quality.render_verified_highlights(
+            source_path,
+            output_path,
+            [{"start_seconds": 0.0, "end_seconds": 5.0}],
+        )
+
+    assert not _path_exists(output_path)
+    assert _read_bytes(source_path) == b"source"
 
 
 def _patch_russian_whisper_runtime(
