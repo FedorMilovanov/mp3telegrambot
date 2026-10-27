@@ -16,7 +16,6 @@ import math
 import os
 import re
 import subprocess as _subprocess
-import sys
 import tempfile
 import threading
 import wave

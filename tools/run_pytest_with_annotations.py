@@ -7,7 +7,6 @@ import os
 import re
 import subprocess
 import sys
-from pathlib import Path
 
 _FAILED_RE = re.compile(r"^FAILED\s+([^\s]+?)(?:\s+-\s+.*)?$", re.MULTILINE)
 

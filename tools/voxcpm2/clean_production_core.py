@@ -15,7 +15,7 @@ import math
 import os
 import re
 import shutil
-import subprocess
+import subprocess as subprocess
 from pathlib import Path
 from typing import Any
 

@@ -8,7 +8,6 @@ import json
 import math
 import os
 import subprocess as _subprocess
-import sys
 import tempfile
 import threading
 from pathlib import Path
