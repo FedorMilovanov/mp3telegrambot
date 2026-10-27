@@ -1055,19 +1055,24 @@ def get_subtitles_mode_settings() -> dict:
     }
 
 
+def _clear_torch_cuda_cache() -> None:
+    """Release cached GPU allocations without making cleanup a hard dependency."""
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+    except Exception:
+        logger.debug("CUDA cache cleanup failed; continuing without GPU synchronization", exc_info=True)
+
+
 def _reset_whisper_model(device: str | None = None, compute_type: str | None = None):
     """Forcefully resets the singleton so the next call creates a fresh model on the requested device."""
     global _whisper_model, _whisper_model_name
     with _whisper_lock:
         if _whisper_model is not None:
-            try:
-                import torch
-
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                    torch.cuda.synchronize()
-            except Exception:
-                pass
+            _clear_torch_cuda_cache()
             with contextlib.suppress(Exception):
                 del _whisper_model
             _whisper_model = None
@@ -1084,14 +1089,7 @@ def _get_whisper_model(model_size: str | None = None):
             if _whisper_model is not None:
                 with contextlib.suppress(Exception):
                     del _whisper_model
-                try:
-                    import torch
-
-                    if torch.cuda.is_available():
-                        torch.cuda.empty_cache()
-                        torch.cuda.synchronize()
-                except Exception:
-                    pass
+                _clear_torch_cuda_cache()
             from faster_whisper import WhisperModel as _WM
 
             _force_cpu = os.getenv("WHISPER_FORCE_CPU", "0").strip().lower() in ("1", "true", "yes", "on")
@@ -1291,14 +1289,7 @@ async def _unowned_transcribe_short_clip(video_path: Path, ai_data: dict = None)
         _initial_prompt_for_thread = _whisper_initial_prompt
 
         def _run_whisper():
-            try:
-                import torch
-
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                    torch.cuda.synchronize()
-            except Exception:
-                pass
+            _clear_torch_cuda_cache()
             model = _get_whisper_model(model_size)
             segs, info = model.transcribe(
                 str(_wav_path_for_thread),
