@@ -22,6 +22,12 @@ from tools.voxcpm2 import direct_timing_guard as guard
 from tools.voxcpm2 import direct_surgical_polish_v2 as polish
 
 
+# direct_max_quality_cli consumes all three modules through this runtime facade.
+assert surgical_runtime.direct_retry_epoch is retry
+assert surgical_runtime.direct_surgical_io is surgical_io
+assert surgical_runtime.guard is guard
+
+
 def digest(path: Path) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 

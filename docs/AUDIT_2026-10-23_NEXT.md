@@ -1215,7 +1215,10 @@ unused imports в repo/VoxCPM2 tools; публичный `clean_production_core.
 удалил десять late unused imports в восьми VoxCPM2 modules; 146 focused tests
 зелёные. Четырнадцатый slice заменил три re-exported globals прямыми
 stdlib/telegram imports во всех production-consumers; 960 focused tests
-зелёные. Остаются 528 extended находок, включая 30 `F401` и 97 `E402`.
+зелёные. Пятнадцатый slice сохранил три consumed module-имени surgical runtime
+facade через explicit re-export/assignment и executed identity-contract;
+73 focused tests зелёные. Остаются 525 extended находок, включая 27 `F401`
+и 97 `E402`.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**
