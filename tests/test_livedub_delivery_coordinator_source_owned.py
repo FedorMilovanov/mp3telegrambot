@@ -26,6 +26,24 @@ async def test_singleflight_runs_one_companion_transaction() -> None:
     assert calls == 1
 
 
+@pytest.mark.asyncio
+async def test_publication_audio_fields_build_source_owned_caption() -> None:
+    fields = await delivery._publication_audio_fields(
+        {
+            "title": "  Тема перевода  ",
+            "author": "",
+            "description": "Краткое описание материала.",
+        },
+        "clean",
+    )
+
+    assert fields["title"] == "Тема перевода"
+    assert fields["performer"] is None
+    assert fields["parse_mode"] == "HTML"
+    assert fields["caption"].startswith("<b>🎧 Чистый русский перевод</b>\n\n")
+    assert "Краткое описание материала." in fields["caption"]
+
+
 def test_delivery_coordinator_is_explicit_not_installed() -> None:
     source = Path(delivery.__file__).read_text(encoding="utf-8")
     assert "def install" not in source

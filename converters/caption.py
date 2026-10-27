@@ -19,14 +19,7 @@ from core.russian_style import polish_public_russian_text
 from core.url_utils import get_youtube_timestamp_url, get_youtube_video_url  # FIX #7
 
 # time_to_seconds и _fix_rtl_in_text перенесены в core_utils (разрыв циклов)
-from core.core_utils import (  # FIX: circular imports
-    time_to_seconds,
-    _fix_rtl_in_text,
-    _fix_unclosed_bold,
-    _fix_inline_spacing,
-    _md_parse_inline_inner,
-    _md_parse_inline,
-)
+from core.core_utils import time_to_seconds  # FIX: circular imports
 from core.globals import html_mod  # FIX #7: html_mod = html as html_mod в globals
 
 import re
