@@ -233,6 +233,9 @@
 - Extended Ruff, четвёртый ручной `F401` slice: удалены шесть unused
   stdlib/typing imports в services после проверки external references;
   `F401` — 146, extended census — 657.
+- Extended Ruff, пятый ручной `F401` slice: удалены семь unused stdlib/typing
+  imports в Dub/LiveDub/speech/TTS modules после behavioral checks;
+  `F401` — 139, extended census — 650.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

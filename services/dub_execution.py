@@ -7,13 +7,12 @@ import hashlib
 import json
 import os
 import signal
-import sqlite3
 import subprocess
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Mapping, Sequence
 
 from services.dub_studio import DubStore, Recipe, resolve_recipe_path, utc_now
 

@@ -1195,9 +1195,10 @@ extended-правила и дальнейший ручной async review.
 удалил 9 устаревших/redundant project imports, а 4 prompt constants сохранил
 и связал с явными assertions; 56 focused tests зелёные, test-level `F401` = 0.
 Четвёртый slice удалил шесть unused stdlib/typing imports в services после
-проверки external references; 87 focused tests зелёные. Остаются 657 extended
-находок, включая 146 `F401`. Lazy imports и security-правила разбираются
-отдельно, без autofix.
+проверки external references; 87 focused tests зелёные. Пятый slice удалил
+семь unused stdlib/typing imports в Dub/LiveDub/speech/TTS modules; 157
+focused tests зелёные. Остаются 650 extended находок, включая 139 `F401`.
+Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**
 
