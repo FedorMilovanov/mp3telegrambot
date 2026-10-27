@@ -286,6 +286,9 @@
 - Extended Ruff, четвёртый ручной `E501` slice: перенесены 11 overlong lines в
   Telegraph publisher/pages; prompt/logger strings сохранены, executable AST не
   изменился, 969 focused tests зелёные. `E501` — 118, extended census — 444.
+- Extended Ruff, пятый ручной `E501` slice: устранены 78 findings в 19 prompt
+  string tokens; prompt values, source-substring контракт и executable AST
+  сохранены, 573 focused tests зелёные. `E501` — 40, extended census — 366.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):
