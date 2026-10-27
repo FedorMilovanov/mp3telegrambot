@@ -1172,8 +1172,10 @@ size/missing checks через один worker snapshot, тридцать вос
 render validation, provenance paths и атомарная sidecar+media публикация
 (`services/translation_editorial_composition.py` очищен), тридцать девятый —
 Clips/Montage source/part/output validation через worker-side size snapshots
-(`services/render_clips_montage.py` очищен). Остаются 64, другие extended-правила
-и дальнейший ручной async review.
+(`services/render_clips_montage.py` очищен), сороковой — Factory evidence и
+download candidate discovery через owned workers с прежним mtime ordering и
+cancellation cleanup. Остаются 61, другие extended-правила и дальнейший ручной
+async review.
 
 **Решение:**
 

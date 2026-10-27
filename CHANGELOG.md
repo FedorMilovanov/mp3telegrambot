@@ -198,6 +198,9 @@
   output validation используют worker-side size snapshots; signal-2, nonempty
   gates и cancellation cleanup сохранены, `services/render_clips_montage.py`
   очищен, остаются 64 findings.
+- Async I/O, сороковой `ASYNC240` slice: Factory evidence и download candidate
+  discovery используют owned workers; mtime ordering, <=1080p validation и
+  cancellation cleanup подтверждены тестами, остаются 61 finding.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):
