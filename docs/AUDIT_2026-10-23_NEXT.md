@@ -1225,7 +1225,9 @@ modules с JSON/literal-equivalence проверками; 83 focused tests зе�
 Второй slice перенёс девять string/f-string lines в пяти `core` modules без
 изменения executable AST; 372 focused tests зелёные. Третий slice перенёс десять
 lines в converters/handlers/main с тем же AST-invariant; 375 focused tests
-зелёные. Остаются 455 extended находок, включая 129 `E501` и 97 `E402`.
+зелёные. Четвёртый slice перенёс 11 overlong lines в Telegraph publisher/pages;
+prompt/logger strings и executable AST сохранены, 969 focused tests зелёные.
+Остаются 444 extended находки, включая 118 `E501` и 97 `E402`.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

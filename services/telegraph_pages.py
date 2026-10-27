@@ -1121,7 +1121,8 @@ async def _retry_expanded_sections_for_content_audit(
         "Ты получил JSON для Telegraph-страницы, но deterministic content-audit нашёл проблемы. "
         "Исправь ТОЛЬКО перечисленные проблемы и верни валидный JSON {outline, sections}. "
         "Не сокращай страницу, не удаляй сильные мысли, не добавляй новых источников вне уже разрешённого контекста. "
-        "Если scripture/source/application/lexicon блок тонкий — дополни его grounded объяснением из исходного задания. "
+        "Если scripture/source/application/lexicon блок тонкий — "
+        "дополни его grounded объяснением из исходного задания. "
         "ВАЖНО: если scripture блок уже имеет text с описанием, НЕ дублируй то же описание в role_in_argument. "
         "role_in_argument должен ДОПОЛНЯТЬ text, а не повторять его. Если text уже содержит полное объяснение, "
         "в role_in_argument добавь НОВУЮ информацию: параллельные тексты, контекст главы, связь с темой. "
@@ -1696,7 +1697,8 @@ async def create_telegraph_study_reflection_combined(
     _max_prompt_chars = int(os.getenv("COMBINED_STUDY_REFLECTION_MAX_PROMPT_CHARS", "90000"))
     if len(combined_prompt) > _max_prompt_chars:
         logger.warning(
-            "Combined Study+Reflection: prompt too large for quality-first mode (%d > %d); falling back to separate calls",
+            "Combined Study+Reflection: prompt too large for quality-first mode "
+            "(%d > %d); falling back to separate calls",
             len(combined_prompt),
             _max_prompt_chars,
         )
