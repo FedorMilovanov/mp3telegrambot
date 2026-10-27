@@ -1159,8 +1159,10 @@ cleanup (синхронный cancellation-safe unlink с точечным `noqa
 первый — Shorts normalize/transform input/output и same-path no-op checks
 (nonempty-output commit и empty-output cleanup подтверждены тестами), тридцать
 второй — общий Shorts poster/snapshot output validator
-(`services/shorts_video.py` очищен). Остаются 114, другие extended-правила и
-дальнейший ручной async review.
+(`services/shorts_video.py` очищен), тридцать третий — Russian Whisper WAV
+validation и temporary-text writes через owned workers (cancellation-safe
+cleanup сохранён с точечными `noqa`; `services/translation_editorial.py`
+очищен). Остаются 107, другие extended-правила и дальнейший ручной async review.
 
 **Решение:**
 

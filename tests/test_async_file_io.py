@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -17,6 +18,8 @@ from services import (
     shorts_candidates,
     shorts_factory_candidates,
     shorts_video,
+    shorts_video_impl,
+    translation_editorial,
     yandex_live_dub,
 )
 from services import translation_editorial_factory as editorial_factory
@@ -393,6 +396,105 @@ async def test_optional_short_outputs_validate_generated_file(
         assert _read_bytes(output_path) == payload
     else:
         assert not _path_exists(output_path)
+
+
+def _patch_russian_whisper_runtime(
+    monkeypatch,
+    tmp_path: Path,
+    *,
+    wav_payload: bytes = b"w" * 2048,
+):
+    video_path = _write_file(tmp_path / "source.mp4", b"v" * 2048)
+    wav_paths = []
+    segment = SimpleNamespace(
+        text=" Привет ",
+        start=0.0,
+        end=0.5,
+        words=[SimpleNamespace(word=" Привет ", start=0.0, end=0.5)],
+    )
+    model = SimpleNamespace(
+        transcribe=Mock(return_value=([segment], SimpleNamespace(duration=0.5))),
+    )
+
+    async def run(command, **_kwargs):
+        wav_path = Path(command[-1])
+        wav_paths.append(wav_path)
+        _write_file(wav_path, wav_payload)
+        return SimpleNamespace(returncode=0, stderr="")
+
+    monkeypatch.setattr(translation_editorial.shutil, "which", lambda _name: "ffmpeg")
+    monkeypatch.setattr(translation_editorial, "run_cancellable_process", run)
+    monkeypatch.setattr(shorts_video_impl, "HAS_FASTER_WHISPER", True)
+    monkeypatch.setattr(shorts_video_impl, "_get_whisper_model", lambda _name: model)
+    monkeypatch.setattr(shorts_video_impl, "build_whisper_initial_prompt", lambda *_args, **_kwargs: "prompt")
+    return video_path, wav_paths, model
+
+
+@pytest.mark.asyncio
+async def test_russian_whisper_publishes_outputs_and_cleans_wav(monkeypatch, tmp_path: Path) -> None:
+    video_path, wav_paths, model = _patch_russian_whisper_runtime(monkeypatch, tmp_path)
+    srt_output = tmp_path / "transcript.srt"
+    words_output = tmp_path / "words.json"
+
+    result = await translation_editorial.transcribe_russian_whisper(
+        video_path,
+        srt_output=srt_output,
+        words_output=words_output,
+    )
+
+    assert result == (srt_output, words_output)
+    assert _read_text(srt_output) == "1\n00:00:00,000 --> 00:00:00,500\nПривет\n\n"
+    assert json.loads(_read_text(words_output)) == [{"word": "Привет", "start": 0.0, "end": 0.5}]
+    assert model.transcribe.call_count == 1
+    assert len(wav_paths) == 1
+    assert not _path_exists(wav_paths[0])
+    assert _path_exists(video_path)
+
+
+@pytest.mark.asyncio
+async def test_russian_whisper_rejects_empty_wav_and_cleans_it(monkeypatch, tmp_path: Path) -> None:
+    video_path, wav_paths, model = _patch_russian_whisper_runtime(monkeypatch, tmp_path, wav_payload=b"")
+    srt_output = tmp_path / "transcript.srt"
+    words_output = tmp_path / "words.json"
+
+    with pytest.raises(RuntimeError, match="could not extract Russian audio"):
+        await translation_editorial.transcribe_russian_whisper(
+            video_path,
+            srt_output=srt_output,
+            words_output=words_output,
+        )
+
+    model.transcribe.assert_not_called()
+    assert len(wav_paths) == 1
+    assert not _path_exists(wav_paths[0])
+    assert not _path_exists(srt_output)
+    assert not _path_exists(words_output)
+
+
+@pytest.mark.asyncio
+async def test_russian_whisper_cancellation_cleans_all_temporary_files(monkeypatch, tmp_path: Path) -> None:
+    video_path, wav_paths, _model = _patch_russian_whisper_runtime(monkeypatch, tmp_path)
+    srt_output = tmp_path / "transcript.srt"
+    words_output = tmp_path / "words.json"
+
+    def cancel_publish(_source, _destination):
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(translation_editorial.os, "replace", cancel_publish)
+
+    with pytest.raises(asyncio.CancelledError):
+        await translation_editorial.transcribe_russian_whisper(
+            video_path,
+            srt_output=srt_output,
+            words_output=words_output,
+        )
+
+    assert not _matching_paths(tmp_path, ".transcript.srt.*")
+    assert not _matching_paths(tmp_path, ".words.json.*")
+    assert len(wav_paths) == 1
+    assert not _path_exists(wav_paths[0])
+    assert not _path_exists(srt_output)
+    assert not _path_exists(words_output)
 
 
 @pytest.mark.asyncio
