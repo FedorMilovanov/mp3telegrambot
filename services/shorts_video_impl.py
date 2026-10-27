@@ -1215,10 +1215,11 @@ async def _unowned_transcribe_short_clip(video_path: Path, ai_data: dict = None)
         return []
 
     # ── File check ─────────────────────────────────────────────
-    if not video_path.exists():
+    if not await asyncio.to_thread(_path_exists, video_path):
         logger.warning(f"Subtitles: файл для транскрипции не найден: {video_path}")
         return []
-    video_size_mb = video_path.stat().st_size / (1024 * 1024)
+    video_size = await asyncio.to_thread(_file_size_or_zero, video_path)
+    video_size_mb = video_size / (1024 * 1024)
     logger.info(f"Subtitles: транскрибирую {video_path.name} ({video_size_mb:.1f} MB) через faster-whisper")
 
     wav_path: Path | None = None
@@ -1389,7 +1390,7 @@ async def _unowned_burn_subtitles_into_short(
         import tempfile
 
         ffmpeg = shutil.which("ffmpeg")
-        if not ffmpeg or not input_path.exists() or not segments:
+        if not ffmpeg or not await asyncio.to_thread(_path_exists, input_path) or not segments:
             return False
         subtitle_cfg = get_subtitles_mode_settings()
         ass_content = _generate_ass_from_segments(segments, karaoke=subtitle_cfg["karaoke"])
@@ -1424,13 +1425,14 @@ async def _unowned_burn_subtitles_into_short(
 
         async with _sched.gpu_render:
             proc = await run_cancellable_process(cmd, timeout=600, text=True)
-        ass_path.unlink(missing_ok=True)
+        await await_owned_coroutine(asyncio.to_thread(_unlink_missing, ass_path))
+        output_size = await asyncio.to_thread(_file_size_or_zero, output_path) if proc.returncode == 0 else 0
         if proc.returncode != 0:
             logger.warning(f"burn_subtitles ffmpeg error: {(proc.stderr or '')[-500:]}")
             return False
-        if not output_path.exists() or output_path.stat().st_size == 0:
+        if output_size == 0:
             return False
-        logger.info(f"Subtitles burned: {output_path.name} ({output_path.stat().st_size / 1024 / 1024:.1f}MB)")
+        logger.info(f"Subtitles burned: {output_path.name} ({output_size / 1024 / 1024:.1f}MB)")
         return True
     except Exception as e:
         logger.warning(f"burn_subtitles_into_short error: {type(e).__name__}: {e}")

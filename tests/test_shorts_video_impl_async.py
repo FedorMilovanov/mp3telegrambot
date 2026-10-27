@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -211,6 +211,127 @@ async def test_legacy_short_transform_missing_input_does_not_start_process(monke
         tmp_path / "processed.mp4",
         normalize_audio=False,
         speed=1.5,
+    )
+
+    assert result is False
+    run.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_legacy_short_transcribe_uses_russian_whisper_and_cleans_wav(monkeypatch, tmp_path: Path) -> None:
+    video_path = tmp_path / "short.mp4"
+    _write_bytes(video_path, b"video")
+    wav_paths: list[Path] = []
+    segment = SimpleNamespace(
+        start=0.0,
+        end=0.5,
+        text=" Привет ",
+        words=[SimpleNamespace(word=" Привет ", start=0.0, end=0.5)],
+    )
+    info = SimpleNamespace(duration=0.5, language="ru", language_probability=0.99)
+    model = SimpleNamespace(transcribe=Mock(return_value=([segment], info)))
+
+    async def fake_run(command, **kwargs):
+        wav_path = Path(command[-1])
+        wav_paths.append(wav_path)
+        await asyncio.to_thread(_write_bytes, wav_path, b"w" * 2048)
+        return SimpleNamespace(returncode=0, stderr="")
+
+    monkeypatch.setattr(shorts_video_impl, "HAS_FASTER_WHISPER", True)
+    monkeypatch.setattr(shorts_video_impl.shutil, "which", lambda name: "/ffmpeg")
+    monkeypatch.setattr(shorts_video_impl, "run_cancellable_process", fake_run)
+    monkeypatch.setattr(shorts_video_impl, "_get_whisper_model", lambda name: model)
+    monkeypatch.setattr(shorts_video_impl, "build_whisper_initial_prompt", lambda *args, **kwargs: "prompt")
+    monkeypatch.setattr(
+        shorts_video_impl,
+        "get_subtitles_mode_settings",
+        lambda: {
+            "model_name": "large-v3",
+            "word_timestamps": True,
+            "karaoke": True,
+            "light": False,
+            "gemini_hints": True,
+        },
+    )
+
+    result = await shorts_video_impl._unowned_transcribe_short_clip(video_path, {"title": "Test"})
+
+    assert result == [
+        {
+            "start": 0.0,
+            "end": 0.5,
+            "text": "Привет",
+            "words": [{"word": "Привет", "start": 0.0, "end": 0.5}],
+        }
+    ]
+    assert model.transcribe.call_args.kwargs["language"] == "ru"
+    assert model.transcribe.call_args.kwargs["word_timestamps"] is True
+    assert len(wav_paths) == 1
+    assert not wav_paths[0].exists()
+
+
+@pytest.mark.asyncio
+async def test_legacy_short_transcribe_missing_video_does_not_start_process(monkeypatch, tmp_path: Path) -> None:
+    run = AsyncMock()
+    monkeypatch.setattr(shorts_video_impl, "HAS_FASTER_WHISPER", True)
+    monkeypatch.setattr(shorts_video_impl, "run_cancellable_process", run)
+
+    result = await shorts_video_impl._unowned_transcribe_short_clip(tmp_path / "missing.mp4")
+
+    assert result == []
+    run.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [(None, False), (b"", False), (b"burned", True)],
+    ids=["missing", "empty", "nonempty"],
+)
+async def test_legacy_short_burn_validates_output_and_cleans_ass(
+    monkeypatch,
+    tmp_path: Path,
+    payload: bytes | None,
+    expected: bool,
+) -> None:
+    input_path = tmp_path / "input.mp4"
+    output_path = tmp_path / "burned.mp4"
+    _write_bytes(input_path, b"input")
+    ass_paths: list[Path] = []
+
+    async def fake_run(command, **kwargs):
+        subtitle_filter = command[command.index("-vf") + 1]
+        ass_paths.append(Path(subtitle_filter.split("'", 2)[1]))
+        if payload is not None:
+            await asyncio.to_thread(_write_bytes, output_path, payload)
+        return SimpleNamespace(returncode=0, stderr="")
+
+    _patch_render_runtime(monkeypatch, fake_run)
+    monkeypatch.setattr(shorts_video_impl, "get_subtitles_mode_settings", lambda: {"karaoke": False})
+
+    result = await shorts_video_impl._unowned_burn_subtitles_into_short(
+        input_path,
+        output_path,
+        [{"start": 0.0, "end": 1.0, "text": "Hello", "words": []}],
+    )
+
+    assert result is expected
+    assert len(ass_paths) == 1
+    assert not ass_paths[0].exists()
+    if expected:
+        assert output_path.read_bytes() == payload
+
+
+@pytest.mark.asyncio
+async def test_legacy_short_burn_missing_input_does_not_start_process(monkeypatch, tmp_path: Path) -> None:
+    run = AsyncMock()
+    monkeypatch.setattr(shorts_video_impl.shutil, "which", lambda name: "/ffmpeg")
+    monkeypatch.setattr(shorts_video_impl, "run_cancellable_process", run)
+
+    result = await shorts_video_impl._unowned_burn_subtitles_into_short(
+        tmp_path / "missing.mp4",
+        tmp_path / "burned.mp4",
+        [{"start": 0.0, "end": 1.0, "text": "Hello", "words": []}],
     )
 
     assert result is False
