@@ -64,5 +64,5 @@ async def prepare_livedub_video_assets(
 
         cover = await asyncio.to_thread(_find_cover)
     except Exception:
-        pass
+        logger.debug("LiveDub cover discovery failed; continuing without cover", exc_info=True)
     return metadata, thumbnail, cover

@@ -75,7 +75,7 @@ async def finish_livedub_quick(
                     "Попробуйте режим 🇬🇧 ENG Full (/mode) — там будет хотя бы анализ."
                 )
         except Exception:
-            pass
+            logger.debug("Failed to send LiveDub failure notification", exc_info=True)
 
     cleanup(media_id)
     logger.info("ENG Quick done: %s delivered=%s", media_id, delivered)

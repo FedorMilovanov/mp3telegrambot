@@ -91,7 +91,7 @@ async def run_livedub_full_qa(
                 except Exception:
                     clean_ru = None
         except Exception:
-            pass
+            logger.debug("LiveDub QA audio assets unavailable; continuing without them", exc_info=True)
 
         qa_part = None
         qa_client = None
