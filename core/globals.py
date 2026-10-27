@@ -3,7 +3,6 @@
 
 import asyncio
 import contextlib
-import html as html_mod
 import json
 import logging
 import os
@@ -19,7 +18,6 @@ load_dotenv()
 os.environ.setdefault("HF_HOME", str(Path.home() / ".cache" / "huggingface"))
 
 from flask import Flask
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from core import runtime_status
 from core.model_catalog import (

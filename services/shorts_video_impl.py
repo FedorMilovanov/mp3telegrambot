@@ -6,11 +6,9 @@ Shorts / Video processing — субтитры, рендер, постеры.
 
 from __future__ import annotations
 
-from core.globals import (
-    DOWNLOAD_DIR,
-    HAS_PILLOW,
-    html_mod,  # FIX shorts_video
-)
+import html as html_mod
+
+from core.globals import DOWNLOAD_DIR, HAS_PILLOW
 from services.ffmpeg import (
     _get_video_encoder,
     YTDLP_BASE_ARGS,

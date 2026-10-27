@@ -261,6 +261,10 @@
 - Extended Ruff, тринадцатый ручной `F401` slice: удалены десять late unused
   imports в восьми VoxCPM2 modules; 146 focused tests зелёные. `F401` — 33,
   `E402` — 98, extended census — 532.
+- Extended Ruff, четырнадцатый ручной `F401` slice: три re-exported globals
+  (`InlineKeyboardButton`, `InlineKeyboardMarkup`, `html_mod`) заменены прямыми
+  stdlib/telegram imports во всех production-consumers; 960 focused tests
+  зелёные. `F401` — 30, `E402` — 97, extended census — 528.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

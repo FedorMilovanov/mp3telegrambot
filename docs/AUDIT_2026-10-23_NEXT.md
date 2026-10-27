@@ -1213,7 +1213,9 @@ facade-импорта. 193 focused tests зелёные. Двенадцатый 
 unused imports в repo/VoxCPM2 tools; публичный `clean_production_core.subprocess`
 сохранён как explicit re-export, 226 focused tests зелёные. Тринадцатый slice
 удалил десять late unused imports в восьми VoxCPM2 modules; 146 focused tests
-зелёные. Остаются 532 extended находки, включая 33 `F401` и 98 `E402`.
+зелёные. Четырнадцатый slice заменил три re-exported globals прямыми
+stdlib/telegram imports во всех production-consumers; 960 focused tests
+зелёные. Остаются 528 extended находок, включая 30 `F401` и 97 `E402`.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

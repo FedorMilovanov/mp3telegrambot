@@ -4,6 +4,8 @@ Main Pipeline — process_single_video.
 Извлечено из bot.py строки 12470–13446.
 """
 
+import html as html_mod
+
 from services.ffmpeg import YTDLP_BASE_ARGS  # FIX #23: нужен результат, не функция
 from services.async_process import run_cancellable_process
 from services.async_worker import (
@@ -18,7 +20,6 @@ from core.globals import (
     DB_PATH,
     GEMINI_CLIENTS,
     TELEGRAPH_TOKEN,  # FIX #11
-    html_mod,  # FIX #11
 )
 from core.database import (
     _db_conn,
