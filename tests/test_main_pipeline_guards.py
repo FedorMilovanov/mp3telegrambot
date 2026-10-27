@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from pipelines import main_pipeline, media_guards as guards
+from pipelines import livedub_title, main_pipeline, media_guards as guards
 
 
 # ── live-трансляции ─────────────────────────────────────────────────────────
@@ -198,6 +198,22 @@ def test_stdout_parsing_of_empty_output() -> None:
 
 
 # ── помощники main_pipeline ────────────────────────────────────────────────
+
+
+def test_livedub_title_compatibility_reexports_match_owner_module() -> None:
+    names = (
+        "_LIVEDUB_TITLE_CACHE",
+        "_LIVEDUB_TITLE_CACHE_MAX",
+        "_clean_livedub_meta_text",
+        "_replace_known_author_names",
+        "_split_title_author_line",
+        "_title_part_has_cyrillic",
+        "_split_livedub_title_author",
+        "_fallback_livedub_ru_title",
+        "_format_livedub_title_line",
+    )
+    for name in names:
+        assert getattr(main_pipeline, name) is getattr(livedub_title, name)
 
 
 def test_clean_meta_text_removes_shorts_markers() -> None:

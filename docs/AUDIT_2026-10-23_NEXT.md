@@ -1217,8 +1217,10 @@ unused imports в repo/VoxCPM2 tools; публичный `clean_production_core.
 stdlib/telegram imports во всех production-consumers; 960 focused tests
 зелёные. Пятнадцатый slice сохранил три consumed module-имени surgical runtime
 facade через explicit re-export/assignment и executed identity-contract;
-73 focused tests зелёные. Остаются 525 extended находок, включая 27 `F401`
-и 97 `E402`.
+73 focused tests зелёные. Шестнадцатый slice удалил 18 unused imports из
+`main_pipeline`; девять LiveDub compatibility-имён сохранены explicit re-exports
+и executed identity-contract. `F401` = 0 и включён в обычный gate; 969 focused
+tests зелёных. Остаются 498 extended находок, включая 97 `E402`.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**
