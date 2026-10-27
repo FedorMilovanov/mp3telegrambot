@@ -1004,6 +1004,14 @@ def _heard_text(value: Any) -> str:
     return " ".join(str(value or "").strip().split())
 
 
+def _file_is_larger_than(path: Path, minimum_bytes: int) -> bool:
+    return path.exists() and path.stat().st_size > minimum_bytes
+
+
+def _write_utf8_text(path: Path, payload: str) -> None:
+    path.write_text(payload, encoding="utf-8")
+
+
 async def transcribe_russian_whisper(
     video_path: Path,
     *,
@@ -1052,7 +1060,9 @@ async def transcribe_russian_whisper(
             timeout=1800,
             text=True,
         )
-        if result.returncode != 0 or not wav_path.exists() or wav_path.stat().st_size <= 1024:
+        if result.returncode != 0 or not await await_owned_coroutine(
+            asyncio.to_thread(_file_is_larger_than, wav_path, 1024)
+        ):
             raise RuntimeError("could not extract Russian audio for Whisper")
 
         initial_prompt = shorts_video_impl.build_whisper_initial_prompt(
@@ -1113,16 +1123,18 @@ async def transcribe_russian_whisper(
         srt_temp = Path(srt_temp_name)
         words_temp = Path(words_temp_name)
         try:
-            srt_temp.write_text(srt_payload, encoding="utf-8")
-            words_temp.write_text(words_payload, encoding="utf-8")
+            await await_owned_coroutine(asyncio.to_thread(_write_utf8_text, srt_temp, srt_payload))
+            await await_owned_coroutine(asyncio.to_thread(_write_utf8_text, words_temp, words_payload))
             os.replace(srt_temp, srt_output)
             os.replace(words_temp, words_output)
         finally:
-            srt_temp.unlink(missing_ok=True)
-            words_temp.unlink(missing_ok=True)
+            # These paths also run during cancellation; keep cleanup synchronous.
+            srt_temp.unlink(missing_ok=True)  # noqa: ASYNC240
+            words_temp.unlink(missing_ok=True)  # noqa: ASYNC240
         return srt_output, words_output
     finally:
-        wav_path.unlink(missing_ok=True)
+        # Owned workers/processes have finished; cancellation must not skip cleanup.
+        wav_path.unlink(missing_ok=True)  # noqa: ASYNC240
 
 
 __all__ = [
