@@ -30,8 +30,6 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
-from datetime import timedelta
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
