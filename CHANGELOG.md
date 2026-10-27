@@ -269,6 +269,10 @@
   surgical runtime facade сохранены через explicit re-export/assignment;
   executed identity-contract подтверждает их связь с owner modules. 73 focused
   tests зелёные. `F401` — 27, extended census — 525.
+- Extended Ruff, шестнадцатый ручной `F401` slice: удалены 18 unused imports
+  из `main_pipeline`; девять LiveDub compatibility-имён сохранены explicit
+  re-exports и executed identity-contract. `F401` = 0 и включён в обычный gate;
+  969 focused tests зелёных, extended census — 498.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

@@ -8,18 +8,11 @@ import html as html_mod
 
 from services.ffmpeg import YTDLP_BASE_ARGS  # FIX #23: нужен результат, не функция
 from services.async_process import run_cancellable_process
-from services.async_worker import (
-    await_owned_coroutine,
-    await_owned_with_soft_timeout,
-)
+from services.async_worker import await_owned_with_soft_timeout
 from core.globals import (
     DOWNLOAD_DIR,
     THUMBS_DIR,
-    HAS_GEMINI,
-    HAS_PILLOW,
-    DB_PATH,
     GEMINI_CLIENTS,
-    TELEGRAPH_TOKEN,  # FIX #11
 )
 from core.database import (
     _db_conn,
@@ -28,21 +21,13 @@ from core.database import (
     asettings_get,
     asettings_get_all,
     is_cache_valid,
-    db_init,
     GEMINI_MODEL,
     CACHE_VERSION,  # FIX #11
     get_max_file_size_mb,
     current_livedub_file_id_cache_version,
     get_prompt_fingerprint,  # FIX #11
 )
-from core.utils import (
-    cleanup_files,
-    is_media_url,
-    parse_title,
-    check_rate_limit,
-    update_rate_limit,
-    format_timestamp,  # FIX #11
-)
+from core.utils import cleanup_files, parse_title
 from converters.md_telegraph import (
     visible_length,  # FIX #11
     get_caption_timestamp_limit,  # FIX #11
@@ -84,7 +69,7 @@ from pipelines.telegraph_nav import add_navigation
 from pipelines.telegraph_repair_stage import repair_enabled, repair_pages
 from pipelines.telegraph_render import RenderRequest, render_pages
 from pipelines.thumbnail_stage import load_thumbnail
-from core.url_utils import get_youtube_video_url, get_youtube_timestamp_url
+from core.url_utils import get_youtube_video_url
 from core.progress import set_progress
 from pipelines.audio_failure_stage import fail_audio_too_large
 from pipelines.audio_stage import (
@@ -104,19 +89,18 @@ from pipelines.media_guards import (
     parse_info_stdout,
     temp_dir,
 )
-from services.mp3_conversion import reencode_mp3_64k_atomic
 from pipelines.livedub_title import (
     # Compatibility re-exports; new code should import livedub_title directly.
-    _LIVEDUB_TITLE_CACHE,
-    _LIVEDUB_TITLE_CACHE_MAX,
-    _clean_livedub_meta_text,
-    _replace_known_author_names,
-    _split_title_author_line,
-    _title_part_has_cyrillic,
-    _split_livedub_title_author,
-    _fallback_livedub_ru_title,
+    _LIVEDUB_TITLE_CACHE as _LIVEDUB_TITLE_CACHE,
+    _LIVEDUB_TITLE_CACHE_MAX as _LIVEDUB_TITLE_CACHE_MAX,
+    _clean_livedub_meta_text as _clean_livedub_meta_text,
+    _replace_known_author_names as _replace_known_author_names,
+    _split_title_author_line as _split_title_author_line,
+    _title_part_has_cyrillic as _title_part_has_cyrillic,
+    _split_livedub_title_author as _split_livedub_title_author,
+    _fallback_livedub_ru_title as _fallback_livedub_ru_title,
     _translate_livedub_title_for_caption as _translate_livedub_title_for_caption_impl,
-    _format_livedub_title_line,
+    _format_livedub_title_line as _format_livedub_title_line,
 )
 
 import asyncio
@@ -124,10 +108,7 @@ import contextlib
 import os  # FIX #11
 import logging
 import subprocess  # FIX #11
-import uuid
-import sqlite3  # LIVEDUB: direct DB read for user mode
 from pathlib import Path
-from typing import Optional, List, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -377,7 +358,7 @@ async def process_single_video(
         elif user_mode in ("eng", "eng_fast", "eng_fast_qa"):
             # FIX 2026-06-10 fail-fast: без vot-cli юзер раньше узнавал о
             # проблеме через минуты (или никогда в Quick). Проверяем сразу.
-            from services.yandex_live_dub import get_live_dub_video, _check_vot_cli, _ensure_vot_helper
+            from services.yandex_live_dub import _check_vot_cli, _ensure_vot_helper
             from services.eng_subtitles import create_gemini_subtitles, merge_subtitles, download_original_video
             import tempfile
 
