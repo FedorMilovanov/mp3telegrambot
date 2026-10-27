@@ -1170,8 +1170,10 @@ workers (cancellation cleanup сохранён синхронным;
 `services/highlights_quality.py` очищен), тридцать седьмой — composition source
 size/missing checks через один worker snapshot, тридцать восьмой — composition
 render validation, provenance paths и атомарная sidecar+media публикация
-(`services/translation_editorial_composition.py` очищен). Остаются 77, другие
-extended-правила и дальнейший ручной async review.
+(`services/translation_editorial_composition.py` очищен), тридцать девятый —
+Clips/Montage source/part/output validation через worker-side size snapshots
+(`services/render_clips_montage.py` очищен). Остаются 64, другие extended-правила
+и дальнейший ручной async review.
 
 **Решение:**
 
