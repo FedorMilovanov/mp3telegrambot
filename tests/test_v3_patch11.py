@@ -5,9 +5,6 @@ Changes:
 - services/telegraph_pages.py: imports get_source_pack_for_ai_data and passes source_pack to format()
 """
 
-import re
-
-
 # ─── prompts.py ───────────────────────────────────────────────────────────────
 
 

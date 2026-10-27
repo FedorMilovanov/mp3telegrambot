@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import os
 from concurrent.futures import Future
 from pathlib import Path

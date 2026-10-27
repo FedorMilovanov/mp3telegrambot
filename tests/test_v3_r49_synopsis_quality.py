@@ -18,7 +18,6 @@ Fixes covered:
   #37d Ис. 53:5: «мучем за беззакония» → «мучим за беззакония» (Синодальный).
 """
 
-import re
 from pathlib import Path
 
 from converters.md_telegraph import (

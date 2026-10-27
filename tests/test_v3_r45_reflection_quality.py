@@ -13,8 +13,6 @@
    patterns with a disproportionate reaction.
 """
 
-from pathlib import Path
-
 from core.content_audit import audit_expanded_sections
 from core.prompts import REFLECTION_APPLICATION_PROMPT
 
