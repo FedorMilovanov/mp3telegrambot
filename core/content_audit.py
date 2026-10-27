@@ -429,7 +429,8 @@ def _audit_text(
                 location=location,
                 message=(
                     f"removed_double_slash={len(_DOUBLE_SLASH_RE.findall(sep_before))}; "
-                    f"paragraphs_before={sep_before.count(chr(10) + chr(10))}; paragraphs_after={text.count(chr(10) + chr(10))}"
+                    f"paragraphs_before={sep_before.count(chr(10) + chr(10))}; "
+                    f"paragraphs_after={text.count(chr(10) + chr(10))}"
                 ),
                 before=_short(sep_before),
                 after=_short(text),
