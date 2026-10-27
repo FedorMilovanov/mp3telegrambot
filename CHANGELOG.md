@@ -246,6 +246,9 @@
 - Extended Ruff, восьмой ручной `F401` slice: удалены семь unused imports в
   entrypoint, Shorts и Clips modules; два используемых module API оформлены как
   explicit re-exports. `F401` — 101, extended census — 612.
+- Extended Ruff, девятый ручной `F401` slice: удалены 20 unused imports из
+  `core.database` и `core.utils`; 305 focused tests зелёные. `F401` — 81,
+  extended census — 592.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

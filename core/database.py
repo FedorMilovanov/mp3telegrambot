@@ -4,20 +4,7 @@ Database layer — db_init, db_save, db_get, settings, rate_limit, cache.
 Извлечено из bot.py строки 88–555.
 """
 
-from core.globals import (
-    BOT_TOKEN,
-    GEMINI_API_KEY,
-    DOWNLOAD_DIR,
-    THUMBS_DIR,
-    DB_PATH,
-    HAS_GEMINI,
-    HAS_PILLOW,
-    LOCAL_BOT_API_URL,
-    flask_app,
-    _video_processing_locks,
-    _video_locks_mutex,
-    _get_video_lock,
-)
+from core.globals import DB_PATH, LOCAL_BOT_API_URL
 from core.model_catalog import ROLE_PRIMARY, configured_model
 
 import asyncio

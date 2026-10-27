@@ -6,25 +6,16 @@ check_rate_limit, update_rate_limit, is_media_url, parse_title.
 """
 
 from core.globals import (
-    BOT_TOKEN,
     DOWNLOAD_DIR,
     THUMBS_DIR,
     HAS_PILLOW,
-    _video_processing_locks,
-    _video_locks_mutex,
-    _get_video_lock,
     # FIX #33: импортируем константы лимитов из globals
     COOLDOWN_SECONDS,
     DAILY_LIMIT,
-    DB_PATH,
     _THUMBS_CLEANUP_INTERVAL,
 )
 from core.database import (
     _db_conn,
-    db_get,
-    db_init,
-    settings_get,
-    settings_get_all,
     # FIX #33: WHITELIST_IDS и CACHE_TTL_DAYS определены в database.py
     WHITELIST_IDS,
     CACHE_TTL_DAYS,
@@ -37,7 +28,6 @@ import logging
 import os
 import re
 import shutil
-import sqlite3  # FIX #21: не было импорта
 import time  # FIX #21: не было импорта
 from datetime import date  # FIX #21: не было импорта
 from io import BytesIO
