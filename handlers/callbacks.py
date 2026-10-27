@@ -15,11 +15,9 @@ run_in_executor — больше не блокируют event loop.
 AUDIT FIX L9: re.sub вместо некорректного lstrip("✅☑️️ ") (☑️ = 2 кодпоинта).
 """
 
-from core.globals import (
-    DOWNLOAD_DIR,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-)
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+from core.globals import DOWNLOAD_DIR
 from core.database import (
     _db_conn,
     asettings_get,

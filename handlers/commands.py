@@ -5,13 +5,13 @@ Command Handlers — /start, /help, /settings, /resetcache, /pdf, /stop.
 Извлечено из bot.py строки 13513–13822.
 """
 
+import html as html_mod
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
 from core.globals import (
     DOWNLOAD_DIR,
     GEMINI_CLIENTS,
     DAILY_LIMIT,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,  # FIX #9
-    html_mod,  # FIX #9
     _get_video_lock,
     _release_video_lock,  # FIX #9 / PART5
 )
