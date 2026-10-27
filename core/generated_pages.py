@@ -485,7 +485,8 @@ def save_generated_page_record(record: dict[str, Any], base_dir: Path | None = N
                 vk_url=CASE WHEN excluded.vk_url<>'' THEN excluded.vk_url ELSE vk_url END,
                 synopsis_url=CASE WHEN excluded.synopsis_url<>'' THEN excluded.synopsis_url ELSE synopsis_url END,
                 study_url=CASE WHEN excluded.study_url<>'' THEN excluded.study_url ELSE study_url END,
-                reflection_url=CASE WHEN excluded.reflection_url<>'' THEN excluded.reflection_url ELSE reflection_url END,
+                reflection_url=CASE WHEN excluded.reflection_url<>'' THEN """
+            """excluded.reflection_url ELSE reflection_url END,
                 terms_url=CASE WHEN excluded.terms_url<>'' THEN excluded.terms_url ELSE terms_url END,
                 questions_url=CASE WHEN excluded.questions_url<>'' THEN excluded.questions_url ELSE questions_url END,
                 hashtags=excluded.hashtags,

@@ -128,14 +128,16 @@ async def _repair_timestamp_coverage_if_needed(
     _missing_from = _format_ts_for_prompt(_last_current)
     prompt = (
         "Исправь ТОЛЬКО недостающее покрытие timestamps для этого аудиоматериала. "
-        f"Особенно восстанови смысловые повороты с {_missing_from} до конца; итоговый список должен покрыть весь материал. "
+        f"Особенно восстанови смысловые повороты с {_missing_from} до конца; итоговый "
+        f"список должен покрыть весь материал. "
         f"Длительность: {_format_ts_for_prompt(duration)}. "
         f"Последний смысловой таймкод должен быть примерно не раньше {min_final}, если материал не закончился раньше. "
         'Верни JSON только вида {"timestamps":[{"time":"M:SS","topic":"..."}]}. '
         "СТИЛЬ topic такой же, как в текущем списке: в каждом topic выдели "
         "**жирным** 1 ключевую фразу (2-4 слова) через **двойные звёздочки** — "
         "как в исходных строках; без точки в конце. "
-        "Не меняй автора, тему и другие поля. Не делай механическую нарезку; ставь таймкоды только на смысловые повороты.\n\n"
+        "Не меняй автора, тему и другие поля. Не делай механическую нарезку; ставь "
+        "таймкоды только на смысловые повороты.\n\n"
         f"Текущий неполный список:\n{current[:4500]}"
     )
     try:
@@ -530,7 +532,8 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
 
                         if same_client_transients == 1 and not _is_quota:
                             logger.info(
-                                "Gemini transient recovery: %.1fs then retry на уже загруженном аудио; global attempt %d/%d",
+                                "Gemini transient recovery: %.1fs then retry на уже загруженном аудио; global "
+                                "attempt %d/%d",
                                 delay,
                                 inference_budget.used + 1,
                                 inference_budget.limit,
@@ -549,7 +552,8 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
 
             if response is None and last_err is not None and is_quota_error(last_err):
                 logger.warning(
-                    "Gemini audio quota/rate-limit budget exhausted; limits are project-scoped, so the model is not globally banned"
+                    "Gemini audio quota/rate-limit budget exhausted; limits are project-scoped, so "
+                    "the model is not globally banned"
                 )
 
             if (

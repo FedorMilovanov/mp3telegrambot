@@ -566,7 +566,8 @@ async def search_rutube(title: str, channel_name: str = "", duration: int = 0, f
 
         if listing_result:
             logger.info(
-                f"RuTube: score={listing_score:.2f} ниже порога {_MIN_RETURN_SCORE} — видео не найдено (лучший кандидат не подходит)"
+                f"RuTube: score={listing_score:.2f} ниже порога {_MIN_RETURN_SCORE} — видео не "
+                f"найдено (лучший кандидат не подходит)"
             )
         else:
             logger.info("RuTube: видео не найдено в листинге")

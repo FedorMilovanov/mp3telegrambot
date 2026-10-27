@@ -144,7 +144,9 @@ def _summary(results: list[dict[str, Any]], *, apply: bool) -> str:
     errors = [r for r in results if not r.get("ok")]
     applied = [r for r in results if r.get("applied")]
     lines = [
-        f"pages={len(results)} changed={len(changed)} unresolved_after={len(unresolved)} errors={len(errors)} applied={len(applied)} mode={'apply' if apply else 'dry-run'}",
+        f"pages={len(results)} changed={len(changed)} unresolved_after={len(unresolved)} "
+        f"errors={len(errors)} applied={len(applied)} "
+        f"mode={'apply' if apply else 'dry-run'}",
     ]
     for r in changed[:30]:
         lines.append(f"- changed: {r['url']}")
