@@ -9,7 +9,6 @@ oversize fitting continue to own the final Factory source/render functions.
 from __future__ import annotations
 
 import asyncio
-import copy
 import json
 import logging
 import math

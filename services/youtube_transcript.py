@@ -15,7 +15,6 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Optional
 
 from services.async_process import run_cancellable_process
 
