@@ -194,6 +194,10 @@
   provenance paths и атомарная sidecar+media публикация переведены в workers;
   cancellation-safe temp cleanup сохранён, `services/translation_editorial_composition.py`
   очищен, остаются 77 findings.
+- Async I/O, тридцать девятый `ASYNC240` slice: Clips/Montage source, part и
+  output validation используют worker-side size snapshots; signal-2, nonempty
+  gates и cancellation cleanup сохранены, `services/render_clips_montage.py`
+  очищен, остаются 64 findings.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

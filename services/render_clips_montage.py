@@ -57,6 +57,18 @@ def _unlink_render_paths(*paths: Path | None) -> None:
             logger.warning("render cleanup failed for %s: %s", path, exc)
 
 
+def _path_exists(path: Path) -> bool:
+    return path.exists()
+
+
+def _file_size_or_zero(path: Path) -> int:
+    return path.stat().st_size if path.exists() else 0
+
+
+def _existing_nonempty_files(paths: list[Path]) -> list[Path]:
+    return [path for path in paths if _file_size_or_zero(path) > 0]
+
+
 async def render_clip(
     source_video_path: Path,
     output_path: Path,
@@ -75,7 +87,7 @@ async def render_clip(
         if not ffmpeg:
             logger.warning("render_clip: ffmpeg не найден")
             return False
-        if not source_video_path.exists():
+        if not await asyncio.to_thread(_path_exists, source_video_path):
             logger.warning(f"render_clip: исходный файл не найден: {source_video_path}")
             return False
         if end_seconds <= start_seconds:
@@ -130,13 +142,13 @@ async def render_clip(
 
         async with _sched.gpu_render:
             proc = await run_cancellable_process(cmd, timeout=900, text=True)
+        output_size = await asyncio.to_thread(_file_size_or_zero, output_path)
         if proc.returncode != 0:
             stderr_tail = (proc.stderr or "")[-800:]
             # ffmpeg на Windows иногда завершается с кодом != 0 после "received signal 2"
             # (SIGINT от родительского процесса), но файл при этом уже записан корректно.
             # Если файл существует и не пуст — считаем успехом.
-            file_ok = output_path.exists() and output_path.stat().st_size > 0
-            if file_ok and "received signal 2" in stderr_tail:
+            if output_size > 0 and "received signal 2" in stderr_tail:
                 logger.info(
                     f"render_clip: ffmpeg вышел по signal 2, но файл создан — считаем успехом (rc={proc.returncode})"
                 )
@@ -144,12 +156,12 @@ async def render_clip(
                 logger.warning(f"render_clip ffmpeg error: {stderr_tail}")
                 _unlink_render_paths(output_path)
                 return False
-        if not output_path.exists() or output_path.stat().st_size == 0:
+        if output_size == 0:
             logger.warning("render_clip: выходной файл не создан или пуст")
             _unlink_render_paths(output_path)
             return False
 
-        size_mb = output_path.stat().st_size / (1024 * 1024)
+        size_mb = output_size / (1024 * 1024)
         logger.info(
             f"Clip rendered: {output_path.name} ({start_seconds}s..{end_seconds}s, {clip_duration}s, {size_mb:.1f}MB)"
         )
@@ -181,7 +193,7 @@ async def create_clip_snapshot(
     _unlink_render_paths(snapshot_path)
     try:
         ffmpeg = shutil.which("ffmpeg")
-        if not ffmpeg or not video_path.exists():
+        if not ffmpeg or not await asyncio.to_thread(_path_exists, video_path):
             return False
         seek_time = max(2.0, clip_duration_seconds * 0.20)
         cmd = [
@@ -198,7 +210,8 @@ async def create_clip_snapshot(
             str(snapshot_path),
         ]
         proc = await run_cancellable_process(cmd, timeout=60, text=True)
-        if proc.returncode != 0 or not snapshot_path.exists() or snapshot_path.stat().st_size == 0:
+        snapshot_size = await asyncio.to_thread(_file_size_or_zero, snapshot_path) if proc.returncode == 0 else 0
+        if snapshot_size == 0:
             logger.warning(f"create_clip_snapshot: не удалось извлечь кадр из {video_path.name}")
             _unlink_render_paths(snapshot_path)
             return False
@@ -296,7 +309,7 @@ async def render_montage_short(
     _unlink_render_paths(*stale_parts, *temp_parts, concat_list_path, output_path)
     try:
         ffmpeg = shutil.which("ffmpeg")
-        if not ffmpeg or not source_video_path.exists() or not fragments:
+        if not ffmpeg or not await asyncio.to_thread(_path_exists, source_video_path) or not fragments:
             return False
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -361,12 +374,13 @@ async def render_montage_short(
 
             async with _sched.gpu_render:
                 proc = await run_cancellable_process(cmd, timeout=120, text=True)
-            if proc.returncode != 0 or not part_path.exists() or part_path.stat().st_size == 0:
+            part_size = await asyncio.to_thread(_file_size_or_zero, part_path) if proc.returncode == 0 else 0
+            if part_size == 0:
                 logger.warning(f"Montage: фрагмент {i} не отрендерен")
                 _unlink_render_paths(*temp_parts, concat_list_path, output_path)
                 return False
 
-        existing_parts = [p for p in temp_parts if p.exists() and p.stat().st_size > 0]
+        existing_parts = await asyncio.to_thread(_existing_nonempty_files, temp_parts)
         if len(existing_parts) < 2:
             _unlink_render_paths(*temp_parts, concat_list_path, output_path)
             return False
@@ -412,13 +426,14 @@ async def render_montage_short(
         proc = await run_cancellable_process(concat_cmd, timeout=300, text=True)
         _unlink_render_paths(*temp_parts, concat_list_path)
 
-        if proc.returncode != 0 or not output_path.exists() or output_path.stat().st_size == 0:
+        output_size = await asyncio.to_thread(_file_size_or_zero, output_path) if proc.returncode == 0 else 0
+        if output_size == 0:
             logger.warning(f"Montage: concat failed: {(proc.stderr or '')[-300:]}")
             _unlink_render_paths(output_path)
             return False
 
         total_dur = sum(f["end_seconds"] - f["start_seconds"] for f in fragments)
-        size_mb = output_path.stat().st_size / (1024 * 1024)
+        size_mb = output_size / (1024 * 1024)
         logger.info(
             f"Montage rendered: {output_path.name} ({len(existing_parts)} фрагм., "
             f"{total_dur}s, {size_mb:.1f}MB; final video concat=-c:v copy)"
