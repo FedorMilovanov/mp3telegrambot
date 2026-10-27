@@ -72,16 +72,21 @@ def current_livedub_file_id_cache_fingerprint() -> str:
 # DB_PATH импортирован из globals — дублирующее определение убрано (FIX #19)
 
 
+def _configure_db_pragmas(conn: sqlite3.Connection) -> None:
+    """Apply optional PRAGMAs without hiding later schema failures."""
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA busy_timeout=5000")
+    except Exception:
+        logger.debug("Optional SQLite PRAGMA setup failed; continuing", exc_info=True)
+
+
 def db_init() -> None:
     with _db_conn() as conn:
         # AUDIT M17: WAL + busy_timeout — для безопасной параллельной записи
         # rate_limit / video_cache / bot_settings из разных async-обработчиков.
-        try:
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA synchronous=NORMAL")
-            conn.execute("PRAGMA busy_timeout=5000")
-        except Exception:
-            pass
+        _configure_db_pragmas(conn)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS video_cache (
                 video_id        TEXT PRIMARY KEY,
@@ -523,7 +528,7 @@ def _one_time_enable_subtitles() -> None:
             conn.commit()
         logging.getLogger(__name__).info("🎨 Миграция: красивые субтитры Shorts включены по умолчанию")
     except Exception:
-        pass
+        logger.debug("Shorts subtitle default migration was not applied", exc_info=True)
 
 
 _one_time_enable_subtitles()
@@ -743,7 +748,7 @@ def shorts_speed_get() -> str:
         if row and row[0] in SHORTS_SPEED_STEPS:
             return str(row[0])
     except Exception:
-        pass
+        logger.debug("Failed to read Shorts speed; using default", exc_info=True)
     return SHORTS_SPEED_DEFAULT
 
 
@@ -776,7 +781,7 @@ def settings_get(key: str) -> bool:
         if row:
             return row[0].lower() in ("1", "true", "yes")
     except Exception:
-        pass
+        logger.debug("Failed to read setting %s; using default", key, exc_info=True)
     return SETTINGS_DEFAULTS.get(key, True)
 
 
@@ -917,7 +922,7 @@ def load_channel_mappings() -> None:
         for key, val in json.loads(raw).items():
             CHANNEL_MAP[key.lower()] = val
     except Exception:
-        pass
+        logger.debug("CHANNEL_MAPPINGS was not loaded; keeping existing map", exc_info=True)
 
 
 load_channel_mappings()

@@ -189,7 +189,7 @@ def _crop_black_bars_image(img: Any) -> Any:
         if (crop_top, crop_left, crop_bottom, crop_right) != (0, 0, h, w):
             img = img.crop((crop_left, crop_top, crop_right, crop_bottom))
     except Exception:
-        pass
+        logger.debug("Black-bar auto-crop failed; using original image", exc_info=True)
     return img
 
 
@@ -261,7 +261,7 @@ def cleanup_files(media_id: str, keep_mp3: bool = True) -> None:
                 if _tf.is_file() and _tf.stat().st_mtime < _thumbs_cutoff:
                     _tf.unlink(missing_ok=True)
         except Exception:
-            pass
+            logger.debug("Stale thumbnail cleanup failed; retrying on the next hourly pass", exc_info=True)
 
 
 def cleanup_stale_downloads(max_age_hours: int = 3) -> int:
@@ -553,5 +553,5 @@ def mask_api_key(text: str) -> str:
 
         out = mask_credentials(out)
     except Exception:
-        pass
+        logger.debug("Extended credential masking unavailable; using API-key mask", exc_info=True)
     return out

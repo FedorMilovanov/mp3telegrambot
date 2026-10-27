@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextlib
 from dataclasses import dataclass, field
+import logging
 import re
 from typing import Iterable
 
@@ -178,7 +179,7 @@ def collect_prompt_health() -> list[PromptHealthItem]:
         audio = prompts.build_audio_analysis_prompt("T", "A", "55:00", 3300, mode="deep")
         items.append(analyze_prompt_text("AUDIO_ANALYSIS_PROMPT(deep sample)", audio))
     except Exception:
-        pass
+        logging.getLogger(__name__).debug("Audio prompt health sample failed; skipping it", exc_info=True)
     return items
 
 

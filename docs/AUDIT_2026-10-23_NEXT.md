@@ -1234,6 +1234,10 @@ SQL/prompt/f-string values, source-substring контракты и executable AS
 сохранены, 1099 focused tests зелёные (1 platform skip). `E501` = 0; остаются
 326 extended находок, включая 97 `E402`. После formatting-only PR правило
 `E501` включено в обычный Ruff gate без изменения classifier и diff-cover.
+Первый `S110` slice удалил 14 silent exception handlers в `core`; fallback-returns
+сохранены, JSON parsing сужен до `JSONDecodeError`, logging filter при сбое
+маскирования стал fail-closed. 708 focused tests зелёные. Остаются 312 extended
+находок, включая 42 `S110` и 97 `E402`.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**
