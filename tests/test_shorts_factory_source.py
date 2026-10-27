@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -8,6 +9,10 @@ import services.shorts_factory_candidates as candidates
 import services.shorts_factory_capacity as capacity
 import services.shorts_factory_source as source
 import services.yandex_live_dub as yandex_live_dub
+
+
+def _write_bytes(path: Path, payload: bytes) -> None:
+    path.write_bytes(payload)
 
 
 def _audio_probe(codec="opus", duration=120.0):
@@ -78,7 +83,7 @@ async def test_factory_audio_download_uses_native_best_and_compact_aac(
     async def fake_run(command, **kwargs):
         commands.append(list(command))
         if command[0] == "ffmpeg":
-            Path(command[-1]).write_bytes(b"a" * 4096)
+            await asyncio.to_thread(_write_bytes, Path(command[-1]), b"a" * 4096)
             return SimpleNamespace(
                 returncode=0,
                 stdout="out_time_us=120000000\nprogress=end\n",
@@ -136,7 +141,7 @@ async def test_factory_native_aac_is_normalized_to_analysis_contract(
 
     async def fake_run(command, **kwargs):
         commands.append(list(command))
-        Path(command[-1]).write_bytes(b"a" * 4096)
+        await asyncio.to_thread(_write_bytes, Path(command[-1]), b"a" * 4096)
         return SimpleNamespace(
             returncode=0,
             stdout="out_time_us=120000000\nprogress=end\n",

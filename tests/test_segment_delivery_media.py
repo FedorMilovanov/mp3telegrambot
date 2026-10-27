@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -5,6 +6,10 @@ import pytest
 
 from core.segment_planner import PlannedSegment
 from services import segment_render
+
+
+def _write_bytes(path: Path, payload: bytes) -> None:
+    path.write_bytes(payload)
 
 
 class _ReplyTarget:
@@ -36,7 +41,7 @@ async def test_segment_delivery_uses_actual_probed_duration(monkeypatch, tmp_pat
         return source
 
     async def fake_render(_source, output, _start, _end):
-        Path(output).write_bytes(b"rendered" * 300)
+        await asyncio.to_thread(_write_bytes, Path(output), b"rendered" * 300)
         return True
 
     probe = SimpleNamespace(
@@ -88,7 +93,7 @@ async def test_segment_rejects_base_render_without_video_and_audio(monkeypatch, 
         return source
 
     async def fake_render(_source, output, _start, _end):
-        Path(output).write_bytes(b"rendered" * 300)
+        await asyncio.to_thread(_write_bytes, Path(output), b"rendered" * 300)
         return True
 
     async def fake_probe(_path):

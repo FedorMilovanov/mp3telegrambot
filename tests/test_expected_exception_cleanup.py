@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -10,6 +11,10 @@ from core import utils as core_utils
 from handlers import callbacks
 from pipelines import factory_short_delivery, shorts_factory
 from pipelines import shorts as shorts_pipeline
+
+
+def _glob_paths(directory: Path, pattern: str) -> list[Path]:
+    return list(directory.glob(pattern))
 
 
 @pytest.mark.asyncio
@@ -106,7 +111,8 @@ async def test_retrim_invalid_json_and_render_failure_still_clean_up(monkeypatch
     )
 
     query.message.reply_text.assert_awaited_once()
-    assert not list(tmp_path.glob("*_trim.mp4"))
+    remaining_trims = await asyncio.to_thread(_glob_paths, tmp_path, "*_trim.mp4")
+    assert not remaining_trims
 
 
 @pytest.mark.asyncio

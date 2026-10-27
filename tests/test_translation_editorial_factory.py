@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import zipfile
 from pathlib import Path
@@ -15,6 +16,10 @@ from services.translation_editorial_pack_v2 import (
     build_review_pack,
     load_verified_review_pack as load_pack_manifest,
 )
+
+
+def _write_text(path: Path, text: str) -> None:
+    path.write_text(text, encoding="utf-8")
 
 
 def _write_srt(path: Path, text: str) -> Path:
@@ -250,7 +255,7 @@ async def test_original_srt_manual_is_preferred_before_auto(
         template = Path(command[output_index])
         generated = Path(str(template).replace("%(id)s", "abc").replace("%(ext)s", "en.srt"))
         generated.parent.mkdir(parents=True, exist_ok=True)
-        generated.write_text("1\n00:00:00,000 --> 00:00:01,000\nSource\n", encoding="utf-8")
+        await asyncio.to_thread(_write_text, generated, "1\n00:00:00,000 --> 00:00:01,000\nSource\n")
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr(factory, "run_cancellable_process", fake_run)
