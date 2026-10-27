@@ -494,12 +494,17 @@ async def _verify_repair_binding(source: dict[str, Any], source_path: Path) -> N
         raise RuntimeError("composition repair provenance review SHA mismatch")
 
 
+def _file_size_or_zero(path: Path) -> int:
+    return path.stat().st_size if path.exists() else 0
+
+
 async def _verify_source(document: dict[str, Any]) -> tuple[Path, float]:
     source = document["source"]
     path = Path(str(source["local_path"]))
-    if not path.exists() or path.stat().st_size <= 1024:
+    source_size = await asyncio.to_thread(_file_size_or_zero, path)
+    if source_size <= 1024:
         raise FileNotFoundError(f"composition source missing/empty: {path}")
-    if path.stat().st_size != int(source["bytes"]):
+    if source_size != int(source["bytes"]):
         raise RuntimeError("composition source size changed after plan approval")
     actual_sha = await asyncio.to_thread(sha256_file, path)
     if actual_sha != source["sha256"]:
