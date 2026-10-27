@@ -11,6 +11,7 @@ import pytest
 from handlers import commands
 from services import (
     eng_subtitles,
+    highlights_quality,
     livedub_mix,
     livedub_qa,
     pdf_generator,
@@ -397,6 +398,51 @@ async def test_optional_short_outputs_validate_generated_file(
         assert _read_bytes(output_path) == payload
     else:
         assert not _path_exists(output_path)
+
+
+@pytest.mark.parametrize("source_exists", [False, True], ids=["missing-source", "no-windows"])
+@pytest.mark.asyncio
+async def test_highlights_audio_probe_source_preflight(
+    monkeypatch,
+    tmp_path: Path,
+    source_exists: bool,
+) -> None:
+    source_path = tmp_path / "source.mp4"
+    if source_exists:
+        _write_file(source_path, b"source")
+    windows = [] if source_exists else [{"index": 0, "source_start": 0.0, "source_end": 1.0}]
+    run = AsyncMock()
+    monkeypatch.setattr(highlights_quality.shutil, "which", lambda _name: "ffmpeg")
+    monkeypatch.setattr(highlights_quality, "run_cancellable_process", run)
+
+    result = await highlights_quality._build_audio_probe(source_path, windows, tmp_path)
+
+    assert result is None
+    run.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("source_exists", "reason"),
+    [(False, "source_missing"), (True, "invalid_fragment_count")],
+    ids=["missing-source", "invalid-fragments"],
+)
+@pytest.mark.asyncio
+async def test_highlights_candidate_source_preflight(
+    monkeypatch,
+    tmp_path: Path,
+    source_exists: bool,
+    reason: str,
+) -> None:
+    source_path = tmp_path / "source.mp4"
+    if source_exists:
+        _write_file(source_path, b"source")
+    monkeypatch.setattr(highlights_quality, "HAS_FASTER_WHISPER", True)
+
+    refined, report = await highlights_quality.refine_highlights_candidate(source_path, {"fragments": []})
+
+    assert refined is None
+    assert report["accepted"] is False
+    assert report["reason"] == reason
 
 
 def _patch_russian_whisper_runtime(

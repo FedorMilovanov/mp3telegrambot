@@ -180,6 +180,9 @@
 - Async I/O, тридцать четвёртый `ASYNC240` slice: editorial CLI path resolution,
   source preflight и fail-closed output/provenance pair checks переведены в
   worker threads; `tools/translation_editorial.py` очищен, остаётся 101 finding.
+- Async I/O, тридцать пятый `ASYNC240` slice: Highlights audio-probe/candidate
+  source preflights переведены в worker threads; missing/existing-source paths
+  подтверждены тестами, остаются 99 findings.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):
