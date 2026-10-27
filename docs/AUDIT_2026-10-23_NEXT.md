@@ -1204,9 +1204,10 @@ re-exports и `html_mod` в `core.globals` сохранены как испол�
 service modules; behavioral test покрыл LiveDub audio fields, 447 focused tests
 зелёные. Восьмой slice удалил семь unused imports в entrypoint, Shorts и Clips
 modules; `DEFAULT_MODEL_PROFILE_ID` и availability-loaded `WhisperModel`
-сохранены через explicit re-exports, 759 focused tests зелёные. Остаются 612
-extended находок, включая 101 `F401`. Lazy imports и security-правила
-разбираются отдельно, без autofix.
+сохранены через explicit re-exports, 759 focused tests зелёные. Девятый slice
+удалил 20 unused imports из `core.database` и `core.utils`; 305 focused tests
+зелёные. Остаются 592 extended находки, включая 81 `F401`. Lazy imports и
+security-правила разбираются отдельно, без autofix.
 
 **Решение:**
 
