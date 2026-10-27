@@ -1164,8 +1164,11 @@ validation и temporary-text writes через owned workers (cancellation-safe
 cleanup сохранён с точечными `noqa`; `services/translation_editorial.py`
 очищен), тридцать четвёртый — editorial CLI path resolution, source preflight
 и fail-closed output/provenance pair checks (`tools/translation_editorial.py`
-очищен), тридцать пятый — Highlights audio-probe/candidate source preflights.
-Остаются 99, другие extended-правила и дальнейший ручной async review.
+очищен), тридцать пятый — Highlights audio-probe/candidate source preflights,
+тридцать шестой — Highlights render validation и failure cleanup через owned
+workers (cancellation cleanup сохранён синхронным;
+`services/highlights_quality.py` очищен). Остаются 90, другие extended-правила
+и дальнейший ручной async review.
 
 **Решение:**
 
