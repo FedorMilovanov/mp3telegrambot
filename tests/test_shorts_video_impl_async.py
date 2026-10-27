@@ -15,6 +15,13 @@ def _write_bytes(path: Path, payload: bytes) -> None:
     path.write_bytes(payload)
 
 
+def _write_jpeg(path: Path) -> None:
+    from PIL import Image
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (64, 64), (120, 80, 40)).save(path, "JPEG")
+
+
 def _write_download_candidates(directory: Path, media_id: str) -> None:
     _write_bytes(directory / f"{media_id}_video.webm", b"webm")
     _write_bytes(directory / f"{media_id}_video.mp4", b"mp4")
@@ -336,3 +343,64 @@ async def test_legacy_short_burn_missing_input_does_not_start_process(monkeypatc
 
     assert result is False
     run.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_legacy_short_title_poster_draws_jpeg_and_cleans_frame(monkeypatch, tmp_path: Path) -> None:
+    video_path = tmp_path / "short.mp4"
+    poster_path = tmp_path / "poster.jpg"
+    _write_bytes(video_path, b"video")
+    frame_paths: list[Path] = []
+
+    async def fake_run(command, **kwargs):
+        frame_path = Path(command[-1])
+        frame_paths.append(frame_path)
+        await asyncio.to_thread(_write_jpeg, frame_path)
+        return SimpleNamespace(returncode=0, stderr="")
+
+    monkeypatch.setattr(shorts_video_impl, "HAS_PILLOW", True)
+    monkeypatch.setattr(shorts_video_impl.shutil, "which", lambda name: "/ffmpeg")
+    monkeypatch.setattr(shorts_video_impl, "run_cancellable_process", fake_run)
+
+    result = await shorts_video_impl._unowned_create_short_title_poster(
+        video_path,
+        poster_path,
+        "Test title",
+        30,
+    )
+
+    assert result is True
+    assert poster_path.read_bytes().startswith(b"\xff\xd8")
+    assert len(frame_paths) == 1
+    assert not frame_paths[0].exists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [(None, False), (b"", False), (b"snapshot", True)],
+    ids=["missing", "empty", "nonempty"],
+)
+async def test_legacy_short_snapshot_validates_nonempty_output(
+    monkeypatch,
+    tmp_path: Path,
+    payload: bytes | None,
+    expected: bool,
+) -> None:
+    video_path = tmp_path / "short.mp4"
+    snapshot_path = tmp_path / "snapshot.jpg"
+    _write_bytes(video_path, b"video")
+
+    async def fake_run(command, **kwargs):
+        if payload is not None:
+            await asyncio.to_thread(_write_bytes, snapshot_path, payload)
+        return SimpleNamespace(returncode=0, stderr="")
+
+    monkeypatch.setattr(shorts_video_impl.shutil, "which", lambda name: "/ffmpeg")
+    monkeypatch.setattr(shorts_video_impl, "run_cancellable_process", fake_run)
+
+    result = await shorts_video_impl._unowned_create_short_snapshot(video_path, snapshot_path, 30)
+
+    assert result is expected
+    if expected:
+        assert snapshot_path.read_bytes() == payload
