@@ -96,7 +96,7 @@ async def test_fresh_clip_is_still_accepted_after_signal_two(
     output_path.write_bytes(b"old clip")
 
     async def signal_owner(command, **kwargs):
-        Path(command[-1]).write_bytes(b"fresh clip")
+        await asyncio.to_thread(_write_bytes, Path(command[-1]), b"fresh clip")
         return subprocess.CompletedProcess(
             command,
             1,
@@ -128,7 +128,7 @@ async def test_clip_cancellation_removes_partial_output(
     output_path.write_bytes(b"old clip")
 
     async def cancelled_owner(command, **kwargs):
-        Path(command[-1]).write_bytes(b"partial clip")
+        await asyncio.to_thread(_write_bytes, Path(command[-1]), b"partial clip")
         raise asyncio.CancelledError
 
     _configure_clip_render(monkeypatch, cancelled_owner)
@@ -255,7 +255,7 @@ async def test_montage_cancellation_removes_all_partial_artifacts(
     concat.write_text("old concat", encoding="utf-8")
 
     async def cancelled_owner(command, **kwargs):
-        Path(command[-1]).write_bytes(b"partial current render")
+        await asyncio.to_thread(_write_bytes, Path(command[-1]), b"partial current render")
         raise asyncio.CancelledError
 
     monkeypatch.setattr(render_clips_montage.shutil, "which", lambda name: "ffmpeg")
