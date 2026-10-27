@@ -16,9 +16,7 @@ AUDIT FIX L9: re.sub вместо некорректного lstrip("✅☑️�
 """
 
 from core.globals import (
-    HAS_GEMINI,
     DOWNLOAD_DIR,
-    DB_PATH,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
 )
@@ -28,8 +26,6 @@ from core.database import (
     asettings_set,
     asettings_get_all,
     shorts_speed_get,
-    shorts_speed_set,
-    shorts_speed_cycle,
     ashorts_speed_get,
     ashorts_speed_cycle,  # AUDIT M4
     short_trim_get,
@@ -50,7 +46,6 @@ import contextlib
 import json
 import logging
 import re  # AUDIT L9
-import sqlite3
 import time
 import uuid
 from pathlib import Path
@@ -290,7 +285,6 @@ async def handle_callback(update, context) -> None:
             from core.segment_planner import get_segment_by_index, seconds_to_timestamp
             from handlers.commands import _resolve_segment_source, _segments_from_cache
             from services.segment_render import render_and_send_segment
-            import html as _html
 
             _vid, cache, archive_record = await _resolve_segment_source(video_id)
             if not cache:

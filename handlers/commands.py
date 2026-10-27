@@ -7,10 +7,8 @@ Command Handlers — /start, /help, /settings, /resetcache, /pdf, /stop.
 
 from core.globals import (
     DOWNLOAD_DIR,
-    HAS_GEMINI,
     GEMINI_CLIENTS,
     DAILY_LIMIT,
-    COOLDOWN_SECONDS,  # FIX #9
     InlineKeyboardButton,
     InlineKeyboardMarkup,  # FIX #9
     html_mod,  # FIX #9
@@ -20,14 +18,10 @@ from core.globals import (
 from core.database import (
     _db_conn,
     adb_get,
-    adb_save,
     asettings_get,
-    asettings_get_all,
-    db_init,
     is_cache_valid,
     WHITELIST_IDS,
     ADMIN_IDS,
-    GEMINI_MODEL,
     MAX_PLAYLIST_SIZE,
     DB_PATH,
     areserve_rate_limit,  # AUDIT M4/PART5
@@ -47,7 +41,6 @@ from core.segment_planner import (
     format_segments_text,
     get_segment_by_index,
     parse_segment_selection,
-    seconds_to_timestamp,
 )
 from core.observability import format_gemini_metrics_report
 from core.prompt_health import format_prompt_health_report
@@ -74,12 +67,6 @@ from services.telegraph_repair import (
     telegraph_path_from_url,
 )
 from pipelines.video_dispatch import process_single_video
-from services.shorts_video import (
-    HAS_FASTER_WHISPER,
-    burn_subtitles_into_short,
-    download_video_for_shorts,
-    transcribe_short_clip,
-)
 
 # render_clip moved to services.segment_render
 from pipelines.playlist import handle_playlist
@@ -90,7 +77,6 @@ import contextlib
 import logging
 import os  # FIX #9
 import re  # FIX #9
-import sqlite3  # FIX #9
 import uuid
 from pathlib import Path  # FIX #9
 
