@@ -46,6 +46,14 @@ def _json(path: Path) -> dict[str, Any]:
     return data
 
 
+def _resolve_path(path: str | Path) -> Path:
+    return Path(path).resolve()
+
+
+def _path_exists(path: Path) -> bool:
+    return path.exists()
+
+
 def _safe_media_id(media_id: str) -> str:
     safe = "".join(char if (char.isalnum() or char in "_-") else "_" for char in str(media_id or "media"))
     return safe[:100] or "media"
@@ -200,7 +208,7 @@ def _write_review_template(output_dir: Path, media_id: str, manifest: dict[str, 
 
 
 async def _cmd_prepare(args: argparse.Namespace) -> int:
-    output_dir = Path(args.output_dir).resolve()
+    output_dir = await asyncio.to_thread(_resolve_path, args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     source_video = Path(args.source_video)
     actual_duration = await _source_duration(source_video, args.duration)
@@ -341,6 +349,14 @@ def _normalized_repairs(review: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+def _repair_pair_is_complete(output_path: Path, provenance_path: Path) -> bool:
+    if not output_path.exists() and not provenance_path.exists():
+        return False
+    if not output_path.exists() or not provenance_path.exists():
+        raise FileExistsError("partial editorial repair output/provenance pair exists")
+    return True
+
+
 async def _existing_repair_pair(
     *,
     manifest: dict[str, Any],
@@ -349,10 +365,8 @@ async def _existing_repair_pair(
     output_path: Path,
     provenance_path: Path,
 ) -> bool:
-    if not output_path.exists() and not provenance_path.exists():
+    if not await asyncio.to_thread(_repair_pair_is_complete, output_path, provenance_path):
         return False
-    if not output_path.exists() or not provenance_path.exists():
-        raise FileExistsError("partial editorial repair output/provenance pair exists")
     provenance = await verify_repair_provenance(
         provenance_path,
         expected_output_path=output_path,
@@ -390,7 +404,7 @@ async def _cmd_repair(args: argparse.Namespace) -> int:
 
     source = (manifest.get("source") or {}).get("translated_video") or {}
     source_path = Path(str(source.get("local_path") or ""))
-    if not source_path.exists():
+    if not await asyncio.to_thread(_path_exists, source_path):
         raise FileNotFoundError("translated source path from the review pack no longer exists: " + str(source_path))
     expected_sha = str(source.get("sha256") or "")
     actual_sha = await asyncio.to_thread(sha256_file, source_path)

@@ -23,6 +23,7 @@ from services import (
     yandex_live_dub,
 )
 from services import translation_editorial_factory as editorial_factory
+from tools import translation_editorial as editorial_cli
 
 
 def _write_file(path: Path, data: bytes) -> Path:
@@ -495,6 +496,121 @@ async def test_russian_whisper_cancellation_cleans_all_temporary_files(monkeypat
     assert not _path_exists(wav_paths[0])
     assert not _path_exists(srt_output)
     assert not _path_exists(words_output)
+
+
+@pytest.mark.asyncio
+async def test_editorial_prepare_resolves_output_directory_before_source_probe(monkeypatch, tmp_path: Path) -> None:
+    output_dir = tmp_path / "editorial"
+    source_video = tmp_path / "source.mp4"
+    source_probe = AsyncMock(side_effect=RuntimeError("stop after resolve"))
+    monkeypatch.setattr(editorial_cli, "_source_duration", source_probe)
+    args = SimpleNamespace(
+        output_dir=str(output_dir),
+        source_video=str(source_video),
+        duration=None,
+    )
+
+    with pytest.raises(RuntimeError, match="stop after resolve"):
+        await editorial_cli._cmd_prepare(args)
+
+    assert _path_exists(output_dir)
+    source_probe.assert_awaited_once_with(source_video, None)
+
+
+@pytest.mark.parametrize(
+    ("output_exists", "provenance_exists"),
+    [(False, False), (True, False), (False, True)],
+    ids=["neither", "output-only", "provenance-only"],
+)
+@pytest.mark.asyncio
+async def test_editorial_existing_repair_pair_fails_closed_when_partial(
+    monkeypatch,
+    tmp_path: Path,
+    output_exists: bool,
+    provenance_exists: bool,
+) -> None:
+    output_path = tmp_path / "repair.mp4"
+    provenance_path = tmp_path / "repair.editorial-repair.json"
+    if output_exists:
+        _write_file(output_path, b"output")
+    if provenance_exists:
+        _write_file(provenance_path, b"provenance")
+    verify = AsyncMock()
+    monkeypatch.setattr(editorial_cli, "verify_repair_provenance", verify)
+
+    if not output_exists and not provenance_exists:
+        result = await editorial_cli._existing_repair_pair(
+            manifest={},
+            review={},
+            review_path=tmp_path / "review.json",
+            output_path=output_path,
+            provenance_path=provenance_path,
+        )
+        assert result is False
+    else:
+        with pytest.raises(FileExistsError, match="partial editorial repair"):
+            await editorial_cli._existing_repair_pair(
+                manifest={},
+                review={},
+                review_path=tmp_path / "review.json",
+                output_path=output_path,
+                provenance_path=provenance_path,
+            )
+    verify.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_editorial_existing_repair_pair_accepts_matching_evidence(monkeypatch, tmp_path: Path) -> None:
+    output_path = _write_file(tmp_path / "repair.mp4", b"output")
+    provenance_path = _write_file(tmp_path / "repair.editorial-repair.json", b"provenance")
+    review_path = _write_file(tmp_path / "review.json", b"review")
+    manifest = {
+        "review_pack_id": "pack-id",
+        "source": {"translated_video": {"sha256": "source-sha"}},
+    }
+    review = {"full_sermon": {"issues": []}}
+    provenance = {
+        "review_pack_id": "pack-id",
+        "review_sha256": translation_editorial.sha256_file(review_path),
+        "source": {"sha256": "source-sha"},
+        "repairs": [],
+    }
+    verify = AsyncMock(return_value=provenance)
+    monkeypatch.setattr(editorial_cli, "verify_repair_provenance", verify)
+
+    result = await editorial_cli._existing_repair_pair(
+        manifest=manifest,
+        review=review,
+        review_path=review_path,
+        output_path=output_path,
+        provenance_path=provenance_path,
+    )
+
+    assert result is True
+    verify.assert_awaited_once_with(provenance_path, expected_output_path=output_path)
+
+
+@pytest.mark.asyncio
+async def test_editorial_repair_rejects_missing_translated_source(monkeypatch, tmp_path: Path) -> None:
+    missing_source = tmp_path / "missing.mp4"
+    manifest = {
+        "source": {
+            "translated_video": {
+                "local_path": str(missing_source),
+                "sha256": "source-sha",
+            },
+        },
+    }
+    review = {"full_sermon": {"verdict": "keep", "issues": []}}
+    monkeypatch.setattr(editorial_cli, "_load_and_validate", lambda *_args: (manifest, review))
+    args = SimpleNamespace(
+        pack=str(tmp_path / "pack.zip"),
+        review=str(tmp_path / "review.json"),
+        output=str(tmp_path / "repair.mp4"),
+    )
+
+    with pytest.raises(FileNotFoundError, match="translated source path"):
+        await editorial_cli._cmd_repair(args)
 
 
 @pytest.mark.asyncio
