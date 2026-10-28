@@ -20,6 +20,8 @@ from pathlib import Path
 from typing import Callable
 from urllib.parse import urlparse
 
+from services.process_executables import resolve_required_executable
+
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
 _LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
@@ -109,7 +111,7 @@ def _system_telegram_route_available(timeout_sec: float = 2.0) -> bool:
 def _terminate_stale_server() -> None:
     if os.name == "nt":
         subprocess.run(
-            ["taskkill", "/F", "/T", "/IM", "telegram-bot-api.exe"],
+            [resolve_required_executable("taskkill"), "/F", "/T", "/IM", "telegram-bot-api.exe"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=False,
@@ -117,7 +119,7 @@ def _terminate_stale_server() -> None:
         )
     else:
         subprocess.run(
-            ["pkill", "-f", "telegram-bot-api"],
+            [resolve_required_executable("pkill"), "-f", "telegram-bot-api"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=False,

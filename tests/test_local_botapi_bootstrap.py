@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import time
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import services.local_botapi_bootstrap as bootstrap
 from services.runtime_manifest import DEFAULT_RUNTIME_FEATURES, RuntimePhase
@@ -115,6 +117,34 @@ def test_stale_process_is_restarted_once_and_local_mode_is_preserved(monkeypatch
     assert calls == ["stop"]
     assert os.environ["LOCAL_BOT_API_URL"] == "http://127.0.0.1:8081"
     assert os.environ["LOCAL_BOT_API_WAIT_LOCAL"] == "1"
+
+
+def test_stale_windows_server_uses_resolved_taskkill(monkeypatch):
+    run = Mock(return_value=None)
+    monkeypatch.setattr(bootstrap, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(bootstrap, "resolve_required_executable", lambda name: f"/resolved/{name}")
+    monkeypatch.setattr(bootstrap.subprocess, "run", run)
+
+    bootstrap._terminate_stale_server()
+
+    assert run.call_args.args[0] == [
+        "/resolved/taskkill",
+        "/F",
+        "/T",
+        "/IM",
+        "telegram-bot-api.exe",
+    ]
+
+
+def test_stale_posix_server_uses_resolved_pkill(monkeypatch):
+    run = Mock(return_value=None)
+    monkeypatch.setattr(bootstrap, "os", SimpleNamespace(name="posix"))
+    monkeypatch.setattr(bootstrap, "resolve_required_executable", lambda name: f"/resolved/{name}")
+    monkeypatch.setattr(bootstrap.subprocess, "run", run)
+
+    bootstrap._terminate_stale_server()
+
+    assert run.call_args.args[0] == ["/resolved/pkill", "-f", "telegram-bot-api"]
 
 
 def test_wait_loop_uses_one_real_deadline_and_short_probes():

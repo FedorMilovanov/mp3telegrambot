@@ -1281,6 +1281,12 @@ Dub/bgutil slice удалил четыре `S607`: общий typed resolver в�
 fallbacks не изменены. Windows tests используют module-local OS doubles, не
 process-wide `os.name`. 48 focused tests зелёные. Текущий census — 261/705
 (37,0 % remaining, 63,0 % closed), включая 14 `S607`.
+Local Bot API slice удалил пять `S607` и заодно разрешил variable-command
+`taskkill`/`kill`/`pkill`: targeted termination по-прежнему ограничен managed
+или verified Bot API PID, global kill остаётся opt-in. 38 focused tests
+зелёные. Resolved dynamic argv перевёл три ранее literal-only вызова в
+отдельную manual `S603` очередь (103 → 106); suppressions не добавлены.
+Текущий census — 259/705 (36,7 % remaining, 63,3 % closed), включая 9 `S607`.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

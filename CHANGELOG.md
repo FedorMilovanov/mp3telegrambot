@@ -530,6 +530,10 @@
 - Четыре Windows `taskkill` вызова в Dub/bgutil используют общий resolver перед
   `subprocess`; missing executable остаётся `FileNotFoundError`, а terminate/kill
   и fail-closed orphan recovery fallbacks сохранены. `S607`: 18 → 14.
+- Local Bot API разрешает `netstat`, `tasklist`, `ps`, `taskkill`, `kill` и
+  `pkill` до subprocess launch; targeted/global termination policy, opt-in
+  global kill и обработку ошибок это не меняет. `S607`: 14 → 9; три resolved
+  dynamic argv остаются в отдельной ручной `S603` очереди без suppressions.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения
