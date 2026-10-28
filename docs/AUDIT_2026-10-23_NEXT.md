@@ -1542,7 +1542,9 @@ delivery timing/size/probe/silence behavior; `services/media_masters.py`
 registry; aggregation и log-only behavior не изменились. Затем
 `services/shorts_duration_safety.py` добавлен после явной float-аннотации
 snap ceiling; source-window budget и public-delivery gates не изменились.
-Текущий срез — 116/241 production modules (48,1 %), остаётся 125 modules (51,9 %).
+Затем `services/shorts_factory_disk_guard.py` добавлен без смены selection,
+disk-capacity или format-policy behavior. Текущий срез — 117/241 production
+modules (48,5 %), остаётся 124 modules (51,5 %).
 
 **Найденные по дороге настоящие дефекты:** кортеж кортежей в `negative` у
 `core/source_packs.py` (работал только за счёт защитного `neg[0]`), `max()`/деление
