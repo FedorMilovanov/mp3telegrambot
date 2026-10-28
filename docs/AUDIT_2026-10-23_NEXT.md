@@ -1535,8 +1535,9 @@ Telegraph slice содержал 107/240 production modules (44,6 %). Новый
 `services/async_worker.py` добавлен следом без изменения owned coroutine/soft
 timeout behavior. Затем `services/media_delivery_probe.py` добавлен без смены
 delivery timing/size/probe/silence behavior; `services/media_masters.py`
-добавляет backend-neutral master/validator boundaries. Текущий срез — 112/241
-production modules (46,5 %), остаётся 129 modules (53,5 %).
+добавляет backend-neutral master/validator boundaries, а
+`services/dub_delivery.py` — output discovery/delivery contracts. Текущий срез —
+113/241 production modules (46,9 %), остаётся 128 modules (53,1 %).
 
 **Найденные по дороге настоящие дефекты:** кортеж кортежей в `negative` у
 `core/source_packs.py` (работал только за счёт защитного `neg[0]`), `max()`/деление
