@@ -618,6 +618,10 @@
   delayed expansion отключены. Trailing backslashes сохраняют C-argv roundtrip;
   raw quote/newline/NUL отклоняются. POSIX/npx split не изменён. Реальный
   `.cmd` roundtrip явно включён в Windows-sensitive CI suite. `S603`: 2 → 1.
+- Последний `S603` в legacy Bot API autostart прошёл manual review: configured
+  executable, argv sequence и no-shell detach сохранены без behavior change.
+  Windows LiveDub roundtrip #404 подтверждён 9/9 cases в CI. Расширенные
+  subprocess findings закрыты: `S603` 1 → 0, `S607` остаётся 0.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения
