@@ -68,7 +68,7 @@ def _run(
     timeout_seconds: int,
 ) -> None:
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # noqa: S603 -- validated component argv and bounded timeout
             command,
             cwd=str(cwd),
             env=env,

@@ -175,7 +175,7 @@ class FFprobeFinalMediaValidator:
             raise RuntimeError("ffprobe не найден в PATH.")
         if not path.is_file() or path.stat().st_size <= 1024:
             raise RuntimeError(f"Финальный файл отсутствует или слишком мал: {path}")
-        proc = subprocess.run(
+        proc = subprocess.run(  # noqa: S603 -- resolved ffprobe, fixed AV contract, path is data
             [
                 executable,
                 "-v",

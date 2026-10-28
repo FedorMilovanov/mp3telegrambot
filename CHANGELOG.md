@@ -571,6 +571,10 @@
   internal checked tools и validated backend renderer/master commands работают
   без shell. Полный Short main и project speech/master paths получили executed
   tests с checked CPU runtime; production outputs не изменены. `S603`: 61 → 54.
+- Пять Dub/Factory media `S603` прошли ручной review: preflight Python,
+  bounded renderer/master/validator, resolved ffprobe и ffmpeg encoder probe
+  запускаются без shell. Новые tests подтверждают fixed argv, AV/delivery contract,
+  checked preflight runtime и NVENC cache/fallback вход. `S603`: 54 → 49.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения
