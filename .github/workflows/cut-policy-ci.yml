@@ -109,6 +109,9 @@ on:
       - "yt-dlp.conf"
       - ".github/workflows/cut-policy-ci.yml"
 
+permissions:
+  contents: read
+
 concurrency:
   group: cut-policy-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

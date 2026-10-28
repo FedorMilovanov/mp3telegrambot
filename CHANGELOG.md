@@ -514,6 +514,10 @@
 
 ### Security
 
+- Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
+  workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
+  запрещает возврат к неявным repository-default permissions. Job-level разрешения
+  сохранены без расширения.
 - `services/pdf_generator.py`: классификация видеоссылок использует parsed hostname
   вместо substring-проверки; look-alike domains и userinfo больше не принимаются за
   YouTube/RuTube/VK. Очистка `script`/`style` учитывает пробелы и атрибуты в closing tag;

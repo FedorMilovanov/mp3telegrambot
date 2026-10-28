@@ -19,6 +19,9 @@ on:
       - "scripts/migrate-gemini-38.ps1"
       - ".github/workflows/gemini-qa-policy.yml"
 
+permissions:
+  contents: read
+
 concurrency:
   group: gemini-qa-policy-${{ github.ref }}
   cancel-in-progress: true

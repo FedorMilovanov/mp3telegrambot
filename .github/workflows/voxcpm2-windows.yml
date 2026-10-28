@@ -51,6 +51,9 @@ on:
       - "tests/test_john_piper_voxcpm2_package.py"
       - ".github/workflows/voxcpm2-windows.yml"
 
+permissions:
+  contents: read
+
 concurrency:
   group: voxcpm2-windows-${{ github.ref }}
   cancel-in-progress: true

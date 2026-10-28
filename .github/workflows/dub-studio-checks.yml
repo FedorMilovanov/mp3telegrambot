@@ -64,6 +64,9 @@ on:
       - 'tests/test_restart_state_runtime.py'
       - '.github/workflows/dub-studio-checks.yml'
 
+permissions:
+  contents: read
+
 concurrency:
   group: dub-studio-${{ github.ref }}
   cancel-in-progress: true

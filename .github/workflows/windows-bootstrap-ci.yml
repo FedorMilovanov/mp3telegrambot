@@ -51,6 +51,9 @@ on:
       - "tests/test_youtube_gvs_probe.py"
       - ".github/workflows/windows-bootstrap-ci.yml"
 
+permissions:
+  contents: read
+
 concurrency:
   group: windows-bootstrap-${{ github.ref }}
   cancel-in-progress: true
