@@ -159,7 +159,7 @@ def measure_loudness(path: Path, timeout: int = 600) -> float | None:
     if os.name == "nt":
         kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
     try:
-        proc = subprocess.run(
+        proc = subprocess.run(  # noqa: S603 -- resolved ffmpeg, fixed loudnorm argv, media path is data
             [
                 ffmpeg,
                 "-i",
@@ -208,7 +208,9 @@ def _run_ffmpeg(args: list[str], timeout: int = 1800) -> tuple[bool, str]:
     if os.name == "nt":
         kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
     try:
-        proc = subprocess.run([ffmpeg, *args], timeout=timeout, **kwargs, check=False)
+        proc = subprocess.run(  # noqa: S603 -- resolved ffmpeg and internally built argv, no shell
+            [ffmpeg, *args], timeout=timeout, **kwargs, check=False
+        )
         if proc.returncode != 0:
             return False, (proc.stderr or "")[-600:]
         return True, ""
@@ -222,7 +224,7 @@ def probe_media_duration(path: Path, timeout: int = 60) -> float | None:
     if not ffprobe:
         return None
     try:
-        proc = subprocess.run(
+        proc = subprocess.run(  # noqa: S603 -- resolved ffprobe, fixed probe argv, path is data
             [
                 ffprobe,
                 "-v",
@@ -273,7 +275,7 @@ def has_video_stream(path: Path) -> bool:
         kwargs: dict = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
         if os.name == "nt":
             kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-        proc = subprocess.run(
+        proc = subprocess.run(  # noqa: S603 -- resolved ffprobe and fixed video-stream probe
             [
                 ffprobe,
                 "-v",
@@ -736,7 +738,9 @@ def probe_video_meta(path: Path) -> dict:
             kwargs: dict = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
             if os.name == "nt":
                 kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-            proc = subprocess.run([ffmpeg, "-i", str(path)], timeout=60, **kwargs, check=False)
+            proc = subprocess.run(  # noqa: S603 -- resolved ffmpeg metadata fallback, no shell
+                [ffmpeg, "-i", str(path)], timeout=60, **kwargs, check=False
+            )
             err = proc.stderr or ""
             m = re.search(r"Duration:\s*(\d+):(\d+):(\d+)", err)
             if m:
@@ -750,7 +754,7 @@ def probe_video_meta(path: Path) -> dict:
     try:
         import json as _json
 
-        proc = subprocess.run(
+        proc = subprocess.run(  # noqa: S603 -- resolved ffprobe, fixed metadata argv, path is data
             [
                 ffprobe,
                 "-v",
@@ -792,7 +796,7 @@ def make_video_thumbnail(video_path: Path, at_sec: float = 3.0) -> Path | None:
         kwargs: dict = {"capture_output": True}
         if os.name == "nt":
             kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-        proc = subprocess.run(
+        proc = subprocess.run(  # noqa: S603 -- resolved ffmpeg, fixed thumbnail argv, paths are data
             [
                 ffmpeg,
                 "-ss",

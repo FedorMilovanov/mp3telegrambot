@@ -1321,6 +1321,14 @@ opt-in, а configured executable проверяется как файл и за�
 termination/startup behavior не изменён. Текущий census
 — 227/705 (32,2 % remaining, 67,8 % closed): `E402` 97, `S603` 83,
 `PLW0603` 47; `S607` остаётся 0.
+LiveDub mix review закрыл семь `S603`: все ffmpeg/ffprobe executables resolved,
+loudness/probe/metadata argv фиксированы, mix argv строится внутренними
+helpers, thumbnail paths остаются данными, shell не используется. 306 focused
+tests passed / 1 environment skip, включая пять новых executed subprocess
+contracts; loudness, truncated-RU rejection, все fallbacks и >10 240-byte
+output gate не изменены. Текущий census — 220/705
+(31,2 % remaining, 68,8 % closed): `E402` 97, `S603` 76, `PLW0603` 47;
+`S607` остаётся 0.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**
