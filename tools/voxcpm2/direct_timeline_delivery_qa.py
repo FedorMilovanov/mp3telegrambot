@@ -231,18 +231,18 @@ __all__ = [
 _BASE_ALL = tuple(globals().get("__all__", ()))
 
 
-from tools.voxcpm2 import direct_monolith_contract
+from tools.voxcpm2 import direct_monolith_contract  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
 
-from tools.voxcpm2 import direct_source_relative_continuity
-from tools.voxcpm2 import direct_fail_closed_identity
+from tools.voxcpm2 import direct_source_relative_continuity  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
+from tools.voxcpm2 import direct_fail_closed_identity  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
 
-from tools.voxcpm2.direct_max_quality_analysis import activity_stats, pitch_profile
-
-
-from tools.voxcpm2.direct_russian_cadence import classify_cadence
+from tools.voxcpm2.direct_max_quality_analysis import activity_stats, pitch_profile  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
 
 
-from tools.voxcpm2.direct_timbre_analysis import spectral_envelope, spectral_similarity
+from tools.voxcpm2.direct_russian_cadence import classify_cadence  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
+
+
+from tools.voxcpm2.direct_timbre_analysis import spectral_envelope, spectral_similarity  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
 
 POLICY = "assembled-monolithic-voice-v1"
 

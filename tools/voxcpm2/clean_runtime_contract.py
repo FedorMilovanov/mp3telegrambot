@@ -294,7 +294,7 @@ def _digest(payload: dict[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-from services.speech_backends import (
+from services.speech_backends import (  # noqa: E402 -- late backend binding keeps helper contracts initialized first
     BACKEND_ENVIRONMENT_POLICY,
     DEFAULT_BACKEND_ID,
     BackendIdentity,

@@ -369,7 +369,7 @@ __all__ = [
 _BASE_ALL = tuple(globals().get("__all__", ()))
 
 
-from tools.voxcpm2 import russian_pronunciation
+from tools.voxcpm2 import russian_pronunciation  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
 
 POLICY = "source-guided-monolithic-expression-v3"
 

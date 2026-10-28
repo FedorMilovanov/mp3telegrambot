@@ -860,10 +860,10 @@ def _render_main() -> None:
     log(f"Report: {report_path}")
 
 
-from tools.voxcpm2 import direct_universal_runtime as universal_runtime
-from tools.voxcpm2 import direct_surgical_runtime as surgical_runtime
-from tools.voxcpm2 import direct_final_audit_v3 as final_audit
-from tools.voxcpm2.direct_failure_recovery import run_with_failure_recovery
+from tools.voxcpm2 import direct_universal_runtime as universal_runtime  # noqa: E402 -- late compatibility imports stay below initial CLI definitions
+from tools.voxcpm2 import direct_surgical_runtime as surgical_runtime  # noqa: E402 -- late compatibility imports stay below initial CLI definitions
+from tools.voxcpm2 import direct_final_audit_v3 as final_audit  # noqa: E402 -- late compatibility imports stay below initial CLI definitions
+from tools.voxcpm2.direct_failure_recovery import run_with_failure_recovery  # noqa: E402 -- late compatibility imports stay below initial CLI definitions
 
 UNIVERSAL_RUNTIME_POLICY = universal_runtime.POLICY
 _UNIVERSAL_STATE: dict[str, Any] = {
@@ -1549,14 +1549,14 @@ def prepare_reference(source: Path, output: Path, sf_module: Any) -> dict[str, A
 
 _BASE_ALL = tuple(globals().get("__all__", ()))
 
-from dataclasses import replace
+from dataclasses import replace  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
 
 
-from tools.voxcpm2 import direct_monolith_contract
+from tools.voxcpm2 import direct_monolith_contract  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
 
-from tools.voxcpm2 import russian_pronunciation
+from tools.voxcpm2 import russian_pronunciation  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
 
-from tools.voxcpm2 import source_prosody_policy
+from tools.voxcpm2 import source_prosody_policy  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
 
 POLICY = "direct-cli-monolithic-voice-v5"
 

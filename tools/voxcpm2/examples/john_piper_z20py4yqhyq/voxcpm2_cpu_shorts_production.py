@@ -22,8 +22,8 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from tools.voxcpm2 import clean_runtime_contract
-from tools.voxcpm2 import direct_max_quality_cli as _direct_cli
+from tools.voxcpm2 import clean_runtime_contract  # noqa: E402 -- repo-root bootstrap must precede absolute project imports
+from tools.voxcpm2 import direct_max_quality_cli as _direct_cli  # noqa: E402 -- repo-root bootstrap must precede absolute project imports
 
 main = _direct_cli.main
 

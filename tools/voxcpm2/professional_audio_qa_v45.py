@@ -354,7 +354,7 @@ def verify_timeline_v45(
 _BASE_ALL = tuple(globals().get("__all__", ()))
 
 
-from tools.voxcpm2 import timeline_onset_repair
+from tools.voxcpm2 import timeline_onset_repair  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
 
 TIMING_REPAIR_POLICY = "cheap-timeline-onset-before-resynthesis-v1"
 

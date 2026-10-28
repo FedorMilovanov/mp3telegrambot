@@ -420,7 +420,7 @@ __all__ = [
 _BASE_ALL = tuple(globals().get("__all__", ()))
 
 
-from tools.voxcpm2 import direct_source_relative_continuity
+from tools.voxcpm2 import direct_source_relative_continuity  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
 
 RESUME_POLICY = "nearest-accepted-checkpoint-identity-v1"
 

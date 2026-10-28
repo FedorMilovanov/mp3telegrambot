@@ -156,10 +156,10 @@ def _generate(
 _BASE_ALL = tuple(globals().get("__all__", ()))
 
 
-from tools.voxcpm2 import direct_monolith_contract
+from tools.voxcpm2 import direct_monolith_contract  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
 
 
-from tools.voxcpm2.direct_max_quality_io import (
+from tools.voxcpm2.direct_max_quality_io import (  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
     EXPECTED_OUTPUT_SR,
 )
 
