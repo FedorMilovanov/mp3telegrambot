@@ -1552,10 +1552,14 @@ subprocess boundaries и явные re-export. Следующий checkpoint з�
 и typed process/publication boundaries. Текущий срез — 206/241 production
 modules (85,5 %), оставалось 35 modules (14,5 %). Затем 75 ошибок в девяти
 Factory/LiveDub/Editorial modules закрыты через typed callback/JSON boundaries,
-explicit SDK re-export и Telegram narrowing. Текущий срез — 215/241 production
-modules (89,2 %), остаётся 26 modules (10,8 %). Полный production baseline
-оставшихся файлов — 776 ошибок в 26 файлах; новые exclude или общие
-suppression для их сокрытия не добавляются.
+explicit SDK re-export и Telegram narrowing. Предыдущий срез — 215/241
+production modules (89,2 %), оставалось 26 modules (10,8 %) с 776 ошибками.
+Следующий checkpoint закрыл 77 ошибок в семи Main/Callback/Subtitle/LiveDub/
+Render/Quiz modules через typed external boundaries, generic collections и
+narrowing. Текущий срез — 222/241 production modules (92,1 %), остаётся
+19 modules (7,9 %). Полный production baseline оставшихся файлов — 699 ошибок
+в 19 файлах; новые exclude или общие suppression для их сокрытия не
+добавляются.
 
 **Найденные по дороге настоящие дефекты:** кортеж кортежей в `negative` у
 `core/source_packs.py` (работал только за счёт защитного `neg[0]`), `max()`/деление

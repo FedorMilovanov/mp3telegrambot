@@ -34,10 +34,13 @@ import shutil
 import subprocess
 import time
 from pathlib import Path
+from typing import Any
 
 # types — из google.genai
+types: Any
+
 try:
-    from google.genai import types
+    from google.genai import types as types
 except ImportError:
     types = None
 
@@ -110,7 +113,7 @@ async def render_clip(
         _enc, _quality, _preset = await await_owned_coroutine(asyncio.to_thread(_get_video_encoder))
         # Clips: чуть лучше качество чем у shorts — cq/crf 22 вместо 23
         _quality_clip = ["-rc", "vbr", "-cq", "22"] if _enc == "h264_nvenc" else ["-crf", "22"]
-        _hwaccel = []  # hwaccel cuda убран: CPU-фильтры несовместимы с CUDA decode
+        _hwaccel: list[str] = []  # hwaccel cuda убран: CPU-фильтры несовместимы с CUDA decode
         cmd = [
             ffmpeg,
             *_hwaccel,
@@ -224,7 +227,7 @@ async def create_clip_snapshot(
         return False
 
 
-def _hashtags_line(tags: list) -> str:
+def _hashtags_line(tags: list[str]) -> str:
     """AUDIT R35 (живой прогон 2026-07-10, клип показал «##СилаБожья»):
     собрать строку хэштегов идемпотентно к тому, содержит ли тег уже «#».
     Clips хранят теги через normalize_hashtag → УЖЕ с «#», extras — без «#»;
@@ -237,7 +240,7 @@ def _hashtags_line(tags: list) -> str:
 
 
 def build_clip_caption(
-    candidate: dict,
+    candidate: dict[str, Any],
     performer: str,
     real_author: str,
     real_event: str,
@@ -294,7 +297,7 @@ def build_clip_caption(
 async def render_montage_short(
     source_video_path: Path,
     output_path: Path,
-    fragments: list[dict],
+    fragments: list[dict[str, Any]],
     *,
     visual_mode: str = "full_frame_vertical",
 ) -> bool:
@@ -335,7 +338,7 @@ async def render_montage_short(
             _use_fc = True
 
         _enc, _quality, _preset = await await_owned_coroutine(asyncio.to_thread(_get_video_encoder))
-        _hwaccel = []  # hwaccel cuda убран: CPU-фильтры несовместимы с CUDA decode
+        _hwaccel: list[str] = []  # hwaccel cuda убран: CPU-фильтры несовместимы с CUDA decode
         for i, frag in enumerate(fragments):
             part_path = temp_parts[i]
             start_s = frag["start_seconds"]
@@ -450,7 +453,7 @@ async def render_montage_short(
         return False
 
 
-def _extras_text_config(max_output_tokens: int, schema: dict | None = None):
+def _extras_text_config(max_output_tokens: int, schema: dict[str, Any] | None = None) -> Any:
     return make_text_config_smart(
         max_output_tokens=max_output_tokens,
         thinking_level="low",
@@ -458,7 +461,14 @@ def _extras_text_config(max_output_tokens: int, schema: dict | None = None):
     )
 
 
-async def _generate_extras_content(client, *, model: str, prompt: str, max_output_tokens: int, schema: dict | None):
+async def _generate_extras_content(
+    client: Any,
+    *,
+    model: str,
+    prompt: str,
+    max_output_tokens: int,
+    schema: dict[str, Any] | None,
+) -> Any:
     """Try structured JSON for extras, then fall back to legacy JSON config."""
     try:
         return await asyncio.wait_for(
@@ -495,11 +505,11 @@ async def _generate_extras_content(client, *, model: str, prompt: str, max_outpu
 
 
 async def create_extras_candidates(
-    ai_data: dict,
+    ai_data: dict[str, Any],
     title: str,
     performer: str,
     duration: int,
-) -> dict:
+) -> dict[str, Any]:
     """
     Один text-only Gemini запрос на Montage + Highlights.
     Возвращает:
@@ -537,7 +547,7 @@ async def create_extras_candidates(
 
         _structured_schema = extras_response_schema()
 
-        async def _call(client):
+        async def _call(client: Any) -> Any:
             return await _generate_extras_content(
                 client,
                 model=GEMINI_MODEL,

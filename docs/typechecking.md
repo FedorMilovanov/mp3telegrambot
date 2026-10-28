@@ -15,10 +15,11 @@
 | Срез | Ошибок `mypy --strict` | Что отложено |
 |---|---|---|
 | `core/` | 0 | — |
-| `pipelines/` | 0 | `pipelines/main_pipeline.py` (P0-3: файл режется на этапы) |
+| `pipelines/` | 0 | — |
 | `converters/__init__.py` | 0 | — |
 | `converters/caption.py` | 0 | — |
 | `handlers/__init__.py` | 0 | — |
+| `handlers/callbacks.py` | 0 | — |
 | `handlers/dub_audio_repair.py` | 0 | — |
 | `handlers/dub_delivery.py` | 0 | — |
 | `handlers/dub_health.py` | 0 | — |
@@ -47,6 +48,7 @@
 | `services/dub_studio_runtime.py` | 0 | — |
 | `services/dub_worker.py` | 0 | — |
 | `services/dub_worker_release.py` | 0 | — |
+| `services/eng_subtitles.py` | 0 | — |
 | `services/env_policy.py` | 0 | — |
 | `services/ffmpeg.py` | 0 | — |
 | `services/gemini_capacity_control.py` | 0 | — |
@@ -63,7 +65,9 @@
 | `services/livedub_audio_companion.py` | 0 | — |
 | `services/livedub_audio_quality_guard.py` | 0 | — |
 | `services/livedub_delivery_coordinator.py` | 0 | — |
+| `services/livedub_info.py` | 0 | — |
 | `services/livedub_info_evidence.py` | 0 | — |
+| `services/livedub_info_presentation_policy.py` | 0 | — |
 | `services/livedub_long_qa.py` | 0 | — |
 | `services/livedub_output_policy.py` | 0 | — |
 | `services/livedub_publication.py` | 0 | — |
@@ -84,7 +88,9 @@
 | `services/pre_main_policy.py` | 0 | — |
 | `services/process_executables.py` | 0 | — |
 | `services/process_singleton.py` | 0 | — |
+| `services/quiz_generator.py` | 0 | — |
 | `services/quiz_sessions.py` | 0 | — |
+| `services/render_clips_montage.py` | 0 | — |
 | `services/restart_state_runtime.py` | 0 | — |
 | `services/runtime_build_identity.py` | 0 | — |
 | `services/runtime_dependency_lock.py` | 0 | — |
@@ -127,8 +133,8 @@
 | `services/youtube_po_token_runtime.py` | 0 | — |
 | `services/youtube_transcript.py` | 0 | — |
 
-Текущий срез — 215/241 production modules (89,2 %); вне него остаются
-26 modules (10,8 %).
+Текущий срез — 222/241 production modules (92,1 %); вне него остаются
+19 modules (7,9 %).
 
 Измерено после расширения среза на `pipelines/`: полный `mypy --strict .`
 (включая `tests/`) — 5 038 ошибок в 563 файлах; по пакетам без тестов:

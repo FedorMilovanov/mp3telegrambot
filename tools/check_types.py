@@ -47,18 +47,11 @@ class Slice:
 #: список с таблицей в ``docs/typechecking.md``.
 TYPED_SLICES: tuple[Slice, ...] = (
     Slice("core"),
-    Slice(
-        "pipelines",
-        exclude=(
-            # P0-3: файл режется на этапы (анализ → рендер → публикация) в
-            # ближайших PR. Типизировать 3 000 строк, которые переезжают в
-            # модули, значит дважды переписывать одни и те же сигнатуры.
-            "pipelines/main_pipeline.py",
-        ),
-    ),
+    Slice("pipelines"),
     Slice("converters/__init__.py"),
     Slice("converters/caption.py"),
     Slice("handlers/__init__.py"),
+    Slice("handlers/callbacks.py"),
     Slice("handlers/dub_audio_repair.py"),
     Slice("handlers/dub_delivery.py"),
     Slice("handlers/dub_health.py"),
@@ -87,6 +80,7 @@ TYPED_SLICES: tuple[Slice, ...] = (
     Slice("services/dub_studio_runtime.py"),
     Slice("services/dub_worker.py"),
     Slice("services/dub_worker_release.py"),
+    Slice("services/eng_subtitles.py"),
     Slice("services/env_policy.py"),
     Slice("services/ffmpeg.py"),
     Slice("services/gemini_capacity_control.py"),
@@ -103,7 +97,9 @@ TYPED_SLICES: tuple[Slice, ...] = (
     Slice("services/livedub_audio_companion.py"),
     Slice("services/livedub_audio_quality_guard.py"),
     Slice("services/livedub_delivery_coordinator.py"),
+    Slice("services/livedub_info.py"),
     Slice("services/livedub_info_evidence.py"),
+    Slice("services/livedub_info_presentation_policy.py"),
     Slice("services/livedub_long_qa.py"),
     Slice("services/livedub_output_policy.py"),
     Slice("services/livedub_publication.py"),
@@ -124,7 +120,9 @@ TYPED_SLICES: tuple[Slice, ...] = (
     Slice("services/pre_main_policy.py"),
     Slice("services/process_executables.py"),
     Slice("services/process_singleton.py"),
+    Slice("services/quiz_generator.py"),
     Slice("services/quiz_sessions.py"),
+    Slice("services/render_clips_montage.py"),
     Slice("services/restart_state_runtime.py"),
     Slice("services/runtime_build_identity.py"),
     Slice("services/runtime_dependency_lock.py"),

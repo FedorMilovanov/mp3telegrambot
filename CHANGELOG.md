@@ -69,9 +69,12 @@
   production modules (85,5 %) проходили `mypy --strict`. Следующий checkpoint
   закрыл 75 ошибок в девяти Factory/LiveDub/Editorial modules через typed
   callback/JSON boundaries, explicit SDK re-export и Telegram narrowing.
-  Теперь 215/241 production modules (89,2 %) проходят `mypy --strict`; вне
-  среза остаются 26 modules с 776 ошибками, без новых исключений или общих
-  подавлений.
+  На предыдущем checkpoint 215/241 production modules (89,2 %) проходили
+  `mypy --strict`. Следующий checkpoint закрыл 77 ошибок в семи
+  Main/Callback/Subtitle/LiveDub/Render/Quiz modules через typed external
+  boundaries, generic collections и narrowing. Теперь 222/241 production
+  modules (92,1 %) проходят `mypy --strict`; вне среза остаются 19 modules
+  с 699 ошибками, без новых исключений или общих подавлений.
 - Исполняемый контракт production-слоёв через `import-linter`: новые обратные
   импорты блокируются, а известные legacy-рёбра сокращаются по точному
   burn-down без wildcard-исключений (`tools/check_import_layers.py`).
