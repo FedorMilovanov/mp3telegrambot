@@ -29,11 +29,30 @@ def test_changed_files_requires_and_uses_a_resolved_git(monkeypatch) -> None:
     monkeypatch.setattr(required_gate.subprocess, "check_output", check_output)
 
     assert required_gate.changed_files("a" * 40, "b" * 40) == ("services/example.py",)
-    assert commands == [["/usr/bin/git", "diff", "--name-only", f"{'a' * 40}...{'b' * 40}"]]
+    assert commands == [
+        [
+            "/usr/bin/git",
+            "diff",
+            "--name-only",
+            "--end-of-options",
+            f"{'a' * 40}...{'b' * 40}",
+            "--",
+        ]
+    ]
 
     monkeypatch.setattr(required_gate.shutil, "which", lambda name: None)
     with pytest.raises(RuntimeError, match="git executable not found"):
         required_gate.changed_files("a" * 40, "b" * 40)
+
+
+def test_changed_files_rejects_non_sha_or_option_like_endpoints() -> None:
+    for base_sha, head_sha in (
+        ("--output=unexpected", "b" * 40),
+        ("a" * 40, "-1"),
+        ("a" * 39, "b" * 40),
+    ):
+        with pytest.raises(ValueError, match="full 40-character SHAs"):
+            required_gate.changed_files(base_sha, head_sha)
 
 
 def test_github_path_match_supports_repository_workflow_patterns():

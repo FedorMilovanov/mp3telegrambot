@@ -49,6 +49,27 @@ def test_git_requires_and_uses_a_resolved_executable(monkeypatch) -> None:
         guard._git("status")
 
 
+def test_changed_files_places_revision_after_option_boundary(monkeypatch) -> None:
+    calls = []
+
+    def fake_git(*args):
+        calls.append(args)
+        return "services/example.py\n"
+
+    monkeypatch.setattr(guard, "_git", fake_git)
+
+    assert guard.changed_files("--output=unexpected", merge_base=False) == ("services/example.py",)
+    assert calls == [
+        (
+            "diff",
+            "--name-only",
+            "--end-of-options",
+            "--output=unexpected..HEAD",
+            "--",
+        )
+    ]
+
+
 def test_unchanged_baseline_needs_no_report(monkeypatch, tmp_path: Path):
     monkeypatch.chdir(tmp_path)
     assert guard.validate_update(("services/example.py",)) == {

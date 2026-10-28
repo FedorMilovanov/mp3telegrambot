@@ -1301,6 +1301,12 @@ Standalone scripts не получили project-import dependency, missing `ffp
 gate. Focused: 26 passed / 1 environment skip (installed Node tree отсутствует);
 полный verifier зелёный. Текущий census — 248/705 (35,2 % remaining, 64,8 % closed): `E402` 97,
 `S603` 104, `PLW0603` 47.
+Git `S603` review закрыл пять находок из runtime identity, Required PR Gate и
+repository tools. Required Gate теперь принимает только полные 40-hex SHA;
+operator-supplied revisions в diff/show стоят после `--end-of-options`, поэтому
+option-like строка не становится Git option. 29 focused tests зелёные.
+Текущий census — 243/705 (34,5 % remaining, 65,5 % closed): `E402` 97,
+`S603` 99, `PLW0603` 47; `S607` остаётся 0.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

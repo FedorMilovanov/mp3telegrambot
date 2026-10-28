@@ -39,7 +39,8 @@ def _git_command(*args: str) -> subprocess.CompletedProcess[str] | None:
         executable = shutil.which("git")
         if executable is None:
             return None
-        return subprocess.run(
+        # Only fixed rev-parse/status argv call sites; resolved git and no shell.
+        return subprocess.run(  # noqa: S603
             [executable, "-C", str(_PROJECT_ROOT), *args],
             capture_output=True,
             text=True,

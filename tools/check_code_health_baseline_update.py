@@ -20,7 +20,8 @@ def _git(*args: str) -> str:
     executable = shutil.which("git")
     if executable is None:
         raise RuntimeError("git executable not found in PATH")
-    process = subprocess.run(
+    # Internal git argv; caller places revisions after --end-of-options; no shell.
+    process = subprocess.run(  # noqa: S603
         [executable, *args],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -43,7 +44,7 @@ def _default_base() -> tuple[str, bool]:
 
 def changed_files(base_ref: str, *, merge_base: bool) -> tuple[str, ...]:
     separator = "..." if merge_base else ".."
-    output = _git("diff", "--name-only", f"{base_ref}{separator}HEAD")
+    output = _git("diff", "--name-only", "--end-of-options", f"{base_ref}{separator}HEAD", "--")
     return tuple(line.strip().replace("\\", "/") for line in output.splitlines() if line.strip())
 
 
