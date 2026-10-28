@@ -1539,8 +1539,10 @@ delivery timing/size/probe/silence behavior; `services/media_masters.py`
 `services/dub_delivery.py` — output discovery/delivery contracts, а
 `services/mp3_conversion.py` — atomic re-encoding/probe boundaries. Затем
 `services/latency_trace.py` добавлен после уточнения generic-типов task/trace
-registry; aggregation и log-only behavior не изменились. Текущий срез — 115/241
-production modules (47,7 %), остаётся 126 modules (52,3 %).
+registry; aggregation и log-only behavior не изменились. Затем
+`services/shorts_duration_safety.py` добавлен после явной float-аннотации
+snap ceiling; source-window budget и public-delivery gates не изменились.
+Текущий срез — 116/241 production modules (48,1 %), остаётся 125 modules (51,9 %).
 
 **Найденные по дороге настоящие дефекты:** кортеж кортежей в `negative` у
 `core/source_packs.py` (работал только за счёт защитного `neg[0]`), `max()`/деление
