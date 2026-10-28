@@ -1264,8 +1264,10 @@ Local Bot API, PDF, Quiz и owned Shorts transcription. Segment lock release н�
 Текущий census — 280, включая 10 `S110`.
 Финальный `S110` slice удалил последние десять handlers в entrypoint и
 pipelines. Mode fallback, delivery/cache cleanup и poster→snapshot→none
-сохранены; thumbnail selection покрыт тремя executed-тестами. 169 focused tests
-зелёные. `S110` = 0 и включён в обычный Ruff gate. Текущий census — 270.
+сохранены; thumbnail file reads выполняются в owned worker, а прежние source-only
+проверки заменены executed `InputFile` contracts. 169 pipeline-focused и 47
+async-focused tests зелёные. `S110` = 0 и включён в обычный Ruff gate.
+Текущий census — 270.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**
