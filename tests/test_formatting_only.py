@@ -8,12 +8,19 @@ import tomllib
 
 import pytest
 
+from services.process_executables import resolve_required_executable
 from tools import check_formatting_only as formatting
 from tools.check_formatting_only import classify, main, same_ast
 
 
 def _git(root: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
+    # Test-owned argv and cwd; resolved executable and no shell.
+    subprocess.run(  # noqa: S603
+        [resolve_required_executable("git"), *args],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
 
 
 def _repository(tmp_path: Path) -> Path:

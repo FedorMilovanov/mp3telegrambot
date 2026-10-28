@@ -120,6 +120,7 @@ exclude = [
 # 2026-10-26: extended-волны добавили B904/PLW1510/RET504/SIM105 и UP006/UP009/UP045/W293.
 # ASYNC230/ASYNC240 включены после ручного переноса blocking I/O в owned workers.
 # S110 включён после repository-wide ручной диагностики silent handlers; fallback сохранён.
+# S607 включён после ручного разрешения production/test executable paths без shell.
 select = [
   "ASYNC230",
   "ASYNC240",
@@ -138,6 +139,7 @@ select = [
   "RET504",
   "SIM105",
   "S110",
+  "S607",
   "UP006",
   "UP009",
   "UP045",

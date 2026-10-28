@@ -1294,6 +1294,13 @@ Standalone scripts не получили project-import dependency, missing `ffp
 64 focused tests зелёные, включая executed `ensure_worker_running` wrapper.
 Текущий census — 254/705 (36,0 % remaining,
 64,0 % closed), включая только четыре test-helper `S607`; `S603` = 106.
+Финальный executable slice разрешил `git`, `node` и Windows cleanup `taskkill`
+в четырёх test helpers. Fixed test-owned argv без shell прошли отдельный ручной
+`S603` review с узкими обоснованными исключениями: два уже существовавших `S603`
+также закрыты, а не перенесены из `S607`. `S607` = 0 и включён в обычный Ruff
+gate. Focused: 26 passed / 1 environment skip (installed Node tree отсутствует);
+полный verifier зелёный. Текущий census — 248/705 (35,2 % remaining, 64,8 % closed): `E402` 97,
+`S603` 104, `PLW0603` 47.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

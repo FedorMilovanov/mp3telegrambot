@@ -26,6 +26,8 @@ from pathlib import Path
 
 import pytest
 
+from services.process_executables import resolve_required_executable
+
 ROOT = Path(__file__).resolve().parents[1]
 HELPER = ROOT / "vot_helper"
 PACKAGE = HELPER / "package.json"
@@ -119,8 +121,9 @@ def test_smoke_script_exists_and_is_wired_into_ci() -> None:
     reason="needs node and an installed vot_helper/node_modules (npm ci)",
 )
 def test_installed_tree_satisfies_the_helper_api() -> None:
-    completed = subprocess.run(
-        ["node", "smoke.mjs"],
+    # Fixed helper smoke argv; resolved executable and no shell.
+    completed = subprocess.run(  # noqa: S603
+        [resolve_required_executable("node"), "smoke.mjs"],
         cwd=HELPER,
         capture_output=True,
         text=True,

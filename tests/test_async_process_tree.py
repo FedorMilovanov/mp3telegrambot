@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from services import async_process
+from services.process_executables import resolve_required_executable
 
 
 class _CompletedProcess:
@@ -104,8 +105,9 @@ def _force_cleanup(pid: int) -> None:
     if not _pid_is_running(pid):
         return
     if os.name == "nt":
-        subprocess.run(
-            ["taskkill", "/PID", str(pid), "/T", "/F"],
+        # Fixed test-cleanup argv with a numeric PID; resolved executable and no shell.
+        subprocess.run(  # noqa: S603
+            [resolve_required_executable("taskkill"), "/PID", str(pid), "/T", "/F"],
             check=False,
             capture_output=True,
             timeout=5,
