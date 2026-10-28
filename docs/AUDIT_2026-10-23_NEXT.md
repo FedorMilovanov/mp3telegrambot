@@ -1459,6 +1459,10 @@ bootstrap order и `main`-after-pre-main contract не изменены. 37 focu
 focused tests прошли, supplemental diff-cover — 100 % (5/5); live media run не
 выполнялся. Текущий census — 96/705 (13,6 % remaining, 86,4 % closed):
 `E402` 49, `PLW0603` 47; `S603`/`S607` 0.
+Девять generic VoxCPM2 `E402` разобраны как late compatibility layer ниже legacy
+`main` и `_BASE_ALL` snapshot; imports/exports не перемещены. 40 focused tests
+прошли, supplemental — 100 % (9/9). Текущий census — 87/705
+(12,3 % remaining, 87,7 % closed): `E402` 40, `PLW0603` 47; `S603`/`S607` 0.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

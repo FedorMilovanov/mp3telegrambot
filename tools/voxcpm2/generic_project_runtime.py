@@ -968,26 +968,27 @@ if __name__ == "__main__":
 _BASE_ALL = tuple(globals().get("__all__", ()))
 
 
-import math
+# Late compatibility imports stay below legacy main and the _BASE_ALL snapshot.
+import math  # noqa: E402
 
 
-import threading
+import threading  # noqa: E402
 
-import time
+import time  # noqa: E402
 
 
-import uuid
+import uuid  # noqa: E402
 
-from services.dub_rendering import run_speech_master_validation
+from services.dub_rendering import run_speech_master_validation  # noqa: E402
 
-from services.speech_backends import (
+from services.speech_backends import (  # noqa: E402
     DEFAULT_MODEL_PROFILE_ID,
     SpeechBackendSelectionError,
     UnknownSpeechBackendError,
     normalize_production_speech_request,
 )
 
-from tools.voxcpm2 import clean_source_download
+from tools.voxcpm2 import clean_source_download  # noqa: E402
 
 POLICY = "generic-project-runtime-write-through-v4"
 
