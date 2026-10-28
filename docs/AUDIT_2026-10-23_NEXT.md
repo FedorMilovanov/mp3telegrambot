@@ -1342,6 +1342,14 @@ contracts. Duration/output postconditions, segment atomic replace и temporary
 cleanup не изменены; исторический QA fixture byte-stable. Текущий census —
 210/705 (29,8 % remaining, 70,2 % closed): `E402` 97, `S603` 66,
 `PLW0603` 47; `S607` остаётся 0.
+Startup review закрыл пять `S603` в legacy Local Bot API bootstrap и YouTube
+PO-token readiness. Fixed process matchers не получили новых вызовов или более
+широкой области; configured server, isolated pinned plugin probe и resolved Node
+version используют argv без shell. 53 focused tests зелёные, включая executed
+server Popen и Node version contracts. Active targeted/opt-in termination и
+fail-closed bgutil policy не изменены. Текущий census — 205/705
+(29,1 % remaining, 70,9 % closed): `E402` 97, `S603` 61, `PLW0603` 47;
+`S607` остаётся 0.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

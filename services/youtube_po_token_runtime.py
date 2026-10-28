@@ -218,7 +218,7 @@ def _require_bgutil_module(plugin_root: Path, expected_version: str) -> str:
         expected_version,
     ]
     try:
-        process = subprocess.run(
+        process = subprocess.run(  # noqa: S603 -- current interpreter and pinned isolated probe
             command,
             capture_output=True,
             text=True,
@@ -290,7 +290,7 @@ def _require_node() -> str:
             f"Node.js не найден; exact-source bgutil требует Node.js >= {BGUTIL_MIN_NODE_MAJOR}"
         )
     try:
-        process = subprocess.run(
+        process = subprocess.run(  # noqa: S603 -- resolved Node and fixed --version argv
             [node, "--version"],
             capture_output=True,
             text=True,
