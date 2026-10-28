@@ -1370,6 +1370,13 @@ test уже выполнял changed Popen line. Diff-cover 100 % (4/4). Тек�
 189/705 (26,8 % remaining, 73,2 % closed): `E402` 97, `S603` 45,
 `PLW0603` 47; `S607` остаётся 0. Windows `shell=True` compatibility в
 `yandex_live_dub` требует отдельного review и в этот slice не входит.
+Engineering-tool review закрыл восемь `S603`: model drill, env snapshot, lock
+audit/install, import/type/verifier runners и pytest annotations используют
+current/resolved executables без shell. 91 focused test зелёный; пять новых
+doubles выполняют model/env/install/pytest/verifier process lines. Supplemental
+tools/scripts diff-cover 100 % (8/8), основной coverage scope не менялся.
+Текущий census — 181/705 (25,7 % remaining, 74,3 % closed): `E402` 97,
+`S603` 37, `PLW0603` 47; `S607` остаётся 0.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

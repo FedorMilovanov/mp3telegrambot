@@ -89,7 +89,7 @@ def check(
     slices: tuple[Slice, ...] | tuple[str, ...] = TYPED_SLICES,
     extra: tuple[str, ...] = (),
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    return subprocess.run(  # noqa: S603 -- current interpreter and declared mypy slices
         build_command(slices, extra),
         cwd=str(ROOT),
         capture_output=True,
