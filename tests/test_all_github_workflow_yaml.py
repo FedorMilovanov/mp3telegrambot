@@ -46,6 +46,18 @@ def test_every_github_actions_workflow_is_valid_and_structured_yaml() -> None:
     assert not failures, "Invalid GitHub Actions workflow YAML:\n" + "\n".join(failures)
 
 
+def test_every_github_actions_workflow_declares_token_permissions() -> None:
+    """GITHUB_TOKEN access is explicit instead of inheriting repository defaults."""
+
+    failures: list[str] = []
+    for path in _workflow_paths():
+        document = yaml.load(path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+        if not isinstance(document, dict) or not isinstance(document.get("permissions"), dict):
+            failures.append(f"{path.relative_to(ROOT)}: missing top-level permissions mapping")
+
+    assert not failures, "Workflows with implicit GITHUB_TOKEN permissions:\n" + "\n".join(failures)
+
+
 def test_literal_repo_python_paths_referenced_by_workflows_exist() -> None:
     workflow_paths = _workflow_paths()
     assert workflow_paths, "No GitHub Actions workflow files were found."

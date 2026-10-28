@@ -1474,7 +1474,9 @@ execution-guard, а неиспользуемый guarded wrapper удалён. �
 
 ### P1-7. Мелкое, но заметное
 
-- Явные `permissions:` в 8 workflow, где их нет (по умолчанию — `contents: read`).
+- ~~Явные `permissions:` во всех workflow~~ — семь оставшихся workflow получили
+  верхнеуровневый `contents: read`; существующие job-level разрешения сохранены,
+  а `tests/test_all_github_workflow_yaml.py` закрепляет нулевой census.
 - ~~Добавить `pytest-cov`, `mypy`, `pre-commit` в `requirements-dev.txt`~~ — добавлены;
   `import-linter` остаётся частью P1-6.
 - `.editorconfig` (LF, UTF-8, 4 пробела, `*.ps1` → CRLF).
