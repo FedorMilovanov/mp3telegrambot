@@ -36,7 +36,7 @@ async def cleanup_pipeline_resources(
         except asyncio.CancelledError:
             pass
         except Exception:
-            pass
+            logger.debug("LiveDub task failed during final cancellation cleanup", exc_info=True)
 
     if workdir is not None:
 

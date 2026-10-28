@@ -325,6 +325,10 @@
   диагностику. Segment lock release не маскирует результат рендера, malformed
   proxy label не раскрывает credentials, Whisper использует общий CUDA cleanup.
   99 focused tests зелёные. `S110` — 10, extended census — 280.
+- Extended Ruff, финальный `S110` slice: последние десять silent handlers в
+  entrypoint и pipelines получили диагностику. Mode fallback, delivery/cache
+  cleanup и приоритет poster→snapshot→none сохранены. 169 focused tests зелёные.
+  `S110` = 0 и включён в обязательный Ruff gate; extended census — 270.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

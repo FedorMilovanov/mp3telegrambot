@@ -71,7 +71,7 @@ def _cleanup_clip_files(
             if not keep and not borrowed_video:
                 video_path.unlink(missing_ok=True)
         except Exception:
-            pass
+            logger.debug("Clips source cleanup failed; preserving source", exc_info=True)
 
 
 async def process_and_send_clips(
