@@ -42,7 +42,7 @@ async def gemini_generate(
     response validator may reject a transport-successful response; that consumes
     the current global attempt and rotates without marking any quota domain.
     """
-    global _current_client_idx
+    global _current_client_idx  # noqa: PLW0603 -- round-robin start index is shared across router calls
     from services import gemini_capacity_control as capacity_control
 
     last_err: Exception | None = None

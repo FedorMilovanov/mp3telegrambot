@@ -862,7 +862,7 @@ def reset_rate_limit_async_state() -> int:
     never mutate private module state across an import boundary. Returns the number
     of discarded per-user locks for diagnostics.
     """
-    global _rate_limit_locks_guard
+    global _rate_limit_locks_guard  # noqa: PLW0603 -- module-owned reset replaces the event-loop-bound guard
     stale = len(_rate_limit_async_locks)
     _rate_limit_async_locks.clear()
     _rate_limit_locks_guard = asyncio.Lock()
@@ -991,7 +991,7 @@ def set_effective_max_file_size_mb(using_local_bot_api: bool) -> None:
     решение — используется локальный Bot API сервер или произошёл откат
     на облачный. Не трогает значение, если оператор явно задал
     MAX_FILE_SIZE_MB в .env — ручной выбор всегда имеет приоритет."""
-    global MAX_FILE_SIZE_MB
+    global MAX_FILE_SIZE_MB  # noqa: PLW0603 -- runtime Bot API selection intentionally rebinds the effective limit
     if _MAX_FILE_SIZE_MB_EXPLICIT:
         return
     MAX_FILE_SIZE_MB = 2000 if using_local_bot_api else 50

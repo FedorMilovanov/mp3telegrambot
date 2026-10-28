@@ -24,7 +24,7 @@ _RENDER_LOCK_GUARD: asyncio.Lock | None = None  # created lazily per event loop
 
 def _get_render_lock_guard() -> asyncio.Lock:
     """Create or return the lock for the current event loop."""
-    global _RENDER_LOCK_GUARD
+    global _RENDER_LOCK_GUARD  # noqa: PLW0603 -- lazy asyncio guard is rebound for the current event loop
     if _RENDER_LOCK_GUARD is None:
         _RENDER_LOCK_GUARD = asyncio.Lock()
     return _RENDER_LOCK_GUARD

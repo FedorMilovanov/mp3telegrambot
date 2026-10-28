@@ -650,6 +650,10 @@
   без перемещения imports/exports. Добавлен executed regression для связи
   `master_quality_v45` с source-owner v4; 377 focused tests и supplemental
   100 % (40/40). `E402`: 40 → 0; extended census: 47/705 (6,7 %).
+- Восемнадцать module-state `global` statements в core/services разобраны вручную:
+  loop-bound locks, process ownership, health/config state, encoder/Whisper caches
+  и NVENC→CPU invalidation сохранены без refactoring. 550 focused tests;
+  `PLW0603`: 47 → 17, extended census: 17/705 (2,4 %).
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения

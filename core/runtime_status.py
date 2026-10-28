@@ -48,7 +48,7 @@ _state = _State()
 
 def reset() -> None:
     """Сбросить состояние — только для тестов."""
-    global _state
+    global _state  # noqa: PLW0603 -- test reset replaces the module-owned snapshot under the lock
     with _LOCK:
         _state = _State()
 

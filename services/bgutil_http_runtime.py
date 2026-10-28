@@ -80,7 +80,7 @@ def bgutil_http_log_path() -> Path | None:
 
 def _open_log_sink():
     """Open (once) the bgutil stdout/stderr capture sink; DEVNULL if silenced."""
-    global _OWNED_LOG_SINK
+    global _OWNED_LOG_SINK  # noqa: PLW0603 -- owned child log handle must remain alive at module scope
     path = bgutil_http_log_path()
     if path is None:
         return subprocess.DEVNULL
@@ -204,7 +204,7 @@ def _force_stop_tree(process: subprocess.Popen[Any]) -> None:
 
 def stop_owned_bgutil_http_runtime() -> None:
     """Stop only the provider process created by this Python process."""
-    global _OWNED_PROCESS
+    global _OWNED_PROCESS  # noqa: PLW0603 -- owned process handle is cleared only by its lifecycle owner
     process = _OWNED_PROCESS
     _OWNED_PROCESS = None
     if process is None or process.poll() is not None:
@@ -224,7 +224,7 @@ def stop_owned_bgutil_http_runtime() -> None:
 
 
 def _register_cleanup_once() -> None:
-    global _CLEANUP_REGISTERED
+    global _CLEANUP_REGISTERED  # noqa: PLW0603 -- one-time atexit registration is process-wide state
     if not _CLEANUP_REGISTERED:
         atexit.register(stop_owned_bgutil_http_runtime)
         _CLEANUP_REGISTERED = True
@@ -239,7 +239,7 @@ def ensure_bgutil_http_runtime(
     startup_timeout: float = _STARTUP_TIMEOUT_SEC,
 ) -> str:
     """Start or reuse only this process's exact-source HTTP provider."""
-    global _OWNED_PROCESS
+    global _OWNED_PROCESS  # noqa: PLW0603 -- module owns and reuses only its exact-source child process
 
     existing = _ping(base_url)
     if existing is not None:

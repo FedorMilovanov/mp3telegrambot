@@ -72,7 +72,7 @@ def _read_lock_pid(path: Path) -> int:
 
 
 def release_early_singleton() -> None:
-    global _EARLY_LOCK_ACQUIRED
+    global _EARLY_LOCK_ACQUIRED  # noqa: PLW0603 -- early lock acquisition state is owned by this process
     if not _EARLY_LOCK_ACQUIRED:
         return
     path = singleton_lock_path()
@@ -86,7 +86,7 @@ def release_early_singleton() -> None:
 
 def acquire_early_singleton() -> bool:
     """Atomically reserve the process before Local API and heavy imports."""
-    global _EARLY_LOCK_ACQUIRED
+    global _EARLY_LOCK_ACQUIRED  # noqa: PLW0603 -- early singleton acquisition publishes module-owned process state
     if not _enabled("MP3BOT_EARLY_SINGLETON", True):
         return True
 

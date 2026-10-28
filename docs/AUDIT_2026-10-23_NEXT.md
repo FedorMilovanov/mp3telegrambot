@@ -1468,6 +1468,12 @@ imports/exports не перемещены. Executed regression подтверж�
 `master_quality_v45` с source-owner v4. 377 focused tests прошли, supplemental
 diff-cover — 100 % (40/40). Текущий census — 47/705
 (6,7 % remaining, 93,3 % closed): `E402` 0, `PLW0603` 47; `S603`/`S607` 0.
+Восемнадцать module-state `global` statements в core/services получили точечные
+justifications после ручного разбора: loop-bound locks, process ownership,
+health/config state, encoder/Whisper caches и NVENC→CPU invalidation сохранены
+без refactoring. 550 focused tests прошли; изменённые `global` lines не имеют
+coverage bytecode. Текущий census — 17/705 (2,4 % remaining, 97,6 % closed):
+`E402` 0, `PLW0603` 17; `S603`/`S607` 0.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**
