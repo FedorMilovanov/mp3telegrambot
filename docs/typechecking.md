@@ -21,12 +21,13 @@
 | `services/dub_delivery.py` | 0 | — |
 | `services/media_delivery_probe.py` | 0 | — |
 | `services/media_masters.py` | 0 | — |
+| `services/mp3_conversion.py` | 0 | — |
 | `services/process_executables.py` | 0 | — |
 | `services/speech_backends/` | 0 | — |
 | `services/telegraph_repair.py` | 0 | — |
 
-Текущий срез — 113/241 production modules (46,9 %); вне него остаются
-128 modules (53,1 %).
+Текущий срез — 114/241 production modules (47,3 %); вне него остаются
+127 modules (52,7 %).
 
 Измерено после расширения среза на `pipelines/`: полный `mypy --strict .`
 (включая `tests/`) — 5 038 ошибок в 563 файлах; по пакетам без тестов:
