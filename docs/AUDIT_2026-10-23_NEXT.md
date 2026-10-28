@@ -1350,6 +1350,13 @@ server Popen и Node version contracts. Active targeted/opt-in termination и
 fail-closed bgutil policy не изменены. Текущий census — 205/705
 (29,1 % remaining, 70,9 % closed): `E402` 97, `S603` 61, `PLW0603` 47;
 `S607` остаётся 0.
+Generic Short/Dub Studio review закрыл семь `S603`: internal checked tools,
+pinned yt-dlp и validated backend renderer/master commands используют argv без
+shell. 53 focused tests зелёные; пять новых tests выполняют оба caption paths,
+полный Short `main()` и project speech/master с checked CPU runtime. Отдельный
+tools-only coverage report подтвердил 100 % changed lines, основной coverage
+scope не менялся. Текущий census — 198/705 (28,1 % remaining, 71,9 % closed):
+`E402` 97, `S603` 54, `PLW0603` 47; `S607` остаётся 0.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

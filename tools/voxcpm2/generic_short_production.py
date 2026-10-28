@@ -44,7 +44,7 @@ def log(message: str) -> None:
 def run_checked(
     command: list[str], *, capture: bool = False, timeout: int | None = None
 ) -> subprocess.CompletedProcess[str]:
-    proc = subprocess.run(
+    proc = subprocess.run(  # noqa: S603 -- internal resolved tool/interpreter argv, no shell
         command,
         stdout=subprocess.PIPE if capture else None,
         stderr=subprocess.PIPE if capture else None,
@@ -745,7 +745,7 @@ def download_source(url: str, source: Path) -> dict[str, Any]:
 
 def download_captions(url: str, source_dir: Path) -> list[Cue]:
     template = source_dir / "captions.%(language)s.%(ext)s"
-    proc = subprocess.run(
+    proc = subprocess.run(  # noqa: S603 -- pinned yt-dlp argv, URL and paths are data
         [
             *_ytdlp_base(),
             "--no-playlist",
@@ -992,7 +992,9 @@ def main() -> None:
             "base_seed": "2026072800",
         },
     )
-    proc = subprocess.run(synth_command, cwd=str(repo), env=env, check=False)
+    proc = subprocess.run(  # noqa: S603 -- validated backend renderer argv and checked CPU runtime
+        synth_command, cwd=str(repo), env=env, check=False
+    )
     if proc.returncode != 0:
         raise RuntimeError(f"Speech backend {backend.backend_id} CPU-синтез завершился с кодом {proc.returncode}.")
 
@@ -1012,7 +1014,9 @@ def main() -> None:
             "target_tp": "-1.0",
         },
     )
-    proc = subprocess.run(master_command, cwd=str(repo), env=env, check=False)
+    proc = subprocess.run(  # noqa: S603 -- validated backend master argv and checked CPU runtime
+        master_command, cwd=str(repo), env=env, check=False
+    )
     if proc.returncode != 0:
         raise RuntimeError(f"Финальный master завершился с кодом {proc.returncode}.")
 
