@@ -315,6 +315,11 @@
   диагностикой; malformed metadata сохраняет fallback, remote-file cleanup
   использует общий best-effort helper без подавления cancellation. 213 focused
   tests (212 passed, 1 skipped) зелёные. `S110` — 24, extended census — 294.
+- Extended Ruff, Telegraph fallbacks: семь silent handlers заменены явной
+  диагностикой в legacy/service edit, Synopsis grounding, chain repair и DOM
+  audit. Cache invalidation, suffix probes и Playwright→requests fallback
+  остаются нефатальными; grounding сохраняет границу 24 000 символов. 88 focused
+  tests зелёные. `S110` — 17, extended census — 287.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

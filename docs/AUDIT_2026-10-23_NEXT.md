@@ -1252,6 +1252,11 @@ LiveDub publication/QA slice удалил шесть `S110`: malformed metadata 
 fallback, remote-file cleanup использует общий best-effort helper без подавления
 cancellation. 213 focused tests (212 passed, 1 skipped) зелёные. Текущий census —
 294, включая 24 `S110`.
+Telegraph fallback slice удалил семь `S110` в legacy/service edit, Synopsis
+grounding, chain repair и DOM audit. Cache invalidation, dirty-node cleanup,
+suffix probes и Playwright→requests fallback остаются нефатальными; grounding
+вынесен в проверяемый bounded helper. 88 focused tests зелёные. Текущий census —
+287, включая 17 `S110`.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

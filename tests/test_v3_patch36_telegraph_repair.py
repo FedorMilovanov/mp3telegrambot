@@ -225,3 +225,25 @@ def test_repair_chain_has_suffix_probe_for_outdated_first_part():
     src = Path("services/telegraph_repair.py").read_text(encoding="utf-8")
     assert "If part 1 editPage failed" in src
     assert "guess_telegraph_part_url(start, 2)" in src
+
+
+def test_repair_chain_survives_suffix_probe_failure(monkeypatch):
+    from services import telegraph_repair
+
+    calls = []
+
+    class Response:
+        def json(self):
+            return {"ok": True, "result": {"content": []}}
+
+    def fake_get(url, **_kwargs):
+        calls.append(url)
+        if "return_content=false" in url:
+            raise RuntimeError("suffix probe unavailable")
+        return Response()
+
+    monkeypatch.setattr(telegraph_repair.requests, "get", fake_get)
+    chain = asyncio.run(telegraph_repair.expand_telegraph_page_chain("https://telegra.ph/Probe-1"))
+
+    assert chain == ["https://telegra.ph/Probe-1"]
+    assert len(calls) == 2
