@@ -105,7 +105,7 @@ def _remove_pid(path: Path) -> None:
 
 def _windows_listener_pids(port: int) -> set[int]:
     try:
-        proc = subprocess.run(
+        proc = subprocess.run(  # noqa: S603 -- resolved netstat and fixed argv, no shell
             [resolve_required_executable("netstat"), "-ano", "-p", "tcp"],
             capture_output=True,
             text=True,
@@ -139,7 +139,7 @@ def _windows_listener_pids(port: int) -> set[int]:
 
 def _windows_name(pid: int) -> str:
     try:
-        proc = subprocess.run(
+        proc = subprocess.run(  # noqa: S603 -- resolved tasklist and integer PID filter
             [resolve_required_executable("tasklist"), "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
             capture_output=True,
             text=True,
@@ -159,7 +159,7 @@ def _windows_name(pid: int) -> str:
 
 def _posix_name(pid: int) -> str:
     try:
-        proc = subprocess.run(
+        proc = subprocess.run(  # noqa: S603 -- resolved ps and integer PID, argv only
             [resolve_required_executable("ps"), "-p", str(pid), "-o", "comm="],
             capture_output=True,
             text=True,
@@ -186,7 +186,7 @@ def _kill_pid(pid: int) -> bool:
             cmd = [resolve_required_executable("taskkill"), "/F", "/T", "/PID", str(pid)]
         else:
             cmd = [resolve_required_executable("kill"), "-TERM", str(pid)]
-        proc = subprocess.run(
+        proc = subprocess.run(  # noqa: S603 -- verified Bot API PID and resolved kill tool
             cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -225,7 +225,7 @@ def _terminate_managed_server() -> list[int]:
                 if os.name == "nt"
                 else [resolve_required_executable("pkill"), "-f", "telegram-bot-api"]
             )
-            proc = subprocess.run(
+            proc = subprocess.run(  # noqa: S603 -- explicit opt-in, fixed process matcher, no shell
                 cmd,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
@@ -293,7 +293,7 @@ def _start_server(host: str, port: int, *, proxy_url: str = ""):
             kwargs["creationflags"] = 0x8 | 0x200 | 0x08000000
         else:
             kwargs["start_new_session"] = True
-        process = subprocess.Popen(command, **kwargs)  # type: ignore[arg-type]
+        process = subprocess.Popen(command, **kwargs)  # type: ignore[arg-type]  # noqa: S603 -- configured file, argv only
         _write_pid(_pid_path(data_dir), process.pid)
         return process, str(log_path)
     except Exception as exc:

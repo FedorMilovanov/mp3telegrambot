@@ -547,6 +547,10 @@
   resolved PowerShell/Node/`taskkill` и validated runner argv. Variable-command
   `ffprobe` в artifact postcondition также переведён на общий resolver; shell,
   process ownership и fail-closed media validation не изменены. `S603`: 99 → 89.
+- Шесть Local Bot API `S603` прошли ручной review: fixed probe argv, verified
+  targeted PID, opt-in global matcher и configured executable используются без
+  shell. Targeted/global termination policy и startup secrets не изменены.
+  `S603`: 89 → 83.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения

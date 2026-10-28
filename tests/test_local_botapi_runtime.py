@@ -109,6 +109,37 @@ def test_posix_targeted_kill_uses_resolved_executable(monkeypatch):
     assert run.call_args.args[0] == ["/resolved/kill", "-TERM", "4242"]
 
 
+def test_start_server_uses_configured_file_with_argv_and_persists_pid(tmp_path, monkeypatch):
+    executable = tmp_path / "telegram-bot-api.exe"
+    executable.write_bytes(b"test-double")
+    data_dir = tmp_path / "data"
+    monkeypatch.setenv("TELEGRAM_API_ID", "12345")
+    monkeypatch.setenv("TELEGRAM_API_HASH", "test-api-hash")
+    monkeypatch.setenv("LOCAL_BOT_API_EXE", str(executable))
+    monkeypatch.setenv("LOCAL_BOT_API_DATA_DIR", str(data_dir))
+    popen = Mock(return_value=SimpleNamespace(pid=4242))
+    monkeypatch.setattr(runtime.subprocess, "Popen", popen)
+    proxy = "http://user:pass@127.0.0.1:8080"
+
+    process, log_path = runtime._start_server("127.0.0.1", 8081, proxy_url=proxy)
+
+    assert process is popen.return_value
+    assert log_path == str(tmp_path / "botapi-server.log")
+    assert popen.call_args.args[0] == [
+        str(executable),
+        "--api-id=12345",
+        "--api-hash=test-api-hash",
+        "--local",
+        "--http-port=8081",
+        f"--dir={data_dir}",
+        f"--log={tmp_path / 'botapi-server.log'}",
+        "--verbosity=2",
+        f"--proxy={proxy}",
+    ]
+    assert "shell" not in popen.call_args.kwargs
+    assert runtime._read_pid(runtime._pid_path(data_dir)) == 4242
+
+
 def test_log_tail_redacts_token_hash_and_explicit_proxy_password(tmp_path, monkeypatch):
     _base_env(monkeypatch)
     monkeypatch.setenv("TELEGRAM_API_HASH", "private-api-hash")

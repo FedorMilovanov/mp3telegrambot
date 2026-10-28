@@ -1314,6 +1314,13 @@ Dub/bgutil `S603` review закрыл десять вызовов: PowerShell/No
 regression test, а missing executable по-прежнему даёт fail-closed `False`.
 46 focused tests зелёные. Текущий census — 233/705 (33,0 % remaining,
 67,0 % closed): `E402` 97, `S603` 89, `PLW0603` 47; `S607` остаётся 0.
+Local Bot API review закрыл шесть `S603`: netstat/tasklist/ps имеют fixed argv,
+targeted kill получает только verified Bot API PID, global kill остаётся явным
+opt-in, а configured executable проверяется как файл и запускается без shell.
+10 focused tests зелёные, включая executed startup argv/no-shell/PID contract;
+termination/startup behavior не изменён. Текущий census
+— 227/705 (32,2 % remaining, 67,8 % closed): `E402` 97, `S603` 83,
+`PLW0603` 47; `S607` остаётся 0.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**
