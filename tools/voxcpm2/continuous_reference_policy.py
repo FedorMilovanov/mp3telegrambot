@@ -56,7 +56,7 @@ def _decode_source(source: Path, output: Path) -> tuple[np.ndarray, int]:
         "pcm_f32le",
         str(output),
     ]
-    process = subprocess.run(command, check=False)
+    process = subprocess.run(command, check=False)  # noqa: S603 -- fixed ffmpeg decode argv, no shell
     if process.returncode != 0 or not output.is_file():
         raise RuntimeError("Не удалось декодировать source для voice reference.")
     samples, sample_rate = sf.read(output, dtype="float32")

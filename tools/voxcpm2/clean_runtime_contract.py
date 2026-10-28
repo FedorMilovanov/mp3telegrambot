@@ -258,7 +258,7 @@ payload = {
 }
 print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
 """
-    process = subprocess.run(
+    process = subprocess.run(  # noqa: S603 -- checked CPU Python and fixed runtime fingerprint
         [str(cpu_python), "-c", script],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

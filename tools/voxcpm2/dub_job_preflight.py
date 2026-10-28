@@ -360,7 +360,7 @@ def _probe_imports(paths: dict[str, Any]) -> dict[str, Any]:
         "ensure_ascii=False, sort_keys=True, separators=(',', ':')), flush=True)\n"
     )
     env = clean_production_core._child_python_env(dict(os.environ))
-    process = subprocess.run(
+    process = subprocess.run(  # noqa: S603 -- checked CPU Python and pinned import graph
         [str(python), "-c", script],
         cwd=str(repo),
         env=env,

@@ -717,7 +717,9 @@ def _run_child_process(command: Any, *args: Any, **kwargs: Any):
         kwargs.setdefault("encoding", "utf-8")
         kwargs.setdefault("errors", "replace")
 
-    result = _stdlib_subprocess.run(command, *args, check=kwargs.pop("check", False), **kwargs)
+    result = _stdlib_subprocess.run(  # noqa: S603 -- internal component argv, no shell
+        command, *args, check=kwargs.pop("check", False), **kwargs
+    )
     if is_master and int(getattr(result, "returncode", 0) or 0) != 0:
         detail = str(getattr(result, "stderr", "") or "").strip()
         if detail:
