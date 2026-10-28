@@ -283,7 +283,7 @@ def test_kernel_lock_rejects_second_owner_and_survives_holder_crash(
             "    time.sleep(60)",
         ]
     )
-    child = subprocess.Popen(
+    child = subprocess.Popen(  # noqa: S603 -- owned current-interpreter lock test child
         [sys.executable, "-c", child_code, str(lock_path)],
         cwd=project_root,
         stdout=subprocess.PIPE,

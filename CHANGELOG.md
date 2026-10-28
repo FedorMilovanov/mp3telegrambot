@@ -603,6 +603,10 @@
   segmented media/duration helpers используют internal/resolved argv без shell.
   NVENC fallback и segmented CPU policy не изменены. VoxCPM2 tools: `S603` 0;
   общий счёт: 16 → 13.
+- Пять test-only `S603` прошли ручной review: bgutil lock owner, deterministic
+  CLI, два isolated source-contract и env-reference generator используют current
+  interpreter без shell. Owned kill/wait и test assertions не изменены. `S603`:
+  13 → 8.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения

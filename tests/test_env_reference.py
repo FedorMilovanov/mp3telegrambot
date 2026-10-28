@@ -23,7 +23,7 @@ SCRIPT = Path("scripts/render_env_reference.py")
 
 
 def test_reference_is_in_sync_with_the_code() -> None:
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: S603 -- current interpreter and fixed docs generator
         [sys.executable, str(SCRIPT), "--check"],
         capture_output=True,
         text=True,
