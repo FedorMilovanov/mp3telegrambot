@@ -93,5 +93,14 @@ def test_windows_batch_arguments_roundtrip_through_real_cmd(tmp_path: Path, argu
 
     stdout, stderr, returncode = yandex_live_dub._run_subprocess([str(script), argument], timeout=30)
 
+    try:
+        parsed = json.loads(stdout)
+    except json.JSONDecodeError:
+        parsed = None
+    if returncode != 0 or parsed != [argument]:
+        detail = json.dumps({"returncode": returncode, "stdout": stdout, "stderr": stderr}, ensure_ascii=True).replace(
+            "%", "%25"
+        )
+        print(f"::error title=cmd-roundtrip::{detail}")
     assert returncode == 0, stderr or stdout
-    assert json.loads(stdout) == [argument]
+    assert parsed == [argument]
