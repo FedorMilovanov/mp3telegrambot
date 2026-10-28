@@ -622,6 +622,9 @@
   executable, argv sequence и no-shell detach сохранены без behavior change.
   Windows LiveDub roundtrip #404 подтверждён 9/9 cases в CI. Расширенные
   subprocess findings закрыты: `S603` 1 → 0, `S607` остаётся 0.
+- Семь test-only `E402` в Gemini quota suites получили точечные justifications:
+  project imports намеренно остаются ниже optional-SDK doubles. Import behavior и
+  15 focused tests сохранены; `E402`: 97 → 90 без перемещения imports.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения

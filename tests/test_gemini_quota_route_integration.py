@@ -43,10 +43,11 @@ def _install_import_stubs() -> None:
 
 _install_import_stubs()
 
-from core import globals as core_globals
-from services import gemini_capacity_control as capacity_control
-from services import livedub_qa
-from services import quiz_generator
+# Keep project imports below the optional-SDK doubles used by isolated tests.
+from core import globals as core_globals  # noqa: E402
+from services import gemini_capacity_control as capacity_control  # noqa: E402
+from services import livedub_qa  # noqa: E402
+from services import quiz_generator  # noqa: E402
 
 
 class _ServiceError(RuntimeError):

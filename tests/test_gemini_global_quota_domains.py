@@ -46,9 +46,10 @@ def _install_import_stubs() -> None:
 
 _install_import_stubs()
 
-from services import gemini_capacity_control as capacity_control
-from services import gemini_quota_domains as quota_domains
-from services import gemini_router
+# Keep project imports below the optional-SDK doubles used by isolated tests.
+from services import gemini_capacity_control as capacity_control  # noqa: E402
+from services import gemini_quota_domains as quota_domains  # noqa: E402
+from services import gemini_router  # noqa: E402
 
 
 class _ServiceError(RuntimeError):

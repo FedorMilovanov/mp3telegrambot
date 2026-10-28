@@ -1433,6 +1433,10 @@ exception chaining сохранены. Primary diff-cover — 100 % (22/22).
 detach; executable AST не изменён. `S603` и `S607` теперь оба равны 0.
 Текущий census — 144/705 (20,4 % remaining, 79,6 % closed): `E402` 97,
 `PLW0603` 47.
+Семь test-only `E402` в двух Gemini quota suites закрыты точечными justifications:
+project imports должны остаться ниже optional-SDK doubles, поэтому они не были
+механически подняты. 15 focused tests прошли. Текущий census — 137/705
+(19,4 % remaining, 80,6 % closed): `E402` 90, `PLW0603` 47; `S603`/`S607` 0.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**
