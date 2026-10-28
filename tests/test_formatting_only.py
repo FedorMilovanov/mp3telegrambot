@@ -50,7 +50,24 @@ def test_git_helpers_require_and_use_a_resolved_executable(monkeypatch) -> None:
     monkeypatch.setattr(formatting.subprocess, "run", run)
 
     assert formatting._changed_paths(Path("/repo"), "HEAD") == [("M", "services/example.py")]
-    assert commands[0][0] == "/usr/bin/git"
+    assert commands[0] == [
+        "/usr/bin/git",
+        "diff",
+        "--name-status",
+        "-z",
+        "--no-renames",
+        "--end-of-options",
+        "HEAD",
+        "--",
+    ]
+
+    formatting._base_source(Path("/repo"), "--output=unexpected", "services/example.py")
+    assert commands[1] == [
+        "/usr/bin/git",
+        "show",
+        "--end-of-options",
+        "--output=unexpected:services/example.py",
+    ]
 
     monkeypatch.setattr(formatting.shutil, "which", lambda name: None)
     with pytest.raises(FileNotFoundError, match="git executable not found"):

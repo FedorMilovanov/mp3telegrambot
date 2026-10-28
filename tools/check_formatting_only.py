@@ -60,8 +60,9 @@ def _git_executable() -> str:
 
 
 def _changed_paths(root: Path, compare_ref: str) -> list[tuple[str, str]]:
-    result = subprocess.run(
-        [_git_executable(), "diff", "--name-status", "-z", "--no-renames", compare_ref, "--"],
+    # Resolved git; compare_ref follows an explicit option boundary; no shell.
+    result = subprocess.run(  # noqa: S603
+        [_git_executable(), "diff", "--name-status", "-z", "--no-renames", "--end-of-options", compare_ref, "--"],
         cwd=root,
         check=True,
         stdout=subprocess.PIPE,
@@ -77,8 +78,9 @@ def _changed_paths(root: Path, compare_ref: str) -> list[tuple[str, str]]:
 
 
 def _base_source(root: Path, compare_ref: str, path: str) -> str:
-    result = subprocess.run(
-        [_git_executable(), "show", f"{compare_ref}:{path}"],
+    # Resolved git; revision:path follows an explicit option boundary; no shell.
+    result = subprocess.run(  # noqa: S603
+        [_git_executable(), "show", "--end-of-options", f"{compare_ref}:{path}"],
         cwd=root,
         check=True,
         stdout=subprocess.PIPE,

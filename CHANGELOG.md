@@ -540,6 +540,9 @@
 - Последние четыре test-only `S607` устранены resolved `git`/`node`/`taskkill`;
   фиксированные argv без shell прошли ручной `S603` review с узкими обоснованными
   исключениями. `S607` = 0 и включён в обычный Ruff gate; `S603`: 106 → 104.
+- Пять resolved-git `S603` прошли ручной review: Required PR Gate принимает
+  только полные 40-hex SHA, а revision аргументы diff/show отделены
+  `--end-of-options`; shell не используется. `S603`: 104 → 99.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения

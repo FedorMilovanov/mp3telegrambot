@@ -17,6 +17,7 @@ GATE_WORKFLOW = ".github/workflows/ci.yml"
 # 40 minutes: below the 45-minute `required-pr-gate` job budget, above the
 # slowest profile workflow plus queueing.
 DEFAULT_TIMEOUT_SECONDS = 2400
+_GIT_SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 
 
 class MissingPullRequestTrigger(ValueError):
@@ -191,11 +192,14 @@ def expected_profile_workflows(
 
 
 def changed_files(base_sha: str, head_sha: str) -> tuple[str, ...]:
+    if not _GIT_SHA_RE.fullmatch(base_sha) or not _GIT_SHA_RE.fullmatch(head_sha):
+        raise ValueError("git diff endpoints must be full 40-character SHAs")
     executable = shutil.which("git")
     if executable is None:
         raise RuntimeError("git executable not found in PATH")
-    output = subprocess.check_output(
-        [executable, "diff", "--name-only", f"{base_sha}...{head_sha}"],
+    # Validated SHA endpoints follow an explicit option boundary; no shell.
+    output = subprocess.check_output(  # noqa: S603
+        [executable, "diff", "--name-only", "--end-of-options", f"{base_sha}...{head_sha}", "--"],
         text=True,
     )
     files = tuple(line.strip() for line in output.splitlines() if line.strip())
