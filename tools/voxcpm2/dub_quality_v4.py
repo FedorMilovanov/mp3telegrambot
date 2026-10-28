@@ -318,7 +318,7 @@ def _extract_reference_part(source: Path, start: float, end: float, output: Path
         "pcm_f32le",
         str(output),
     ]
-    proc = subprocess.run(command, check=False)
+    proc = subprocess.run(command, check=False)  # noqa: S603 -- fixed ffmpeg reference window
     if proc.returncode != 0 or not output.is_file():
         raise RuntimeError("FFmpeg не смог извлечь голосовой референс.")
     samples, sample_rate = sf.read(output, dtype="float32")
@@ -414,7 +414,7 @@ def _source_speech_onset(source: Path) -> float:
         "null",
         "-",
     ]
-    proc = subprocess.run(
+    proc = subprocess.run(  # noqa: S603 -- fixed ffmpeg silence probe, no shell
         command,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,

@@ -1395,6 +1395,12 @@ shell. 52 focused tests зелёные; четыре новых doubles подт
 и PCM orchestration. Supplemental diff-cover 100 % (5/5). Текущий census —
 166/705 (23,5 % remaining, 76,5 % closed): `E402` 97, `S603` 22,
 `PLW0603` 47; `S607` остаётся 0.
+Quality/master/preflight review закрыл шесть `S603`: reference/silence probes,
+оба master runner, ffprobe duration и py_compile используют fixed или validated
+argv без shell. 41 focused test зелёный; пять новых doubles выполняют helpers.
+Supplemental diff-cover 100 % (6/6). Текущий census — 160/705
+(22,7 % remaining, 77,3 % closed): `E402` 97, `S603` 16, `PLW0603` 47;
+`S607` остаётся 0.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

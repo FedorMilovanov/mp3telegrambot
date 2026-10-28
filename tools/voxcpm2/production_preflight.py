@@ -26,7 +26,7 @@ def probe_duration(path: Path) -> float:
     ffprobe = shutil.which("ffprobe")
     if ffprobe is None:
         raise FileNotFoundError("Required executable not found on PATH: ffprobe")
-    proc = subprocess.run(
+    proc = subprocess.run(  # noqa: S603 -- resolved ffprobe and fixed duration probe
         [
             ffprobe,
             "-v",
@@ -101,7 +101,7 @@ def model_snapshot_exists(root: Path) -> bool:
 
 
 def compile_script(python_exe: Path, script: Path) -> None:
-    proc = subprocess.run(
+    proc = subprocess.run(  # noqa: S603 -- validated preflight Python and fixed py_compile
         [str(python_exe), "-m", "py_compile", str(script)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
