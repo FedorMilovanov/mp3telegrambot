@@ -1437,6 +1437,10 @@ detach; executable AST не изменён. `S603` и `S607` теперь оба
 project imports должны остаться ниже optional-SDK doubles, поэтому они не были
 механически подняты. 15 focused tests прошли. Текущий census — 137/705
 (19,4 % remaining, 80,6 % closed): `E402` 90, `PLW0603` 47; `S603`/`S607` 0.
+Шесть core `E402` разобраны вручную: пять imports сохраняют dotenv/HF/bootstrap
+и late logging setup; duplicate `re` alias в `core/utils.py` удалён без второго
+import. 32 focused tests прошли. Текущий census — 131/705
+(18,6 % remaining, 81,4 % closed): `E402` 84, `PLW0603` 47; `S603`/`S607` 0.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

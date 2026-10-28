@@ -536,9 +536,7 @@ def refund_rate_limit(user_id: int) -> None:
 
 # ─── Безопасное логирование — маскировка секретов ─────────────
 
-import re as _re_utils
-
-_API_KEY_RE = _re_utils.compile(r"AIza[0-9A-Za-z_-]{35}")
+_API_KEY_RE = re.compile(r"AIza[0-9A-Za-z_-]{35}")
 
 
 def mask_api_key(text: str) -> str:
