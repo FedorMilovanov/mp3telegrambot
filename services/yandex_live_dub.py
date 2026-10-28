@@ -30,6 +30,7 @@ import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -87,6 +88,36 @@ def _check_vot_cli() -> str:
     )
 
 
+def _windows_batch_invocation(cmd_parts: list[str], environ: Mapping[str, str]) -> tuple[str, dict[str, str]]:
+    """Build a cmd.exe launch without putting raw arguments in its command line.
+
+    Windows batch files still require cmd.exe. The fixed command line contains
+    only environment-variable placeholders; values are expanded inside quotes
+    and are never reparsed as standalone commands. Child-only environment
+    values also avoid mutating the bot process. A trailing backslash run is
+    doubled for the final C-argv parser used by the Node-based CLI wrappers.
+    """
+    child_env = dict(environ)
+    placeholders: list[str] = []
+    for index, part in enumerate(cmd_parts):
+        value = str(part)
+        if any(char in value for char in ('"', "\r", "\n", "\0")):
+            raise ValueError("Windows LiveDub arguments cannot contain quotes, newlines, or NUL")
+        if not value:
+            placeholders.append('""')
+            continue
+        trailing = len(value) - len(value.rstrip("\\"))
+        if trailing:
+            value = value[:-trailing] + "\\" * (trailing * 2)
+        name = f"MP3BOT_VOT_ARG_{index}"
+        child_env[name] = value
+        placeholders.append(f'"%{name}%"')
+    comspec = child_env.get("COMSPEC") or "cmd.exe"
+    placeholders_arg = " ".join(placeholders)
+    command = f'{subprocess.list2cmdline([comspec])} /D /S /V:OFF /C "{placeholders_arg}"'
+    return command, child_env
+
+
 def _run_subprocess(cmd_parts: list, cwd: Path | None = None, timeout: int = 600):
     """Универсальный subprocess wrapper. Возвращает (stdout, stderr, returncode)."""
     # FIX AUDIT R4: npx-fallback возвращает argv[0]="/usr/bin/npx vot-cli-live"
@@ -103,23 +134,24 @@ def _run_subprocess(cmd_parts: list, cwd: Path | None = None, timeout: int = 600
     ):
         cmd_parts = str(cmd_parts[0]).split() + list(cmd_parts[1:])
 
-    # Windows: .cmd/.bat files need shell=True for subprocess.run
-    _use_shell = False
+    run_parts: str | list[str] = cmd_parts
+    run_env = None
     if sys.platform == "win32" and cmd_parts:
-        _cmd = cmd_parts[0].lower()
-        if _cmd.endswith(".cmd") or _cmd.endswith(".bat") or shutil.which(_cmd + ".cmd"):
-            _use_shell = True
+        _cmd = str(cmd_parts[0]).lower()
+        if _cmd.endswith((".cmd", ".bat")) or shutil.which(_cmd + ".cmd"):
+            run_parts, run_env = _windows_batch_invocation(cmd_parts, os.environ)
 
     try:
-        proc = subprocess.run(
-            cmd_parts,
+        proc = subprocess.run(  # noqa: S603 -- no shell; batch command string has fixed placeholders
+            run_parts,
             capture_output=True,
             text=True,
             encoding="utf-8",
             errors="replace",
             cwd=cwd,
             timeout=timeout,
-            shell=_use_shell,
+            env=run_env,
+            shell=False,
             check=False,
         )
     except FileNotFoundError as e:
