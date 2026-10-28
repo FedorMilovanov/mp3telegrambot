@@ -72,9 +72,13 @@
   На предыдущем checkpoint 215/241 production modules (89,2 %) проходили
   `mypy --strict`. Следующий checkpoint закрыл 77 ошибок в семи
   Main/Callback/Subtitle/LiveDub/Render/Quiz modules через typed external
-  boundaries, generic collections и narrowing. Теперь 222/241 production
-  modules (92,1 %) проходят `mypy --strict`; вне среза остаются 19 modules
-  с 699 ошибками, без новых исключений или общих подавлений.
+  boundaries, generic collections и narrowing. На предыдущем checkpoint
+  222/241 production modules (92,1 %) проходили `mypy --strict`. Следующий
+  checkpoint закрыл 142 ошибки в семи Composition/TTS/PDF/MP3/Shorts/
+  Highlights/LiveDub modules через точные generic-типы, runtime-validated
+  narrowing и typed legacy/SDK boundaries. Теперь 229/241 production modules
+  (95,0 %) проходят `mypy --strict`; вне среза остаются 12 modules с 557
+  ошибками, без новых исключений или общих подавлений.
 - Исполняемый контракт production-слоёв через `import-linter`: новые обратные
   импорты блокируются, а известные legacy-рёбра сокращаются по точному
   burn-down без wildcard-исключений (`tools/check_import_layers.py`).

@@ -40,6 +40,7 @@ import threading
 import time as _time
 from pathlib import Path
 from typing import (
+    Any,
     Awaitable,
     Callable,
 )
@@ -212,7 +213,7 @@ try:
     _HAS_WEASYPRINT = True
 except ImportError:
     _HAS_WEASYPRINT = False
-    WeasyprintHTML = None  # type: ignore[assignment,misc]
+    WeasyprintHTML = None
 
 
 # ══════════════════════════════════════════════════════════════
@@ -902,7 +903,7 @@ def _linkify_timecodes(html_str: str, video_url: str) -> str:
         else:
             ctx = context_tail
 
-            def _repl(m: re.Match, _ctx=ctx) -> str:
+            def _repl(m: re.Match[str], _ctx: str = ctx) -> str:
                 tc = m.group(1)
                 local_pre = m.string[max(0, m.start() - 50) : m.start()]
                 pre = (_ctx + local_pre)[-50:]
@@ -1059,7 +1060,7 @@ def _enrich_h3_headings(html_str: str) -> str:
     Если заголовок пуст после очистки — тег удаляется.
     """
 
-    def _fix_h3(m: re.Match) -> str:
+    def _fix_h3(m: re.Match[str]) -> str:
         inner = m.group(1) or ""
         yt = rt = vk = ""
         for href in _find_all_hrefs(inner):
@@ -1107,7 +1108,7 @@ def _enrich_h3_headings(html_str: str) -> str:
 def _clean_block_elements(html_str: str) -> str:
     """Чистит текст внутри <p>, <h4>, <blockquote>."""
 
-    def _fix_block(m: re.Match) -> str:
+    def _fix_block(m: re.Match[str]) -> str:
         tag = m.group(1)
         attrs = m.group(2) or ""
         inner = m.group(3) or ""
@@ -1159,7 +1160,7 @@ def _fetch_telegraph_bs4(url: str) -> str:
     r = _fetch_url(url)
     if not r:
         return ""
-    soup = BeautifulSoup(r.text, "html.parser")  # type: ignore[arg-type]
+    soup = BeautifulSoup(r.text, "html.parser")
     article = soup.find("article")
     if not article:
         return ""
@@ -1221,7 +1222,7 @@ def _find_video_links(html_str: str) -> dict[str, str]:
     return out
 
 
-def _collect_sources(sections: list[dict]) -> dict[str, str]:
+def _collect_sources(sections: list[dict[str, Any]]) -> dict[str, str]:
     """Собирает ссылки на видео из всех секций (первые найденные)."""
     out: dict[str, str] = {"youtube": "", "rutube": "", "vk": ""}
     for sec in sections:
@@ -1258,7 +1259,7 @@ def _enrich_section(
     toc_items: list[dict[str, str]] = []
     counter = 0
 
-    def _repl(m: re.Match) -> str:
+    def _repl(m: re.Match[str]) -> str:
         nonlocal counter
         counter += 1
         attrs = m.group(1) or ""
@@ -1294,7 +1295,7 @@ def _build_cover(
     title: str,
     performer: str,
     dur: str,
-    available: list[dict],
+    available: list[dict[str, Any]],
 ) -> str:
     """Генерирует HTML обложки PDF-документа."""
     rows = "".join(f'<li class="cover-includes-item">{_esc_safe(SECTIONS[s["key"]]["label"])}</li>' for s in available)
@@ -1319,7 +1320,7 @@ def _build_cover(
 
 
 def _build_toc(
-    available: list[dict],
+    available: list[dict[str, Any]],
     src: dict[str, str],
 ) -> str:
     """Генерирует HTML глобального оглавления. Использует it['id']."""
@@ -1371,7 +1372,7 @@ def _build_toc(
     )
 
 
-def _build_local_toc(sec: dict) -> str:
+def _build_local_toc(sec: dict[str, Any]) -> str:
     """Генерирует HTML локального оглавления внутри части."""
     rows: list[str] = []
     for it in sec.get("toc_items", []):
@@ -1384,7 +1385,7 @@ def _build_local_toc(sec: dict) -> str:
     return f'<ol class="local-toc">{"".join(rows)}</ol>'
 
 
-def _build_part(sec: dict, performer: str, title: str) -> str:
+def _build_part(sec: dict[str, Any], performer: str, title: str) -> str:
     """Рендерит одну «Часть» из уже обогащённой секции."""
     key = sec["key"]
     meta = SECTIONS[key]
@@ -1416,7 +1417,7 @@ def _build_html(
     title: str,
     performer: str,
     dur: str,
-    sections: list[dict],
+    sections: list[dict[str, Any]],
 ) -> str:
     """
     Главная сборка HTML-документа.
@@ -1432,7 +1433,7 @@ def _build_html(
     vid = _primary_video_url(src)
 
     # Single-pass enrichment — создаём новые dict, не мутируя входные
-    enriched: list[dict] = []
+    enriched: list[dict[str, Any]] = []
     for sec in raw_available:
         html_out, toc = _enrich_section(
             sec["content_html"],
@@ -1623,7 +1624,7 @@ def _gen_weasyprint(html_str: str, out: str) -> str | None:
     if not _HAS_WEASYPRINT:
         return None
     try:
-        WeasyprintHTML(  # type: ignore[union-attr]
+        WeasyprintHTML(
             string=html_str,
         ).write_pdf(out)
         out_path = Path(out)
@@ -1673,7 +1674,7 @@ def generate_sermon_pdf(
         return None
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
-    sections: list[dict] = []
+    sections: list[dict[str, Any]] = []
     for key in _SECTION_KEYS:
         url = urls.get(key)
         if not url:
@@ -1763,7 +1764,7 @@ async def generate_sermon_pdf_async(
         return k, content
 
     tasks = [asyncio.create_task(_fetch_one(k)) for k in keys]
-    sections: list[dict] = []
+    sections: list[dict[str, Any]] = []
     completed = 0
     total = len(keys)
 

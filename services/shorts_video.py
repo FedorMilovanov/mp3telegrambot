@@ -10,10 +10,14 @@ from __future__ import annotations
 
 import asyncio
 import math
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
-from services import shorts_video_impl as _impl
+from services import shorts_video_impl
+
+# The implementation remains a dynamic legacy/monkeypatch boundary.
+_impl: Any = shorts_video_impl
 
 
 TRANSACTIONAL_SHORTS_OUTPUT_POLICY = "transactional-shorts-outputs-v3"
@@ -26,7 +30,7 @@ _LEGACY_CREATE_SHORT_SNAPSHOT = _impl.create_short_snapshot
 
 # Explicit re-export: the dynamic module fallback remains for legacy helpers,
 # but this settings boundary keeps a concrete callable type for strict callers.
-get_subtitles_mode_settings = _impl.get_subtitles_mode_settings
+get_subtitles_mode_settings: Callable[[], dict[str, Any]] = _impl.get_subtitles_mode_settings
 
 
 def __getattr__(name: str) -> Any:
@@ -85,17 +89,20 @@ async def download_video_for_shorts(
     url: str,
     media_id: str,
     workdir: Path | None = None,
-):
+) -> Path | None:
     """Own the full download awaitable so repeated outer cancellation cannot orphan it."""
-    return await _impl.await_owned_coroutine(_LEGACY_DOWNLOAD_VIDEO(url, media_id, workdir=workdir))
+    return cast(Path | None, await _impl.await_owned_coroutine(_LEGACY_DOWNLOAD_VIDEO(url, media_id, workdir=workdir)))
 
 
 async def transcribe_short_clip(
     video_path: Path,
-    ai_data: dict | None = None,
-) -> list[dict]:
+    ai_data: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     """Own extraction + Whisper as one public operation, not only the worker thread."""
-    return await _impl.await_owned_coroutine(_LEGACY_TRANSCRIBE_SHORT_CLIP(video_path, ai_data=ai_data))
+    return cast(
+        list[dict[str, Any]],
+        await _impl.await_owned_coroutine(_LEGACY_TRANSCRIBE_SHORT_CLIP(video_path, ai_data=ai_data)),
+    )
 
 
 async def _owned_render_short_clip(
@@ -398,10 +405,10 @@ async def _owned_short_transform(
 
 
 async def _owned_optional_output(
-    producer,
+    producer: Any,
     input_path: Path,
     output_path: Path,
-    *args,
+    *args: Any,
 ) -> bool:
     _unlink_short_paths(output_path, protected=(input_path,))
     try:
@@ -435,16 +442,19 @@ async def render_short_clip(
     snap_to_silence: bool = True,
 ) -> bool:
     """Public renderer with explicit silence-snap ownership."""
-    return await _impl.await_owned_coroutine(
-        _owned_render_short_clip(
-            source_video_path,
-            output_path,
-            start_seconds,
-            end_seconds,
-            visual_mode=visual_mode,
-            silence_snap_max_end=silence_snap_max_end,
-            snap_to_silence=snap_to_silence,
-        )
+    return cast(
+        bool,
+        await _impl.await_owned_coroutine(
+            _owned_render_short_clip(
+                source_video_path,
+                output_path,
+                start_seconds,
+                end_seconds,
+                visual_mode=visual_mode,
+                silence_snap_max_end=silence_snap_max_end,
+                snap_to_silence=snap_to_silence,
+            )
+        ),
     )
 
 
@@ -455,13 +465,16 @@ async def postprocess_short(
     normalize_audio: bool = True,
     speed: float = 1.0,
 ) -> bool:
-    return await _impl.await_owned_coroutine(
-        _owned_short_transform(
-            input_path,
-            output_path,
-            normalize_audio=normalize_audio,
-            speed=speed,
-        )
+    return cast(
+        bool,
+        await _impl.await_owned_coroutine(
+            _owned_short_transform(
+                input_path,
+                output_path,
+                normalize_audio=normalize_audio,
+                speed=speed,
+            )
+        ),
     )
 
 
@@ -471,14 +484,17 @@ async def create_short_title_poster(
     title: str,
     clip_duration_seconds: float,
 ) -> bool:
-    return await _impl.await_owned_coroutine(
-        _owned_optional_output(
-            _LEGACY_CREATE_SHORT_TITLE_POSTER,
-            video_path,
-            poster_path,
-            title,
-            clip_duration_seconds,
-        )
+    return cast(
+        bool,
+        await _impl.await_owned_coroutine(
+            _owned_optional_output(
+                _LEGACY_CREATE_SHORT_TITLE_POSTER,
+                video_path,
+                poster_path,
+                title,
+                clip_duration_seconds,
+            )
+        ),
     )
 
 
@@ -487,20 +503,23 @@ async def create_short_snapshot(
     snapshot_path: Path,
     clip_duration_seconds: float,
 ) -> bool:
-    return await _impl.await_owned_coroutine(
-        _owned_optional_output(
-            _LEGACY_CREATE_SHORT_SNAPSHOT,
-            video_path,
-            snapshot_path,
-            clip_duration_seconds,
-        )
+    return cast(
+        bool,
+        await _impl.await_owned_coroutine(
+            _owned_optional_output(
+                _LEGACY_CREATE_SHORT_SNAPSHOT,
+                video_path,
+                snapshot_path,
+                clip_duration_seconds,
+            )
+        ),
     )
 
 
 async def burn_subtitles_into_short(
     input_path: Path,
     output_path: Path,
-    segments: list[dict],
+    segments: list[dict[str, Any]],
     *,
     karaoke: bool | None = None,
 ) -> bool:

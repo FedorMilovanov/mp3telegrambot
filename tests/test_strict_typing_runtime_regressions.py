@@ -84,3 +84,23 @@ async def test_extras_empty_gemini_response_uses_typed_callback_route(monkeypatc
     assert result == {"montage_candidates": [], "highlights_candidates": []}
     assert generate.await_args.args[0] == [client]
     assert callable(generate.await_args.args[1])
+
+
+@pytest.mark.asyncio
+async def test_shorts_download_wrapper_returns_owned_legacy_path(monkeypatch, tmp_path: Path) -> None:
+    expected = tmp_path / "source.mp4"
+    legacy_download = AsyncMock(return_value=expected)
+    monkeypatch.setattr(shorts_video, "_LEGACY_DOWNLOAD_VIDEO", legacy_download)
+
+    result = await shorts_video.download_video_for_shorts(
+        "https://example.test/video",
+        "media-1",
+        workdir=tmp_path,
+    )
+
+    assert result is expected
+    legacy_download.assert_called_once_with(
+        "https://example.test/video",
+        "media-1",
+        workdir=tmp_path,
+    )

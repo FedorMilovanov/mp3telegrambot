@@ -80,11 +80,24 @@ def test_single_chapter_without_metadata_is_not_reported_as_success(
 
     mp3 = tmp_path / "metadata.mp3"
     mp3.write_bytes(b"")
+    thumbnail = tmp_path / "cover.jpg"
+    thumbnail.write_bytes(b"\xff\xd8jpeg\xff\xd9")
 
     assert not embed_chapters(
         mp3,
         [{"time": "0:00", "topic": "Одна точка"}],
         duration_sec=30,
     )
-    assert embed_chapters(mp3, [], title="Только метаданные")
-    assert ID3(str(mp3)).getall("TIT2")[0].text[0] == "Только метаданные"
+    assert embed_chapters(
+        mp3,
+        [],
+        title="Только метаданные",
+        performer="Исполнитель",
+        comment="Комментарий",
+        thumb_path=thumbnail,
+    )
+    tags = ID3(str(mp3))
+    assert tags.getall("TIT2")[0].text[0] == "Только метаданные"
+    assert tags.getall("TPE1")[0].text[0] == "Исполнитель"
+    assert tags.getall("COMM")[0].text[0] == "Комментарий"
+    assert tags.getall("APIC")[0].data == thumbnail.read_bytes()

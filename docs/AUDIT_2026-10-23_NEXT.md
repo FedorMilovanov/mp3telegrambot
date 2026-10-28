@@ -1556,9 +1556,13 @@ explicit SDK re-export и Telegram narrowing. Предыдущий срез — 
 production modules (89,2 %), оставалось 26 modules (10,8 %) с 776 ошибками.
 Следующий checkpoint закрыл 77 ошибок в семи Main/Callback/Subtitle/LiveDub/
 Render/Quiz modules через typed external boundaries, generic collections и
-narrowing. Текущий срез — 222/241 production modules (92,1 %), остаётся
-19 modules (7,9 %). Полный production baseline оставшихся файлов — 699 ошибок
-в 19 файлах; новые exclude или общие suppression для их сокрытия не
+narrowing. Предыдущий срез — 222/241 production modules (92,1 %), оставалось
+19 modules (7,9 %) с 699 ошибками. Следующий checkpoint закрыл 142 ошибки в
+семи Composition/TTS/PDF/MP3/Shorts/Highlights/LiveDub modules через точные
+generic-типы, runtime-validated narrowing и typed legacy/SDK boundaries.
+Текущий срез — 229/241 production modules (95,0 %), остаётся 12 modules
+(5,0 %). Полный production baseline оставшихся файлов — 557 ошибок в
+12 файлах; новые exclude или общие suppression для их сокрытия не
 добавляются.
 
 **Найденные по дороге настоящие дефекты:** кортеж кортежей в `negative` у

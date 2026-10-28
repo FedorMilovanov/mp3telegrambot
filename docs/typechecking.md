@@ -60,6 +60,7 @@
 | `services/gemini_router.py` | 0 | — |
 | `services/health_report.py` | 0 | — |
 | `services/highlights_candidate_gate.py` | 0 | — |
+| `services/highlights_quality.py` | 0 | — |
 | `services/latency_trace.py` | 0 | — |
 | `services/livedub_audio_cache_recovery.py` | 0 | — |
 | `services/livedub_audio_companion.py` | 0 | — |
@@ -69,6 +70,7 @@
 | `services/livedub_info_evidence.py` | 0 | — |
 | `services/livedub_info_presentation_policy.py` | 0 | — |
 | `services/livedub_long_qa.py` | 0 | — |
+| `services/livedub_mix.py` | 0 | — |
 | `services/livedub_output_policy.py` | 0 | — |
 | `services/livedub_publication.py` | 0 | — |
 | `services/livedub_publication_core.py` | 0 | — |
@@ -82,8 +84,10 @@
 | `services/local_botapi_runtime.py` | 0 | — |
 | `services/media_delivery_probe.py` | 0 | — |
 | `services/media_masters.py` | 0 | — |
+| `services/mp3_chapters.py` | 0 | — |
 | `services/mp3_conversion.py` | 0 | — |
 | `services/operator_runtime_status.py` | 0 | — |
+| `services/pdf_generator.py` | 0 | — |
 | `services/polling_reliability_runtime.py` | 0 | — |
 | `services/pre_main_policy.py` | 0 | — |
 | `services/process_executables.py` | 0 | — |
@@ -115,17 +119,20 @@
 | `services/shorts_subtitle_burn.py` | 0 | — |
 | `services/shorts_subtitle_integrity.py` | 0 | — |
 | `services/shorts_transcription.py` | 0 | — |
+| `services/shorts_video.py` | 0 | — |
 | `services/speech_backends/` | 0 | — |
 | `services/study_synthesis_policy.py` | 0 | — |
 | `services/study_synthesis_runtime.py` | 0 | — |
 | `services/telegraph_edit.py` | 0 | — |
 | `services/telegraph_repair.py` | 0 | — |
 | `services/translation_editorial.py` | 0 | — |
+| `services/translation_editorial_composition.py` | 0 | — |
 | `services/translation_editorial_factory.py` | 0 | — |
 | `services/translation_editorial_pack_contract.py` | 0 | — |
 | `services/translation_editorial_pack_v2.py` | 0 | — |
 | `services/translation_editorial_repair_provenance.py` | 0 | — |
 | `services/tts_profile_selection.py` | 0 | — |
+| `services/tts_weighted_runner_provisioning.py` | 0 | — |
 | `services/tts_weighted_smoke.py` | 0 | — |
 | `services/tts_weighted_smoke_attestation.py` | 0 | — |
 | `services/tts_weighted_smoke_runner.py` | 0 | — |
@@ -133,8 +140,8 @@
 | `services/youtube_po_token_runtime.py` | 0 | — |
 | `services/youtube_transcript.py` | 0 | — |
 
-Текущий срез — 222/241 production modules (92,1 %); вне него остаются
-19 modules (7,9 %).
+Текущий срез — 229/241 production modules (95,0 %); вне него остаются
+12 modules (5,0 %).
 
 Измерено после расширения среза на `pipelines/`: полный `mypy --strict .`
 (включая `tests/`) — 5 038 ошибок в 563 файлах; по пакетам без тестов:

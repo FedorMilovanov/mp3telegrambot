@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 from services import pdf_generator as pdf
 
@@ -23,6 +24,26 @@ def test_build_html_collects_sources_and_nested_tocs_without_mutating_sections()
     assert 'id="synopsis_h1"' in document
     assert 'href="https://youtu.be/example"' in document
     assert "YouTube" in document
+
+
+def test_clean_block_elements_executes_typed_match_callback() -> None:
+    cleaned = pdf._clean_block_elements("<p>  First <br> second  </p>")
+
+    assert cleaned == "<p>First<br>second</p>"
+
+
+def test_fetch_telegraph_bs4_executes_optional_parser_boundary(monkeypatch) -> None:
+    assert pdf.BeautifulSoup is not None
+    monkeypatch.setattr(
+        pdf,
+        "_fetch_url",
+        lambda _url: SimpleNamespace(text="<article><header>Hidden</header><p>Visible paragraph</p></article>"),
+    )
+
+    result = pdf._fetch_telegraph_bs4("https://telegra.ph/typed-parser")
+
+    assert "Visible paragraph" in result
+    assert "Hidden" not in result
 
 
 def test_sync_pdf_generation_stops_when_every_source_is_empty(monkeypatch, tmp_path) -> None:

@@ -103,8 +103,10 @@ def _piece_media_payload(piece: Any) -> dict[str, Any]:
 
 def _composition_identity_payload(document: dict[str, Any]) -> dict[str, Any]:
     """Bind only media-producing evidence; release copy/paths belong to handoff_id."""
-    source = document.get("source") if isinstance(document.get("source"), dict) else {}
-    repair = source.get("repair_provenance") if isinstance(source.get("repair_provenance"), dict) else {}
+    raw_source = document.get("source")
+    source: dict[str, Any] = raw_source if isinstance(raw_source, dict) else {}
+    raw_repair = source.get("repair_provenance")
+    repair: dict[str, Any] = raw_repair if isinstance(raw_repair, dict) else {}
     pieces = document.get("pieces") if isinstance(document.get("pieces"), list) else document.get("pieces")
     media_pieces = [_piece_media_payload(piece) for piece in pieces] if isinstance(pieces, list) else pieces
     return {
@@ -127,8 +129,10 @@ def _composition_identity_payload(document: dict[str, Any]) -> dict[str, Any]:
 
 def _result_identity_payload(provenance: dict[str, Any]) -> dict[str, Any]:
     """Bind rendered media/evidence, excluding machine paths and release copy."""
-    source = provenance.get("source") if isinstance(provenance.get("source"), dict) else {}
-    output = provenance.get("output") if isinstance(provenance.get("output"), dict) else {}
+    raw_source = provenance.get("source")
+    source: dict[str, Any] = raw_source if isinstance(raw_source, dict) else {}
+    raw_output = provenance.get("output")
+    output: dict[str, Any] = raw_output if isinstance(raw_output, dict) else {}
     return {
         "schema_name": provenance.get("schema_name"),
         "schema_version": provenance.get("schema_version"),
@@ -332,8 +336,9 @@ def validate_composition_document(document: dict[str, Any]) -> list[str]:
         errors.append("source.sha256 must be canonical sha256:<64 lowercase hex>")
     if not str(source.get("local_path") or "").strip():
         errors.append("source.local_path is required")
+    raw_source_bytes: Any = source.get("bytes")
     try:
-        source_bytes = int(source.get("bytes"))
+        source_bytes = int(raw_source_bytes)
     except (TypeError, ValueError):
         source_bytes = 0
     if source_bytes <= 1024:
@@ -449,7 +454,7 @@ def validate_composition_document(document: dict[str, Any]) -> list[str]:
 
 
 def refresh_composition_id(document: dict[str, Any]) -> dict[str, Any]:
-    copied = json.loads(json.dumps(document, ensure_ascii=False, allow_nan=False))
+    copied: dict[str, Any] = json.loads(json.dumps(document, ensure_ascii=False, allow_nan=False))
     copied["composition_id"] = composition_id(copied)
     return copied
 
