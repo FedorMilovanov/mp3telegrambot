@@ -1543,8 +1543,11 @@ registry; aggregation и log-only behavior не изменились. Затем
 `services/shorts_duration_safety.py` добавлен после явной float-аннотации
 snap ceiling; source-window budget и public-delivery gates не изменились.
 Затем `services/shorts_factory_disk_guard.py` добавлен без смены selection,
-disk-capacity или format-policy behavior. Текущий срез — 117/241 production
-modules (48,5 %), остаётся 124 modules (51,5 %).
+disk-capacity или format-policy behavior. Затем одним zero-error checkpoint
+добавлены 49 уже строго типизированных production modules без смены их кода.
+Текущий срез — 166/241 production modules (68,9 %), остаётся 75 modules (31,1 %).
+Полный production baseline для оставшихся файлов — 969 ошибок в 75 файлах;
+новые exclude или suppression для их сокрытия не добавляются.
 
 **Найденные по дороге настоящие дефекты:** кортеж кортежей в `negative` у
 `core/source_packs.py` (работал только за счёт защитного `neg[0]`), `max()`/деление

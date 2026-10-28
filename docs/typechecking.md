@@ -16,21 +16,70 @@
 |---|---|---|
 | `core/` | 0 | — |
 | `pipelines/` | 0 | `pipelines/main_pipeline.py` (P0-3: файл режется на этапы) |
+| `converters/__init__.py` | 0 | — |
+| `handlers/__init__.py` | 0 | — |
+| `handlers/dub_multicommand.py` | 0 | — |
+| `handlers/dub_studio_registration.py` | 0 | — |
+| `services/__init__.py` | 0 | — |
 | `services/async_process.py` | 0 | — |
 | `services/async_worker.py` | 0 | — |
+| `services/audio_cache_maintenance.py` | 0 | — |
+| `services/bgutil_orphan_recovery.py` | 0 | — |
+| `services/bot_lifecycle.py` | 0 | — |
+| `services/clip_renderer.py` | 0 | — |
+| `services/conspect_audit_runtime.py` | 0 | — |
+| `services/conspect_quality_contract.py` | 0 | — |
 | `services/dub_delivery.py` | 0 | — |
+| `services/dub_preflight.py` | 0 | — |
+| `services/dub_reference_strategies.py` | 0 | — |
+| `services/dub_release_health_v64.py` | 0 | — |
+| `services/dub_rendering.py` | 0 | — |
+| `services/dub_worker_release.py` | 0 | — |
+| `services/env_policy.py` | 0 | — |
+| `services/gemini_error_policy.py` | 0 | — |
+| `services/gemini_max_quality.py` | 0 | — |
+| `services/gemini_model_status.py` | 0 | — |
+| `services/gemini_qa_policy.py` | 0 | — |
+| `services/gemini_quota_domains.py` | 0 | — |
+| `services/gemini_router.py` | 0 | — |
+| `services/health_report.py` | 0 | — |
 | `services/latency_trace.py` | 0 | — |
+| `services/livedub_audio_cache_recovery.py` | 0 | — |
+| `services/livedub_audio_quality_guard.py` | 0 | — |
+| `services/livedub_output_policy.py` | 0 | — |
+| `services/livedub_quality_runtime.py` | 0 | — |
+| `services/livedub_ru_provenance.py` | 0 | — |
+| `services/local_botapi_diagnostics.py` | 0 | — |
 | `services/media_delivery_probe.py` | 0 | — |
 | `services/media_masters.py` | 0 | — |
 | `services/mp3_conversion.py` | 0 | — |
+| `services/operator_runtime_status.py` | 0 | — |
+| `services/pre_main_policy.py` | 0 | — |
 | `services/process_executables.py` | 0 | — |
+| `services/restart_state_runtime.py` | 0 | — |
+| `services/runtime_build_identity.py` | 0 | — |
+| `services/runtime_manifest.py` | 0 | — |
 | `services/shorts_duration_safety.py` | 0 | — |
 | `services/shorts_factory_disk_guard.py` | 0 | — |
+| `services/shorts_factory_execution_guard.py` | 0 | — |
+| `services/shorts_factory_full_video.py` | 0 | — |
+| `services/shorts_factory_long_fit.py` | 0 | — |
+| `services/shorts_factory_media.py` | 0 | — |
+| `services/shorts_factory_quality_gate.py` | 0 | — |
+| `services/shorts_factory_retry_cache.py` | 0 | — |
+| `services/shorts_static_policy.py` | 0 | — |
+| `services/shorts_subtitle_integrity.py` | 0 | — |
 | `services/speech_backends/` | 0 | — |
+| `services/study_synthesis_policy.py` | 0 | — |
+| `services/study_synthesis_runtime.py` | 0 | — |
 | `services/telegraph_repair.py` | 0 | — |
+| `services/translation_editorial_pack_contract.py` | 0 | — |
+| `services/translation_editorial_pack_v2.py` | 0 | — |
+| `services/tts_profile_selection.py` | 0 | — |
+| `services/youtube_po_token_runtime.py` | 0 | — |
 
-Текущий срез — 117/241 production modules (48,5 %); вне него остаются
-124 modules (51,5 %).
+Текущий срез — 166/241 production modules (68,9 %); вне него остаются
+75 modules (31,1 %).
 
 Измерено после расширения среза на `pipelines/`: полный `mypy --strict .`
 (включая `tests/`) — 5 038 ошибок в 563 файлах; по пакетам без тестов:
