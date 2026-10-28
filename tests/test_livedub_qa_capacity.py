@@ -10,9 +10,16 @@ from services import livedub_qa as qa
 
 
 class _Files:
-    def __init__(self, *, upload_error: BaseException | None = None, poll_error: BaseException | None = None):
+    def __init__(
+        self,
+        *,
+        upload_error: BaseException | None = None,
+        poll_error: BaseException | None = None,
+        delete_error: BaseException | None = None,
+    ):
         self.upload_error = upload_error
         self.poll_error = poll_error
+        self.delete_error = delete_error
         self.upload_calls = 0
         self.get_calls = 0
         self.delete_calls: list[str] = []
@@ -31,6 +38,8 @@ class _Files:
 
     async def delete(self, *, name):
         self.delete_calls.append(name)
+        if self.delete_error is not None:
+            raise self.delete_error
 
 
 def _client(name: str, model_calls: list[str], *, error: BaseException | None = None):
@@ -68,6 +77,59 @@ def _install_common(monkeypatch, clients):
     import core.globals as core_globals
 
     monkeypatch.setattr(core_globals, "make_audio_config", lambda **_kwargs: object())
+
+
+def test_remote_qa_file_delete_failure_is_nonfatal():
+    files = _Files(delete_error=RuntimeError("Files API unavailable"))
+    client = SimpleNamespace(aio=SimpleNamespace(files=files))
+
+    asyncio.run(
+        qa._delete_uploaded_qa_file_best_effort(
+            client,
+            SimpleNamespace(name="files/qa"),
+        )
+    )
+
+    assert files.delete_calls == ["files/qa"]
+
+
+def test_malformed_qa_response_logging_failure_is_nonfatal(monkeypatch, tmp_path):
+    calls = []
+
+    class _Models:
+        async def generate_content(self, **_kwargs):
+            calls.append("only")
+            return SimpleNamespace(text="not-json", candidates=[], usage_metadata=None)
+
+    client = SimpleNamespace(
+        name="only",
+        aio=SimpleNamespace(models=_Models(), files=_Files()),
+    )
+    srt = tmp_path / "dub.srt"
+    video = tmp_path / "dub.mp4"
+    _write_srt(srt)
+    video.write_bytes(b"video")
+    _install_common(monkeypatch, [client])
+
+    def fragile_warning(message, *_args):
+        if str(message).startswith("[LiveDubQA] не распарсился"):
+            raise RuntimeError("logging unavailable")
+
+    monkeypatch.setattr(qa.logger, "warning", fragile_warning)
+
+    result = asyncio.run(
+        qa._run_translation_qa_base(
+            dub_video_path=video,
+            original_audio_path=None,
+            ai_data={"main_topic": "Reference topic"},
+            duration=60,
+            model_name="gemini-3.7-flash",
+            dub_srt_path=srt,
+        )
+    )
+
+    assert result is None
+    assert calls == ["only"]
 
 
 def test_livedub_qa_503_does_not_expand_by_four_keys(monkeypatch, tmp_path):

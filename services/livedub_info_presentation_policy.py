@@ -180,7 +180,7 @@ async def _translate_title_second_chance(title_line: str) -> tuple[str, str] | N
             if title and re.search(r"[А-Яа-яЁё]", title):
                 return title, author
         except Exception:
-            pass
+            logger.debug("Failed to parse LiveDub title response; using fallback", exc_info=True)
         return None
 
     try:

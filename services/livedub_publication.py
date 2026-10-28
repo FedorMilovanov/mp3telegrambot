@@ -206,7 +206,7 @@ async def _generate_quality_publication(source_line: str) -> dict[str, str] | No
                     "model": model,
                 }
         except Exception:
-            pass
+            logger.debug("Failed to parse LiveDub publication metadata; using fallback", exc_info=True)
         return None
 
     try:

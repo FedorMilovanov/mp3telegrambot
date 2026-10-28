@@ -311,6 +311,10 @@
   invalidation, QA asset discovery, failure notification и cover selection
   получили диагностику; cleanup/reuse/delivery contracts сохранены. 203 focused
   tests (202 passed, 1 skipped) зелёные. `S110` — 30, extended census — 300.
+- Extended Ruff, LiveDub publication/QA: шесть silent handlers заменены явной
+  диагностикой; malformed metadata сохраняет fallback, remote-file cleanup
+  использует общий best-effort helper без подавления cancellation. 213 focused
+  tests (212 passed, 1 skipped) зелёные. `S110` — 24, extended census — 294.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

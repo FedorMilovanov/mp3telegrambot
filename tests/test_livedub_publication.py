@@ -1,5 +1,10 @@
+import asyncio
 from pathlib import Path
+from types import SimpleNamespace
 
+from services import livedub_info_presentation_policy as info_policy
+from services import livedub_publication as publication
+from services import livedub_publication_core as publication_core
 from services.livedub_publication import (
     _canonical_title,
     _fallback_description,
@@ -14,6 +19,46 @@ def test_russian_publication_title_uses_project_title_case():
         _canonical_title("борьба с сексуальной безнравственностью и порнографией")
         == "Борьба с Сексуальной Безнравственностью и Порнографией"
     )
+
+
+def test_shared_title_parser_failure_uses_local_separator(monkeypatch):
+    def fail_parser(_value):
+        raise RuntimeError("shared parser unavailable")
+
+    monkeypatch.setattr("services.livedub_output_policy._split_title_author", fail_parser)
+
+    assert publication_core.split_title_author("Title - Author") == ("Title", "Author")
+
+
+def test_title_normalizer_failure_uses_local_title_case(monkeypatch):
+    def fail_normalizer(_value):
+        raise RuntimeError("normalizer unavailable")
+
+    monkeypatch.setattr("core.text_utils.normalize_title_text", fail_normalizer)
+
+    assert publication_core.canonical_title("борьба с искушением") == "Борьба с Искушением"
+
+
+def _patch_malformed_gemini_response(monkeypatch):
+    monkeypatch.setattr("core.globals.GEMINI_CLIENTS", [object()])
+    monkeypatch.setattr("core.globals.make_text_config_smart", lambda **_kwargs: object())
+
+    async def malformed_response(*_args, **_kwargs):
+        return SimpleNamespace(text="not-json")
+
+    monkeypatch.setattr("services.gemini_router.gemini_generate", malformed_response)
+
+
+def test_malformed_second_chance_title_returns_none(monkeypatch):
+    _patch_malformed_gemini_response(monkeypatch)
+
+    assert asyncio.run(info_policy._translate_title_second_chance("Title - Author")) is None
+
+
+def test_malformed_publication_metadata_returns_none(monkeypatch):
+    _patch_malformed_gemini_response(monkeypatch)
+
+    assert asyncio.run(publication._generate_quality_publication("Title - Author")) is None
 
 
 def test_audio_caption_has_description_and_source_but_no_language_label():

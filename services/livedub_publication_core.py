@@ -156,7 +156,7 @@ def split_title_author(value: str) -> tuple[str, str]:
         title, author = _split_title_author(text)
         return plain(title, 240), canonical_author(author)
     except Exception:
-        pass
+        logger.debug("Shared title/author parser unavailable; using local separator fallback", exc_info=True)
     for separator in (" - ", " — ", " – ", " | "):
         if separator in text:
             title, author = text.rsplit(separator, 1)
@@ -209,7 +209,7 @@ def canonical_title(value: str) -> str:
 
         title = normalize_title_text(title) or title
     except Exception:
-        pass
+        logger.debug("Title normalization unavailable; using local title casing", exc_info=True)
     return russian_title_case(title) if re.search(r"[А-Яа-яЁё]", title) else title
 
 

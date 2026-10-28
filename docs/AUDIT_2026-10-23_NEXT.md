@@ -1248,6 +1248,10 @@ LiveDub stage slice удалил четыре `S110` в cached invalidation, QA 
 failure notification и cover selection; cleanup/reuse/delivery contracts
 сохранены. 203 focused tests (202 passed, 1 skipped) зелёные. Текущий census —
 300, включая 30 `S110`.
+LiveDub publication/QA slice удалил шесть `S110`: malformed metadata сохраняет
+fallback, remote-file cleanup использует общий best-effort helper без подавления
+cancellation. 213 focused tests (212 passed, 1 skipped) зелёные. Текущий census —
+294, включая 24 `S110`.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**
