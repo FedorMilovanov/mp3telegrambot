@@ -1383,6 +1383,12 @@ media tools без shell. 20 focused tests зелёные, четыре новы
 GVS/Factory/generic process lines; supplemental diff-cover 100 % (5/5).
 Текущий census — 176/705 (25,0 % remaining, 75,0 % closed): `E402` 97,
 `S603` 32, `PLW0603` 47; `S607` остаётся 0.
+Clean VoxCPM2 review закрыл пять `S603`: child/master wrapper, runtime
+fingerprint, reference decode, direct media helper и job import preflight
+используют argv без shell. 49 focused tests зелёные; четыре новых doubles
+выполняют runtime/reference/direct/preflight lines. Supplemental diff-cover
+100 % (5/5). Текущий census — 171/705 (24,3 % remaining, 75,7 % closed):
+`E402` 97, `S603` 27, `PLW0603` 47; `S607` остаётся 0.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

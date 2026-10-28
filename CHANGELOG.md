@@ -587,6 +587,10 @@
   benchmark source, Factory media/SSIM и generic video-hash commands используют
   resolved media tools без shell. Factory quality gates и video-copy evidence не
   изменены; четыре новых doubles закрывают changed lines. `S603`: 37 → 32.
+- Пять clean VoxCPM2 `S603` прошли ручной review: child/master wrapper, runtime
+  fingerprint, reference decode, direct media helper и job import preflight
+  используют argv без shell. Post-AAC QA, reference floor и checked CPU runtime
+  сохранены; четыре новых doubles закрывают helpers. `S603`: 32 → 27.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения
