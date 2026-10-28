@@ -55,6 +55,22 @@ def test_run_text_keeps_non_throwing_subprocess_policy(monkeypatch) -> None:
     assert result.returncode == 0
 
 
+def test_run_text_sets_windows_creation_flag(monkeypatch) -> None:
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured.update(kwargs)
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(companion.subprocess, "run", fake_run)
+    monkeypatch.setattr(companion.subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
+    monkeypatch.setattr(companion.os, "name", "nt")
+
+    companion._run_text(["probe"], timeout=7)
+
+    assert captured["creationflags"] == 0x08000000
+
+
 def test_companion_validator_does_not_install_telegram_wrappers() -> None:
     source = Path("services/livedub_audio_companion.py").read_text(encoding="utf-8")
     assert "_wrap_send_video" not in source

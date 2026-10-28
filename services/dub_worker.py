@@ -54,9 +54,10 @@ def _pid_is_running(pid: int) -> bool:
         try:
             import ctypes
 
-            handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, int(pid))
+            kernel32 = getattr(ctypes, "windll").kernel32
+            handle = kernel32.OpenProcess(0x1000, False, int(pid))
             if handle:
-                ctypes.windll.kernel32.CloseHandle(handle)
+                kernel32.CloseHandle(handle)
                 return True
             return False
         except Exception:
@@ -131,6 +132,7 @@ def _safe_repo_script(relative: str) -> Path:
 
 
 def _powershell_executable() -> str:
+    found: str | None
     value = os.getenv("DUB_STUDIO_POWERSHELL", "").strip()
     if value:
         found = shutil.which(value) or value
@@ -279,7 +281,7 @@ def _finish_lease_safely(
         log(f"Execution lease finalization failed for job #{job_id}: {exc}")
 
 
-def _execute_runner_job(store: DubStore, worker_id: str, job: dict[str, Any]) -> None:
+def _execute_runner_job(store: Any, worker_id: str, job: dict[str, Any]) -> None:
     job_id = int(job["id"])
     project = store.get_project(str(job["project_id"]))
     action_name = str(job["action"])

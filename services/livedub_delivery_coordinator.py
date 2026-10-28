@@ -37,14 +37,14 @@ from concurrent.futures import Future
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 
 _TRUE = {"1", "true", "yes", "on"}
 _SOURCE_LOCK = threading.Lock()
 _COMPANION_LOCK = threading.Lock()
-_COMPANION_INFLIGHT: dict[tuple[str, ...], Future[bool]] = {}
+_COMPANION_INFLIGHT: dict[tuple[str, ...], Future[object]] = {}
 _COMPANION_SENT: dict[tuple[str, ...], float] = {}
 
 
@@ -62,7 +62,7 @@ def _prune_companion_success(now: float, ttl: int = 900) -> None:
             _COMPANION_SENT.pop(key, None)
 
 
-async def _singleflight(key: tuple[str, ...], operation) -> bool:
+async def _singleflight(key: tuple[str, ...], operation: Callable[[], Awaitable[bool]]) -> bool:
     """Share one companion transaction per request and cache only real success."""
     now = time.monotonic()
     with _COMPANION_LOCK:
@@ -390,7 +390,7 @@ class SourceAudioDeferral:
     enabled: bool
     _audio_path: Path | None = None
     _send_kwargs: dict[str, Any] | None = None
-    _timeout_task: asyncio.Task | None = None
+    _timeout_task: asyncio.Task[None] | None = None
 
     def _cleanup(self) -> None:
         task = self._timeout_task

@@ -26,7 +26,7 @@ import os
 import re
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -217,7 +217,7 @@ def _offset_validation_issues(result: dict[str, Any], start: int) -> list[dict[s
 
 
 async def _verify_candidate_windows(
-    original_run,
+    original_run: Callable[..., Awaitable[Any]],
     *,
     primary: dict[str, Any],
     dub_video_path: Path,
@@ -394,7 +394,7 @@ def audio_trust_enabled() -> bool:
 
 
 async def apply_audio_trust(
-    base_runner,
+    base_runner: Callable[..., Awaitable[Any]],
     *,
     primary: dict[str, Any] | None,
     dub_video_path: Path,
@@ -402,9 +402,9 @@ async def apply_audio_trust(
     duration: int,
     model_name: str = "",
     dub_audio_path: Path | None = None,
-    existing_audio_part=None,
-    existing_client=None,
-) -> dict | None:
+    existing_audio_part: Any = None,
+    existing_client: Any = None,
+) -> dict[str, Any] | None:
     """Confirm broad-pass candidates against fresh local audio windows."""
     if not isinstance(primary, dict) or not _enabled():
         return primary

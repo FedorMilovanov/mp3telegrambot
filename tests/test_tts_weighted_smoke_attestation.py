@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import services.tts_weighted_smoke_attestation as attestation
 from services.tts_weighted_smoke import (
     TTS_WEIGHTED_SMOKE_POLICY,
     TTS_WEIGHTED_SMOKE_REPORT_POLICY,
@@ -196,6 +197,13 @@ def _smoke_report() -> dict:
             "total_seconds": 42.0,
         },
     }
+
+
+def test_numeric_attestation_helpers_reject_arbitrary_objects() -> None:
+    with pytest.raises(ValueError, match="run_id"):
+        attestation._positive_int(object(), "run_id")
+    with pytest.raises(ValueError, match="duration"):
+        attestation._finite_number(object(), "duration")
 
 
 def _context() -> WeightedTTSSmokeAttestationContext:

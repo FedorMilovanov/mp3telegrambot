@@ -228,6 +228,18 @@ def test_studio_stale_worker_uses_resolved_taskkill(monkeypatch) -> None:
     ]
 
 
+def test_dub_worker_windows_pid_probe_closes_process_handle(monkeypatch) -> None:
+    import ctypes
+
+    kernel32 = SimpleNamespace(OpenProcess=Mock(return_value=66), CloseHandle=Mock())
+    monkeypatch.setattr(dub_worker, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(ctypes, "windll", SimpleNamespace(kernel32=kernel32), raising=False)
+
+    assert dub_worker._pid_is_running(123) is True
+    kernel32.OpenProcess.assert_called_once_with(0x1000, False, 123)
+    kernel32.CloseHandle.assert_called_once_with(66)
+
+
 def test_studio_windows_pid_probe_closes_process_handle(monkeypatch) -> None:
     import ctypes
 

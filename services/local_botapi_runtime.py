@@ -22,6 +22,7 @@ import re
 import subprocess
 import time
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 from services.process_executables import resolve_required_executable
@@ -249,7 +250,7 @@ def _proxy_args(proxy_url: str = "") -> list[str]:
     return []
 
 
-def _start_server(host: str, port: int, *, proxy_url: str = ""):
+def _start_server(host: str, port: int, *, proxy_url: str = "") -> tuple[subprocess.Popen[bytes] | None, str]:
     api_id = os.getenv("TELEGRAM_API_ID", "").strip()
     api_hash = os.getenv("TELEGRAM_API_HASH", "").strip()
     exe = os.getenv(
@@ -277,7 +278,7 @@ def _start_server(host: str, port: int, *, proxy_url: str = ""):
         "--verbosity=2",
         *_proxy_args(proxy_url),
     ]
-    kwargs: dict[str, object] = {
+    kwargs: dict[str, Any] = {
         "stdin": subprocess.DEVNULL,
         "env": dict(os.environ),
     }
@@ -293,7 +294,7 @@ def _start_server(host: str, port: int, *, proxy_url: str = ""):
             kwargs["creationflags"] = 0x8 | 0x200 | 0x08000000
         else:
             kwargs["start_new_session"] = True
-        process = subprocess.Popen(command, **kwargs)  # type: ignore[arg-type]  # noqa: S603 -- configured file, argv only
+        process = subprocess.Popen(command, **kwargs)  # noqa: S603 -- configured file, argv only
         _write_pid(_pid_path(data_dir), process.pid)
         return process, str(log_path)
     except Exception as exc:

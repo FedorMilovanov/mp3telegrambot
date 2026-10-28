@@ -123,7 +123,7 @@ def _run_text(command: list[str], *, timeout: int) -> subprocess.CompletedProces
         "timeout": timeout,
     }
     if os.name == "nt":
-        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     return subprocess.run(  # noqa: S603 -- internal resolved ffmpeg/ffprobe argv only, no shell
         command, **kwargs, check=False
     )
@@ -329,7 +329,7 @@ def _cache_drop(video_file_id: str) -> None:
 
 
 async def _send_cached_audio(
-    self,
+    self: Any,
     *,
     chat_id: Any,
     video_file_id: str,
@@ -371,7 +371,7 @@ async def _send_cached_audio(
 
 
 async def _send_variant(
-    self,
+    self: Any,
     *,
     variant: str,
     source: Path,
@@ -431,7 +431,7 @@ async def _send_variant(
 
 
 async def _send_new_audio(
-    self,
+    self: Any,
     *,
     chat_id: Any,
     video_path: Path,

@@ -52,6 +52,18 @@ def test_unauthorized_and_missing_users_are_rejected_safely(monkeypatch):
     _run(update)
 
 
+def test_admin_without_message_or_chat_returns_without_store_work(monkeypatch):
+    monkeypatch.setattr(quickstart, "ADMIN_IDS", {1})
+    update, message = _update(with_message=False)
+    _run(update, args=[])
+    assert message is None
+
+    update, message = _update()
+    update.effective_chat = None
+    _run(update, args=["recipe"])
+    assert message.replies == []
+
+
 def test_missing_recipe_prints_usage_and_recipe_help(monkeypatch):
     monkeypatch.setattr(quickstart, "ADMIN_IDS", {1})
     monkeypatch.setattr(quickstart, "list_recipes", lambda: [])

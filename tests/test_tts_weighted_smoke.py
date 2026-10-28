@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import math
 import os
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 from typing import Any, Mapping
 
 import numpy as np
@@ -26,6 +28,7 @@ from services.tts_weighted_smoke import (
     TTS_WEIGHTED_SMOKE_POLICY,
     WeightedTTSSmokeConfig,
     WeightedTTSSmokeRuntime,
+    _ffprobe_output,
     normalize_generated_pcm,
     run_weighted_tts_smoke,
 )
@@ -217,6 +220,24 @@ def _fake_probe(output: Path) -> dict[str, Any]:
         "channels": int(info.channels),
         "duration_seconds": round(float(info.duration), 6),
     }
+
+
+@pytest.mark.parametrize("field", ["sample_rate", "channels", "duration"])
+def test_ffprobe_rejects_non_scalar_audio_facts(monkeypatch, tmp_path: Path, field: str) -> None:
+    stream = {"codec_type": "audio", "sample_rate": 24_000, "channels": 1, "duration": 4.0}
+    stream[field] = []
+    monkeypatch.setattr("services.tts_weighted_smoke.shutil.which", lambda _name: "/ffprobe")
+    monkeypatch.setattr(
+        "services.tts_weighted_smoke.subprocess.run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps({"streams": [stream]}),
+            stderr="",
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="некорректные audio facts"):
+        _ffprobe_output(tmp_path / "weighted.wav")
 
 
 def test_weighted_smoke_runs_real_session_and_keeps_only_safe_report(

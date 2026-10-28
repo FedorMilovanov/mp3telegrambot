@@ -21,11 +21,13 @@
 | `handlers/__init__.py` | 0 | — |
 | `handlers/dub_health.py` | 0 | — |
 | `handlers/dub_multicommand.py` | 0 | — |
+| `handlers/dub_quickstart.py` | 0 | — |
 | `handlers/dub_studio_registration.py` | 0 | — |
 | `services/__init__.py` | 0 | — |
 | `services/async_process.py` | 0 | — |
 | `services/async_worker.py` | 0 | — |
 | `services/audio_cache_maintenance.py` | 0 | — |
+| `services/bgutil_http_runtime.py` | 0 | — |
 | `services/bgutil_orphan_recovery.py` | 0 | — |
 | `services/bot_lifecycle.py` | 0 | — |
 | `services/clip_renderer.py` | 0 | — |
@@ -38,6 +40,7 @@
 | `services/dub_release_health_v64.py` | 0 | — |
 | `services/dub_rendering.py` | 0 | — |
 | `services/dub_studio_runtime.py` | 0 | — |
+| `services/dub_worker.py` | 0 | — |
 | `services/dub_worker_release.py` | 0 | — |
 | `services/env_policy.py` | 0 | — |
 | `services/gemini_capacity_control.py` | 0 | — |
@@ -48,16 +51,22 @@
 | `services/gemini_quota_domains.py` | 0 | — |
 | `services/gemini_router.py` | 0 | — |
 | `services/health_report.py` | 0 | — |
+| `services/highlights_candidate_gate.py` | 0 | — |
 | `services/latency_trace.py` | 0 | — |
 | `services/livedub_audio_cache_recovery.py` | 0 | — |
+| `services/livedub_audio_companion.py` | 0 | — |
 | `services/livedub_audio_quality_guard.py` | 0 | — |
+| `services/livedub_delivery_coordinator.py` | 0 | — |
 | `services/livedub_info_evidence.py` | 0 | — |
 | `services/livedub_output_policy.py` | 0 | — |
+| `services/livedub_publication.py` | 0 | — |
+| `services/livedub_qa_trust.py` | 0 | — |
 | `services/livedub_quality_runtime.py` | 0 | — |
 | `services/livedub_ru_provenance.py` | 0 | — |
 | `services/local_botapi_bootstrap.py` | 0 | — |
 | `services/local_botapi_diagnostics.py` | 0 | — |
 | `services/local_botapi_required.py` | 0 | — |
+| `services/local_botapi_runtime.py` | 0 | — |
 | `services/media_delivery_probe.py` | 0 | — |
 | `services/media_masters.py` | 0 | — |
 | `services/mp3_conversion.py` | 0 | — |
@@ -68,6 +77,7 @@
 | `services/process_singleton.py` | 0 | — |
 | `services/restart_state_runtime.py` | 0 | — |
 | `services/runtime_build_identity.py` | 0 | — |
+| `services/runtime_dependency_lock.py` | 0 | — |
 | `services/runtime_manifest.py` | 0 | — |
 | `services/segment_render.py` | 0 | — |
 | `services/shorts_duration_safety.py` | 0 | — |
@@ -83,21 +93,25 @@
 | `services/shorts_static_policy.py` | 0 | — |
 | `services/shorts_subtitle_burn.py` | 0 | — |
 | `services/shorts_subtitle_integrity.py` | 0 | — |
+| `services/shorts_transcription.py` | 0 | — |
 | `services/speech_backends/` | 0 | — |
 | `services/study_synthesis_policy.py` | 0 | — |
 | `services/study_synthesis_runtime.py` | 0 | — |
 | `services/telegraph_edit.py` | 0 | — |
 | `services/telegraph_repair.py` | 0 | — |
+| `services/translation_editorial.py` | 0 | — |
 | `services/translation_editorial_factory.py` | 0 | — |
 | `services/translation_editorial_pack_contract.py` | 0 | — |
 | `services/translation_editorial_pack_v2.py` | 0 | — |
 | `services/tts_profile_selection.py` | 0 | — |
+| `services/tts_weighted_smoke.py` | 0 | — |
+| `services/tts_weighted_smoke_attestation.py` | 0 | — |
 | `services/tts_weighted_smoke_runner.py` | 0 | — |
 | `services/youtube_po_token_runtime.py` | 0 | — |
 | `services/youtube_transcript.py` | 0 | — |
 
-Текущий срез — 184/241 production modules (76,3 %); вне него остаются
-57 modules (23,7 %).
+Текущий срез — 198/241 production modules (82,2 %); вне него остаются
+43 modules (17,8 %).
 
 Измерено после расширения среза на `pipelines/`: полный `mypy --strict .`
 (включая `tests/`) — 5 038 ошибок в 563 файлах; по пакетам без тестов:

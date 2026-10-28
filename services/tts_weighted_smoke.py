@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager, nullcontext, suppress
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -338,9 +338,18 @@ def _ffprobe_output(output: Path) -> dict[str, Any]:
     if not isinstance(stream, dict) or stream.get("codec_type") != "audio":
         raise RuntimeError("ffprobe output stream не является audio.")
     try:
-        sample_rate = int(stream.get("sample_rate"))
-        channels = int(stream.get("channels"))
-        duration = float(stream.get("duration"))
+        sample_rate_value = stream.get("sample_rate")
+        channels_value = stream.get("channels")
+        duration_value = stream.get("duration")
+        if not isinstance(sample_rate_value, (str, bytes, bytearray, int, float)):
+            raise TypeError("sample_rate")
+        if not isinstance(channels_value, (str, bytes, bytearray, int, float)):
+            raise TypeError("channels")
+        if not isinstance(duration_value, (str, bytes, bytearray, int, float)):
+            raise TypeError("duration")
+        sample_rate = int(sample_rate_value)
+        channels = int(channels_value)
+        duration = float(duration_value)
     except (TypeError, ValueError, OverflowError) as exc:
         raise RuntimeError("ffprobe вернул некорректные audio facts.") from exc
     if channels != 1 or sample_rate <= 0 or not math.isfinite(duration) or duration <= 0:
@@ -490,7 +499,7 @@ def _atomic_report(path: Path, payload: Mapping[str, Any]) -> None:
 
 
 @contextmanager
-def _temporary_environment(values: Mapping[str, str]):
+def _temporary_environment(values: Mapping[str, str]) -> Iterator[None]:
     previous = {key: os.environ.get(key) for key in values}
     os.environ.update({str(key): str(value) for key, value in values.items()})
     try:

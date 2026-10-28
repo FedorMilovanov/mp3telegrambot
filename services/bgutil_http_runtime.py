@@ -25,7 +25,7 @@ import socket
 import subprocess
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, IO
 from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, Request, build_opener
 
@@ -78,7 +78,7 @@ def bgutil_http_log_path() -> Path | None:
     return DEFAULT_BGUTIL_HTTP_LOG
 
 
-def _open_log_sink():
+def _open_log_sink() -> int | IO[bytes]:
     """Open (once) the bgutil stdout/stderr capture sink; DEVNULL if silenced."""
     global _OWNED_LOG_SINK  # noqa: PLW0603 -- owned child log handle must remain alive at module scope
     path = bgutil_http_log_path()
@@ -168,7 +168,7 @@ def require_loopback_binding(port: int = DEFAULT_PORT) -> None:
         )
 
 
-def _spawn_kwargs() -> dict[str, object]:
+def _spawn_kwargs() -> dict[str, Any]:
     if os.name == "nt":
         create_group = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
         no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)

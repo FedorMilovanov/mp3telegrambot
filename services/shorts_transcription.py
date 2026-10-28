@@ -56,10 +56,10 @@ def resolve_subtitle_profile(override: dict[str, Any] | None = None) -> dict[str
 
 async def transcribe_short_clip(
     video_path: Path,
-    ai_data: dict | None = None,
+    ai_data: dict[str, Any] | None = None,
     *,
     subtitle_profile: dict[str, Any] | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Transcribe one clip using the supplied profile, with no ambient override."""
     if not _impl.HAS_FASTER_WHISPER:
         logger.warning("Subtitles: faster-whisper is unavailable")
@@ -107,7 +107,7 @@ async def transcribe_short_clip(
         )
         wav_for_thread = wav_path
 
-        def _run_whisper():
+        def _run_whisper() -> tuple[list[dict[str, Any]], Any, Any, Any]:
             _impl._clear_torch_cuda_cache()
             model = _impl._get_whisper_model(model_size)
             segments, info = model.transcribe(
