@@ -1329,6 +1329,12 @@ contracts; loudness, truncated-RU rejection, все fallbacks и >10 240-byte
 output gate не изменены. Текущий census — 220/705
 (31,2 % remaining, 68,8 % closed): `E402` 97, `S603` 76, `PLW0603` 47;
 `S607` остаётся 0.
+Базовый ffmpeg review закрыл четыре `S603`: Node version и mp3gain получают
+resolved executables, gain остаётся numeric, AV1/H264 probes имеют fixed argv,
+shell не используется. 103 focused tests зелёные, включая executed mp3gain
+success contract; NVENC→CPU fallback не изменён. Текущий census — 216/705
+(30,6 % remaining, 69,4 % closed): `E402` 97, `S603` 72, `PLW0603` 47;
+`S607` остаётся 0.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

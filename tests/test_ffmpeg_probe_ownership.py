@@ -161,3 +161,22 @@ async def test_language_probe_failure_returns_none(monkeypatch) -> None:
     monkeypatch.setattr(ffmpeg, "run_cancellable_process", fake_owner)
 
     assert await ffmpeg.probe_video_language("https://example.invalid/video") is None
+
+
+def test_mp3gain_normalization_uses_resolved_executable(monkeypatch, tmp_path) -> None:
+    source = tmp_path / "voice.mp3"
+    source.write_bytes(b"mp3")
+    monkeypatch.delenv("MP3_LOUDNORM", raising=False)
+    monkeypatch.setattr(ffmpeg.shutil, "which", lambda name: f"/resolved/{name}")
+    calls: list[tuple[list[str], dict[str, object]]] = []
+
+    def fake_run(command, **kwargs):
+        calls.append((list(command), dict(kwargs)))
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(ffmpeg.subprocess, "run", fake_run)
+
+    assert ffmpeg.normalize_mp3_lossless(source) is True
+    command, kwargs = calls[0]
+    assert command == ["/resolved/mp3gain", "-r", "-c", "-d", "3.0", str(source)]
+    assert "shell" not in kwargs
