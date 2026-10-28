@@ -17,6 +17,7 @@ that enabling/fixing the system TUN can let the same session finish.
 from __future__ import annotations
 
 import os
+import subprocess
 import time
 from pathlib import Path
 from urllib.parse import urlparse
@@ -123,7 +124,11 @@ def _failure_reason(
     return reason
 
 
-def _wait_for_ready(getme_url: str, process, timeout_sec: int) -> tuple[bool, str]:
+def _wait_for_ready(
+    getme_url: str,
+    process: subprocess.Popen[bytes] | None,
+    timeout_sec: int,
+) -> tuple[bool, str]:
     ok, detail, _attempts = probe_runtime._wait_for_getme(
         getme_url,
         process,

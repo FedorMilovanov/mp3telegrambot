@@ -4,6 +4,7 @@ import json
 import math
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 from typing import Any, Mapping
 
 import numpy as np
@@ -22,6 +23,7 @@ from services.tts_weighted_smoke_runner import (
     TTS_WEIGHTED_SMOKE_RUNNER_POLICY,
     WeightedTTSSmokeRunnerConfig,
     _probe_ffprobe,
+    _probe_imports,
     run_weighted_tts_runner_doctor,
 )
 
@@ -302,6 +304,37 @@ def test_expected_python_mismatch_stops_before_backend_discovery(tmp_path: Path)
     assert backend.identity_calls == 0
     assert backend.open_session_calls == 0
     assert not config.work_dir.exists()
+
+
+def test_import_probe_reports_available_cuda_device_count(monkeypatch) -> None:
+    import services.tts_weighted_smoke_runner as doctor
+
+    torch = SimpleNamespace(
+        __version__="fixture-torch",
+        cuda=SimpleNamespace(is_available=lambda: True, device_count=lambda: 2),
+    )
+    modules = {
+        name: torch if name == "torch" else SimpleNamespace(__version__="fixture")
+        for name in ("json", "numpy", "soundfile", "torch", "voxcpm")
+    }
+    monkeypatch.setattr(doctor.importlib, "import_module", lambda name: modules[name])
+    identity = BackendIdentity(
+        backend_id="voxcpm2",
+        family="fixture",
+        adapter_policy="fixture",
+        model_path="fixture",
+        runtime_module="json",
+        parameter_schema=(),
+        output_contract="fixture",
+    )
+
+    report = _probe_imports(identity)
+
+    assert report["torch"] == {
+        "version": "fixture-torch",
+        "cuda_available": True,
+        "cuda_device_count": 2,
+    }
 
 
 def test_ffprobe_probe_requires_binary(monkeypatch) -> None:

@@ -62,9 +62,10 @@
   budget или clamping. `services/shorts_factory_disk_guard.py` закрепляет
   selection/disk-capacity contracts без смены conservative floors или format
   policy. Затем в gate одним zero-error checkpoint добавлены 49 уже строго
-  типизированных production modules. 166/241 production modules (68,9 %)
-  проходят `mypy --strict`; вне среза остаются 75 modules с явным baseline
-  из 969 ошибок, без новых исключений или подавлений.
+  типизированных production modules. Следующий checkpoint закрыл 29 ошибок
+  в 18 файлах через точные сигнатуры, narrowing и явные re-export. 184/241
+  production modules (76,3 %) проходят `mypy --strict`; вне среза остаются
+  57 modules с 940 ошибками, без новых исключений или общих подавлений.
 - Исполняемый контракт production-слоёв через `import-linter`: новые обратные
   импорты блокируются, а известные legacy-рёбра сокращаются по точному
   burn-down без wildcard-исключений (`tools/check_import_layers.py`).

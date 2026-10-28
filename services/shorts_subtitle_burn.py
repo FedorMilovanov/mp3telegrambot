@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Any
 
 from services.async_process import run_cancellable_process
 from services.async_worker import await_owned_coroutine
@@ -56,7 +57,7 @@ def _output_file_size(path: Path) -> int:
 async def burn_subtitles_into_short(
     input_path: Path,
     output_path: Path,
-    segments: list[dict],
+    segments: list[dict[str, Any]],
     *,
     karaoke: bool | None = None,
 ) -> bool:

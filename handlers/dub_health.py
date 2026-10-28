@@ -335,7 +335,10 @@ async def dubcheck_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             "не отправляются на перевод или редактуру.",
         ]
     )
-    await update.effective_message.reply_text("\n".join(lines), parse_mode="HTML")
+    message = update.effective_message
+    if message is None:
+        return
+    await message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
 def register_dub_health_handler(application: Any) -> None:

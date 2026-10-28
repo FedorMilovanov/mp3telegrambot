@@ -301,7 +301,8 @@ def apply_database_migrations(main_module: ModuleType | None = None) -> dict[str
         "main": main_report.as_dict(),
         "dub_studio": dub_report.as_dict(),
     }
-    return json.loads(json.dumps(payload, ensure_ascii=False))
+    result: dict[str, object] = json.loads(json.dumps(payload, ensure_ascii=False))
+    return result
 
 
 __all__ = [

@@ -295,12 +295,12 @@ def _split_into_sentences(text: str) -> list[str]:
 
 
 def build_telegraph_links(
-    telegraph_url="",
-    quotes_tg_url="",
-    questions_tg_url="",
-    terms_tg_url="",
-    study_tg_url="",
-    reflection_tg_url="",
+    telegraph_url: str = "",
+    quotes_tg_url: str = "",
+    questions_tg_url: str = "",
+    terms_tg_url: str = "",
+    study_tg_url: str = "",
+    reflection_tg_url: str = "",
 ) -> str:
     items = []
     if telegraph_url:

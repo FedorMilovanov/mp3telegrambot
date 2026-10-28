@@ -24,6 +24,10 @@ _LEGACY_SHORT_TRANSFORM = _impl._unowned_short_transform
 _LEGACY_CREATE_SHORT_TITLE_POSTER = _impl.create_short_title_poster
 _LEGACY_CREATE_SHORT_SNAPSHOT = _impl.create_short_snapshot
 
+# Explicit re-export: the dynamic module fallback remains for legacy helpers,
+# but this settings boundary keeps a concrete callable type for strict callers.
+get_subtitles_mode_settings = _impl.get_subtitles_mode_settings
+
 
 def __getattr__(name: str) -> Any:
     """Delegate unchanged helpers only; long-running public operations are explicit."""

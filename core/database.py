@@ -4,7 +4,8 @@ Database layer — db_init, db_save, db_get, settings, rate_limit, cache.
 Извлечено из bot.py строки 88–555.
 """
 
-from core.globals import DB_PATH, LOCAL_BOT_API_URL
+from core.globals import DB_PATH as DB_PATH
+from core.globals import LOCAL_BOT_API_URL
 from core.model_catalog import ROLE_PRIMARY, configured_model
 
 import asyncio
