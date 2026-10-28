@@ -108,7 +108,7 @@ def _ffprobe_duration(media_path: Path) -> float:
     if not ffprobe:
         raise RuntimeError("ffprobe не найден в PATH")
     try:
-        process = subprocess.run(
+        process = subprocess.run(  # noqa: S603 -- resolved ffprobe and fixed duration probe
             [
                 ffprobe,
                 "-v",
