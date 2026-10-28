@@ -20,7 +20,8 @@ pre-commit install && pre-commit install --hook-type pre-push
 
 | Команда | Что проверяет | Сколько |
 |---|---|---|
-| `python -m pytest -q` | весь набор | ~90 с |
+| `python -m pytest -q` | весь набор, включая `slow`; обязателен перед PR | ~90 с |
+| `python -m pytest -q -m "not slow"` | опциональный быстрый локальный цикл без реальных долгих ожиданий | ~40 с |
 | `python -m ruff check .` | гейт линтера | ~2 с |
 | `python -m ruff format --check .` | repo-wide форматирование не откатилось | ~2 с |
 | `python tools/check_types.py` | `mypy --strict` по объявленному срезу (`core/`, `pipelines/`, `services/speech_backends/`) | ~2 с (кэш) |
@@ -28,6 +29,10 @@ pre-commit install && pre-commit install --hook-type pre-push
 | `python tools/check_coverage_ratchet.py` | покрытие объявленных файлов не упало (нужен `coverage.xml`) | ~1 с |
 | `python tools/verify_repo.py` | compileall, артефакты, pytest, ruff + format check, типы, слои, `git diff --check` | ~100 с |
 | `pre-commit run` | hooks на staged-файлах: форматирование, YAML, большие файлы, конфликты | ~10 с |
+
+`slow` — только opt-in фильтр для локального цикла, а не skip по умолчанию:
+`verify_repo.py`, coverage и CI всегда запускают полный набор. Перед PR одного
+`-m "not slow"` недостаточно.
 
 Для проверки файлов уже созданных коммитов ветки используйте
 `pre-commit run --from-ref origin/main --to-ref HEAD`; для произвольного набора —

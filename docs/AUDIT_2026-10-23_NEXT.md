@@ -1485,8 +1485,11 @@ execution-guard, а неиспользуемый guarded wrapper удалён. �
   а `tests/test_all_github_workflow_yaml.py` закрепляет нулевой census.
 - ~~Добавить `pytest-cov`, `mypy`, `pre-commit` в `requirements-dev.txt`~~ — добавлены;
   `import-linter` остаётся частью P1-6.
-- `.editorconfig` (LF, UTF-8, 4 пробела, `*.ps1` → CRLF).
-- Маркер `slow` и `-m "not slow"` для быстрого локального цикла.
+- ~~`.editorconfig` (LF, UTF-8, 4 пробела, `*.ps1` → CRLF)~~ — добавлен;
+  JSON/YAML используют 2 пробела, Python сохраняет line limit 120.
+- ~~Маркер `slow` и `-m "not slow"` для быстрого локального цикла~~ — marker
+  зарегистрирован только для двух reviewed real-wait tests; полный pytest и CI
+  продолжают выполнять весь набор, а contract-тест фиксирует этот allowlist.
 
 ---
 
