@@ -115,7 +115,7 @@ def _probe_ffprobe() -> dict[str, Any]:
     executable = shutil.which("ffprobe")
     if not executable:
         raise RuntimeError("ffprobe не найден в PATH trusted runner.")
-    process = subprocess.run(
+    process = subprocess.run(  # noqa: S603 -- resolved ffprobe and fixed version probe
         [executable, "-version"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

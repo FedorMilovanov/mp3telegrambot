@@ -1363,6 +1363,13 @@ bounded component commands, resolved ffprobe и fixed ffmpeg encoder probe не
 import graph, component `_run`, delivery/final AV probes и cached NVENC probe.
 Diff-cover 100 % (5/5). Текущий census — 193/705 (27,4 % remaining,
 72,6 % closed): `E402` 97, `S603` 49, `PLW0603` 47; `S607` остаётся 0.
+PDF/weighted-TTS review закрыл четыре `S603`: owned wkhtmltopdf, resolved
+Service Controller и два fixed ffprobe probe используют argv без shell. 91
+focused test зелёный, включая три новых exact-argv doubles; существующий PDF
+test уже выполнял changed Popen line. Diff-cover 100 % (4/4). Текущий census —
+189/705 (26,8 % remaining, 73,2 % closed): `E402` 97, `S603` 45,
+`PLW0603` 47; `S607` остаётся 0. Windows `shell=True` compatibility в
+`yandex_live_dub` требует отдельного review и в этот slice не входит.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

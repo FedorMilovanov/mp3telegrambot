@@ -307,7 +307,7 @@ def _ffprobe_output(output: Path) -> dict[str, Any]:
     executable = shutil.which("ffprobe")
     if not executable:
         raise RuntimeError("ffprobe не найден в PATH self-hosted runner.")
-    process = subprocess.run(
+    process = subprocess.run(  # noqa: S603 -- resolved ffprobe and fixed weighted-output probe
         [
             executable,
             "-v",

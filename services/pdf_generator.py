@@ -1568,7 +1568,7 @@ def _gen_wkhtmltopdf(
             if _v != "":
                 args.append(str(_v))
         args += [tmp, out]
-        proc = _subprocess.Popen(
+        proc = _subprocess.Popen(  # noqa: S603 -- configured executable, separate argv, owned process
             args,
             stdout=_subprocess.DEVNULL,
             stderr=_subprocess.PIPE,

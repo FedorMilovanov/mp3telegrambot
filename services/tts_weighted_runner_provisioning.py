@@ -217,7 +217,7 @@ def _default_service_probe(service_name: str) -> bool:
     executable = shutil.which("sc.exe") or shutil.which("sc")
     if not executable:
         raise RuntimeError("Windows Service Controller не найден.")
-    process = subprocess.run(
+    process = subprocess.run(  # noqa: S603 -- resolved sc.exe and validated service name
         [executable, "query", service_name],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
