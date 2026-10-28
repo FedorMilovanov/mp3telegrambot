@@ -1578,7 +1578,7 @@ CONTINUATION_POLICY = "backend-capability-gated-previous-block-prompt-v2"
 
 
 def set_continuation_context(reference: Path | None, text: str = "") -> None:
-    global _CONTINUATION_REFERENCE, _CONTINUATION_TEXT
+    global _CONTINUATION_REFERENCE, _CONTINUATION_TEXT  # noqa: PLW0603 -- continuation prompt context is shared by compatibility wrappers
     _CONTINUATION_REFERENCE = Path(reference).resolve() if reference is not None else None
     _CONTINUATION_TEXT = str(text or "").strip()
 
@@ -1616,7 +1616,7 @@ def seed_for_attempt(
     attempt: int,
     retry_epoch: int,
 ) -> int:
-    global _CURRENT_ATTEMPT
+    global _CURRENT_ATTEMPT  # noqa: PLW0603 -- current attempt is published for legacy generation hooks
     direct_monolith_contract.set_current_segment_id(segment_id)
     _CURRENT_ATTEMPT = max(1, int(attempt))
     return int(

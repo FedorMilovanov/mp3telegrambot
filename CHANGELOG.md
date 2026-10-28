@@ -654,6 +654,9 @@
   loop-bound locks, process ownership, health/config state, encoder/Whisper caches
   и NVENC→CPU invalidation сохранены без refactoring. 550 focused tests;
   `PLW0603`: 47 → 17, extended census: 17/705 (2,4 %).
+- Последние десять `global` statements в VoxCPM2 разобраны вручную: diagnostics,
+  continuation/attempt context, monolith identity и memoized contract hashes
+  сохранены. 377 focused tests; `PLW0603`: 17 → 0, extended census: 0/705.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения

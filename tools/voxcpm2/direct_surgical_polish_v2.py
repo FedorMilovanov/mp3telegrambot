@@ -201,7 +201,7 @@ def _runtime_marker(work_dir: Path) -> dict[str, Any]:
 
 
 def _ref_contract(hash_file: Callable[[Path], str]) -> str:
-    global _REFERENCE_CONTRACT
+    global _REFERENCE_CONTRACT  # noqa: PLW0603 -- reference contract digest is memoized for deterministic cache identity
     if not _REFERENCE_CONTRACT:
         root = Path(__file__).resolve().parents[2]
         value = {"policy": REFERENCE_CACHE_POLICY}

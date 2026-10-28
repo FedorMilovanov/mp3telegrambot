@@ -704,7 +704,7 @@ def _verify_post_aac_master_output(command: Any) -> dict[str, Any]:
 
 def _run_child_process(command: Any, *args: Any, **kwargs: Any):
     """Run child commands with deterministic imports and fail-closed release QA."""
-    global _LAST_CHILD_STDERR
+    global _LAST_CHILD_STDERR  # noqa: PLW0603 -- latest child stderr is module-owned diagnostic evidence
 
     is_python = _is_python_script_command(command)
     is_master = _is_master_command(command)
@@ -931,7 +931,7 @@ def _delivery_failure_detail(
 
 def render_and_master(*args: Any, **kwargs: Any) -> Any:
     """Retry quality-only failures in-place while preserving good checkpoints."""
-    global _LAST_CHILD_STDERR
+    global _LAST_CHILD_STDERR  # noqa: PLW0603 -- each render retry resets the module-owned child diagnostic
 
     try:
         retry_limit = int(MAX_AUTOMATIC_DELIVERY_RETRIES)
