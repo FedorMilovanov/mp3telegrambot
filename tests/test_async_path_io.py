@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from pipelines import clips as clips_pipeline
+from pipelines import montage
 from pipelines import shorts as shorts_pipeline
 from pipelines import shorts_factory
 from services import livedub_delivery_coordinator as coordinator
@@ -164,6 +165,79 @@ def test_clips_cleanup_suppresses_settings_failure(monkeypatch, tmp_path: Path) 
     clips_pipeline._cleanup_clip_files([], [], source, borrowed_video=False)
 
     assert source.exists()
+
+
+@pytest.mark.asyncio
+async def test_montage_thumbnail_prefers_ready_poster(monkeypatch, tmp_path: Path) -> None:
+    poster = _write_file(tmp_path / "poster.jpg")
+    create_poster = AsyncMock(return_value=True)
+    create_snapshot = AsyncMock(return_value=True)
+    monkeypatch.setattr(montage, "create_short_title_poster", create_poster)
+    monkeypatch.setattr(montage, "create_short_snapshot", create_snapshot)
+
+    thumbnail = await montage._select_optional_thumbnail(
+        tmp_path / "video.mp4",
+        poster,
+        tmp_path / "snapshot.jpg",
+        "Title",
+        30.0,
+        do_poster=True,
+        do_snapshot=True,
+    )
+
+    assert thumbnail is not None
+    assert thumbnail.filename == poster.name
+    create_snapshot.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_montage_thumbnail_falls_back_to_snapshot_after_poster_failure(monkeypatch, tmp_path: Path) -> None:
+    snapshot = _write_file(tmp_path / "snapshot.jpg")
+    monkeypatch.setattr(
+        montage,
+        "create_short_title_poster",
+        AsyncMock(side_effect=RuntimeError("poster failed")),
+    )
+    monkeypatch.setattr(montage, "create_short_snapshot", AsyncMock(return_value=True))
+
+    thumbnail = await montage._select_optional_thumbnail(
+        tmp_path / "video.mp4",
+        tmp_path / "poster.jpg",
+        snapshot,
+        "Title",
+        30.0,
+        do_poster=True,
+        do_snapshot=True,
+    )
+
+    assert thumbnail is not None
+    assert thumbnail.filename == snapshot.name
+
+
+@pytest.mark.asyncio
+async def test_montage_thumbnail_returns_none_after_both_failures(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        montage,
+        "create_short_title_poster",
+        AsyncMock(side_effect=RuntimeError("poster failed")),
+    )
+    monkeypatch.setattr(
+        montage,
+        "create_short_snapshot",
+        AsyncMock(side_effect=RuntimeError("snapshot failed")),
+    )
+
+    thumbnail = await montage._select_optional_thumbnail(
+        tmp_path / "video.mp4",
+        tmp_path / "poster.jpg",
+        tmp_path / "snapshot.jpg",
+        "Title",
+        30.0,
+        do_poster=True,
+        do_snapshot=True,
+    )
+
+    assert thumbnail is None
 
 
 def test_shorts_cleanup_suppresses_source_unlink_oserror(monkeypatch, tmp_path: Path) -> None:

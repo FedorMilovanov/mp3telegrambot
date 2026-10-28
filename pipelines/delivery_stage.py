@@ -261,7 +261,7 @@ async def send_audio(request: DeliveryRequest, deps: DeliveryDeps) -> Any:
                     if file_id:
                         await deps.save_file_id(request.media_id, file_id)
                 except Exception:
-                    pass
+                    logger.warning("MP3 file_id cache save failed; delivery already succeeded", exc_info=True)
                 return sent
             except Exception as upload_err:
                 retry_after = getattr(upload_err, "retry_after", None)

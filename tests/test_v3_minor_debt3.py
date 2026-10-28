@@ -9,6 +9,7 @@ import pathlib
 from telegram import InputFile
 
 from pipelines.clips import _existing_input_file
+from pipelines.montage import _existing_input_file as _montage_existing_input_file
 
 
 def test_clips_thumbnail_uses_inputfile(tmp_path):
@@ -23,17 +24,27 @@ def test_clips_thumbnail_uses_inputfile(tmp_path):
     assert thumbnail.filename == path.name
 
 
-def test_montage_poster_thumbnail_uses_inputfile():
-    src = pathlib.Path("pipelines/montage.py").read_text(encoding="utf-8")
-    assert "poster_path.read_bytes()" in src
-    assert "filename=poster_path.name" in src
-    assert "thumb_buf.name =" not in src
+def test_montage_poster_thumbnail_uses_inputfile(tmp_path):
+    path = tmp_path / "poster.jpg"
+    assert _montage_existing_input_file(path) is None
+    path.write_bytes(b"poster")
+
+    thumbnail = _montage_existing_input_file(path)
+
+    assert isinstance(thumbnail, InputFile)
+    assert thumbnail.input_file_content == b"poster"
+    assert thumbnail.filename == path.name
 
 
-def test_montage_snapshot_thumbnail_uses_inputfile():
-    src = pathlib.Path("pipelines/montage.py").read_text(encoding="utf-8")
-    assert "snapshot_path.read_bytes()" in src
-    assert "filename=snapshot_path.name" in src
+def test_montage_snapshot_thumbnail_uses_inputfile(tmp_path):
+    path = tmp_path / "snapshot.jpg"
+    path.write_bytes(b"snapshot")
+
+    thumbnail = _montage_existing_input_file(path)
+
+    assert isinstance(thumbnail, InputFile)
+    assert thumbnail.input_file_content == b"snapshot"
+    assert thumbnail.filename == path.name
 
 
 def test_highlights_cand_guard_present():

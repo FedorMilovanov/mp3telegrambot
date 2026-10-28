@@ -22,6 +22,7 @@ from services.shorts_video import (
     get_shorts_visual_mode,  # FIX montage
 )
 from services.shorts_subtitle_burn import burn_subtitles_into_short
+from services.async_worker import await_owned_coroutine
 from services.highlights_candidate_gate import verify_highlights_candidate
 from services.shorts_factory_media import (
     align_livedub_montage_candidates,
@@ -57,6 +58,42 @@ def _validated_extras_speed(value: Any) -> tuple[float, bool] | None:
     if not math.isfinite(speed) or speed <= 0.0:
         return None
     return speed, abs(speed - 1.0) > 0.01
+
+
+def _existing_input_file(path: Path) -> InputFile | None:
+    if not path.exists():
+        return None
+    return InputFile(path.read_bytes(), filename=path.name)
+
+
+async def _select_optional_thumbnail(
+    current_path: Path,
+    poster_path: Path,
+    snapshot_path: Path,
+    title: str,
+    duration: float,
+    *,
+    do_poster: bool,
+    do_snapshot: bool,
+) -> InputFile | None:
+    """Create the preferred thumbnail, retaining snapshot as a best-effort fallback."""
+    if do_poster:
+        try:
+            if await create_short_title_poster(current_path, poster_path, title, duration):
+                thumbnail = await await_owned_coroutine(asyncio.to_thread(_existing_input_file, poster_path))
+                if thumbnail is not None:
+                    return thumbnail
+        except Exception:
+            logger.debug("Shorts title poster failed; trying snapshot fallback", exc_info=True)
+    if do_snapshot:
+        try:
+            if await create_short_snapshot(current_path, snapshot_path, duration):
+                thumbnail = await await_owned_coroutine(asyncio.to_thread(_existing_input_file, snapshot_path))
+                if thumbnail is not None:
+                    return thumbnail
+        except Exception:
+            logger.debug("Shorts snapshot failed; continuing without thumbnail", exc_info=True)
+    return None
 
 
 async def _run_montage_or_highlights_pipeline(
@@ -296,34 +333,15 @@ async def _run_montage_or_highlights_pipeline(
             file_size_mb(current_path),
         )
 
-        thumb_buf = None
-        if do_poster:
-            try:
-                if (
-                    await create_short_title_poster(
-                        current_path,
-                        poster_path,
-                        cand["title"],
-                        delivery_duration,
-                    )
-                    and poster_path.exists()
-                ):
-                    thumb_buf = InputFile(poster_path.read_bytes(), filename=poster_path.name)
-            except Exception:
-                pass
-        if thumb_buf is None and do_snapshot:
-            try:
-                if (
-                    await create_short_snapshot(
-                        current_path,
-                        snapshot_path,
-                        delivery_duration,
-                    )
-                    and snapshot_path.exists()
-                ):
-                    thumb_buf = InputFile(snapshot_path.read_bytes(), filename=snapshot_path.name)
-            except Exception:
-                pass
+        thumb_buf = await _select_optional_thumbnail(
+            current_path,
+            poster_path,
+            snapshot_path,
+            cand["title"],
+            delivery_duration,
+            do_poster=do_poster,
+            do_snapshot=do_snapshot,
+        )
 
         caption = caption_fn()
         if visible_length(caption) > 1024:

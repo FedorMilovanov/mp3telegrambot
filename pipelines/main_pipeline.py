@@ -331,7 +331,7 @@ async def process_single_video(
                 if row and row[0] in ("eng", "eng_fast", "eng_fast_qa"):
                     user_mode = row[0]
             except Exception:
-                pass
+                logger.warning("Failed to read user mode; using default RUS mode", exc_info=True)
 
         live_dub_task = None
         _livedub_qa_enabled = False
@@ -725,7 +725,7 @@ async def process_single_video(
 
                                     _companion_cache._cache_drop(_video_file_id)
                                 except Exception:
-                                    pass
+                                    logger.debug("[LiveDub] companion cache invalidation failed", exc_info=True)
 
                 # В Quick QA проверка нужна ДО отправки (чтобы успеть авто-вырезать
                 # major), но отчёт показываем ПОСЛЕ видео: главный результат режима

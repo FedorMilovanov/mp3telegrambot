@@ -603,7 +603,7 @@ async def run_bot_async():
                         if _lf is not _sp.DEVNULL:
                             _lf.close()
                     except Exception:
-                        pass
+                        logger.debug("Local Bot API log handle close failed", exc_info=True)
                 _t.sleep(2)
                 if _pr.poll() is None:
                     return True, ""
@@ -935,7 +935,7 @@ async def run_bot_async():
                     text="⚠️ Внутренняя ошибка при обработке запроса. Подробности в логе бота.",
                 )
         except Exception:
-            pass
+            logger.warning("Failed to notify user about unhandled handler error", exc_info=True)
 
     app.add_error_handler(_global_error_handler)
 
@@ -1040,7 +1040,7 @@ async def run_bot_async():
                 ]
                 await app.bot.set_my_commands(vip_commands, scope=BotCommandScopeChat(chat_id=admin_id))
             except Exception:
-                pass
+                logger.warning("set_my_commands(chat) failed for admin %s", admin_id, exc_info=True)
 
         # AUDIT M9: фоновая периодическая чистка временных файлов и БД
         from core.utils import (

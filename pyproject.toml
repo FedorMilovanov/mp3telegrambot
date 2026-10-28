@@ -116,6 +116,7 @@ exclude = [
 # E501 включён после шести ручных slices с неизменными executable AST.
 # 2026-10-26: extended-волны добавили B904/PLW1510/RET504/SIM105 и UP006/UP009/UP045/W293.
 # ASYNC230 добавлен после ручного переноса blocking open/write в worker threads.
+# S110 включён после repository-wide ручной диагностики silent handlers; fallback сохранён.
 select = [
   "ASYNC230",
   "E9",
@@ -132,6 +133,7 @@ select = [
   "PLW1510",
   "RET504",
   "SIM105",
+  "S110",
   "UP006",
   "UP009",
   "UP045",

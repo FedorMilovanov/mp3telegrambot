@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -176,7 +177,7 @@ async def test_short_transcription_uses_shared_cuda_cleanup(monkeypatch, tmp_pat
     async def fake_ffmpeg(command, timeout: int):
         wav_path = Path(command[-1])
         wav_paths.append(wav_path)
-        wav_path.write_bytes(b"x" * 2048)
+        await asyncio.to_thread(wav_path.write_bytes, b"x" * 2048)
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(shorts_transcription._impl, "HAS_FASTER_WHISPER", True)
