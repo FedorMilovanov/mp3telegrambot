@@ -59,8 +59,9 @@
   `services/latency_trace.py` добавляет typed task/trace registry без смены
   aggregation или log-only behavior. `services/shorts_duration_safety.py`
   закрепляет typed source-window/public-delivery contracts без смены duration
-  budget или clamping. 116/241 production modules (48,1 %) проходят
-  `mypy --strict`.
+  budget или clamping. `services/shorts_factory_disk_guard.py` закрепляет
+  selection/disk-capacity contracts без смены conservative floors или format
+  policy. 117/241 production modules (48,5 %) проходят `mypy --strict`.
 - Исполняемый контракт production-слоёв через `import-linter`: новые обратные
   импорты блокируются, а известные legacy-рёбра сокращаются по точному
   burn-down без wildcard-исключений (`tools/check_import_layers.py`).
