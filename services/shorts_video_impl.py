@@ -1069,7 +1069,7 @@ def _clear_torch_cuda_cache() -> None:
 
 def _reset_whisper_model(device: str | None = None, compute_type: str | None = None):
     """Forcefully resets the singleton so the next call creates a fresh model on the requested device."""
-    global _whisper_model, _whisper_model_name
+    global _whisper_model, _whisper_model_name  # noqa: PLW0603 -- Whisper singleton reset rebinds model state under its lock
     with _whisper_lock:
         if _whisper_model is not None:
             _clear_torch_cuda_cache()
@@ -1081,7 +1081,7 @@ def _reset_whisper_model(device: str | None = None, compute_type: str | None = N
 
 def _get_whisper_model(model_size: str | None = None):
     """Возвращает singleton WhisperModel, создаёт при первом вызове или при смене модели."""
-    global _whisper_model, _whisper_model_name
+    global _whisper_model, _whisper_model_name  # noqa: PLW0603 -- lazy Whisper singleton is rebound under its existing lock
     if model_size is None:
         model_size = os.getenv("WHISPER_MODEL", "large-v3")
     with _whisper_lock:

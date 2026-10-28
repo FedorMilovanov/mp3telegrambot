@@ -251,7 +251,7 @@ def cleanup_files(media_id: str, keep_mp3: bool = True) -> None:
             f.unlink(missing_ok=True)
     # Удаляем устаревшие обложки из THUMBS_DIR (старше CACHE_TTL_DAYS)
     # FIXED #36: обход всего THUMBS_DIR не чаще одного раза в час
-    global _THUMBS_LAST_CLEANUP
+    global _THUMBS_LAST_CLEANUP  # noqa: PLW0603 -- process-local hourly cleanup throttle is intentional module state
     _now = time.time()
     if _now - _THUMBS_LAST_CLEANUP >= _THUMBS_CLEANUP_INTERVAL:
         _THUMBS_LAST_CLEANUP = _now

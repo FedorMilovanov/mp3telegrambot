@@ -309,7 +309,7 @@ def factory_libx264_quality_args() -> tuple[list[str], list[str]]:
 
 
 def _h264_nvenc_available_sync(ffmpeg: str) -> bool:
-    global _H264_NVENC_AVAILABLE
+    global _H264_NVENC_AVAILABLE  # noqa: PLW0603 -- NVENC probe result is memoized for process-wide encoder reuse
     if _H264_NVENC_AVAILABLE is not None:
         return _H264_NVENC_AVAILABLE
     if os.getenv("VIDEO_FORCE_CPU", "0").strip().lower() in {
@@ -477,7 +477,7 @@ async def render_factory_long_h264(
     rendered, error = await _run_factory_long_command(command, output_path)
 
     if not rendered and encoder == "h264_nvenc":
-        global _H264_NVENC_AVAILABLE
+        global _H264_NVENC_AVAILABLE  # noqa: PLW0603 -- failed NVENC attempt invalidates the shared cache before CPU retry
         _H264_NVENC_AVAILABLE = False
         # Do not suspend between the failed GPU attempt and its one CPU retry.
         output_path.unlink(missing_ok=True)  # noqa: ASYNC240

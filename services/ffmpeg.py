@@ -378,7 +378,7 @@ def _get_video_encoder() -> tuple[str, list[str], list[str]]:
     - preset veryfast
     - -crf 23
     """
-    global _VIDEO_ENCODER
+    global _VIDEO_ENCODER  # noqa: PLW0603 -- encoder selection is a process-wide lazy cache with CPU fallback
     # 2026-06-11: Добавляем поддержку AV1 (NVIDIA) для еще лучшего сжатия при высоком качестве.
     # Telegram в 2026 полностью поддерживает AV1.
     _force_cpu = os.getenv("VIDEO_FORCE_CPU", "0").strip() in {"1", "true", "yes", "on"}

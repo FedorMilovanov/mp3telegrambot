@@ -46,7 +46,7 @@ _LAST_BOT_OK_TS: float = 0.0
 
 
 def mark_bot_alive() -> None:
-    global _LAST_BOT_OK_TS
+    global _LAST_BOT_OK_TS  # noqa: PLW0603 -- process-wide health heartbeat is intentional module state
     _LAST_BOT_OK_TS = time.time()
 
 
