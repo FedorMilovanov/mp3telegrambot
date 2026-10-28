@@ -1335,6 +1335,13 @@ shell не используется. 103 focused tests зелёные, вклю�
 success contract; NVENC→CPU fallback не изменён. Текущий census — 216/705
 (30,6 % remaining, 69,4 % closed): `E402` 97, `S603` 72, `PLW0603` 47;
 `S607` остаётся 0.
+LiveDub QA/companion review закрыл шесть `S603`: все executables resolved,
+probe/extract argv фиксированы или численно ограничены, shell не используется.
+201 focused test passed / 1 environment skip, включая пять executed process
+contracts. Duration/output postconditions, segment atomic replace и temporary
+cleanup не изменены; исторический QA fixture byte-stable. Текущий census —
+210/705 (29,8 % remaining, 70,2 % closed): `E402` 97, `S603` 66,
+`PLW0603` 47; `S607` остаётся 0.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

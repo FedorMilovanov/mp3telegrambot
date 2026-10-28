@@ -80,7 +80,7 @@ def _ffprobe_duration(path: Path) -> float:
     if not ffprobe:
         return 0.0
     try:
-        proc = subprocess.run(
+        proc = subprocess.run(  # noqa: S603 -- resolved ffprobe and fixed duration probe
             [
                 ffprobe,
                 "-v",
@@ -110,7 +110,7 @@ def _extract_audio_segment(source: Path, start: int, length: int, output: Path) 
     temp = output.with_name(f".{output.stem}.{os.getpid()}.part.mp3")
     temp.unlink(missing_ok=True)
     try:
-        proc = subprocess.run(
+        proc = subprocess.run(  # noqa: S603 -- resolved ffmpeg, bounded segment argv, paths are data
             [
                 ffmpeg,
                 "-y",
