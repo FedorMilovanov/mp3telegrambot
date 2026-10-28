@@ -71,7 +71,7 @@ def _decode_segment(
     if not video.is_file() or video.stat().st_size <= 0:
         raise RuntimeError(f"Не найден финальный Russian-only MP4: {video}")
     duration = min(MAX_SEGMENT_WINDOW_SECONDS, max(0.35, float(duration)))
-    process = subprocess.run(
+    process = subprocess.run(  # noqa: S603 -- resolved ffmpeg and bounded post-AAC decode
         [
             resolve_required_executable("ffmpeg"),
             "-hide_banner",

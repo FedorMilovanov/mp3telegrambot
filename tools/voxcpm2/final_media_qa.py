@@ -37,7 +37,7 @@ ORIGINAL_ALIGNMENT_PROBE_SECONDS = 180.0
 
 
 def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
-    process = subprocess.run(
+    process = subprocess.run(  # noqa: S603 -- internal final-media QA argv, no shell
         command,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -54,7 +54,7 @@ def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
 
 def _run_audio_bytes(command: list[str], *, timeout: float) -> bytes:
     try:
-        process = subprocess.run(
+        process = subprocess.run(  # noqa: S603 -- fixed original-bed decode, bounded timeout
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
