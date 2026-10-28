@@ -616,7 +616,8 @@
   `.cmd/.bat` по-прежнему запускаются через `cmd.exe`, но command line содержит
   только fixed placeholders, значения живут в child-only environment, AutoRun и
   delayed expansion отключены. Trailing backslashes сохраняют C-argv roundtrip;
-  raw quote/newline/NUL отклоняются. POSIX/npx split не изменён. `S603`: 2 → 1.
+  raw quote/newline/NUL отклоняются. POSIX/npx split не изменён. Реальный
+  `.cmd` roundtrip явно включён в Windows-sensitive CI suite. `S603`: 2 → 1.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения

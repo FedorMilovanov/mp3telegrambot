@@ -211,6 +211,7 @@ jobs:
           tests/test_livedub_audio_cache_recovery.py
           tests/test_livedub_ru_provenance.py
           tests/test_livedub_install_order.py
+          tests/test_vot_windows_subprocess.py
           tests/test_local_botapi_bootstrap.py
           tests/test_local_botapi_runtime.py
           tests/test_local_botapi_required.py
@@ -269,6 +270,7 @@ jobs:
           tests/test_livedub_audio_cache_recovery.py
           tests/test_livedub_ru_provenance.py
           tests/test_livedub_install_order.py
+          tests/test_vot_windows_subprocess.py
           tests/test_local_botapi_bootstrap.py
           tests/test_local_botapi_runtime.py
           tests/test_local_botapi_required.py

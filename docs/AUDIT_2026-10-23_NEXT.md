@@ -1423,8 +1423,9 @@ Test files больше не содержат `S603`. Текущий census — 
 LiveDub Windows `.cmd/.bat` fallback переведён с raw `shell=True` на argv-only
 `cmd.exe` launch: fixed placeholders, child-only environment, `/D` и `/V:OFF`.
 C-argv trailing backslashes и fail-closed control-character policy покрыты
-contracts; реальный `.cmd` roundtrip с cmd-метасимволами выполняется в Windows CI.
-POSIX npx split и exception chaining сохранены. Primary diff-cover — 100 % (22/22).
+contracts; реальный `.cmd` roundtrip с cmd-метасимволами явно добавлен в
+Windows-sensitive CI suite, а не только собран на Linux. POSIX npx split и
+exception chaining сохранены. Primary diff-cover — 100 % (22/22).
 Текущий census — 145/705 (20,6 % remaining, 79,4 % closed): `E402` 97,
 `S603` 1, `PLW0603` 47; `S607` остаётся 0.
 Lazy imports и security-правила разбираются отдельно, без autofix.
