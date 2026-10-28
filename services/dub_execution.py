@@ -127,7 +127,7 @@ def terminate_process_tree(pid: int, *, timeout: float = 20.0) -> None:
     if not _pid_is_running(pid):
         return
     if os.name == "nt":
-        subprocess.run(
+        subprocess.run(  # noqa: S603 -- resolved taskkill, integer PID, no shell
             [resolve_required_executable("taskkill"), "/PID", str(pid), "/T", "/F"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -380,9 +380,9 @@ def _parse_utc_timestamp(value: str) -> float:
 
 
 def _ffprobe_media_ok(path: Path, *, require_video: bool, require_audio: bool) -> bool:
-    executable = "ffprobe.exe" if os.name == "nt" else "ffprobe"
     try:
-        proc = subprocess.run(
+        executable = resolve_required_executable("ffprobe.exe" if os.name == "nt" else "ffprobe")
+        proc = subprocess.run(  # noqa: S603 -- resolved ffprobe, argv only, media path is data
             [
                 executable,
                 "-v",

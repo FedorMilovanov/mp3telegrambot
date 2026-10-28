@@ -74,7 +74,7 @@ def _pid_running(pid: int) -> bool:
 
 def _stop_stale_windows_worker(worker_pid: int) -> None:
     try:
-        subprocess.run(
+        subprocess.run(  # noqa: S603 -- resolved taskkill and recorded integer worker PID
             [resolve_required_executable("taskkill"), "/PID", str(worker_pid), "/T", "/F"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -124,7 +124,7 @@ def ensure_worker_running() -> bool:
 
     try:
         with log_path.open("ab") as log_file:
-            subprocess.Popen(
+            subprocess.Popen(  # noqa: S603 -- current Python and fixed worker module, no shell
                 command,
                 stdout=log_file,
                 stderr=subprocess.STDOUT,

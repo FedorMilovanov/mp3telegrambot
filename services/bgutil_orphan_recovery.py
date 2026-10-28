@@ -58,7 +58,7 @@ def _probe_windows_port_owners(port: int) -> tuple[WindowsPortOwner, ...]:
         "@($rows)|ConvertTo-Json -Compress"
     )
     try:
-        process = subprocess.run(
+        process = subprocess.run(  # noqa: S603 -- resolved PowerShell; port is converted to int
             [shell, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script],
             capture_output=True,
             text=True,
@@ -134,7 +134,7 @@ def is_expected_bgutil_owner(
 
 def _kill_windows_process_tree(pid: int) -> None:
     try:
-        process = subprocess.run(
+        process = subprocess.run(  # noqa: S603 -- resolved taskkill and validated integer PID
             [resolve_required_executable("taskkill"), "/PID", str(int(pid)), "/T", "/F"],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,

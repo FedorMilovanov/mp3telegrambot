@@ -315,7 +315,7 @@ def _execute_runner_job(store: DubStore, worker_id: str, job: dict[str, Any]) ->
     with log_path.open("w", encoding="utf-8", errors="replace") as log_file:
         log_file.write("COMMAND: " + json.dumps(command, ensure_ascii=False) + "\n\n")
         log_file.flush()
-        proc = subprocess.Popen(
+        proc = subprocess.Popen(  # noqa: S603 -- build_command validates runner, module, and argv
             command,
             cwd=str(repo_root()),
             stdout=subprocess.PIPE,
@@ -742,7 +742,7 @@ def _terminate_process(proc: subprocess.Popen[str]) -> None:
     if os.name == "nt":
         creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         try:
-            subprocess.run(
+            subprocess.run(  # noqa: S603 -- resolved taskkill and owned process PID, no shell
                 [resolve_required_executable("taskkill"), "/PID", str(proc.pid), "/T", "/F"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,

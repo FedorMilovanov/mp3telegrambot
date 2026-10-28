@@ -1307,6 +1307,13 @@ operator-supplied revisions в diff/show стоят после `--end-of-options
 option-like строка не становится Git option. 29 focused tests зелёные.
 Текущий census — 243/705 (34,5 % remaining, 65,5 % closed): `E402` 97,
 `S603` 99, `PLW0603` 47; `S607` остаётся 0.
+Dub/bgutil `S603` review закрыл десять вызовов: PowerShell/Node/`taskkill`
+используют resolved executables, runner command проходит recipe validation, shell
+не применяется. Ручной просмотр variable-command argv дополнительно нашёл
+`ffprobe` в artifact postcondition; он переведён на общий resolver с executed
+regression test, а missing executable по-прежнему даёт fail-closed `False`.
+46 focused tests зелёные. Текущий census — 233/705 (33,0 % remaining,
+67,0 % closed): `E402` 97, `S603` 89, `PLW0603` 47; `S607` остаётся 0.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**
