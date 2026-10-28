@@ -21,8 +21,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-import services.render_clips_montage as render_clips
-import services.shorts_video as shorts_video
+# Project imports require the repo-root path when this file runs as a script.
+import services.render_clips_montage as render_clips  # noqa: E402
+import services.shorts_video as shorts_video  # noqa: E402
 
 
 def _run(command: list[str]) -> subprocess.CompletedProcess[str]:

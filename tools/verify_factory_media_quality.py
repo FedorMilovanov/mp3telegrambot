@@ -32,9 +32,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from services.ffmpeg import YTDLP_BASE_ARGS
-from services.shorts_factory_source import _factory_quality_sort_reset
-from services.shorts_factory_video_quality import (
+# Project imports require the repo-root path when this file runs as a script.
+from services.ffmpeg import YTDLP_BASE_ARGS  # noqa: E402
+from services.shorts_factory_source import _factory_quality_sort_reset  # noqa: E402
+from services.shorts_factory_video_quality import (  # noqa: E402
     FACTORY_VIDEO_FORMAT,
     normalize_factory_short_audio_copy_video,
     render_factory_long_h264,
