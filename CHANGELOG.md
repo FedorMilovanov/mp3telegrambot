@@ -640,6 +640,9 @@
   env/version → dependency lock → singleton → recovery/provisioning → pre-main →
   `main` не изменён; 37 focused tests прошли без real Telegram launch.
   `E402`: 64 → 54.
+- Пять media-verifier `E402` получили repo-root bootstrap justifications. Factory
+  quality и generic video-copy doubles сохранены; 10 focused tests и supplemental
+  100 % (5/5), без live media claim. `E402`: 54 → 49.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения

@@ -1455,6 +1455,10 @@ repo-root bootstrap или prepare/provenance/composition behavior. 81 focused t
 bootstrap order и `main`-after-pre-main contract не изменены. 37 focused tests
 прошли; real Telegram launch не выполнялся. Текущий census — 101/705
 (14,3 % remaining, 85,7 % closed): `E402` 54, `PLW0603` 47; `S603`/`S607` 0.
+Пять media-verifier `E402` получили repo-root bootstrap justifications. 10
+focused tests прошли, supplemental diff-cover — 100 % (5/5); live media run не
+выполнялся. Текущий census — 96/705 (13,6 % remaining, 86,4 % closed):
+`E402` 49, `PLW0603` 47; `S603`/`S607` 0.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**
