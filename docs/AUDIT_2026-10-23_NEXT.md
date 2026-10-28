@@ -1550,8 +1550,11 @@ strict-clean через точные сигнатуры, None/platform narrowing
 subprocess boundaries и явные re-export. Следующий checkpoint закрыл 43 ошибки
 в восьми Dub/FFmpeg/LiveDub/Quiz/Shorts modules через Telegram/result narrowing
 и typed process/publication boundaries. Текущий срез — 206/241 production
-modules (85,5 %), остаётся 35 modules (14,5 %). Полный production baseline
-оставшихся файлов — 851 ошибка в 35 файлах; новые exclude или общие
+modules (85,5 %), оставалось 35 modules (14,5 %). Затем 75 ошибок в девяти
+Factory/LiveDub/Editorial modules закрыты через typed callback/JSON boundaries,
+explicit SDK re-export и Telegram narrowing. Текущий срез — 215/241 production
+modules (89,2 %), остаётся 26 modules (10,8 %). Полный production baseline
+оставшихся файлов — 776 ошибок в 26 файлах; новые exclude или общие
 suppression для их сокрытия не добавляются.
 
 **Найденные по дороге настоящие дефекты:** кортеж кортежей в `negative` у

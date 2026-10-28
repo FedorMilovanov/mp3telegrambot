@@ -66,8 +66,12 @@
   в 32 файлах через точные сигнатуры, narrowing и явные re-export. Затем 43
   ошибки в восьми Dub/FFmpeg/LiveDub/Quiz/Shorts modules закрыты через
   Telegram/result narrowing и typed process/publication boundaries. 206/241
-  production modules (85,5 %) проходят `mypy --strict`; вне среза остаются
-  35 modules с 851 ошибкой, без новых исключений или общих подавлений.
+  production modules (85,5 %) проходили `mypy --strict`. Следующий checkpoint
+  закрыл 75 ошибок в девяти Factory/LiveDub/Editorial modules через typed
+  callback/JSON boundaries, explicit SDK re-export и Telegram narrowing.
+  Теперь 215/241 production modules (89,2 %) проходят `mypy --strict`; вне
+  среза остаются 26 modules с 776 ошибками, без новых исключений или общих
+  подавлений.
 - Исполняемый контракт production-слоёв через `import-linter`: новые обратные
   импорты блокируются, а известные legacy-рёбра сокращаются по точному
   burn-down без wildcard-исключений (`tools/check_import_layers.py`).

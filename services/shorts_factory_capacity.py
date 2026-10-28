@@ -103,8 +103,11 @@ def factory_gemini_clients() -> list[Any]:
 
 def _exception_status_code(exc: BaseException) -> int | None:
     for name in ("code", "status_code", "status"):
+        raw_value = getattr(exc, name, None)
+        if raw_value is None:
+            continue
         try:
-            value = int(getattr(exc, name, None))
+            value = int(raw_value)
         except (TypeError, ValueError):
             continue
         if 100 <= value <= 599:

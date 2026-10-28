@@ -32,6 +32,7 @@ import subprocess
 import sys
 from collections.abc import Mapping
 from pathlib import Path
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +119,7 @@ def _windows_batch_invocation(cmd_parts: list[str], environ: Mapping[str, str]) 
     return command, child_env
 
 
-def _run_subprocess(cmd_parts: list, cwd: Path | None = None, timeout: int = 600):
+def _run_subprocess(cmd_parts: list[str], cwd: Path | None = None, timeout: int = 600) -> tuple[str, str, int]:
     """Универсальный subprocess wrapper. Возвращает (stdout, stderr, returncode)."""
     # FIX AUDIT R4: npx-fallback возвращает argv[0]="/usr/bin/npx vot-cli-live"
     # одной строкой, а все вызовы добавляют свои аргументы — старое условие
@@ -198,7 +199,7 @@ def _find_node() -> str | None:
     return None
 
 
-def _ensure_vot_helper() -> list | None:
+def _ensure_vot_helper() -> list[str] | None:
     """Возвращает команду [node, vot_live.mjs], если новый протокол доступен.
 
     При первом запуске сам ставит npm-зависимости (@vot.js/node) в
@@ -243,7 +244,7 @@ def _path_exists(path: Path) -> bool:
 
 
 async def _get_audio_new_protocol(
-    helper: list,
+    helper: list[str],
     video_url: str,
     output_dir: Path,
     timeout: int,
@@ -286,6 +287,7 @@ async def _get_audio_new_protocol(
     stdout, stderr, rc = await loop.run_in_executor(None, lambda: _run_subprocess(cmd, timeout=timeout + 60))
     if rc == 0:
         lines = [l.strip() for l in stdout.splitlines() if l.strip()]
+        p: Path | None = None
         if lines:
             p = Path(lines[-1])
             if await asyncio.to_thread(_path_exists, p):
@@ -539,7 +541,7 @@ async def get_live_dub_video(
     return downloaded_path
 
 
-async def get_live_dub_info(video_url: str) -> dict:
+async def get_live_dub_info(video_url: str) -> dict[str, Any]:
     """Получает JSON-информацию о переводе через vot-cli-live."""
     vot = _check_vot_cli()
     cmd = [vot, "--json", "--voice-style", "live", video_url]
@@ -564,8 +566,8 @@ async def get_live_dub_info(video_url: str) -> dict:
         data = json.loads(match)
 
     if isinstance(data, list) and data:
-        return data[0]
-    return data
+        return cast(dict[str, Any], data[0])
+    return cast(dict[str, Any], data)
 
 
 async def get_translation_subtitles(video_url: str, output_dir: Path) -> Path | None:

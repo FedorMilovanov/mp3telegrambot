@@ -98,17 +98,17 @@ def _active_part(value: Any) -> bool:
     return value is not None and "ACTIVE" in str(getattr(value, "state", ""))
 
 
-def _argument(args: tuple, kwargs: dict, index: int, name: str):
+def _argument(args: tuple[Any, ...], kwargs: dict[str, Any], index: int, name: str) -> Any:
     return args[index] if len(args) > index else kwargs.get(name)
 
 
 def _set_argument(
-    args: tuple,
-    kwargs: dict,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
     index: int,
     name: str,
     value: Any,
-) -> tuple[tuple, dict]:
+) -> tuple[tuple[Any, ...], dict[str, Any]]:
     positional = list(args)
     options = dict(kwargs)
     if len(positional) > index:

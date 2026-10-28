@@ -437,18 +437,25 @@ def _clip_speech_stats(intervals: list[tuple[float, float]], start: float, end: 
     return speech_seconds / (end - start), largest_gap
 
 
-def _subtract_intervals(base, cover, *, start: float, end: float, cover_grace: float):
+def _subtract_intervals(
+    base: list[tuple[float, float]],
+    cover: list[tuple[float, float]],
+    *,
+    start: float,
+    end: float,
+    cover_grace: float,
+) -> list[tuple[float, float]]:
     uncovered: list[tuple[float, float]] = []
     for raw_start, raw_end in base:
         left = max(start, raw_start)
         right = min(end, raw_end)
         if right <= left:
             continue
-        fragments = [(left, right)]
+        fragments: list[tuple[float, float]] = [(left, right)]
         for cover_start, cover_end in cover:
             expanded_start = max(start, cover_start - cover_grace)
             expanded_end = min(end, cover_end + cover_grace)
-            next_fragments = []
+            next_fragments: list[tuple[float, float]] = []
             for frag_start, frag_end in fragments:
                 if expanded_end <= frag_start or expanded_start >= frag_end:
                     next_fragments.append((frag_start, frag_end))
@@ -464,7 +471,14 @@ def _subtract_intervals(base, cover, *, start: float, end: float, cover_grace: f
     return _merge_intervals(uncovered, max_gap=0.10)
 
 
-def _source_without_ru_stats(source_intervals, ru_intervals, *, start, end, cover_grace):
+def _source_without_ru_stats(
+    source_intervals: list[tuple[float, float]],
+    ru_intervals: list[tuple[float, float]],
+    *,
+    start: float,
+    end: float,
+    cover_grace: float,
+) -> tuple[float, float, list[tuple[float, float]]]:
     uncovered = _subtract_intervals(source_intervals, ru_intervals, start=start, end=end, cover_grace=cover_grace)
     if not uncovered:
         return 0.0, 0.0, []
@@ -473,7 +487,13 @@ def _source_without_ru_stats(source_intervals, ru_intervals, *, start, end, cove
     return total, largest, uncovered
 
 
-def _edge_uncovered_max(spans, *, start, end, edge_window):
+def _edge_uncovered_max(
+    spans: list[tuple[float, float]],
+    *,
+    start: float,
+    end: float,
+    edge_window: float,
+) -> float:
     windows = [(start, min(end, start + edge_window)), (max(start, end - edge_window), end)]
     largest = 0.0
     for a, b in spans:
@@ -482,7 +502,14 @@ def _edge_uncovered_max(spans, *, start, end, edge_window):
     return max(0.0, largest)
 
 
-def _reclaim_public_limit(*, render_start, render_end, target_start, target_end, public_max):
+def _reclaim_public_limit(
+    *,
+    render_start: float,
+    render_end: float,
+    target_start: float,
+    target_end: float,
+    public_max: float,
+) -> tuple[float, float] | None:
     overflow = (render_end - render_start) - public_max
     if overflow <= 1e-6:
         return render_start, render_end

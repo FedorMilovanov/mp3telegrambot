@@ -336,23 +336,23 @@ def aggregate_segment_results(
 
 
 async def _run_long_qa(
-    original_run,
+    original_run: Any,
     *,
     dub_video_path: Path,
     original_audio_path: Path | None,
-    ai_data: dict | None,
+    ai_data: dict[str, Any] | None,
     duration: int,
     model_name: str,
     dub_srt_path: Path | None,
     dub_audio_path: Path | None,
-    existing_audio_part,
-    existing_client,
+    existing_audio_part: Any,
+    existing_client: Any,
     thinking_level: str,
-) -> dict | None:
+) -> dict[str, Any] | None:
     original_source = await asyncio.to_thread(_existing_file, original_audio_path)
     if original_source is None:
         logger.info("[LiveDubLongQA] локального оригинала нет — использую обычную полную QA")
-        return await original_run(
+        result: dict[str, Any] | None = await original_run(
             dub_video_path=dub_video_path,
             original_audio_path=original_audio_path,
             ai_data=ai_data,
@@ -364,6 +364,7 @@ async def _run_long_qa(
             existing_client=existing_client,
             thinking_level=thinking_level,
         )
+        return result
 
     segment_sec = _env_int("LIVEDUB_LONG_QA_SEGMENT_SEC", 480, 180, 1200)
     overlap_sec = _env_int("LIVEDUB_LONG_QA_OVERLAP_SEC", 20, 0, 120)
@@ -458,7 +459,7 @@ async def _run_long_qa(
         return combined
 
     logger.warning("[LiveDubLongQA] all segments failed — one full-request fallback")
-    return await original_run(
+    fallback_result: dict[str, Any] | None = await original_run(
         dub_video_path=dub_video_path,
         original_audio_path=original_audio_path,
         ai_data=ai_data,
@@ -470,24 +471,25 @@ async def _run_long_qa(
         existing_client=existing_client,
         thinking_level=thinking_level,
     )
+    return fallback_result
 
 
 async def run_long_translation_qa(
-    base_runner,
+    base_runner: Any,
     *,
     dub_video_path: Path,
     original_audio_path: Path | None,
-    ai_data: dict | None,
+    ai_data: dict[str, Any] | None,
     duration: int,
     model_name: str = "",
     dub_srt_path: Path | None = None,
     dub_audio_path: Path | None = None,
-    existing_audio_part=None,
-    existing_client=None,
+    existing_audio_part: Any = None,
+    existing_client: Any = None,
     thinking_level: str = "high",
-) -> dict | None:
+) -> dict[str, Any] | None:
     """Use segmented complete coverage only when the recording crosses the threshold."""
-    common = dict(
+    common: dict[str, Any] = dict(
         dub_video_path=dub_video_path,
         original_audio_path=original_audio_path,
         ai_data=ai_data,
@@ -501,7 +503,8 @@ async def run_long_translation_qa(
     )
     threshold = _env_int("LIVEDUB_LONG_QA_THRESHOLD_SEC", 480, 120, 3600)
     if not _enabled() or not duration or duration <= threshold:
-        return await base_runner(**common)
+        result: dict[str, Any] | None = await base_runner(**common)
+        return result
     return await _run_long_qa(base_runner, **common)
 
 

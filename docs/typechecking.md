@@ -19,6 +19,7 @@
 | `converters/__init__.py` | 0 | — |
 | `converters/caption.py` | 0 | — |
 | `handlers/__init__.py` | 0 | — |
+| `handlers/dub_audio_repair.py` | 0 | — |
 | `handlers/dub_delivery.py` | 0 | — |
 | `handlers/dub_health.py` | 0 | — |
 | `handlers/dub_multicommand.py` | 0 | — |
@@ -63,9 +64,11 @@
 | `services/livedub_audio_quality_guard.py` | 0 | — |
 | `services/livedub_delivery_coordinator.py` | 0 | — |
 | `services/livedub_info_evidence.py` | 0 | — |
+| `services/livedub_long_qa.py` | 0 | — |
 | `services/livedub_output_policy.py` | 0 | — |
 | `services/livedub_publication.py` | 0 | — |
 | `services/livedub_publication_core.py` | 0 | — |
+| `services/livedub_qa_hardening.py` | 0 | — |
 | `services/livedub_qa_trust.py` | 0 | — |
 | `services/livedub_quality_runtime.py` | 0 | — |
 | `services/livedub_ru_provenance.py` | 0 | — |
@@ -88,6 +91,9 @@
 | `services/runtime_manifest.py` | 0 | — |
 | `services/segment_render.py` | 0 | — |
 | `services/shorts_duration_safety.py` | 0 | — |
+| `services/shorts_factory_candidates.py` | 0 | — |
+| `services/shorts_factory_capacity.py` | 0 | — |
+| `services/shorts_factory_capacity_runtime.py` | 0 | — |
 | `services/shorts_factory_disk_guard.py` | 0 | — |
 | `services/shorts_factory_execution_guard.py` | 0 | — |
 | `services/shorts_factory_full_video.py` | 0 | — |
@@ -97,6 +103,7 @@
 | `services/shorts_factory_quality_gate.py` | 0 | — |
 | `services/shorts_factory_retry_cache.py` | 0 | — |
 | `services/shorts_factory_source.py` | 0 | — |
+| `services/shorts_factory_timing.py` | 0 | — |
 | `services/shorts_factory_video_quality.py` | 0 | — |
 | `services/shorts_static_policy.py` | 0 | — |
 | `services/shorts_subtitle_burn.py` | 0 | — |
@@ -111,15 +118,17 @@
 | `services/translation_editorial_factory.py` | 0 | — |
 | `services/translation_editorial_pack_contract.py` | 0 | — |
 | `services/translation_editorial_pack_v2.py` | 0 | — |
+| `services/translation_editorial_repair_provenance.py` | 0 | — |
 | `services/tts_profile_selection.py` | 0 | — |
 | `services/tts_weighted_smoke.py` | 0 | — |
 | `services/tts_weighted_smoke_attestation.py` | 0 | — |
 | `services/tts_weighted_smoke_runner.py` | 0 | — |
+| `services/yandex_live_dub.py` | 0 | — |
 | `services/youtube_po_token_runtime.py` | 0 | — |
 | `services/youtube_transcript.py` | 0 | — |
 
-Текущий срез — 206/241 production modules (85,5 %); вне него остаются
-35 modules (14,5 %).
+Текущий срез — 215/241 production modules (89,2 %); вне него остаются
+26 modules (10,8 %).
 
 Измерено после расширения среза на `pipelines/`: полный `mypy --strict .`
 (включая `tests/`) — 5 038 ошибок в 563 файлах; по пакетам без тестов:

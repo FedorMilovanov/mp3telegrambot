@@ -177,6 +177,25 @@ async def test_live_dub_info_chains_unrecoverable_json_error(monkeypatch) -> Non
     assert isinstance(caught.value.__cause__, json.JSONDecodeError)
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"audioUrl": "https://example.invalid/audio.mp3"}',
+        '[{"audioUrl": "https://example.invalid/audio.mp3"}]',
+    ],
+)
+async def test_live_dub_info_accepts_object_and_singleton_list(monkeypatch, payload) -> None:
+    from services import yandex_live_dub
+
+    monkeypatch.setattr(yandex_live_dub, "_check_vot_cli", lambda: "vot")
+    monkeypatch.setattr(yandex_live_dub, "_run_subprocess", lambda *_args, **_kwargs: (payload, "", 0))
+
+    result = await yandex_live_dub.get_live_dub_info("https://example.invalid/video")
+
+    assert result == {"audioUrl": "https://example.invalid/audio.mp3"}
+
+
 def test_production_install_uses_npm_ci_and_needs_the_lock(monkeypatch, tmp_path) -> None:
     """`npm install` re-resolves versions; production must replay the lock."""
     from services import yandex_live_dub

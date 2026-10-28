@@ -12,7 +12,7 @@ import asyncio
 import contextlib
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Awaitable
 
 from services import gemini_capacity_control as capacity_control
 from services import shorts_factory_capacity as capacity
@@ -51,8 +51,13 @@ async def _wait_factory_upload(client: Any, uploaded: Any) -> Any:
         if asyncio.get_running_loop().time() - started > _FACTORY_UPLOAD_WAIT_SECONDS:
             raise TimeoutError("Gemini Factory audio processing exceeded 600 seconds")
         await asyncio.sleep(3)
+
+        def _get_file(_name: str = current.name) -> Awaitable[Any]:
+            awaitable: Awaitable[Any] = client.aio.files.get(name=_name)
+            return awaitable
+
         current = await capacity_control.run_heavy_gemini_call(
-            lambda _name=current.name: client.aio.files.get(name=_name),
+            _get_file,
             domain="files",
         )
     if str(getattr(current, "state", "")).upper().endswith("FAILED"):
@@ -247,8 +252,9 @@ async def create_factory_plan_resumable(
                 if upload_budget.exhausted:
                     break
                 upload_budget.claim()
-                uploaded = await capacity_control.run_heavy_gemini_call(
-                    lambda _client=client, _index=index: capacity.await_with_heartbeat(
+
+                def _upload(_client: Any = client, _index: int = index) -> Awaitable[Any]:
+                    return capacity.await_with_heartbeat(
                         _client.aio.files.upload(
                             file=audio_path,
                             config=candidates.types.UploadFileConfig(
@@ -258,7 +264,10 @@ async def create_factory_plan_resumable(
                         ),
                         label=(f"⬆️ Gemini Files · клиент {_index}/{len(clients)}: загружаю analysis-аудио…"),
                         status_msg=status_msg,
-                    ),
+                    )
+
+                uploaded = await capacity_control.run_heavy_gemini_call(
+                    _upload,
                     domain="files",
                 )
                 uploaded_name = str(getattr(uploaded, "name", "") or "")

@@ -8,6 +8,7 @@ from services.shorts_factory_candidates import (
     PUBLIC_LONG_MAX_SEC,
     PUBLIC_SHORT_MAX_SEC,
     SHORT_MAX_SEC,
+    factory_ai_data,
     shorts_factory_model,
     validate_factory_plan,
 )
@@ -201,3 +202,25 @@ def test_factory_response_schema_requires_complete_plan_shape():
     candidate = FACTORY_PLAN_RESPONSE_SCHEMA["properties"]["shorts_candidates"]["items"]
     assert "boundary_verified" in candidate["required"]
     assert "quality_score" in candidate["required"]
+
+
+def test_factory_ai_data_uses_plan_metadata_and_explicit_fallbacks():
+    plan = {
+        "metadata": {
+            "format": "sermon",
+            "title_ru": "Название",
+            "author_ru": "Автор",
+            "analysis_note": "Проверенный план",
+        }
+    }
+
+    result = factory_ai_data(plan, title="Исходное", performer="Канал")
+    fallback = factory_ai_data({}, title="Исходное", performer="Канал")
+
+    assert result["format"] == "sermon"
+    assert result["real_title"] == "Название"
+    assert result["real_author"] == "Автор"
+    assert result["analysis_summary"] == "Проверенный план"
+    assert fallback["format"] == "other"
+    assert fallback["real_title"] == "Исходное"
+    assert fallback["real_author"] == "Канал"

@@ -19,9 +19,10 @@ from core.text_utils import normalize_author_name, normalize_title_text, title_c
 from core.utils import format_timestamp
 
 try:
-    from google.genai import types
+    from google.genai import types as types
 except ImportError:  # pragma: no cover - runtime dependency is checked elsewhere
-    types = None
+    # The optional SDK is guarded before every use.
+    types = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -191,7 +192,7 @@ def _normalize_candidate(
     kind = str(item.get("kind") or default_kind).strip() or default_kind
     score_raw = item.get("quality_score", item.get("score", 0))
     try:
-        score = max(0.0, min(float(score_raw), 100.0))
+        score = max(0.0, min(float(score_raw or 0), 100.0))
     except (TypeError, ValueError):
         score = 0.0
 
@@ -249,7 +250,8 @@ def validate_factory_plan(
     require_verified: bool = True,
 ) -> dict[str, Any]:
     """Enforce duration, verified boundaries and overlap contracts."""
-    meta = raw.get("metadata") if isinstance(raw.get("metadata"), dict) else {}
+    meta_value = raw.get("metadata")
+    meta = meta_value if isinstance(meta_value, dict) else {}
     shorts: list[dict[str, Any]] = []
     longs: list[dict[str, Any]] = []
 
@@ -401,7 +403,7 @@ def _boundary_prompt(judged_plan: dict[str, Any], duration: int) -> str:
     ).strip()
 
 
-async def _wait_uploaded_file(client, uploaded):
+async def _wait_uploaded_file(client: Any, uploaded: Any) -> Any:
     started = asyncio.get_running_loop().time()
     current = uploaded
     while str(getattr(current, "state", "")).upper().endswith("PROCESSING"):
@@ -414,7 +416,7 @@ async def _wait_uploaded_file(client, uploaded):
     return current
 
 
-async def _response_text(response) -> str:
+async def _response_text(response: Any) -> str:
     text = str(getattr(response, "text", "") or "")
     if text.strip():
         return text
@@ -427,7 +429,14 @@ async def _response_text(response) -> str:
     return "".join(parts)
 
 
-async def _run_pass(client, *, model: str, audio_part, prompt: str, max_tokens: int):
+async def _run_pass(
+    client: Any,
+    *,
+    model: str,
+    audio_part: Any,
+    prompt: str,
+    max_tokens: int,
+) -> dict[str, Any]:
     config = make_audio_config(
         max_output_tokens=max_tokens,
         model_name=model,
@@ -553,7 +562,8 @@ async def create_factory_plan(
 
 
 def factory_ai_data(plan: dict[str, Any], *, title: str, performer: str) -> dict[str, Any]:
-    meta = plan.get("metadata") if isinstance(plan.get("metadata"), dict) else {}
+    meta_value = plan.get("metadata")
+    meta = meta_value if isinstance(meta_value, dict) else {}
     return {
         "format": str(meta.get("format") or "other"),
         "real_title": str(meta.get("title_ru") or title),
