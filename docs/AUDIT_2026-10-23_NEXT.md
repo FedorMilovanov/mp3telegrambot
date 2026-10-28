@@ -1441,6 +1441,12 @@ project imports должны остаться ниже optional-SDK doubles, п�
 и late logging setup; duplicate `re` alias в `core/utils.py` удалён без второго
 import. 32 focused tests прошли. Текущий census — 131/705
 (18,6 % remaining, 81,4 % closed): `E402` 84, `PLW0603` 47; `S603`/`S607` 0.
+Девять Telegraph/bgutil tools `E402` разобраны вручную: `requests` поднят до
+repo-root bootstrap, семь project imports сохранены ниже `sys.path` setup. После
+первого supplemental 44 % (4/9) repair tool получил executed deterministic
+signature test; итог — 51 focused passed и supplemental 100 % (9/9).
+Текущий census — 122/705 (17,3 % remaining, 82,7 % closed): `E402` 75,
+`PLW0603` 47; `S603`/`S607` 0.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

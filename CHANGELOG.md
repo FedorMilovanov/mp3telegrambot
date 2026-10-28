@@ -628,6 +628,10 @@
 - Шесть core `E402` разобраны вручную: пять imports сохраняют dotenv/HF/bootstrap
   и late logging setup с точечными justifications; duplicate `re` alias в utils
   удалён в пользу существующего top-level import. `E402`: 90 → 84.
+- Девять Telegraph/bgutil tools `E402` разобраны вручную: `requests` поднят до
+  repo-root bootstrap, семь project imports сохранены ниже `sys.path` setup.
+  Repair tool получил executed deterministic signature test; supplemental
+  diff-cover 100 % (9/9). `E402`: 84 → 75.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения
