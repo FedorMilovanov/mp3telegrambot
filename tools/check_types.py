@@ -56,6 +56,7 @@ TYPED_SLICES: tuple[Slice, ...] = (
             "pipelines/main_pipeline.py",
         ),
     ),
+    Slice("services/speech_backends"),
 )
 
 #: mypy возвращает 2 на фатальных ошибках (нет модуля, битый конфиг).
