@@ -64,6 +64,7 @@ TYPED_SLICES: tuple[Slice, ...] = (
     Slice("services/media_masters.py"),
     Slice("services/mp3_conversion.py"),
     Slice("services/process_executables.py"),
+    Slice("services/shorts_duration_safety.py"),
     Slice("services/speech_backends"),
     Slice("services/telegraph_repair.py"),
 )

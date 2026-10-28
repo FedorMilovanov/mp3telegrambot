@@ -104,7 +104,7 @@ def plan_short_source_window(
     if render_end <= render_start:
         return None
 
-    snap_ceiling = math.floor(render_start + source_budget + 1e-9)
+    snap_ceiling: float = math.floor(render_start + source_budget + 1e-9)
     if source_limit > 0.0:
         snap_ceiling = min(snap_ceiling, math.floor(source_limit + 1e-9))
     snap_ceiling = max(render_end, float(snap_ceiling))
