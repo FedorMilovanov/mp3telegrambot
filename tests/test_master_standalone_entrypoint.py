@@ -14,7 +14,7 @@ def test_master_runs_by_absolute_path_without_pythonpath(tmp_path: Path) -> None
     """Reproduce the worker contract: file path, foreign cwd, isolated env."""
     env = dict(os.environ)
     env.pop("PYTHONPATH", None)
-    process = subprocess.run(
+    process = subprocess.run(  # noqa: S603 -- current interpreter and fixed master help probe
         [sys.executable, str(MASTER), "--help"],
         cwd=tmp_path,
         env=env,

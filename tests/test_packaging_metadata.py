@@ -98,7 +98,7 @@ def test_version_flag_answers_without_a_runtime(flag: str) -> None:
     """Версия — единственное, что обязано работать без зависимостей и сети."""
     from core.version import __version__
 
-    proc = subprocess.run(
+    proc = subprocess.run(  # noqa: S603 -- current interpreter and fixed version-only entrypoint
         [sys.executable, "bot_new.py", flag],
         cwd=ROOT,
         capture_output=True,

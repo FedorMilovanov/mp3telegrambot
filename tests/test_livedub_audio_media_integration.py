@@ -18,7 +18,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def _run(command: list[str]) -> None:
-    subprocess.run(
+    subprocess.run(  # noqa: S603 -- resolved ffmpeg and deterministic test media
         command,
         check=True,
         stdout=subprocess.DEVNULL,

@@ -19,7 +19,7 @@ def test_vot_live_helper_has_valid_node_syntax() -> None:
     node = shutil.which("node")
     if not node:
         pytest.skip("node is unavailable")
-    proc = subprocess.run(
+    proc = subprocess.run(  # noqa: S603 -- resolved Node and fixed helper syntax check
         [node, "--check", str(HELPER)],
         capture_output=True,
         text=True,

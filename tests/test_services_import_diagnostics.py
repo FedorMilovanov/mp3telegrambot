@@ -22,7 +22,7 @@ sys.stderr = io.TextIOWrapper(err_bytes, encoding="cp1252", errors="strict", wri
 import services
 original.write(f"SERVICES_IMPORT_OUTPUT={len(out_bytes.getvalue())}:{len(err_bytes.getvalue())}\n")
 """
-    process = subprocess.run(
+    process = subprocess.run(  # noqa: S603 -- current interpreter and fixed isolated import probe
         [sys.executable, "-c", script],
         cwd=str(ROOT),
         stdout=subprocess.PIPE,
