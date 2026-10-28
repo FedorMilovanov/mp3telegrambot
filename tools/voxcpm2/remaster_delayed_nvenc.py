@@ -17,7 +17,7 @@ def run(
     *,
     allow_failure: bool = False,
 ) -> subprocess.CompletedProcess[str]:
-    proc = subprocess.run(
+    proc = subprocess.run(  # noqa: S603 -- internal remaster command argv, no shell
         command,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

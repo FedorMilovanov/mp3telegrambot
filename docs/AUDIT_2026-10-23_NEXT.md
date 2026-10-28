@@ -1401,6 +1401,12 @@ argv без shell. 41 focused test зелёный; пять новых doubles �
 Supplemental diff-cover 100 % (6/6). Текущий census — 160/705
 (22,7 % remaining, 77,3 % closed): `E402` 97, `S603` 16, `PLW0603` 47;
 `S607` остаётся 0.
+Delayed-remaster/segmented review закрыл последние три VoxCPM2-tool `S603`:
+internal/resolved argv без shell, NVENC fallback и segmented CPU policy не
+изменены. 15 focused tests зелёные, два новых doubles закрывают runners;
+supplemental diff-cover 100 % (3/3). VoxCPM2 tools больше не содержат `S603`.
+Текущий census — 157/705 (22,3 % remaining, 77,7 % closed): `E402` 97,
+`S603` 13, `PLW0603` 47; `S607` остаётся 0.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**
