@@ -556,12 +556,12 @@ __all__ = [
 _BASE_ALL = tuple(globals().get("__all__", ()))
 
 
-import subprocess as _stdlib_subprocess
+import subprocess as _stdlib_subprocess  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
 
 
-from tools.voxcpm2 import final_encoded_delivery_qa
+from tools.voxcpm2 import final_encoded_delivery_qa  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
 
-from tools.voxcpm2 import semantic_block_runtime
+from tools.voxcpm2 import semantic_block_runtime  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 

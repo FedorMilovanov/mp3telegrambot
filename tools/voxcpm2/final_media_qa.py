@@ -534,7 +534,7 @@ __all__ = [
 _BASE_ALL = tuple(globals().get("__all__", ()))
 
 
-from tools.voxcpm2 import final_media_spatial_bed
+from tools.voxcpm2 import final_media_spatial_bed  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
 
 _legacy_verify_final_file = verify_final_file
 

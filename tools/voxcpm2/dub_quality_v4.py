@@ -440,10 +440,10 @@ __all__ = [
 _BASE_ALL = tuple(globals().get("__all__", ()))
 
 
-import re
+import re  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
 
 
-from tools.voxcpm2 import russian_pronunciation
+from tools.voxcpm2 import russian_pronunciation  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
 
 POLICY = "ready-srt-semantic-breath-grouping-v1"
 

@@ -536,7 +536,7 @@ def candidate_hard_ok(
 _BASE_ALL = tuple(globals().get("__all__", ()))
 
 
-from tools.voxcpm2.direct_max_quality_io import MAX_TEMPO
+from tools.voxcpm2.direct_max_quality_io import MAX_TEMPO  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
 
 FIT_TEMPO_POLICY = "candidate-fit-tempo-hard-gate-v2"
 

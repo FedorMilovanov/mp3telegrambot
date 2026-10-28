@@ -391,12 +391,12 @@ __all__ = [
 _BASE_ALL = tuple(globals().get("__all__", ()))
 
 
-import re
+import re  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
 
 
-from tools.voxcpm2 import source_prosody_policy
+from tools.voxcpm2 import source_prosody_policy  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
 
-from tools.voxcpm2.direct_max_quality_io import (
+from tools.voxcpm2.direct_max_quality_io import (  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
     MAX_TEMPO,
     SPEECH_SLOT_POLICY,
     speech_slot_seconds,

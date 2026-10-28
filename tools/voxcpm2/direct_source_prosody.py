@@ -226,7 +226,7 @@ __all__ = [
 _BASE_ALL = tuple(globals().get("__all__", ()))
 
 
-from tools.voxcpm2 import source_prosody_policy
+from tools.voxcpm2 import source_prosody_policy  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
 
 CANDIDATE_CONTINUATION_POLICY = "defer-short-continuation-to-timeline-v1"
 

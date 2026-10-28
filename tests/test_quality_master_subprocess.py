@@ -6,8 +6,12 @@ from unittest.mock import Mock
 
 import pytest
 
-from tools.voxcpm2 import dub_quality_v4, master_quality_v4, production_preflight
+from tools.voxcpm2 import dub_quality_v4, master_quality_v4, master_quality_v45, production_preflight
 from tools.voxcpm2.examples.john_piper_z20py4yqhyq import master_constant_mix
+
+
+def test_quality_v45_master_keeps_v4_source_owner() -> None:
+    assert master_quality_v45.base is master_quality_v4
 
 
 def test_quality_reference_window_uses_fixed_ffmpeg(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

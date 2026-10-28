@@ -646,6 +646,10 @@
 - Девять generic VoxCPM2 `E402` разобраны как late compatibility layer ниже
   legacy `main` и `_BASE_ALL` snapshot; imports и exports не перемещены. 40
   focused tests и supplemental 100 % (9/9). `E402`: 49 → 40.
+- Последние 40 `E402` в VoxCPM2 compatibility/bootstrap layers разобраны вручную
+  без перемещения imports/exports. Добавлен executed regression для связи
+  `master_quality_v45` с source-owner v4; 377 focused tests и supplemental
+  100 % (40/40). `E402`: 40 → 0; extended census: 47/705 (6,7 %).
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения

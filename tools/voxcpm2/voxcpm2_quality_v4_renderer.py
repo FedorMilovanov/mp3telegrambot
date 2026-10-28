@@ -26,10 +26,10 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-import numpy as np
-import soundfile as sf
+import numpy as np  # noqa: E402 -- repo-root bootstrap must precede absolute project imports
+import soundfile as sf  # noqa: E402 -- repo-root bootstrap must precede absolute project imports
 
-from tools.voxcpm2.activity_quality import sustained_activity_index
+from tools.voxcpm2.activity_quality import sustained_activity_index  # noqa: E402 -- repo-root bootstrap must precede absolute project imports
 
 _QUALITY_VERSION = "voxcpm2-quality-v4.2"
 _PROGRESS_PREFIX = "DUB_PROGRESS "

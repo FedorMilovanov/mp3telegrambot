@@ -1463,6 +1463,11 @@ focused tests прошли, supplemental diff-cover — 100 % (5/5); live media 
 `main` и `_BASE_ALL` snapshot; imports/exports не перемещены. 40 focused tests
 прошли, supplemental — 100 % (9/9). Текущий census — 87/705
 (12,3 % remaining, 87,7 % closed): `E402` 40, `PLW0603` 47; `S603`/`S607` 0.
+Последние 40 `E402` разобраны вручную в VoxCPM2 compatibility/bootstrap layers;
+imports/exports не перемещены. Executed regression подтверждает связь
+`master_quality_v45` с source-owner v4. 377 focused tests прошли, supplemental
+diff-cover — 100 % (40/40). Текущий census — 47/705
+(6,7 % remaining, 93,3 % closed): `E402` 0, `PLW0603` 47; `S603`/`S607` 0.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**
