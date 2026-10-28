@@ -34,7 +34,7 @@ def _finite(value: Any, *, field: str) -> float:
 
 
 def _run_audio_bytes(command: list[str], *, timeout: float) -> bytes:
-    process = subprocess.run(
+    process = subprocess.run(  # noqa: S603 -- fixed spatial-bed decode, bounded timeout
         command,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

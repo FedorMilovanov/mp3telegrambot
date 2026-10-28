@@ -591,6 +591,10 @@
   fingerprint, reference decode, direct media helper и job import preflight
   используют argv без shell. Post-AAC QA, reference floor и checked CPU runtime
   сохранены; четыре новых doubles закрывают helpers. `S603`: 32 → 27.
+- Пять final-QA `S603` прошли ручной review: post-AAC segment, final text/PCM
+  probes, spatial bed и professional reference decode используют fixed/resolved
+  argv без shell. Timeout floors, PCM postconditions и fail-closed QA сохранены;
+  четыре новых doubles закрывают helpers. `S603`: 27 → 22.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения

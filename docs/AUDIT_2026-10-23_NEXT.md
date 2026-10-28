@@ -1389,6 +1389,12 @@ fingerprint, reference decode, direct media helper и job import preflight
 выполняют runtime/reference/direct/preflight lines. Supplemental diff-cover
 100 % (5/5). Текущий census — 171/705 (24,3 % remaining, 75,7 % closed):
 `E402` 97, `S603` 27, `PLW0603` 47; `S607` остаётся 0.
+Final-QA review закрыл пять `S603`: post-AAC segment, final text/PCM probes,
+spatial bed и professional reference decode используют fixed/resolved argv без
+shell. 52 focused tests зелёные; четыре новых doubles подтверждают timeout floors
+и PCM orchestration. Supplemental diff-cover 100 % (5/5). Текущий census —
+166/705 (23,5 % remaining, 76,5 % closed): `E402` 97, `S603` 22,
+`PLW0603` 47; `S607` остаётся 0.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

@@ -276,7 +276,7 @@ def _decode(source: Path, output: Path) -> tuple[np.ndarray, int]:
         "pcm_f32le",
         str(output),
     ]
-    if subprocess.run(command, check=False).returncode != 0:
+    if subprocess.run(command, check=False).returncode != 0:  # noqa: S603 -- fixed ffmpeg reference decode
         raise RuntimeError("Не удалось подготовить голосовой референс.")
     samples, sample_rate = sf.read(output, dtype="float32")
     return np.asarray(samples, dtype=np.float32), int(sample_rate)
