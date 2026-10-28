@@ -1268,6 +1268,9 @@ pipelines. Mode fallback, delivery/cache cleanup и poster→snapshot→none
 проверки заменены executed `InputFile` contracts. 169 pipeline-focused и 47
 async-focused tests зелёные. `S110` = 0 и включён в обычный Ruff gate.
 Текущий census — 270.
+Повторный repository-wide `ASYNC230/ASYNC240` прогон подтвердил ноль после
+thumbnail worker fix; `ASYNC240` включён в обычный Ruff gate без новых
+suppressions. Extended census остаётся 270.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**
