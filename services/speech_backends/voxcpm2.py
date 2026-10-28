@@ -177,7 +177,7 @@ class VoxCPM2Session:
 
 class VoxCPM2Backend:
     backend_id = "voxcpm2"
-    aliases = ("vox-cpm2", "openbmb-voxcpm2", "openbmb")
+    aliases: tuple[str, ...] = ("vox-cpm2", "openbmb-voxcpm2", "openbmb")
     adapter_policy = ADAPTER_POLICY
 
     def capabilities(self) -> BackendCapabilities:

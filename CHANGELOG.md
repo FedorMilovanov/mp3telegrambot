@@ -39,7 +39,9 @@
   (`tools/check_types.py`), шаг в CI, проверка в `verify_repo.py` и тест
   `tests/test_typecheck_gate.py`, который ловит ослабление настроек и сверяет
   срез с `docs/typechecking.md`. Срез: `core/` и `pipelines/` (кроме
-  `main_pipeline.py`, см. P0-3).
+  `main_pipeline.py`, см. P0-3). Срез расширен на `services/speech_backends/`:
+  14 modules доведены до strict-zero; annotation `VoxCPM2Backend.aliases`
+  соответствует `SpeechBackend` без изменения runtime-значения.
 - Исполняемый контракт production-слоёв через `import-linter`: новые обратные
   импорты блокируются, а известные legacy-рёбра сокращаются по точному
   burn-down без wildcard-исключений (`tools/check_import_layers.py`).

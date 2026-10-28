@@ -1311,6 +1311,12 @@ Lazy imports и security-правила разбираются отдельно,
 пакетам без тестов: `services/` 673, `tools/` 255, `handlers/` 158, `converters/` 143,
 `main.py` 49. Это и есть очередь волны 3+.
 
+Следующий срез добавил `services/speech_backends/` целиком (14 modules).
+Единственная ошибка пакета — слишком узкий inferred type
+`VoxCPM2Backend.aliases` — исправлена annotation к `tuple[str, ...]`;
+runtime tuple и registry behavior не изменены. Текущий strict срез —
+106/240 production modules (44,2 %), остаётся 55,8 %.
+
 **Найденные по дороге настоящие дефекты:** кортеж кортежей в `negative` у
 `core/source_packs.py` (работал только за счёт защитного `neg[0]`), `max()`/деление
 на `None` в аудите плотности конспекта, `len()` от `None` в `services/quiz_generator.py`,

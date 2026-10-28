@@ -23,7 +23,7 @@ pre-commit install && pre-commit install --hook-type pre-push
 | `python -m pytest -q` | весь набор | ~90 с |
 | `python -m ruff check .` | гейт линтера | ~2 с |
 | `python -m ruff format --check .` | repo-wide форматирование не откатилось | ~2 с |
-| `python tools/check_types.py` | `mypy --strict` по объявленному срезу (`core/`, `pipelines/`) | ~2 с (кэш) |
+| `python tools/check_types.py` | `mypy --strict` по объявленному срезу (`core/`, `pipelines/`, `services/speech_backends/`) | ~2 с (кэш) |
 | `python tools/check_import_layers.py` | направление production-импортов и burn-down legacy-рёбер | ~1 с |
 | `python tools/check_coverage_ratchet.py` | покрытие объявленных файлов не упало (нужен `coverage.xml`) | ~1 с |
 | `python tools/verify_repo.py` | compileall, артефакты, pytest, ruff + format check, типы, слои, `git diff --check` | ~100 с |
