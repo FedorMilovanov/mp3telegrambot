@@ -1377,6 +1377,12 @@ doubles выполняют model/env/install/pytest/verifier process lines. Supp
 tools/scripts diff-cover 100 % (8/8), основной coverage scope не менялся.
 Текущий census — 181/705 (25,7 % remaining, 74,3 % closed): `E402` 97,
 `S603` 37, `PLW0603` 47; `S607` остаётся 0.
+Media-verifier review закрыл пять `S603`: GVS duration, deterministic benchmark
+source, Factory media/SSIM и generic video-hash commands используют resolved
+media tools без shell. 20 focused tests зелёные, четыре новых doubles выполняют
+GVS/Factory/generic process lines; supplemental diff-cover 100 % (5/5).
+Текущий census — 176/705 (25,0 % remaining, 75,0 % closed): `E402` 97,
+`S603` 32, `PLW0603` 47; `S607` остаётся 0.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

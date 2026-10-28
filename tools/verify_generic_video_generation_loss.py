@@ -26,7 +26,7 @@ import services.shorts_video as shorts_video
 
 
 def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    return subprocess.run(  # noqa: S603 -- resolved media tools and fixed evidence argv
         command,
         check=True,
         capture_output=True,

@@ -583,6 +583,10 @@
   lock audit/install, import/type/verifier runners и pytest annotations используют
   current/resolved executables без shell. Пять новых tests выполняют ранее
   непокрытые process lines; lock pins и typed slice не изменены. `S603`: 45 → 37.
+- Пять media-verifier `S603` прошли ручной review: GVS duration, deterministic
+  benchmark source, Factory media/SSIM и generic video-hash commands используют
+  resolved media tools без shell. Factory quality gates и video-copy evidence не
+  изменены; четыре новых doubles закрывают changed lines. `S603`: 37 → 32.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения

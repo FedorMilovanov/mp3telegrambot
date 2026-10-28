@@ -49,7 +49,7 @@ _SSIM_RE = re.compile(r"All:([0-9]+(?:\.[0-9]+)?)")
 
 
 def _run(command: list[str], *, timeout: int = 1800) -> subprocess.CompletedProcess[str]:
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: S603 -- verifier-owned media argv, no shell
         command,
         capture_output=True,
         text=True,
@@ -323,7 +323,7 @@ def _ssim(reference: Path, distorted: Path) -> float:
         dist_chain += f",scale={ref_probe['width']}:{ref_probe['height']}:flags=lanczos"
     dist_chain += "[dist]"
     filter_graph = f"{dist_chain};[1:v]setpts=PTS-STARTPTS[ref];[dist][ref]ssim"
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: S603 -- resolved ffmpeg and validated SSIM graph
         [
             ffmpeg,
             "-v",

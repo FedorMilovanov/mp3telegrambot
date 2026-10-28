@@ -23,7 +23,7 @@ from tools.verify_factory_media_quality import verify
 
 def _generate_source(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    process = subprocess.run(
+    process = subprocess.run(  # noqa: S603 -- resolved ffmpeg and deterministic source graph
         [
             resolve_required_executable("ffmpeg"),
             "-v",
