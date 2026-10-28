@@ -20,15 +20,9 @@ def test_windows_batch_command_contains_only_fixed_placeholders() -> None:
 
     command, child_env = yandex_live_dub._windows_batch_invocation(arguments, original)
 
-    assert command == [
-        r"C:\Windows\System32\cmd.exe",
-        "/D",
-        "/S",
-        "/V:OFF",
-        "/C",
-        " ".join(f'"%MP3BOT_VOT_ARG_{index}%"' for index in range(len(arguments))),
-    ]
-    assert url not in command[-1]
+    placeholders = " ".join(f'"%MP3BOT_VOT_ARG_{index}%"' for index in range(len(arguments)))
+    assert command == rf'C:\Windows\System32\cmd.exe /D /S /V:OFF /C "{placeholders}"'
+    assert url not in command
     assert child_env["MP3BOT_VOT_ARG_2"] == url
     assert child_env["MP3BOT_VOT_ARG_3"] == "100%PATH%!delayed!"
     assert child_env["MP3BOT_VOT_ARG_4"] == arguments[-1] + "\\"
@@ -56,9 +50,10 @@ def test_windows_wrapper_uses_placeholders_and_never_shell(monkeypatch: pytest.M
     assert yandex_live_dub._run_subprocess(["vot-cli-live.cmd", url], cwd=tmp_path, timeout=7) == ("ok", "", 0)
     command = captured["command"]
     kwargs = captured["kwargs"]
-    assert isinstance(command, list)
+    assert isinstance(command, str)
     assert isinstance(kwargs, dict)
-    assert url not in command[-1]
+    assert url not in command
+    assert '"%MP3BOT_VOT_ARG_1%"' in command
     assert kwargs["shell"] is False
     assert kwargs["env"]["MP3BOT_VOT_ARG_1"] == url
     assert kwargs["cwd"] == tmp_path

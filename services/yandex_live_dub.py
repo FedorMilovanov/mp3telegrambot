@@ -88,7 +88,7 @@ def _check_vot_cli() -> str:
     )
 
 
-def _windows_batch_invocation(cmd_parts: list[str], environ: Mapping[str, str]) -> tuple[list[str], dict[str, str]]:
+def _windows_batch_invocation(cmd_parts: list[str], environ: Mapping[str, str]) -> tuple[str, dict[str, str]]:
     """Build a cmd.exe launch without putting raw arguments in its command line.
 
     Windows batch files still require cmd.exe. The fixed command line contains
@@ -110,7 +110,9 @@ def _windows_batch_invocation(cmd_parts: list[str], environ: Mapping[str, str]) 
         child_env[name] = value
         placeholders.append(f'"%{name}%"')
     comspec = child_env.get("COMSPEC") or "cmd.exe"
-    return [comspec, "/D", "/S", "/V:OFF", "/C", " ".join(placeholders)], child_env
+    placeholders_arg = " ".join(placeholders)
+    command = f'{subprocess.list2cmdline([comspec])} /D /S /V:OFF /C "{placeholders_arg}"'
+    return command, child_env
 
 
 def _run_subprocess(cmd_parts: list, cwd: Path | None = None, timeout: int = 600):
@@ -129,7 +131,7 @@ def _run_subprocess(cmd_parts: list, cwd: Path | None = None, timeout: int = 600
     ):
         cmd_parts = str(cmd_parts[0]).split() + list(cmd_parts[1:])
 
-    run_parts = cmd_parts
+    run_parts: str | list[str] = cmd_parts
     run_env = None
     if sys.platform == "win32" and cmd_parts:
         _cmd = str(cmd_parts[0]).lower()
@@ -137,7 +139,7 @@ def _run_subprocess(cmd_parts: list, cwd: Path | None = None, timeout: int = 600
             run_parts, run_env = _windows_batch_invocation(cmd_parts, os.environ)
 
     try:
-        proc = subprocess.run(  # noqa: S603 -- argv only; batch command line has fixed placeholders
+        proc = subprocess.run(  # noqa: S603 -- no shell; batch command string has fixed placeholders
             run_parts,
             capture_output=True,
             text=True,
