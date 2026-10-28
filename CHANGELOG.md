@@ -599,6 +599,10 @@
   probes, оба master runner, ffprobe duration и py_compile используют fixed или
   validated argv без shell. Loudnorm/master contracts и preflight gates не
   изменены; пять новых doubles закрывают helpers. `S603`: 22 → 16.
+- Последние три VoxCPM2-tool `S603` прошли ручной review: delayed remaster и
+  segmented media/duration helpers используют internal/resolved argv без shell.
+  NVENC fallback и segmented CPU policy не изменены. VoxCPM2 tools: `S603` 0;
+  общий счёт: 16 → 13.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения

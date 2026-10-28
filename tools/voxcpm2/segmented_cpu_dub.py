@@ -33,7 +33,7 @@ def log(message: str) -> None:
 
 
 def run_checked(command: list[str]) -> None:
-    proc = subprocess.run(
+    proc = subprocess.run(  # noqa: S603 -- internal segmented media argv, no shell
         command,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -51,7 +51,7 @@ def probe_duration(path: Path) -> float:
     ffprobe = shutil.which("ffprobe")
     if ffprobe is None:
         raise FileNotFoundError("Required executable not found on PATH: ffprobe")
-    proc = subprocess.run(
+    proc = subprocess.run(  # noqa: S603 -- resolved ffprobe and fixed duration probe
         [
             ffprobe,
             "-v",
