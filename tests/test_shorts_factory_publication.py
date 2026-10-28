@@ -197,3 +197,11 @@ def test_description_cleaner_rejects_ai_or_provider_meta_text():
     assert publication._clean_description(
         "Человек пытается прикрыть последствия греха своими средствами, но окончательное покрытие приходит от Бога."
     ).endswith(".")
+
+
+def test_item_index_accepts_json_scalars_and_rejects_invalid_values():
+    assert publication._item_index({"index": "2"}) == 2
+    assert publication._item_index({"index": 1.0}) == 1
+    assert publication._item_index({"index": []}) is None
+    assert publication._item_index({"index": "not-a-number"}) is None
+    assert publication._item_index({"index": float("inf")}) is None

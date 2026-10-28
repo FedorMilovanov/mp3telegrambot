@@ -117,9 +117,31 @@ def test_mode_command_clears_wizard_and_renders_admin_home(monkeypatch):
     assert "dubwiz|mode|gemini" in callbacks
 
 
+def test_mode_command_without_user_or_storage_is_a_noop(monkeypatch):
+    async def read_must_not_run(_user_id):
+        raise AssertionError("missing Telegram user must not read settings")
+
+    monkeypatch.setattr(mode, "_read_user_mode", read_must_not_run)
+    update, _ = _update(with_user=False)
+    context = SimpleNamespace(user_data=None)
+
+    _run(mode.mode_command, update, context)
+
+    assert update.effective_message.replies == []
+
+
 def test_mode_callback_without_query_is_a_noop():
     update, _ = _update()
     _run(mode.handle_mode_callback, update, _context())
+
+
+def test_mode_callback_answers_query_but_stops_without_user():
+    update, query = _update(with_user=False, with_query=True, query_data="mode_menu:home")
+
+    _run(mode.handle_mode_callback, update, _context())
+
+    assert query.answers == 1
+    assert query.edits == []
 
 
 def test_home_callback_clears_wizard_and_renders_regular_home(monkeypatch):

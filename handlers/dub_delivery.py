@@ -34,6 +34,7 @@ async def _admin(update: Update) -> bool:
 
 def _resolve_project(store: DubStore, user_id: int, token: str | None) -> dict[str, Any]:
     token = str(token or "").strip().lower()
+    project: dict[str, Any] | None
     if token and token not in {"last", "последний", "all", "все"}:
         project = store.get_project(token)
     else:
@@ -48,18 +49,23 @@ def _resolve_project(store: DubStore, user_id: int, token: str | None) -> dict[s
 async def dubsend_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _admin(update):
         return
+    user = update.effective_user
+    message = update.effective_message
+    chat = update.effective_chat
+    if user is None or message is None or chat is None:
+        return
     args = list(context.args or [])
     include_all = any(str(arg).strip().lower() in {"all", "все"} for arg in args)
     token = next((arg for arg in args if str(arg).strip().lower() not in {"all", "все"}), None)
     try:
-        project = _resolve_project(DubStore(), update.effective_user.id, token)
-        status = await update.effective_message.reply_text(
+        project = _resolve_project(DubStore(), user.id, token)
+        status = await message.reply_text(
             f"📤 Отправляю результаты проекта <code>{html.escape(str(project['id']))}</code>…",
             parse_mode="HTML",
         )
         sent, failures = await send_project_outputs(
             context.bot,
-            int(update.effective_chat.id),
+            int(chat.id),
             project,
             include_all_video=include_all,
         )
@@ -69,9 +75,9 @@ async def dubsend_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         try:
             await status.edit_text(text, parse_mode="HTML")
         except Exception:
-            await update.effective_message.reply_text(text, parse_mode="HTML")
+            await message.reply_text(text, parse_mode="HTML")
     except Exception as exc:
-        await update.effective_message.reply_text(
+        await message.reply_text(
             "❌ Отправка: " + html.escape(_short(str(exc), 900)),
             parse_mode="HTML",
         )

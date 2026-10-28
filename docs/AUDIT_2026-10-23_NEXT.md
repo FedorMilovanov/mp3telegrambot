@@ -1547,9 +1547,11 @@ disk-capacity или format-policy behavior. Затем одним zero-error ch
 добавлены 49 уже строго типизированных production modules без смены их кода.
 Последующие fixes checkpoints закрыли ещё 46 ошибок: 14 файлов стали
 strict-clean через точные сигнатуры, None/platform narrowing, typed async и
-subprocess boundaries и явные re-export. Текущий срез — 198/241 production
-modules (82,2 %), остаётся 43 modules (17,8 %). Полный production baseline
-оставшихся файлов — 894 ошибки в 43 файлах; новые exclude или общие
+subprocess boundaries и явные re-export. Следующий checkpoint закрыл 43 ошибки
+в восьми Dub/FFmpeg/LiveDub/Quiz/Shorts modules через Telegram/result narrowing
+и typed process/publication boundaries. Текущий срез — 206/241 production
+modules (85,5 %), остаётся 35 modules (14,5 %). Полный production baseline
+оставшихся файлов — 851 ошибка в 35 файлах; новые exclude или общие
 suppression для их сокрытия не добавляются.
 
 **Найденные по дороге настоящие дефекты:** кортеж кортежей в `negative` у

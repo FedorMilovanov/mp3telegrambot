@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 from services.async_process import run_cancellable_process
@@ -228,7 +229,7 @@ def _proxy_for_ytdlp() -> str:
     return raw
 
 
-def _build_ytdlp_base_args() -> list:
+def _build_ytdlp_base_args() -> list[str]:
     # FIXED #34: явный --no-config предотвращает авточтение ~/.config/yt-dlp/config
     # и ./yt-dlp.conf на сервере. Если локальный yt-dlp.conf существует — подключаем
     # его явно через --config-location, чтобы поведение было предсказуемым.
@@ -340,7 +341,7 @@ def normalize_mp3_lossless(mp3_path: Path, target_db: float = 92.0) -> bool:
     if not mp3gain:
         return False
     try:
-        kwargs: dict = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
+        kwargs: dict[str, Any] = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
         if os.name == "nt":
             # Константа существует только под Windows; на других ОС — 0.
             kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -519,7 +520,7 @@ async def _is_static_video(video_path: Path, sample_start: float = 0.0, probe_se
     )
 
 
-def _crop_consensus(crop_votes: dict, sample_count: int) -> str:
+def _crop_consensus(crop_votes: dict[str, int], sample_count: int) -> str:
     """AUDIT R27: выбирает crop только при согласии сэмплов cropdetect.
 
     Один сэмпл — не доказательство. Живой лог показал три разных crop по

@@ -16,14 +16,14 @@ import logging
 import os
 import re
 from collections import OrderedDict
-from typing import Any
+from typing import Any, Awaitable
 
 from core.model_catalog import MODEL_PRIMARY as _PUBLICATION_MODEL
 from services import gemini_capacity_control as capacity_control
 
 logger = logging.getLogger(__name__)
 _CACHE: OrderedDict[str, dict[str, Any]] = OrderedDict()
-_INFLIGHT: dict[str, asyncio.Task] = {}
+_INFLIGHT: dict[str, asyncio.Task[dict[str, Any]]] = {}
 
 _RU_LOWER_WORDS = {
     "а",
@@ -249,7 +249,7 @@ def publication_models() -> list[str]:
     return [_PUBLICATION_MODEL]
 
 
-def _quality_config(model_name: str):
+def _quality_config(model_name: str) -> Any:
     """Build a sampling-free Gemini 3.8/HIGH structured-output config."""
     try:
         from core.globals import make_text_config_smart
@@ -363,15 +363,24 @@ async def _generate_quality(source_line: str) -> dict[str, str] | None:
                 return None
             used += 1
             try:
-                response = await capacity_control.run_heavy_gemini_call(
-                    lambda _client=client, _model=model, _config=config, _remaining=remaining: asyncio.wait_for(
-                        _client.aio.models.generate_content(
-                            model=_model,
+
+                def _call(
+                    client: Any = client,
+                    model: str = model,
+                    config: Any = config,
+                    remaining: float = remaining,
+                ) -> Awaitable[Any]:
+                    return asyncio.wait_for(
+                        client.aio.models.generate_content(
+                            model=model,
                             contents=prompt,
-                            config=_config,
+                            config=config,
                         ),
-                        timeout=min(float(per_timeout), _remaining),
-                    ),
+                        timeout=min(float(per_timeout), remaining),
+                    )
+
+                response = await capacity_control.run_heavy_gemini_call(
+                    _call,
                     domain="inference",
                 )
                 raw = str(getattr(response, "text", "") or "").strip()
@@ -432,7 +441,9 @@ async def build_publication_card(source_line: str, source_url: str = "") -> dict
     try:
         import services.livedub_publication as publication
 
-        source_url = publication._source_url(source_url or publication._CURRENT_SOURCE_URL.get())
+        current_source = getattr(publication, "_CURRENT_SOURCE_URL", None)
+        current_url = current_source.get() if current_source is not None else ""
+        source_url = publication._source_url(source_url or current_url)
     except Exception:
         source_url = plain(source_url, 600)
     url_key = _url_key(source_url)
@@ -451,7 +462,7 @@ async def build_publication_card(source_line: str, source_url: str = "") -> dict
         task = loop.create_task(_build_uncached(source_line, source_url))
         _INFLIGHT[primary_key] = task
 
-        def drop_finished(done: asyncio.Task, key: str = primary_key) -> None:
+        def drop_finished(done: asyncio.Task[dict[str, Any]], key: str = primary_key) -> None:
             if _INFLIGHT.get(key) is done:
                 _INFLIGHT.pop(key, None)
 

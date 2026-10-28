@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from telegram.error import BadRequest
@@ -38,6 +40,57 @@ def test_project_queue_and_cancel_are_durable(tmp_path: Path) -> None:
 
     reopened = DubStore(tmp_path)
     assert reopened.get_job(job["id"])["status"] == "cancelled"
+
+
+def test_recent_project_and_job_rows_return_materialized_dicts(tmp_path: Path) -> None:
+    store = DubStore(tmp_path)
+    project = store.create_project(
+        "john_piper_z20py4yqhyq",
+        owner_user_id=101,
+        owner_chat_id=202,
+    )
+    job = store.enqueue_job(project["id"], "render")
+
+    projects = store.list_projects(owner_user_id=101)
+    jobs = store.recent_jobs(project["id"])
+
+    assert [item["id"] for item in projects] == [project["id"]]
+    assert [item["id"] for item in jobs] == [job["id"]]
+
+
+def test_enqueue_job_rejects_missing_sqlite_row_id(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    store = DubStore(tmp_path)
+    project = store.create_project(
+        "john_piper_z20py4yqhyq",
+        owner_user_id=101,
+        owner_chat_id=202,
+    )
+    original_connect = store.connect
+
+    class NoRowIdConnection:
+        def __init__(self, connection):
+            self._connection = connection
+
+        def execute(self, query, parameters=()):
+            cursor = self._connection.execute(query, parameters)
+            if "INSERT INTO dub_jobs(" in query:
+                return SimpleNamespace(lastrowid=None)
+            return cursor
+
+        def __getattr__(self, name):
+            return getattr(self._connection, name)
+
+    @contextmanager
+    def connect():
+        with original_connect() as connection:
+            yield NoRowIdConnection(connection)
+
+    monkeypatch.setattr(store, "connect", connect)
+
+    with pytest.raises(RuntimeError, match="SQLite не вернул id"):
+        store.enqueue_job(project["id"], "render")
+
+    assert store.recent_jobs(project["id"]) == []
 
 
 def test_only_one_active_job_per_project(tmp_path: Path) -> None:

@@ -63,9 +63,11 @@
   selection/disk-capacity contracts без смены conservative floors или format
   policy. Затем в gate одним zero-error checkpoint добавлены 49 уже строго
   типизированных production modules. Следующие checkpoints закрыли 75 ошибок
-  в 32 файлах через точные сигнатуры, narrowing и явные re-export. 198/241
-  production modules (82,2 %) проходят `mypy --strict`; вне среза остаются
-  43 modules с 894 ошибками, без новых исключений или общих подавлений.
+  в 32 файлах через точные сигнатуры, narrowing и явные re-export. Затем 43
+  ошибки в восьми Dub/FFmpeg/LiveDub/Quiz/Shorts modules закрыты через
+  Telegram/result narrowing и typed process/publication boundaries. 206/241
+  production modules (85,5 %) проходят `mypy --strict`; вне среза остаются
+  35 modules с 851 ошибкой, без новых исключений или общих подавлений.
 - Исполняемый контракт production-слоёв через `import-linter`: новые обратные
   импорты блокируются, а известные legacy-рёбра сокращаются по точному
   burn-down без wildcard-исключений (`tools/check_import_layers.py`).

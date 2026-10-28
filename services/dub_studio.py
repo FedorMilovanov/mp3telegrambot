@@ -372,7 +372,7 @@ class DubStore:
         params.append(limit)
         with self.connect() as conn:
             rows = conn.execute(query, tuple(params)).fetchall()
-        return [self._row_project(row) for row in rows if row is not None]  # type: ignore[list-item]
+        return [project for row in rows if (project := self._row_project(row)) is not None]
 
     def recent_jobs(self, project_id: str, limit: int = 10) -> list[dict[str, Any]]:
         with self.connect() as conn:
@@ -380,7 +380,7 @@ class DubStore:
                 "SELECT * FROM dub_jobs WHERE project_id=? ORDER BY id DESC LIMIT ?",
                 (project_id, max(1, min(int(limit), 50))),
             ).fetchall()
-        return [self._row_job(row) for row in rows if row is not None]  # type: ignore[list-item]
+        return [job for row in rows if (job := self._row_job(row)) is not None]
 
     def get_job(self, job_id: int) -> dict[str, Any]:
         with self.connect() as conn:
@@ -423,6 +423,8 @@ class DubStore:
                 """,
                 (project_id, action, _json_dump(payload or {}), now, now),
             )
+            if cur.lastrowid is None:
+                raise RuntimeError("SQLite не вернул id нового Dub Studio задания.")
             job_id = int(cur.lastrowid)
             conn.execute(
                 """

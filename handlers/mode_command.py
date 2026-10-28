@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Any
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.error import BadRequest
@@ -71,6 +72,8 @@ def _is_admin(update: Update) -> bool:
 
 
 def _clear_dub_wizard_state(context: ContextTypes.DEFAULT_TYPE) -> bool:
+    if context.user_data is None:
+        return False
     return context.user_data.pop(_DUB_WIZARD_KEY, None) is not None
 
 
@@ -197,7 +200,7 @@ def _analysis_text(
     return "\n".join(lines)
 
 
-async def _safe_edit(query, text: str, *, reply_markup=None) -> None:
+async def _safe_edit(query: Any, text: str, *, reply_markup: Any = None) -> None:
     try:
         await query.edit_message_text(
             text,
@@ -211,8 +214,12 @@ async def _safe_edit(query, text: str, *, reply_markup=None) -> None:
 
 async def mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     _clear_dub_wizard_state(context)
-    current = await _read_user_mode(update.effective_user.id)
-    await update.effective_message.reply_text(
+    user = update.effective_user
+    message = update.effective_message
+    if user is None or message is None:
+        return
+    current = await _read_user_mode(user.id)
+    await message.reply_text(
         _home_text(current, is_admin=_is_admin(update)),
         reply_markup=_mode_home_keyboard(current, is_admin=_is_admin(update)),
         parse_mode="HTML",
@@ -225,7 +232,10 @@ async def handle_mode_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         return
     await query.answer()
     data = str(query.data or "")
-    user_id = update.effective_user.id
+    user = update.effective_user
+    if user is None:
+        return
+    user_id = user.id
 
     if data == "mode_menu:home":
         _clear_dub_wizard_state(context)
