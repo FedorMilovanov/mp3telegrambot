@@ -18,16 +18,17 @@ from dotenv import load_dotenv
 load_dotenv()
 os.environ.setdefault("HF_HOME", str(Path.home() / ".cache" / "huggingface"))
 
-from flask import Flask
+# Environment/bootstrap values must precede Flask and project configuration.
+from flask import Flask  # noqa: E402
 
-from core import runtime_status
-from core.model_catalog import (
+from core import runtime_status  # noqa: E402
+from core.model_catalog import (  # noqa: E402
     ROLE_PRIMARY,
     configured_model,
     thinking_level_for,
     uses_thinking_config,
 )
-from core import gemini_quota_domains as quota_domains
+from core import gemini_quota_domains as quota_domains  # noqa: E402
 
 flask_app = Flask(__name__)
 
@@ -507,7 +508,7 @@ def is_overload_error(e: object) -> bool:
 # AUDIT 2026-10-24: вместо basicConfig — общая настройка проекта.
 # Она даёт LOG_FORMAT=text|json, LOG_FILE/LOG_LEVEL, маскирование значений
 # секретов и update_id в каждой строке (см. core/logging_setup.py).
-from core.logging_setup import configure_logging
+from core.logging_setup import configure_logging  # noqa: E402 -- late setup preserves import order
 
 configure_logging()
 logger = logging.getLogger(__name__)

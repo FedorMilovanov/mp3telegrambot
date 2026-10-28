@@ -625,6 +625,9 @@
 - Семь test-only `E402` в Gemini quota suites получили точечные justifications:
   project imports намеренно остаются ниже optional-SDK doubles. Import behavior и
   15 focused tests сохранены; `E402`: 97 → 90 без перемещения imports.
+- Шесть core `E402` разобраны вручную: пять imports сохраняют dotenv/HF/bootstrap
+  и late logging setup с точечными justifications; duplicate `re` alias в utils
+  удалён в пользу существующего top-level import. `E402`: 90 → 84.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения
