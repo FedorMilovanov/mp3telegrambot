@@ -68,7 +68,7 @@ def _raw_segments(path: Path) -> list[dict[str, Any]]:
 
 
 def _module_sha256(hash_file: Callable[[Path], str]) -> str:
-    global _MODULE_SHA256
+    global _MODULE_SHA256  # noqa: PLW0603 -- module SHA is memoized for stable audit identity
     if not _MODULE_SHA256:
         value = str(hash_file(Path(__file__).resolve())).strip().casefold()
         if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):

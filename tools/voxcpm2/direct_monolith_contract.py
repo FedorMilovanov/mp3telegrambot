@@ -54,7 +54,7 @@ def _mono(samples: Any) -> np.ndarray:
 
 
 def register_segments(segments: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
-    global _SEGMENTS, _CURRENT_SEGMENT_ID, _CURRENT_BEST_IDENTITY, _PREVIOUS_IDENTITY
+    global _SEGMENTS, _CURRENT_SEGMENT_ID, _CURRENT_BEST_IDENTITY, _PREVIOUS_IDENTITY  # noqa: PLW0603 -- registration replaces module-owned monolith state as one operation
     result: list[dict[str, Any]] = []
     mapping: dict[int, dict[str, Any]] = {}
     for position, raw in enumerate(segments, start=1):
@@ -82,7 +82,7 @@ def current_segment() -> dict[str, Any] | None:
 
 
 def set_current_segment_id(segment_id: Any) -> None:
-    global _CURRENT_SEGMENT_ID, _CURRENT_BEST_IDENTITY, _PREVIOUS_IDENTITY
+    global _CURRENT_SEGMENT_ID, _CURRENT_BEST_IDENTITY, _PREVIOUS_IDENTITY  # noqa: PLW0603 -- segment transitions intentionally rebind legacy identity trackers
     value = int(segment_id)
     if _CURRENT_SEGMENT_ID == value:
         return
@@ -244,7 +244,7 @@ def _ratio(value: float, reference: float) -> float:
 
 
 def evaluate_candidate(candidate: dict[str, Any], segment: dict[str, Any]) -> dict[str, Any]:
-    global _PREVIOUS_IDENTITY
+    global _PREVIOUS_IDENTITY  # noqa: PLW0603 -- previous identity checkpoint is lazy state across candidate evaluation
     segment_id = int(segment.get("id") or 0)
     set_current_segment_id(segment_id)
     identity = _identity_from_candidate(candidate)
@@ -386,7 +386,7 @@ def candidate_penalty(candidate: dict[str, Any]) -> float:
 
 
 def record_acceptable(candidates: Iterable[dict[str, Any]]) -> None:
-    global _CURRENT_BEST_IDENTITY
+    global _CURRENT_BEST_IDENTITY  # noqa: PLW0603 -- accepted best identity is retained for following segment continuity
     usable = [item for item in candidates if isinstance(item, dict) and candidate_hard_ok(item)]
     if not usable:
         return

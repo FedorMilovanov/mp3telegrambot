@@ -1474,6 +1474,12 @@ health/config state, encoder/Whisper caches и NVENC→CPU invalidation сохр
 без refactoring. 550 focused tests прошли; изменённые `global` lines не имеют
 coverage bytecode. Текущий census — 17/705 (2,4 % remaining, 97,6 % closed):
 `E402` 0, `PLW0603` 17; `S603`/`S607` 0.
+Последние десять `global` statements в VoxCPM2 разобраны вручную: diagnostics,
+continuation/attempt context, monolith identity и memoized contract hashes
+сохранены без refactoring. 377 focused tests прошли; supplemental diff-cover не
+содержит measured lines для `global` statements. Текущий census — 0/705
+(0,0 % remaining, 100,0 % closed): `E402`, `PLW0603`, `S603`, `S607` — 0.
+Отдельный strict-mypy backlog этот результат не закрывает.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**
