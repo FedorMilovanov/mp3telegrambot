@@ -76,9 +76,13 @@
   222/241 production modules (92,1 %) проходили `mypy --strict`. Следующий
   checkpoint закрыл 142 ошибки в семи Composition/TTS/PDF/MP3/Shorts/
   Highlights/LiveDub modules через точные generic-типы, runtime-validated
-  narrowing и typed legacy/SDK boundaries. Теперь 229/241 production modules
-  (95,0 %) проходят `mypy --strict`; вне среза остаются 12 modules с 557
-  ошибками, без новых исключений или общих подавлений.
+  narrowing и typed legacy/SDK boundaries. На предыдущем checkpoint
+  229/241 production modules (95,0 %) проходили `mypy --strict`. Следующий
+  checkpoint закрыл 217 ошибок в семи Telegraph/Search/Gemini/Shorts/LiveDub/
+  Dub wizard modules через generic JSON boundaries, optional SDK narrowing,
+  worker-side stat и Telegram context guards. Теперь 236/241 production
+  modules (97,9 %) проходят `mypy --strict`; вне среза остаются 5 modules
+  с 340 ошибками, без новых исключений или общих подавлений.
 - Исполняемый контракт production-слоёв через `import-linter`: новые обратные
   импорты блокируются, а известные legacy-рёбра сокращаются по точному
   burn-down без wildcard-исключений (`tools/check_import_layers.py`).

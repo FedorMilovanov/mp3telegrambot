@@ -18,6 +18,7 @@
 | `pipelines/` | 0 | — |
 | `converters/__init__.py` | 0 | — |
 | `converters/caption.py` | 0 | — |
+| `converters/telegraph_nodes.py` | 0 | — |
 | `handlers/__init__.py` | 0 | — |
 | `handlers/callbacks.py` | 0 | — |
 | `handlers/dub_audio_repair.py` | 0 | — |
@@ -27,6 +28,7 @@
 | `handlers/dub_quickstart.py` | 0 | — |
 | `handlers/dub_studio_registration.py` | 0 | — |
 | `handlers/mode_command.py` | 0 | — |
+| `handlers/dub_wizard.py` | 0 | — |
 | `services/__init__.py` | 0 | — |
 | `services/async_process.py` | 0 | — |
 | `services/async_worker.py` | 0 | — |
@@ -51,6 +53,7 @@
 | `services/eng_subtitles.py` | 0 | — |
 | `services/env_policy.py` | 0 | — |
 | `services/ffmpeg.py` | 0 | — |
+| `services/gemini_analyze.py` | 0 | — |
 | `services/gemini_capacity_control.py` | 0 | — |
 | `services/gemini_error_policy.py` | 0 | — |
 | `services/gemini_max_quality.py` | 0 | — |
@@ -74,6 +77,7 @@
 | `services/livedub_output_policy.py` | 0 | — |
 | `services/livedub_publication.py` | 0 | — |
 | `services/livedub_publication_core.py` | 0 | — |
+| `services/livedub_qa.py` | 0 | — |
 | `services/livedub_qa_hardening.py` | 0 | — |
 | `services/livedub_qa_trust.py` | 0 | — |
 | `services/livedub_quality_runtime.py` | 0 | — |
@@ -99,8 +103,10 @@
 | `services/runtime_build_identity.py` | 0 | — |
 | `services/runtime_dependency_lock.py` | 0 | — |
 | `services/runtime_manifest.py` | 0 | — |
+| `services/search.py` | 0 | — |
 | `services/segment_render.py` | 0 | — |
 | `services/shorts_duration_safety.py` | 0 | — |
+| `services/shorts_candidates.py` | 0 | — |
 | `services/shorts_factory_candidates.py` | 0 | — |
 | `services/shorts_factory_capacity.py` | 0 | — |
 | `services/shorts_factory_capacity_runtime.py` | 0 | — |
@@ -120,6 +126,7 @@
 | `services/shorts_subtitle_integrity.py` | 0 | — |
 | `services/shorts_transcription.py` | 0 | — |
 | `services/shorts_video.py` | 0 | — |
+| `services/shorts_video_impl.py` | 0 | — |
 | `services/speech_backends/` | 0 | — |
 | `services/study_synthesis_policy.py` | 0 | — |
 | `services/study_synthesis_runtime.py` | 0 | — |
@@ -140,8 +147,8 @@
 | `services/youtube_po_token_runtime.py` | 0 | — |
 | `services/youtube_transcript.py` | 0 | — |
 
-Текущий срез — 229/241 production modules (95,0 %); вне него остаются
-12 modules (5,0 %).
+Текущий срез — 236/241 production modules (97,9 %); вне него остаются
+5 modules (2,1 %).
 
 Измерено после расширения среза на `pipelines/`: полный `mypy --strict .`
 (включая `tests/`) — 5 038 ошибок в 563 файлах; по пакетам без тестов:

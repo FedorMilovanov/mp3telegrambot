@@ -104,3 +104,20 @@ async def test_shorts_download_wrapper_returns_owned_legacy_path(monkeypatch, tm
         "media-1",
         workdir=tmp_path,
     )
+
+
+def test_whisper_word_merging_and_gap_filling_execute_typed_results() -> None:
+    from services import shorts_video_impl
+
+    words = [
+        {"word": "что", "start": 0.0, "end": 0.2},
+        {"word": "-то", "start": 0.8, "end": 1.0},
+    ]
+
+    merged = shorts_video_impl._merge_hyphenated_particles(words)
+    filled = shorts_video_impl._fill_timing_gaps(words, max_gap=0.3)
+
+    assert len(merged) == 1
+    assert merged[0]["word"] == "что-то"
+    assert merged[0]["end"] == 1.0
+    assert filled[0]["end"] == 0.8

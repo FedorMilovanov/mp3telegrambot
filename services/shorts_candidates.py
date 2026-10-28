@@ -11,10 +11,8 @@ from core.globals import (
 )
 from services.gemini_router import gemini_generate
 from core.database import GEMINI_MODEL  # FIX shorts_candidates
-from core.json_parser import (
-    time_to_seconds,
-    _recover_truncated_json,  # FIX shorts_candidates
-)
+from core.json_parser import _recover_truncated_json  # FIX shorts_candidates
+from core.core_utils import time_to_seconds
 from core.text_utils import (
     _clean_field,
     _scrub_inline,
@@ -46,18 +44,20 @@ import logging
 import re
 import time
 from pathlib import Path  # FIX shorts_candidates
+from typing import Any, cast
 
 # types — из google.genai
-try:
-    from google.genai import types
-except ImportError:
-    types = None
+_genai_types: Any = None
+with contextlib.suppress(ImportError):
+    from google.genai import types as _genai_types
+
+types: Any = _genai_types
 
 logger = logging.getLogger(__name__)
 
 
 # ── BUG-D01: валидация клипа ──────────────────────────────────────────────
-def _valid_clip(clip: dict, duration: int) -> bool:
+def _valid_clip(clip: "dict[str, Any]", duration: int) -> bool:
     """Проверяет что клип имеет валидные start/end в пределах duration."""
     try:
         s = float(clip["start_seconds"])
@@ -68,7 +68,7 @@ def _valid_clip(clip: dict, duration: int) -> bool:
 
 
 # ── BUG-D02: удаление overlap клипов (для shorts) ────────────────────────
-def _remove_overlapping_shorts(clips: list[dict]) -> list[dict]:
+def _remove_overlapping_shorts(clips: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Удаляет клипы с >10% пересечения с ранее принятыми (по start_seconds)."""
     if not clips:
         return clips
@@ -98,7 +98,7 @@ def _remove_overlapping_shorts(clips: list[dict]) -> list[dict]:
 _normalize_hashtag = normalize_hashtag
 
 
-def _candidate_audio_config(max_output_tokens: int, schema: dict | None = None):
+def _candidate_audio_config(max_output_tokens: int, schema: dict[str, Any] | None = None) -> Any:
     return make_audio_config(
         max_output_tokens=max_output_tokens,
         thinking_level="low",
@@ -107,15 +107,15 @@ def _candidate_audio_config(max_output_tokens: int, schema: dict | None = None):
 
 
 async def _generate_audio_candidate_content(
-    client,
+    client: Any,
     *,
     model: str,
-    contents: list,
+    contents: list[Any],
     max_output_tokens: int,
-    schema: dict | None,
+    schema: dict[str, Any] | None,
     task: str,
     timeout: float = 300.0,
-):
+) -> Any:
     """Try Gemini structured JSON first, then fall back to legacy JSON prompt mode."""
     try:
         return await asyncio.wait_for(
@@ -158,18 +158,18 @@ def _file_size(path: Path) -> int:
 
 async def create_shorts_candidates(
     mp3_path: Path,
-    ai_data: dict,
+    ai_data: dict[str, Any],
     title: str,
     performer: str,
     # Длительность приходит из ffprobe как float; округление до целого здесь
     # меняло бы текст промпта и границы клипов, поэтому тип честно широкий.
     duration: int | float,
-    status_msg=None,
+    status_msg: Any = None,
     prefix: str = "",
-    existing_audio_part=None,
-    existing_client=None,
+    existing_audio_part: Any = None,
+    existing_client: Any = None,
     speed: float = 1.0,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """
     Ищет 3–5 кандидатов для Shorts через Gemini.
     Возвращает список словарей:
@@ -249,7 +249,7 @@ async def create_shorts_candidates(
         if response is None:
             audio_bytes = await asyncio.to_thread(mp3_path.read_bytes) if file_size_mb <= 20 else None
 
-            async def _upload(client):
+            async def _upload(client: Any) -> Any:
                 if file_size_mb > 20:
                     uf = await client.aio.files.upload(
                         file=mp3_path,
@@ -267,9 +267,9 @@ async def create_shorts_candidates(
                     if uf.state == "FAILED":  # fix #8
                         raise Exception("Gemini file processing failed")
                     return uf
-                return types.Part.from_bytes(data=audio_bytes, mime_type="audio/mpeg")
+                return types.Part.from_bytes(data=cast(bytes, audio_bytes), mime_type="audio/mpeg")
 
-            async def _shorts_with_client(client):
+            async def _shorts_with_client(client: Any) -> Any:
                 audio_part = await _upload(client)
                 _uploaded = getattr(audio_part, "name", None) is not None
                 try:
@@ -286,7 +286,7 @@ async def create_shorts_candidates(
                         with contextlib.suppress(Exception):
                             await client.aio.files.delete(name=audio_part.name)
 
-            async def _call_shorts(client):
+            async def _call_shorts(client: Any) -> Any:
                 return await _shorts_with_client(client)
 
             response = await gemini_generate(GEMINI_CLIENTS, _call_shorts)
@@ -370,7 +370,7 @@ async def create_shorts_candidates(
             return []
 
         report = CandidateValidationReport()
-        out: list[dict] = []
+        out: list[dict[str, Any]] = []
         seen_ranges: set[tuple[int, int]] = set()
 
         for item in candidates_raw[:7]:
@@ -461,13 +461,13 @@ async def create_shorts_candidates(
 
 async def create_clips_candidates(
     mp3_path: Path,
-    ai_data: dict,
+    ai_data: dict[str, Any],
     title: str,
     performer: str,
     duration: int | float,
-    existing_audio_part=None,
-    existing_client=None,
-) -> list[dict]:
+    existing_audio_part: Any = None,
+    existing_client: Any = None,
+) -> list[dict[str, Any]]:
     """
     Ищет 1–3 длинных clip-кандидата через Gemini.
     Возвращает список словарей:
@@ -549,7 +549,7 @@ async def create_clips_candidates(
         if response is None:
             audio_bytes = await asyncio.to_thread(mp3_path.read_bytes) if file_size_mb <= 20 else None
 
-            async def _upload(client):
+            async def _upload(client: Any) -> Any:
                 if file_size_mb > 20:
                     uf = await client.aio.files.upload(
                         file=mp3_path,
@@ -567,9 +567,9 @@ async def create_clips_candidates(
                     if uf.state == "FAILED":  # fix #8
                         raise Exception("Gemini file processing failed")
                     return uf
-                return types.Part.from_bytes(data=audio_bytes, mime_type="audio/mpeg")
+                return types.Part.from_bytes(data=cast(bytes, audio_bytes), mime_type="audio/mpeg")
 
-            async def _clips_with_client(client):
+            async def _clips_with_client(client: Any) -> Any:
                 audio_part = await _upload(client)
                 _uploaded = getattr(audio_part, "name", None) is not None
                 try:
@@ -586,7 +586,7 @@ async def create_clips_candidates(
                         with contextlib.suppress(Exception):
                             await client.aio.files.delete(name=audio_part.name)
 
-            async def _call_clips(client):
+            async def _call_clips(client: Any) -> Any:
                 return await _clips_with_client(client)
 
             response = await gemini_generate(GEMINI_CLIENTS, _call_clips)
@@ -670,7 +670,7 @@ async def create_clips_candidates(
             return []
 
         report = CandidateValidationReport()
-        out: list[dict] = []
+        out: list[dict[str, Any]] = []
         seen_ranges: set[tuple[int, int]] = set()
 
         for item in candidates_raw[:5]:

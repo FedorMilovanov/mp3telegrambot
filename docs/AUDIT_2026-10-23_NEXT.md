@@ -1560,10 +1560,14 @@ narrowing. Предыдущий срез — 222/241 production modules (92,1 %)
 19 modules (7,9 %) с 699 ошибками. Следующий checkpoint закрыл 142 ошибки в
 семи Composition/TTS/PDF/MP3/Shorts/Highlights/LiveDub modules через точные
 generic-типы, runtime-validated narrowing и typed legacy/SDK boundaries.
-Текущий срез — 229/241 production modules (95,0 %), остаётся 12 modules
-(5,0 %). Полный production baseline оставшихся файлов — 557 ошибок в
-12 файлах; новые exclude или общие suppression для их сокрытия не
-добавляются.
+Предыдущий срез — 229/241 production modules (95,0 %), оставалось
+12 modules (5,0 %) с 557 ошибками. Следующий checkpoint закрыл 217 ошибок в
+семи Telegraph/Search/Gemini/Shorts/LiveDub/Dub wizard modules через
+generic JSON boundaries, optional SDK narrowing, worker-side stat и
+Telegram context guards. Текущий срез — 236/241 production modules (97,9 %),
+остаётся 5 modules (2,1 %). Полный production baseline оставшихся файлов —
+340 ошибок в 5 файлах; новые exclude или общие suppression для их сокрытия
+не добавляются.
 
 **Найденные по дороге настоящие дефекты:** кортеж кортежей в `negative` у
 `core/source_packs.py` (работал только за счёт защитного `neg[0]`), `max()`/деление

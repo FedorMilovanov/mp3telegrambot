@@ -40,11 +40,15 @@ import logging
 import re
 import time
 import os
+from functools import partial
+from pathlib import Path
+from typing import Any
 
-try:
-    from google.genai import types
-except ImportError:
-    types = None
+_genai_types: Any = None
+with contextlib.suppress(ImportError):
+    from google.genai import types as _genai_types
+
+types: Any = _genai_types
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +94,7 @@ def _format_ts_for_prompt(seconds: int | float = 0) -> str:
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
 
 
-def _format_repaired_timestamps(data: dict, duration: int) -> str:
+def _format_repaired_timestamps(data: dict[str, Any], duration: int) -> str:
     items = data.get("timestamps") if isinstance(data, dict) else []
     if not isinstance(items, list):
         return ""
@@ -114,8 +118,13 @@ def _format_repaired_timestamps(data: dict, duration: int) -> str:
 
 
 async def _repair_timestamp_coverage_if_needed(
-    client, audio_part, parsed: dict | None, duration: int, model_name: str, video_id: str
-) -> dict | None:
+    client: Any,
+    audio_part: Any,
+    parsed: dict[str, Any] | None,
+    duration: int,
+    model_name: str,
+    video_id: str,
+) -> dict[str, Any] | None:
     """One targeted, non-fatal LOW-thinking repair pass for timestamp coverage."""
     if not parsed or not _timestamp_repair_enabled() or not parsed.get("timestamp_coverage_warning"):
         return parsed
@@ -199,17 +208,17 @@ async def _repair_timestamp_coverage_if_needed(
 _MAX_UPLOAD_WAIT = 600
 
 
-async def _safe_delete_gemini_file(client, file_name: str) -> None:
+async def _safe_delete_gemini_file(client: Any, file_name: str) -> None:
     try:
         await client.aio.files.delete(name=file_name)
     except Exception as e:
         logger.warning(f"Не удалось удалить Gemini file {file_name}: {e}")
 
 
-_BG_DELETE_TASKS: set = set()
+_BG_DELETE_TASKS: set[asyncio.Task[None]] = set()
 
 
-def _spawn_safe_delete(client, file_name: str) -> None:
+def _spawn_safe_delete(client: Any, file_name: str) -> None:
     if not file_name or client is None:
         return
     task = asyncio.create_task(_safe_delete_gemini_file(client, file_name))
@@ -217,14 +226,14 @@ def _spawn_safe_delete(client, file_name: str) -> None:
     task.add_done_callback(_BG_DELETE_TASKS.discard)
 
 
-def _validate_and_fix_timestamps(data: dict, duration: int) -> dict:
+def _validate_and_fix_timestamps(data: dict[str, Any], duration: int) -> dict[str, Any]:
     """Удаляет/обнуляет таймкоды за пределами duration из parsed_data."""
     if duration <= 0:
         return data
 
     ts_pattern = re.compile(r"^(\d+):(\d{2})(?::(\d{2}))?$")
 
-    def _secs(ts_str: str):
+    def _secs(ts_str: str) -> int | None:
         if not isinstance(ts_str, str):
             return None
         m = ts_pattern.match(ts_str.strip())
@@ -234,15 +243,15 @@ def _validate_and_fix_timestamps(data: dict, duration: int) -> dict:
             return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3))
         return int(m.group(1)) * 60 + int(m.group(2))
 
-    def _fix_value(v):
+    def _fix_value(v: Any) -> Any:
         if isinstance(v, list):
             return [_fix_value(item) for item in v]
         if isinstance(v, dict):
             return _fix_dict(v)
         return v
 
-    def _fix_dict(d: dict) -> dict:
-        out = {}
+    def _fix_dict(d: dict[str, Any]) -> dict[str, Any]:
+        out: dict[str, Any] = {}
         for key, val in d.items():
             if key == "time" and isinstance(val, str):
                 secs = _secs(val)
@@ -262,7 +271,7 @@ def _validate_and_fix_timestamps(data: dict, duration: int) -> dict:
     return data
 
 
-def _log_gemini_finish_reason(response) -> None:
+def _log_gemini_finish_reason(response: Any) -> None:
     """Log response metadata without rejecting an otherwise usable response."""
     try:
         finish_reason = response.candidates[0].finish_reason if response.candidates else "NO_CANDIDATES"
@@ -271,7 +280,14 @@ def _log_gemini_finish_reason(response) -> None:
         logger.debug("Gemini finish-reason inspection failed", exc_info=True)
 
 
-async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg, prefix=""):
+async def gemini_analyze_audio(
+    mp3_path: Path,
+    title: str,
+    performer: str,
+    duration: int,
+    status_msg: Any,
+    prefix: str = "",
+) -> tuple[dict[str, Any] | None, Any, Any]:
     """Анализирует аудио через Gemini API без retry-storm и model downgrade."""
     if not duration or duration <= 0:
         logger.warning("gemini_analyze_audio: duration=0 или не задан, пропускаем анализ.")
@@ -284,8 +300,8 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
     _models_to_try = _audio_fallback_models(_user_model)
     logger.info("Gemini audio model (strict no-downgrade): %s", _models_to_try)
 
-    used_client = None
-    used_audio_part = None
+    used_client: Any = None
+    used_audio_part: Any = None
     _obs_started = time.perf_counter()
     _obs_video_id = getattr(mp3_path, "stem", "") or ""
     _obs_model = ""
@@ -297,9 +313,10 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
         return int((time.perf_counter() - _obs_started) * 1000)
 
     try:
-        file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
+        mp3_stat = await asyncio.to_thread(mp3_path.stat)
+        file_size_mb = mp3_stat.st_size / (1024 * 1024)
         await set_progress(status_msg, 4, {"info": "🧠 Загружаю аудио для анализа..."})
-        audio_bytes = None
+        audio_bytes = b""
 
         upload_budget = capacity_control.GeminiRetryBudget()
         inference_budget = capacity_control.GeminiRetryBudget()
@@ -313,14 +330,14 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
         # circuit, do not upload another large file that cannot be consumed.
         capacity_control.require_domain_available("inference")
 
-        async def upload_to_client(client):
+        async def upload_to_client(client: Any) -> tuple[Any, Any]:
             """One Files API upload attempt under the shared upload budget."""
             if file_size_mb <= 0:
                 return types.Part.from_bytes(data=audio_bytes, mime_type="audio/mpeg"), client
             if upload_budget.exhausted:
                 raise RuntimeError("Gemini Files upload retry budget exhausted")
             upload_budget.claim()
-            uf = None
+            uf: Any = None
             remote_name = ""
             try:
                 uf = await capacity_control.run_heavy_gemini_call(
@@ -342,7 +359,7 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                     await set_progress(status_msg, 4, {"info": "🧠 Gemini обрабатывает аудио... ⏳"})
                     await asyncio.sleep(3)
                     uf = await capacity_control.run_heavy_gemini_call(
-                        lambda _name=uf.name: client.aio.files.get(name=_name),
+                        partial(client.aio.files.get, name=uf.name),
                         domain="files",
                     )
                 if uf.state == "FAILED":
@@ -383,12 +400,12 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
             _audio_tokens_est // 1000,
         )
 
-        last_err = None
-        response = None
+        last_err: Exception | None = None
+        response: Any = None
         success = False
         _current_model = _models_to_try[0]
 
-        async def _generate_once(client, audio_part, model_name):
+        async def _generate_once(client: Any, audio_part: Any, model_name: str) -> Any:
             """One logical inference attempt; schema fallback is schema-only."""
             if _audio_structured_output_enabled():
                 try:
@@ -594,8 +611,8 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
 
         _log_gemini_finish_reason(response)
 
-        def _extract_raw_text(resp) -> str | None:
-            _txt = None
+        def _extract_raw_text(resp: Any) -> str | None:
+            _txt: str | None = None
             with contextlib.suppress(ValueError):
                 _txt = resp.text
             if not _txt and getattr(resp, "candidates", None):
@@ -607,13 +624,13 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
                         break
             return _txt
 
-        def _finish_reason_of(resp) -> str:
+        def _finish_reason_of(resp: Any) -> str:
             if getattr(resp, "candidates", None):
                 _f = getattr(resp.candidates[0], "finish_reason", None)
                 return str(_f) if _f is not None else "UNKNOWN"
             return "UNKNOWN"
 
-        async def _retry_low_thinking(reason: str):
+        async def _retry_low_thinking(reason: str) -> Any:
             """One real LOW-thinking recovery for empty/MAX_TOKENS responses."""
             logger.warning("Gemini %s — повтор с thinking_level=low", reason)
             try:

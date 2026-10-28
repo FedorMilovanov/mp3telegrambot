@@ -2,6 +2,7 @@
 """Markdown-to-Telegraph conversion and Telegraph-node cleaning helpers."""
 
 import re
+from typing import Any
 
 from core.core_utils import (
     _fix_rtl_in_text,
@@ -55,7 +56,7 @@ def _demote_paragraph_bold(line: str) -> str:
     has_oversized = any(len(b) > MAX_SINGLE_BOLD for b in bold_matches)
     if has_oversized:
 
-        def _demote_if_long(m):
+        def _demote_if_long(m: re.Match[str]) -> str:
             inner = m.group(1)
             if len(inner) > MAX_SINGLE_BOLD:
                 return inner
@@ -69,9 +70,9 @@ def _demote_paragraph_bold(line: str) -> str:
     return line
 
 
-def _md_to_telegraph_nodes(md: str) -> list:
+def _md_to_telegraph_nodes(md: str) -> list[dict[str, Any]]:
     """Полный Markdown → Telegraph nodes."""
-    nodes = []
+    nodes: list[dict[str, Any]] = []
     prev_was_empty = False
     for line in md.split("\n"):
         s = line.strip()
@@ -138,7 +139,7 @@ def _md_to_telegraph_nodes(md: str) -> list:
             _bq_has_rtl = bool(re.search(r"[\u0590-\u05FF\u0600-\u06FF]", _bq_text))
             if _bq_has_rtl:
                 _bq_text = _fix_rtl_in_text(_bq_text)
-            _bq_node = {"tag": "blockquote", "children": _md_parse_inline(_bq_text)}
+            _bq_node: dict[str, Any] = {"tag": "blockquote", "children": _md_parse_inline(_bq_text)}
             if _bq_has_rtl:
                 _bq_node["attrs"] = {"dir": "ltr"}
             nodes.append(_bq_node)
@@ -153,22 +154,29 @@ def _md_to_telegraph_nodes(md: str) -> list:
                 _only_bold = re.match(r"^\*\*([^*]+)\*\*\.?$", _rest_stripped)
                 if _only_bold:
                     _title = _rest_stripped[2:].rstrip("*").rstrip(".")
-                    _ob_node = {"tag": "p", "children": [{"tag": "b", "children": [f"{_num}. {_title}."]}]}
+                    _ob_node: dict[str, Any] = {
+                        "tag": "p",
+                        "children": [{"tag": "b", "children": [f"{_num}. {_title}."]}],
+                    }
                     if re.search(r"[֐-׿؀-ۿ]", _title):
                         _ob_node["attrs"] = {"dir": "ltr"}
                     nodes.append(_ob_node)
                 elif _rest_stripped.startswith("**"):
                     # Заголовок + текст: сливаем номер в первый <b>
-                    _inline = _md_parse_inline(_rest_stripped)
+                    _inline: list[Any] = _md_parse_inline(_rest_stripped)
                     _inline_has_rtl = bool(re.search(r"[\u0590-\u05FF\u0600-\u06FF]", _rest_stripped))
                     if _inline and isinstance(_inline[0], dict) and _inline[0].get("tag") == "b":
-                        _inline[0]["children"] = [f"{_num}. "] + _inline[0]["children"]
-                        _p_inl = {"tag": "p", "children": _inline}
+                        _first_inline: Any = _inline[0]
+                        _first_inline["children"] = [f"{_num}. "] + _first_inline["children"]
+                        _p_inl: dict[str, Any] = {"tag": "p", "children": _inline}
                         if _inline_has_rtl:
                             _p_inl["attrs"] = {"dir": "ltr"}
                         nodes.append(_p_inl)
                     else:
-                        _p_inl2 = {"tag": "p", "children": [{"tag": "b", "children": [f"{_num}. "]}] + _inline}
+                        _p_inl2: dict[str, Any] = {
+                            "tag": "p",
+                            "children": [{"tag": "b", "children": [f"{_num}. "]}] + _inline,
+                        }
                         if _inline_has_rtl:
                             _p_inl2["attrs"] = {"dir": "ltr"}
                         nodes.append(_p_inl2)
@@ -176,7 +184,7 @@ def _md_to_telegraph_nodes(md: str) -> list:
                     _num_has_rtl = bool(re.search(r"[\u0590-\u05FF\u0600-\u06FF]", _rest))
                     if _num_has_rtl:
                         _rest = _fix_rtl_in_text(_rest)
-                    _num_node = {
+                    _num_node: dict[str, Any] = {
                         "tag": "p",
                         "children": [{"tag": "b", "children": [f"{_num}.\u00a0"]}] + _md_parse_inline(_rest),
                     }
@@ -194,7 +202,7 @@ def _md_to_telegraph_nodes(md: str) -> list:
             _li_has_rtl = bool(re.search(r"[\u0590-\u05FF\u0600-\u06FF]", _li_text))
             if _li_has_rtl:
                 _li_text = _fix_rtl_in_text(_li_text)
-            _li_node = {"tag": "p", "children": ["• "] + _md_parse_inline(_li_text)}
+            _li_node: dict[str, Any] = {"tag": "p", "children": ["• "] + _md_parse_inline(_li_text)}
             if _li_has_rtl:
                 _li_node["attrs"] = {"dir": "ltr"}
             nodes.append(_li_node)
@@ -204,7 +212,7 @@ def _md_to_telegraph_nodes(md: str) -> list:
             # иначе браузер переключает выравнивание всего абзаца вправо.
             _has_rtl = bool(re.search(r"[\u0590-\u05FF\u0600-\u06FF]", s))
             _s_for_parse = _fix_rtl_in_text(s) if _has_rtl else s
-            _p_children = _md_parse_inline(_s_for_parse)
+            _p_children: list[Any] = _md_parse_inline(_s_for_parse)
             # v10b RTL FIX: если первый child — dict (bold/italic) с ивритом,
             # браузер BiDi считает весь абзац RTL и «улетает» вправо.
             # Вставляем LTR Mark (U+200E) первым символом → абзац остаётся LTR.
@@ -216,7 +224,7 @@ def _md_to_telegraph_nodes(md: str) -> list:
                 and _p_children[0].get("tag") in ("b", "i")
             ):
                 _p_children = ["\u200e"] + _p_children
-            _p_node = {"tag": "p", "children": _p_children}
+            _p_node: dict[str, Any] = {"tag": "p", "children": _p_children}
             if _has_rtl:
                 _p_node["attrs"] = {"dir": "ltr"}
             nodes.append(_p_node)
@@ -234,7 +242,7 @@ def _clean_text_block(text: str) -> str:
     return text
 
 
-def _clean_node_texts(node):
+def _clean_node_texts(node: Any) -> Any:
     """Рекурсивно убирает None и пустые children из Telegraph nodes.
     НЕ редактирует текстовое содержимое — чтобы не ломать форматирование
     богословских статей, scripture, lexicon notes и narrative content."""
@@ -243,7 +251,7 @@ def _clean_node_texts(node):
     children = node.get("children")
     if not isinstance(children, list):
         return node
-    new_children = []
+    new_children: list[Any] = []
     for child in children:
         if isinstance(child, str):
             # Оставляем строку как есть — не прогоняем через _clean_text_block
@@ -261,9 +269,9 @@ def _clean_node_texts(node):
     return node
 
 
-def _clean_telegraph_nodes(nodes: list) -> list:
+def _clean_telegraph_nodes(nodes: list[Any]) -> list[Any]:
     """Централизованная очистка Telegraph nodes от мусора. Применять перед любой публикацией."""
-    cleaned = []
+    cleaned: list[Any] = []
     for n in nodes:
         cn = _clean_node_texts(n)
         if not cn:

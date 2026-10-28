@@ -451,3 +451,16 @@ def test_content_too_big_returns_only_successful_part(monkeypatch):
     _prepare_post(monkeypatch, respond)
     nodes = [{"tag": "p", "children": ["one"]}, {"tag": "p", "children": ["two"]}]
     assert _post(nodes=nodes) == "https://telegra.ph/only"
+
+
+def test_numbered_bold_fallback_keeps_number_as_separate_bold_node(monkeypatch):
+    monkeypatch.setattr(telegraph_nodes, "_md_parse_inline", lambda _text: ["plain"])
+
+    nodes = telegraph_nodes._md_to_telegraph_nodes("1. **Title** rest")
+
+    assert nodes == [
+        {
+            "tag": "p",
+            "children": [{"tag": "b", "children": ["1.\u00a0"]}, "plain"],
+        }
+    ]

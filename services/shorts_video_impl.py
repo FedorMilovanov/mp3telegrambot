@@ -31,6 +31,7 @@ import shutil
 import subprocess
 import threading  # FIX shorts_video
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -255,7 +256,7 @@ async def _unowned_render_short_clip(
                 _use_filter_complex = True
             mode_label = "full_frame_blur"
         _enc, _quality, _preset = await await_owned_coroutine(asyncio.to_thread(_get_video_encoder))
-        _hwaccel = []  # hwaccel cuda убран: CPU-фильтры несовместимы с CUDA decode
+        _hwaccel: list[str] = []  # hwaccel cuda убран: CPU-фильтры несовместимы с CUDA decode
         _vf_args = ["-filter_complex", vf, "-map", "[out]", "-map", "0:a?"] if _use_filter_complex else ["-vf", vf]
         cmd = [
             ffmpeg,
@@ -377,7 +378,7 @@ async def _unowned_short_transform(
             return True
 
         _enc, _quality, _preset = await await_owned_coroutine(asyncio.to_thread(_get_video_encoder))
-        _hwaccel = []  # hwaccel cuda убран: CPU-фильтры несовместимы с CUDA decode
+        _hwaccel: list[str] = []  # hwaccel cuda убран: CPU-фильтры несовместимы с CUDA decode
         cmd = [ffmpeg, *_hwaccel, "-i", str(input_path)]
         if vf_arg:
             cmd += ["-vf", vf_arg]
@@ -593,7 +594,7 @@ def _pick_subtitle_font() -> str:
     return "Arial"  # системный fallback
 
 
-def _normalize_word_timings(words: list[dict]) -> list[dict]:
+def _normalize_word_timings(words: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     Нормализует тайминги слов от Whisper:
     - минимальная длительность слова 80ms
@@ -602,7 +603,7 @@ def _normalize_word_timings(words: list[dict]) -> list[dict]:
     """
     if not words:
         return words
-    result = []
+    result: list[dict[str, Any]] = []
     MIN_DUR = 0.08  # 80ms минимум на word
     for i, w in enumerate(words):
         start = float(w.get("start", 0))
@@ -619,7 +620,7 @@ def _normalize_word_timings(words: list[dict]) -> list[dict]:
     return result
 
 
-def _merge_hyphenated_particles(words: list[dict]) -> list[dict]:
+def _merge_hyphenated_particles(words: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     Склеивает русские частицы через дефис обратно в одно слово.
 
@@ -634,7 +635,7 @@ def _merge_hyphenated_particles(words: list[dict]) -> list[dict]:
 
     PARTICLES = {"-то", "-либо", "-нибудь", "-ка", "-таки", "-де", "-с", "-ж", "-же"}
 
-    result = []
+    result: list[dict[str, Any]] = []
     i = 0
     while i < len(words):
         w = words[i]
@@ -673,7 +674,7 @@ def _merge_hyphenated_particles(words: list[dict]) -> list[dict]:
 _PURE_PUNCT_RE = re.compile(r"^[^\w]+$", re.UNICODE)
 
 
-def _merge_orphan_punctuation(words: list[dict]) -> list[dict]:
+def _merge_orphan_punctuation(words: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Приклеивает токен из ОДНОЙ пунктуации к предыдущему слову.
 
     Whisper иногда отдаёт закрывающую кавычку+знак («?»» после «Спаситель»)
@@ -686,7 +687,7 @@ def _merge_orphan_punctuation(words: list[dict]) -> list[dict]:
     """
     if len(words) < 2:
         return words
-    result: list[dict] = []
+    result: list[dict[str, Any]] = []
     for w in words:
         word_text = w.get("word", "").strip()
         if word_text and result and _PURE_PUNCT_RE.match(word_text):
@@ -701,7 +702,9 @@ def _merge_orphan_punctuation(words: list[dict]) -> list[dict]:
     return result
 
 
-def _chunk_words_smart(words: list[dict], max_chars: int = 36, max_pause: float = 0.4) -> list[list[dict]]:
+def _chunk_words_smart(
+    words: list[dict[str, Any]], max_chars: int = 36, max_pause: float = 0.4
+) -> list[list[dict[str, Any]]]:
     """
     Умная группировка слов в subtitle chunks.
 
@@ -748,8 +751,8 @@ def _chunk_words_smart(words: list[dict], max_chars: int = 36, max_pause: float 
         "то",
     }
 
-    chunks: list[list[dict]] = []
-    current: list[dict] = []
+    chunks: list[list[dict[str, Any]]] = []
+    current: list[dict[str, Any]] = []
     current_len = 0
 
     for i, w in enumerate(words):
@@ -796,7 +799,7 @@ def _chunk_words_smart(words: list[dict], max_chars: int = 36, max_pause: float 
     return chunks
 
 
-def _wrap_chunk_to_lines(words: list[dict], max_chars: int = 36) -> str:
+def _wrap_chunk_to_lines(words: list[dict[str, Any]], max_chars: int = 36) -> str:
     """
     Разбивает chunk слов на 1-2 строки, балансируя длину.
     Возвращает текст с \\N между строками если нужно 2 строки.
@@ -827,7 +830,7 @@ def _wrap_chunk_to_lines(words: list[dict], max_chars: int = 36) -> str:
     return text
 
 
-def _fill_timing_gaps(words: list[dict], max_gap: float = 0.8) -> list[dict]:
+def _fill_timing_gaps(words: list[dict[str, Any]], max_gap: float = 0.8) -> list[dict[str, Any]]:
     """
     Заполняет дыры в тайминге слов.
 
@@ -838,7 +841,7 @@ def _fill_timing_gaps(words: list[dict], max_gap: float = 0.8) -> list[dict]:
     """
     if len(words) < 2:
         return words
-    result = []
+    result: list[dict[str, Any]] = []
     for i, w in enumerate(words):
         if i == 0:
             result.append({**w})
@@ -850,7 +853,7 @@ def _fill_timing_gaps(words: list[dict], max_gap: float = 0.8) -> list[dict]:
     return result
 
 
-def _generate_ass_from_segments(segments: list[dict], karaoke: bool = True) -> str:
+def _generate_ass_from_segments(segments: list[dict[str, Any]], karaoke: bool = True) -> str:
     """
     Генерирует .ass-файл из сегментов (faster-whisper). Стиль 2026.
 
@@ -901,8 +904,8 @@ def _generate_ass_from_segments(segments: list[dict], karaoke: bool = True) -> s
     )
 
     # ── Вспомогательная функция сборки слов из сегментов ─────────
-    def _collect_words(segs: list[dict]) -> list[dict]:
-        result: list[dict] = []
+    def _collect_words(segs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        result: list[dict[str, Any]] = []
         for seg in segs:
             words_raw = seg.get("words") or []
             if words_raw:
@@ -1034,7 +1037,7 @@ _whisper_model_name: str | None = None
 _whisper_lock = threading.Lock()
 
 
-def get_subtitles_mode_settings() -> dict:
+def get_subtitles_mode_settings() -> dict[str, Any]:
     """Возвращает настройки subtitle pipeline на основе /settings.
 
     heavy default (karaoke=True, light=False):
@@ -1067,7 +1070,7 @@ def _clear_torch_cuda_cache() -> None:
         logger.debug("CUDA cache cleanup failed; continuing without GPU synchronization", exc_info=True)
 
 
-def _reset_whisper_model(device: str | None = None, compute_type: str | None = None):
+def _reset_whisper_model(device: str | None = None, compute_type: str | None = None) -> None:
     """Forcefully resets the singleton so the next call creates a fresh model on the requested device."""
     global _whisper_model, _whisper_model_name  # noqa: PLW0603 -- Whisper singleton reset rebinds model state under its lock
     with _whisper_lock:
@@ -1079,7 +1082,7 @@ def _reset_whisper_model(device: str | None = None, compute_type: str | None = N
         _whisper_model_name = None
 
 
-def _get_whisper_model(model_size: str | None = None):
+def _get_whisper_model(model_size: str | None = None) -> Any:
     """Возвращает singleton WhisperModel, создаёт при первом вызове или при смене модели."""
     global _whisper_model, _whisper_model_name  # noqa: PLW0603 -- lazy Whisper singleton is rebound under its existing lock
     if model_size is None:
@@ -1119,7 +1122,7 @@ def _get_whisper_model(model_size: str | None = None):
         return _whisper_model
 
 
-def preload_whisper_if_needed():
+def preload_whisper_if_needed() -> None:
     """Устаревшая функция — не вызывается. Используйте _preload_whisper_bg внутри run_bot_async.
     Оставлена для обратной совместимости на случай внешних вызовов.
     """
@@ -1141,7 +1144,7 @@ def preload_whisper_if_needed():
         logger.warning(f"Whisper preload failed: {e}")
 
 
-def _extract_subtitle_hint_terms(ai_data: dict | None, limit: int = 80) -> list[str]:
+def _extract_subtitle_hint_terms(ai_data: dict[str, Any] | None, limit: int = 80) -> list[str]:
     """Extract high-value Gemini hints for Whisper without using generated prose as subtitles."""
     if not ai_data:
         return []
@@ -1175,7 +1178,7 @@ def _extract_subtitle_hint_terms(ai_data: dict | None, limit: int = 80) -> list[
     return out
 
 
-def build_whisper_initial_prompt(ai_data: dict | None = None, *, use_gemini_hints: bool = True) -> str:
+def build_whisper_initial_prompt(ai_data: dict[str, Any] | None = None, *, use_gemini_hints: bool = True) -> str:
     """Build Whisper initial_prompt from Gemini vocabulary hints.
 
     We do NOT use Gemini-generated text as subtitles. Whisper remains the timing
@@ -1197,7 +1200,9 @@ def _polish_subtitle_text(text: str) -> str:
     return " ".join(text.split())
 
 
-async def _unowned_transcribe_short_clip(video_path: Path, ai_data: dict = None) -> list[dict]:
+async def _unowned_transcribe_short_clip(
+    video_path: Path, ai_data: dict[str, Any] | None = None
+) -> list[dict[str, Any]]:
     """
     Транскрибирует аудио клипа через faster-whisper.
     Возвращает сегменты [{"start", "end", "text"}] или [] если нет модели/ошибка.
@@ -1248,7 +1253,7 @@ async def _unowned_transcribe_short_clip(video_path: Path, ai_data: dict = None)
 
         if proc.returncode != 0:
             logger.warning(
-                f"Subtitles: ffmpeg извлечение аудио упало (code={proc.returncode}): {(proc.stderr or b'')[-300:]}"
+                f"Subtitles: ffmpeg извлечение аудио упало (code={proc.returncode}): {(proc.stderr or b'')[-300:]!r}"
             )
             wav_path.unlink(missing_ok=True)
             return []
@@ -1288,7 +1293,7 @@ async def _unowned_transcribe_short_clip(video_path: Path, ai_data: dict = None)
         )
         _initial_prompt_for_thread = _whisper_initial_prompt
 
-        def _run_whisper():
+        def _run_whisper() -> tuple[list[dict[str, Any]], Any, Any, Any]:
             _clear_torch_cuda_cache()
             model = _get_whisper_model(model_size)
             segs, info = model.transcribe(
@@ -1368,7 +1373,7 @@ async def _unowned_transcribe_short_clip(video_path: Path, ai_data: dict = None)
 async def _unowned_burn_subtitles_into_short(
     input_path: Path,
     output_path: Path,
-    segments: list[dict],
+    segments: list[dict[str, Any]],
 ) -> bool:
     """
     Вшивает субтитры в клип через ffmpeg ASS burn-in.
@@ -1388,7 +1393,7 @@ async def _unowned_burn_subtitles_into_short(
             ass_path = Path(tmp.name)
         ass_escaped = str(ass_path).replace("\\", "/").replace(":", "\\:")
         _enc, _quality, _preset = await await_owned_coroutine(asyncio.to_thread(_get_video_encoder))
-        _hwaccel = []  # hwaccel cuda убран: CPU-фильтры несовместимы с CUDA decode
+        _hwaccel: list[str] = []  # hwaccel cuda убран: CPU-фильтры несовместимы с CUDA decode
         cmd = [
             ffmpeg,
             *_hwaccel,
@@ -1525,7 +1530,7 @@ async def _unowned_create_short_title_poster(
                 # чистые sans-serif, хорошо работают с русским.
                 # Fallback: DejaVu → Liberation → FreeSans → default.
                 font_size = max(56, W // 13)  # ~56px при 720px, чуть крупнее прежнего
-                font = None
+                font: ImageFont.FreeTypeFont | ImageFont.ImageFont | None = None
                 for fp in [
                     # Noto Sans — лучший выбор для русского
                     "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
@@ -1694,7 +1699,7 @@ def _prepare_short_hook(hook: str, author_label: str = "") -> str:
 
 
 def build_short_caption(
-    candidate: dict,
+    candidate: dict[str, Any],
     performer: str,
     real_author: str,
     real_event: str,
@@ -1791,15 +1796,15 @@ async def postprocess_short(
 
 async def transcribe_short_clip(
     video_path: Path,
-    ai_data: dict = None,
-) -> list[dict]:
+    ai_data: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     return await await_owned_coroutine(_unowned_transcribe_short_clip(video_path, ai_data=ai_data))
 
 
 async def burn_subtitles_into_short(
     input_path: Path,
     output_path: Path,
-    segments: list[dict],
+    segments: list[dict[str, Any]],
 ) -> bool:
     # Preserve compatibility for old imports while enforcing the single active
     # transactional ASS/process owner introduced by PR #85/#94.

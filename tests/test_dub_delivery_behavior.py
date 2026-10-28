@@ -420,3 +420,14 @@ def test_delivery_registration_is_idempotent():
     assert application.bot_data["dub_studio_delivery_registered"] is True
     assert application.handlers[0].commands == frozenset({"dubsend"})
     assert application.handlers[0].callback is delivery.dubsend_command
+
+
+def test_dubsend_command_returns_when_telegram_chat_context_is_missing(monkeypatch):
+    monkeypatch.setattr(delivery, "ADMIN_IDS", {1})
+    update, message = _update()
+    update.effective_chat = None
+    context = SimpleNamespace(args=[], bot=SimpleNamespace())
+
+    asyncio.run(delivery.dubsend_command(update, context))
+
+    assert message.replies == []
