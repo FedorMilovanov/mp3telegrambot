@@ -34,6 +34,7 @@ from core.bgutil_pin import (
     BGUTIL_HTTP_HOST as DEFAULT_HOST,
     BGUTIL_HTTP_PORT as DEFAULT_PORT,
 )
+from services.process_executables import resolve_required_executable
 
 # The provider is RCE-prone when reachable from the network
 # (GHSA-qpv9-8xfj-xx9m, fixed in 2.0.0). 2.0+ binds loopback by default; we also
@@ -181,7 +182,7 @@ def _force_stop_tree(process: subprocess.Popen[Any]) -> None:
     if os.name == "nt":
         try:
             subprocess.run(
-                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                [resolve_required_executable("taskkill"), "/PID", str(process.pid), "/T", "/F"],
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,

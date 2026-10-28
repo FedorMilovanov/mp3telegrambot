@@ -16,11 +16,12 @@
 |---|---|---|
 | `core/` | 0 | — |
 | `pipelines/` | 0 | `pipelines/main_pipeline.py` (P0-3: файл режется на этапы) |
+| `services/process_executables.py` | 0 | — |
 | `services/speech_backends/` | 0 | — |
 | `services/telegraph_repair.py` | 0 | — |
 
-Текущий срез — 107/240 production modules (44,6 %); вне него остаются
-133 modules (55,4 %).
+Текущий срез — 108/241 production modules (44,8 %); вне него остаются
+133 modules (55,2 %).
 
 Измерено после расширения среза на `pipelines/`: полный `mypy --strict .`
 (включая `tests/`) — 5 038 ошибок в 563 файлах; по пакетам без тестов:

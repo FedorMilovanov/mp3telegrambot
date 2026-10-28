@@ -18,6 +18,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from services.process_executables import resolve_required_executable
+
 DEFAULT_PORT = 4416
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SERVER_MAIN = PROJECT_ROOT / ".runtime" / "bgutil-ytdlp-pot-provider" / "server" / "build" / "main.js"
@@ -133,7 +135,7 @@ def is_expected_bgutil_owner(
 def _kill_windows_process_tree(pid: int) -> None:
     try:
         process = subprocess.run(
-            ["taskkill", "/PID", str(int(pid)), "/T", "/F"],
+            [resolve_required_executable("taskkill"), "/PID", str(int(pid)), "/T", "/F"],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from services.dub_studio import DubStore, Recipe, resolve_recipe_path, utc_now
+from services.process_executables import resolve_required_executable
 
 EXECUTION_LEASE_POLICY = "dub-runner-execution-lease-v1"
 ARTIFACT_VALIDATION_POLICY = "current-job-artifact-postcondition-v1"
@@ -127,7 +128,7 @@ def terminate_process_tree(pid: int, *, timeout: float = 20.0) -> None:
         return
     if os.name == "nt":
         subprocess.run(
-            ["taskkill", "/PID", str(pid), "/T", "/F"],
+            [resolve_required_executable("taskkill"), "/PID", str(pid), "/T", "/F"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             timeout=max(1.0, float(timeout)),
