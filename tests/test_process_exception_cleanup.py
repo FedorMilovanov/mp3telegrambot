@@ -11,7 +11,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from services import async_process, bgutil_http_runtime, dub_execution, dub_worker
+from services import async_process, bgutil_http_runtime, dub_execution, dub_studio, dub_studio_runtime, dub_worker
 
 
 class DirectProcess:
@@ -206,6 +206,59 @@ def test_windows_taskkill_failure_falls_back_to_terminate(monkeypatch) -> None:
     assert run.call_args.args[0][0] == r"C:\Windows\System32\taskkill.exe"
     process.terminate.assert_called_once_with()
     process.kill.assert_not_called()
+
+
+def test_studio_stale_worker_uses_resolved_taskkill(monkeypatch) -> None:
+    run = Mock(return_value=None)
+    monkeypatch.setattr(
+        dub_studio_runtime,
+        "resolve_required_executable",
+        lambda _name: r"C:\Windows\System32\taskkill.exe",
+    )
+    monkeypatch.setattr(dub_studio_runtime.subprocess, "run", run)
+
+    dub_studio_runtime._stop_stale_windows_worker(123)
+
+    assert run.call_args.args[0] == [
+        r"C:\Windows\System32\taskkill.exe",
+        "/PID",
+        "123",
+        "/T",
+        "/F",
+    ]
+
+
+def test_studio_stale_worker_preserves_nonfatal_failure(monkeypatch, caplog) -> None:
+    monkeypatch.setattr(dub_studio_runtime, "resolve_required_executable", lambda _name: "/resolved/taskkill")
+    monkeypatch.setattr(dub_studio_runtime.subprocess, "run", Mock(side_effect=OSError("unavailable")))
+    caplog.set_level("WARNING", logger="services.dub_studio_runtime")
+
+    dub_studio_runtime._stop_stale_windows_worker(123)
+
+    assert "Could not replace old Dub Studio worker" in caplog.text
+
+
+def test_studio_worker_replacement_executes_stale_windows_cleanup(monkeypatch, tmp_path: Path) -> None:
+    class Store:
+        def latest_worker(self):
+            return {"pid": 123, "status": "idle", "details": {"runtime": "old"}}
+
+    stop = Mock()
+    popen = Mock(return_value=SimpleNamespace(pid=456))
+    monkeypatch.setattr(dub_studio_runtime, "enabled", lambda: True)
+    monkeypatch.setattr(dub_studio_runtime, "_flag", lambda _name, _default: True)
+    monkeypatch.setattr(dub_studio_runtime, "_pid_running", lambda _pid: True)
+    monkeypatch.setattr(dub_studio_runtime, "_stop_stale_windows_worker", stop)
+    monkeypatch.setattr(dub_studio_runtime, "os", SimpleNamespace(name="nt", environ={}))
+    monkeypatch.setattr(dub_studio_runtime.subprocess, "Popen", popen)
+    monkeypatch.setattr(dub_studio, "DubStore", Store)
+    monkeypatch.setattr(dub_studio, "worker_is_fresh", lambda _worker: True)
+    monkeypatch.setattr(dub_studio, "studio_root", lambda: tmp_path)
+    monkeypatch.setattr(dub_studio, "repo_root", lambda: tmp_path)
+
+    assert dub_studio_runtime.ensure_worker_running() is True
+    stop.assert_called_once_with(123)
+    popen.assert_called_once()
 
 
 def test_quality_retry_log_is_archived(tmp_path: Path) -> None:

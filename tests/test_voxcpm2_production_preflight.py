@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -23,6 +25,25 @@ def _load_module():
 
 
 preflight = _load_module()
+
+
+def test_probe_duration_uses_resolved_ffprobe(monkeypatch) -> None:
+    run = Mock(return_value=SimpleNamespace(returncode=0, stdout="12.5\n", stderr=""))
+    monkeypatch.setattr(preflight.shutil, "which", lambda _name: "/resolved/ffprobe")
+    monkeypatch.setattr(preflight.subprocess, "run", run)
+
+    assert preflight.probe_duration(Path("source.mp4")) == 12.5
+    assert run.call_args.args[0][0] == "/resolved/ffprobe"
+
+
+def test_probe_duration_preserves_missing_executable_error(monkeypatch) -> None:
+    run = Mock()
+    monkeypatch.setattr(preflight.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(preflight.subprocess, "run", run)
+
+    with pytest.raises(FileNotFoundError, match="ffprobe"):
+        preflight.probe_duration(Path("source.mp4"))
+    run.assert_not_called()
 
 
 def test_load_segments_accepts_final_four_block_plan(tmp_path: Path) -> None:

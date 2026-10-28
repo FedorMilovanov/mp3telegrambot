@@ -1,7 +1,10 @@
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
+from tools import run_factory_media_benchmark as benchmark
 from tools.verify_factory_media_quality import _assert_quality, _timestamp
 
 
@@ -68,6 +71,23 @@ def test_factory_language_prompt_typo_does_not_regress():
     source = Path("services/shorts_factory_source.py").read_text(encoding="utf-8")
     assert "доминирующий фактически услышанный язык речи" in source
     assert "услышаннный" not in source
+
+
+def test_factory_benchmark_uses_resolved_ffmpeg(monkeypatch, tmp_path):
+    output = tmp_path / "source.mp4"
+
+    def complete(command, **_kwargs):
+        output.write_bytes(b"x" * 2048)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    run = Mock(side_effect=complete)
+    monkeypatch.setattr(benchmark, "resolve_required_executable", lambda _name: "/resolved/ffmpeg")
+    monkeypatch.setattr(benchmark.subprocess, "run", run)
+
+    benchmark._generate_source(output)
+
+    assert run.call_args.args[0][0] == "/resolved/ffmpeg"
+    assert run.call_args.args[0][-1] == str(output)
 
 
 def test_durable_factory_benchmark_is_provider_independent():

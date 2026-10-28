@@ -18,6 +18,7 @@ from typing import Any
 
 import numpy as np
 
+from services.process_executables import resolve_required_executable
 from tools.voxcpm2.direct_retry_epoch import invalidate_segment_for_retry
 from tools.voxcpm2.direct_russian_cadence import (
     evaluate_candidate_cadence,
@@ -72,7 +73,7 @@ def _decode_segment(
     duration = min(MAX_SEGMENT_WINDOW_SECONDS, max(0.35, float(duration)))
     process = subprocess.run(
         [
-            "ffmpeg",
+            resolve_required_executable("ffmpeg"),
             "-hide_banner",
             "-loglevel",
             "error",

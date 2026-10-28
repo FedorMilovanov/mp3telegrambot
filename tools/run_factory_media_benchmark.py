@@ -17,6 +17,7 @@ import os
 import subprocess
 from pathlib import Path
 
+from services.process_executables import resolve_required_executable
 from tools.verify_factory_media_quality import verify
 
 
@@ -24,7 +25,7 @@ def _generate_source(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     process = subprocess.run(
         [
-            "ffmpeg",
+            resolve_required_executable("ffmpeg"),
             "-v",
             "error",
             "-f",
