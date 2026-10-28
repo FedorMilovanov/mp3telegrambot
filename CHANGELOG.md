@@ -559,6 +559,10 @@
   lossless mp3gain и fixed AV1/H264 capability probes используют resolved
   executables без shell. NVENC→CPU fallback и numeric gain сохранены.
   `S603`: 76 → 72.
+- Шесть LiveDub QA/audio-companion `S603` прошли ручной review: resolved
+  ffmpeg/ffprobe, fixed/bounded argv и отсутствие shell задокументированы на
+  вызовах. Duration/output postconditions, segment atomic replace и temp cleanup
+  сохранены. `S603`: 72 → 66.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения

@@ -124,7 +124,9 @@ def _run_text(command: list[str], *, timeout: int) -> subprocess.CompletedProces
     }
     if os.name == "nt":
         kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-    return subprocess.run(command, **kwargs, check=False)
+    return subprocess.run(  # noqa: S603 -- internal resolved ffmpeg/ffprobe argv only, no shell
+        command, **kwargs, check=False
+    )
 
 
 def _probe_audio(path: Path) -> tuple[bool, int]:

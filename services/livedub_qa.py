@@ -54,7 +54,7 @@ def _ffprobe_json(path: Path) -> dict | None:
     if not ffprobe:
         return None
     try:
-        proc = subprocess.run(
+        proc = subprocess.run(  # noqa: S603 -- resolved ffprobe, fixed QA probe, path is data
             [
                 ffprobe,
                 "-v",
@@ -101,7 +101,9 @@ def _mean_volume_db(
             "null",
             "-",
         ]
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=False)
+        proc = subprocess.run(  # noqa: S603 -- resolved ffmpeg and numeric volumedetect argv
+            cmd, capture_output=True, text=True, timeout=120, check=False
+        )
         match = re.search(
             r"mean_volume:\s*(-?\d+(?:\.\d+)?)\s*dB",
             proc.stderr or "",
@@ -228,7 +230,7 @@ def _extract_audio_for_qa(video_path: Path, out_path: Path) -> Path | None:
     if not ffmpeg:
         return None
     try:
-        proc = subprocess.run(
+        proc = subprocess.run(  # noqa: S603 -- resolved ffmpeg, fixed QA extraction, paths are data
             [
                 ffmpeg,
                 "-i",
