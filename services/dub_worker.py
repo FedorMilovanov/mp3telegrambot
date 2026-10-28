@@ -28,6 +28,7 @@ from services.dub_execution import (
 )
 from services.dub_studio import DubStore, load_recipe, repo_root, studio_root, utc_now
 from services.dub_worker_release import WORKER_RUNTIME
+from services.process_executables import resolve_required_executable
 from tools.voxcpm2 import dub_job_preflight
 
 _STAGE_RE = re.compile(r"^===\s*(.+?)\s*===\s*$")
@@ -742,7 +743,7 @@ def _terminate_process(proc: subprocess.Popen[str]) -> None:
         creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         try:
             subprocess.run(
-                ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                [resolve_required_executable("taskkill"), "/PID", str(proc.pid), "/T", "/F"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 timeout=30,

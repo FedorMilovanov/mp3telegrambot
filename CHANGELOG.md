@@ -47,7 +47,8 @@
   14 modules доведены до strict-zero; annotation `VoxCPM2Backend.aliases`
   соответствует `SpeechBackend` без изменения runtime-значения. Срез также
   включает `services/telegraph_repair.py`: typed transport helper сохраняет
-  точные Telegraph URL, timeout и нефатальный suffix-probe fallback.
+  точные Telegraph URL, timeout и нефатальный suffix-probe fallback. Общий
+  `services/process_executables.py` также входит в strict gate.
 - Исполняемый контракт production-слоёв через `import-linter`: новые обратные
   импорты блокируются, а известные legacy-рёбра сокращаются по точному
   burn-down без wildcard-исключений (`tools/check_import_layers.py`).
@@ -526,6 +527,9 @@
   tools больше не используют partial executable path: `git` разрешается через
   `shutil.which`, отсутствие executable обрабатывается явно, shell не применяется.
   Extended `S607` census сокращён с 23 до 18.
+- Четыре Windows `taskkill` вызова в Dub/bgutil используют общий resolver перед
+  `subprocess`; missing executable остаётся `FileNotFoundError`, а terminate/kill
+  и fail-closed orphan recovery fallbacks сохранены. `S607`: 18 → 14.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения

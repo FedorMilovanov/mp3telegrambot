@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -109,6 +111,26 @@ def test_windows_recovery_refuses_unknown_listener(monkeypatch, tmp_path):
             server_main=server_main,
             port=4416,
         )
+
+
+def test_windows_tree_kill_uses_resolved_taskkill(monkeypatch):
+    run = Mock(return_value=SimpleNamespace(returncode=0, stdout="", stderr=""))
+    monkeypatch.setattr(
+        recovery,
+        "resolve_required_executable",
+        lambda _name: r"C:\Windows\System32\taskkill.exe",
+    )
+    monkeypatch.setattr(recovery.subprocess, "run", run)
+
+    recovery._kill_windows_process_tree(23984)
+
+    assert run.call_args.args[0] == [
+        r"C:\Windows\System32\taskkill.exe",
+        "/PID",
+        "23984",
+        "/T",
+        "/F",
+    ]
 
 
 def test_bot_entrypoint_acquires_singleton_before_bgutil_runtime():

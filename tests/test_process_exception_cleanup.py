@@ -49,18 +49,48 @@ async def test_direct_process_fallback_preserves_terminate_then_kill(terminate_s
 
 def test_bgutil_windows_taskkill_failure_falls_back_to_kill(monkeypatch) -> None:
     process = SimpleNamespace(pid=123, poll=Mock(return_value=None), kill=Mock())
-    monkeypatch.setattr(bgutil_http_runtime.os, "name", "nt")
-    monkeypatch.setattr(bgutil_http_runtime.subprocess, "run", Mock(side_effect=OSError("no taskkill")))
+    run = Mock(side_effect=OSError("no taskkill"))
+    monkeypatch.setattr(bgutil_http_runtime, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(
+        bgutil_http_runtime, "resolve_required_executable", lambda _name: r"C:\Windows\System32\taskkill.exe"
+    )
+    monkeypatch.setattr(bgutil_http_runtime.subprocess, "run", run)
 
     bgutil_http_runtime._force_stop_tree(process)
 
+    assert run.call_args.args[0][0] == r"C:\Windows\System32\taskkill.exe"
     process.kill.assert_called_once_with()
+
+
+def test_execution_windows_taskkill_uses_resolved_executable(monkeypatch) -> None:
+    run = Mock(return_value=None)
+    monkeypatch.setattr(dub_execution, "_pid_is_running", Mock(side_effect=[True, False, False]))
+    monkeypatch.setattr(dub_execution, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(
+        dub_execution,
+        "resolve_required_executable",
+        lambda _name: r"C:\Windows\System32\taskkill.exe",
+    )
+    monkeypatch.setattr(dub_execution.subprocess, "run", run)
+
+    dub_execution.terminate_process_tree(123, timeout=1)
+
+    assert run.call_args.args[0] == [
+        r"C:\Windows\System32\taskkill.exe",
+        "/PID",
+        "123",
+        "/T",
+        "/F",
+    ]
 
 
 def test_bgutil_posix_group_failure_falls_back_to_kill(monkeypatch) -> None:
     process = SimpleNamespace(pid=123, poll=Mock(return_value=None), kill=Mock())
-    monkeypatch.setattr(bgutil_http_runtime.os, "name", "posix")
-    monkeypatch.setattr(bgutil_http_runtime.os, "killpg", Mock(side_effect=ProcessLookupError))
+    monkeypatch.setattr(
+        bgutil_http_runtime,
+        "os",
+        SimpleNamespace(name="posix", killpg=Mock(side_effect=ProcessLookupError)),
+    )
 
     bgutil_http_runtime._force_stop_tree(process)
 
@@ -76,7 +106,12 @@ def test_bgutil_final_wait_timeout_is_ignored_after_force_stop(monkeypatch) -> N
         wait=Mock(side_effect=subprocess.TimeoutExpired("provider", 1)),
     )
     monkeypatch.setattr(bgutil_http_runtime, "_OWNED_PROCESS", process)
-    monkeypatch.setattr(bgutil_http_runtime.os, "name", "nt")
+    monkeypatch.setattr(bgutil_http_runtime, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(
+        bgutil_http_runtime,
+        "resolve_required_executable",
+        lambda _name: r"C:\Windows\System32\taskkill.exe",
+    )
     monkeypatch.setattr(bgutil_http_runtime.subprocess, "run", Mock(return_value=None))
 
     bgutil_http_runtime.stop_owned_bgutil_http_runtime()
@@ -88,11 +123,13 @@ def test_bgutil_final_wait_timeout_is_ignored_after_force_stop(monkeypatch) -> N
 def test_runner_sigkill_falls_back_to_single_pid(monkeypatch) -> None:
     running_states = iter([True, False, True])
     monkeypatch.setattr(dub_execution, "_pid_is_running", lambda pid: next(running_states))
-    monkeypatch.setattr(dub_execution.os, "name", "posix")
     killpg = Mock(side_effect=[None, OSError("process group unavailable")])
     kill = Mock()
-    monkeypatch.setattr(dub_execution.os, "killpg", killpg)
-    monkeypatch.setattr(dub_execution.os, "kill", kill)
+    monkeypatch.setattr(
+        dub_execution,
+        "os",
+        SimpleNamespace(name="posix", killpg=killpg, kill=kill),
+    )
 
     dub_execution.terminate_process_tree(123, timeout=1)
 
@@ -116,8 +153,11 @@ def test_basic_terminate_uses_kill_for_group_failure_and_timeout(monkeypatch) ->
         kill=Mock(),
         wait=Mock(side_effect=subprocess.TimeoutExpired("runner", 15)),
     )
-    monkeypatch.setattr(dub_worker.os, "name", "posix")
-    monkeypatch.setattr(dub_worker.os, "killpg", Mock(side_effect=OSError("no process group")))
+    monkeypatch.setattr(
+        dub_worker,
+        "os",
+        SimpleNamespace(name="posix", killpg=Mock(side_effect=OSError("no process group"))),
+    )
 
     dub_worker._basic_terminate_process(process)
 
@@ -132,8 +172,11 @@ def test_terminate_uses_fallback_for_group_failure_and_timeout(monkeypatch) -> N
         kill=Mock(),
         wait=Mock(side_effect=subprocess.TimeoutExpired("runner", 15)),
     )
-    monkeypatch.setattr(dub_worker.os, "name", "posix")
-    monkeypatch.setattr(dub_worker.os, "killpg", Mock(side_effect=OSError("no process group")))
+    monkeypatch.setattr(
+        dub_worker,
+        "os",
+        SimpleNamespace(name="posix", killpg=Mock(side_effect=OSError("no process group"))),
+    )
 
     dub_worker._terminate_process(process)
 
@@ -149,11 +192,18 @@ def test_windows_taskkill_failure_falls_back_to_terminate(monkeypatch) -> None:
         kill=Mock(),
         wait=Mock(return_value=0),
     )
-    monkeypatch.setattr(dub_worker.os, "name", "nt")
-    monkeypatch.setattr(dub_worker.subprocess, "run", Mock(side_effect=OSError("no taskkill")))
+    run = Mock(side_effect=OSError("no taskkill"))
+    monkeypatch.setattr(dub_worker, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(
+        dub_worker,
+        "resolve_required_executable",
+        lambda _name: r"C:\Windows\System32\taskkill.exe",
+    )
+    monkeypatch.setattr(dub_worker.subprocess, "run", run)
 
     dub_worker._terminate_process(process)
 
+    assert run.call_args.args[0][0] == r"C:\Windows\System32\taskkill.exe"
     process.terminate.assert_called_once_with()
     process.kill.assert_not_called()
 

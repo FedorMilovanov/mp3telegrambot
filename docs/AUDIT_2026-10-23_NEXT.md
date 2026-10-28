@@ -1276,6 +1276,11 @@ Git executable slice удалил пять `S607` в runtime identity, Required 
 возвращаются к partial path и не используют shell; missing-binary behavior
 покрыт executed-тестами. 27 focused tests зелёные. Текущий census — 265,
 включая 18 `S607`.
+Dub/bgutil slice удалил четыре `S607`: общий typed resolver возвращает resolved
+`taskkill` либо прежний `FileNotFoundError`; terminate/kill/orphan-recovery
+fallbacks не изменены. Windows tests используют module-local OS doubles, не
+process-wide `os.name`. 48 focused tests зелёные. Текущий census — 261/705
+(37,0 % remaining, 63,0 % closed), включая 14 `S607`.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**
@@ -1324,7 +1329,9 @@ runtime tuple и registry behavior не изменены. На том шаге s
 Затем добавлен `services/telegraph_repair.py`: два network lambda заменены
 typed helper + `functools.partial`; executed chain test фиксирует точные URL,
 `return_content` и 30-second timeout, а failed suffix probe остаётся нефатальным.
-Текущий strict срез — 107/240 production modules (44,6 %), остаётся 55,4 %.
+Telegraph slice содержал 107/240 production modules (44,6 %). Новый общий
+`services/process_executables.py` также добавлен в strict gate; текущий срез —
+108/241 production modules (44,8 %), остаётся 55,2 %.
 
 **Найденные по дороге настоящие дефекты:** кортеж кортежей в `negative` у
 `core/source_packs.py` (работал только за счёт защитного `neg[0]`), `max()`/деление
