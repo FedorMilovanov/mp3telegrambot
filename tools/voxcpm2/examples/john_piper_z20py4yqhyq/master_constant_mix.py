@@ -40,7 +40,7 @@ def run(
     *,
     capture: bool = False,
 ) -> subprocess.CompletedProcess[str]:
-    process = subprocess.run(
+    process = subprocess.run(  # noqa: S603 -- internal master command argv, no shell
         command,
         stdout=subprocess.PIPE if capture else None,
         stderr=subprocess.PIPE if capture else None,

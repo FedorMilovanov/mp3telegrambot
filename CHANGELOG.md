@@ -595,6 +595,10 @@
   probes, spatial bed и professional reference decode используют fixed/resolved
   argv без shell. Timeout floors, PCM postconditions и fail-closed QA сохранены;
   четыре новых doubles закрывают helpers. `S603`: 27 → 22.
+- Шесть quality/master/preflight `S603` прошли ручной review: reference/silence
+  probes, оба master runner, ffprobe duration и py_compile используют fixed или
+  validated argv без shell. Loudnorm/master contracts и preflight gates не
+  изменены; пять новых doubles закрывают helpers. `S603`: 22 → 16.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения

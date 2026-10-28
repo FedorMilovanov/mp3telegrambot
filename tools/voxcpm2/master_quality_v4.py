@@ -19,7 +19,7 @@ from typing import Any
 
 
 def run(command: list[str], *, capture: bool = False) -> subprocess.CompletedProcess[str]:
-    proc = subprocess.run(
+    proc = subprocess.run(  # noqa: S603 -- internal master command argv, no shell
         command,
         stdout=subprocess.PIPE if capture else None,
         stderr=subprocess.PIPE if capture else None,
