@@ -7,7 +7,7 @@ import html
 from pathlib import Path
 from typing import Any
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update, User
 from telegram.error import BadRequest
 from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes, filters
 
@@ -91,6 +91,7 @@ def _project_owned_by(project: dict[str, Any], user_id: int) -> bool:
 
 def _resolve_project(store: DubStore, user_id: int, token: str | None) -> dict[str, Any]:
     token = str(token or "").strip().lower()
+    project: dict[str, Any] | None
     if token and token not in {"last", "последний"}:
         project = store.get_project(token)
     else:
@@ -100,6 +101,15 @@ def _resolve_project(store: DubStore, user_id: int, token: str | None) -> dict[s
     if not _project_owned_by(project, user_id):
         raise PermissionError("Это не ваш проект.")
     return project
+
+
+def _command_actors(update: Update) -> tuple[User, Message] | None:
+    """Return the required command actors after the admin gate."""
+    user = update.effective_user
+    message = update.effective_message
+    if user is None or message is None:
+        return None
+    return user, message
 
 
 def _worker_lines(store: DubStore) -> list[str]:
@@ -282,6 +292,10 @@ async def _safe_edit(query: Any, text: str, **kwargs: Any) -> bool:
 async def dub_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _admin(update):
         return
+    actors = _command_actors(update)
+    if actors is None:
+        return
+    _user, message = actors
     args = list(context.args or [])
     if args:
         sub = args.pop(0).lower()
@@ -303,11 +317,12 @@ async def dub_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
 
     worker = _store().latest_worker()
-    worker_line = (
-        f"✅ worker <code>{html.escape(str(worker['worker_id']))}</code> — {html.escape(str(worker['status']))}"
-        if worker_is_fresh(worker)
-        else "❌ локальный worker не отвечает"
-    )
+    if worker and worker_is_fresh(worker):
+        worker_line = (
+            f"✅ worker <code>{html.escape(str(worker['worker_id']))}</code> — {html.escape(str(worker['status']))}"
+        )
+    else:
+        worker_line = "❌ локальный worker не отвечает"
     text = (
         "🎙 <b>VoxCPM2 Dub Studio</b>\n\n"
         "Главное меню новых роликов: <code>/dub</code> без аргументов.\n"
@@ -326,29 +341,36 @@ async def dub_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         "<code>/dubcancel [ID]</code> — остановить задание\n"
         "<code>/dubworker</code> — состояние worker"
     )
-    await update.effective_message.reply_text(text, parse_mode="HTML")
+    await message.reply_text(text, parse_mode="HTML")
 
 
 async def dubnew_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _admin(update):
         return
+    actors = _command_actors(update)
+    if actors is None:
+        return
+    user, message = actors
     args = list(context.args or [])
     if not args:
-        await update.effective_message.reply_text(
+        await message.reply_text(
             f"Использование: <code>/dubnew RECIPE</code>\n\n{_recipe_text()}",
             parse_mode="HTML",
         )
         return
+    chat = update.effective_chat
+    if chat is None:
+        return
     try:
         project = _store().create_project(
             args[0].strip().lower(),
-            owner_user_id=update.effective_user.id,
-            owner_chat_id=update.effective_chat.id,
+            owner_user_id=user.id,
+            owner_chat_id=chat.id,
         )
         text, keyboard = _project_card(project)
-        await update.effective_message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
+        await message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
     except Exception as exc:
-        await update.effective_message.reply_text(
+        await message.reply_text(
             "❌ Не удалось создать проект: " + html.escape(_short(str(exc), 800)),
             parse_mode="HTML",
         )
@@ -357,9 +379,13 @@ async def dubnew_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def dublist_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _admin(update):
         return
-    projects = _store().list_projects(owner_user_id=update.effective_user.id, limit=10)
+    actors = _command_actors(update)
+    if actors is None:
+        return
+    user, message = actors
+    projects = _store().list_projects(owner_user_id=user.id, limit=10)
     if not projects:
-        await update.effective_message.reply_text("Проектов пока нет. Откройте <code>/dub</code>.", parse_mode="HTML")
+        await message.reply_text("Проектов пока нет. Откройте <code>/dub</code>.", parse_mode="HTML")
         return
     lines = ["🎙 <b>Последние Dub Studio проекты</b>", ""]
     for project in projects:
@@ -370,35 +396,46 @@ async def dublist_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             f"{html.escape(str(project['status']))} {int(project.get('progress') or 0)}%"
         )
     lines.extend(["", "Открыть: <code>/dubstatus ID</code>"])
-    await update.effective_message.reply_text("\n".join(lines), parse_mode="HTML")
+    await message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
 async def dubstatus_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _admin(update):
         return
+    actors = _command_actors(update)
+    if actors is None:
+        return
+    user, message = actors
     try:
-        project = _resolve_project(_store(), update.effective_user.id, (context.args or [None])[0])
+        project = _resolve_project(_store(), user.id, (context.args[0] if context.args else None))
         text, keyboard = _project_card(project)
-        await update.effective_message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
+        await message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
     except Exception as exc:
-        await update.effective_message.reply_text("⚠️ " + html.escape(_short(str(exc), 800)), parse_mode="HTML")
+        await message.reply_text("⚠️ " + html.escape(_short(str(exc), 800)), parse_mode="HTML")
 
 
 async def dublog_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _admin(update):
         return
+    actors = _command_actors(update)
+    if actors is None:
+        return
+    user, message = actors
     try:
-        project = _resolve_project(_store(), update.effective_user.id, (context.args or [None])[0])
+        project = _resolve_project(_store(), user.id, (context.args[0] if context.args else None))
         text, keyboard = _log_text(project)
-        await update.effective_message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
+        await message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
     except Exception as exc:
-        await update.effective_message.reply_text("⚠️ " + html.escape(_short(str(exc), 800)), parse_mode="HTML")
+        await message.reply_text("⚠️ " + html.escape(_short(str(exc), 800)), parse_mode="HTML")
 
 
 async def _enqueue(update: Update, project: dict[str, Any], action: str) -> None:
+    message = update.effective_message
+    if message is None:
+        return
     try:
         job = _store().enqueue_job(str(project["id"]), action)
-        await update.effective_message.reply_text(
+        await message.reply_text(
             f"🕓 Задание <b>#{job['id']}</b> поставлено в очередь.\n"
             f"Проект: <code>{html.escape(str(project['id']))}</code>\n"
             f"Action: <code>{html.escape(action)}</code>\n\n"
@@ -406,29 +443,35 @@ async def _enqueue(update: Update, project: dict[str, Any], action: str) -> None
             parse_mode="HTML",
         )
     except Exception as exc:
-        await update.effective_message.reply_text(
-            "❌ Очередь: " + html.escape(_short(str(exc), 800)), parse_mode="HTML"
-        )
+        await message.reply_text("❌ Очередь: " + html.escape(_short(str(exc), 800)), parse_mode="HTML")
 
 
 async def dubrun_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _admin(update):
         return
+    actors = _command_actors(update)
+    if actors is None:
+        return
+    user, message = actors
     try:
-        project = _resolve_project(_store(), update.effective_user.id, (context.args or [None])[0])
+        project = _resolve_project(_store(), user.id, (context.args[0] if context.args else None))
         if _mode(project) == "direct" and not _direct_srt_path(project).is_file():
             raise RuntimeError(f"Сначала загрузите готовый SRT: /dubsrt {project['id']}")
         await _enqueue(update, project, _default_render_action(project))
     except Exception as exc:
-        await update.effective_message.reply_text("⚠️ " + html.escape(_short(str(exc), 800)), parse_mode="HTML")
+        await message.reply_text("⚠️ " + html.escape(_short(str(exc), 800)), parse_mode="HTML")
 
 
 async def dubrepair_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _admin(update):
         return
+    actors = _command_actors(update)
+    if actors is None:
+        return
+    user, message = actors
     args = list(context.args or [])
     try:
-        project = _resolve_project(_store(), update.effective_user.id, args[0] if args else None)
+        project = _resolve_project(_store(), user.id, args[0] if args else None)
         recipe = load_recipe(str(project["recipe_id"]))
         repairs = recipe.repair_actions()
         requested = args[1].lower() if len(args) > 1 else ""
@@ -451,20 +494,24 @@ async def dubrepair_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             ]
             for name in repairs
         ]
-        await update.effective_message.reply_text("Выберите точечный ремонт:", reply_markup=InlineKeyboardMarkup(rows))
+        await message.reply_text("Выберите точечный ремонт:", reply_markup=InlineKeyboardMarkup(rows))
     except Exception as exc:
-        await update.effective_message.reply_text("⚠️ " + html.escape(_short(str(exc), 900)), parse_mode="HTML")
+        await message.reply_text("⚠️ " + html.escape(_short(str(exc), 900)), parse_mode="HTML")
 
 
 async def dubcancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _admin(update):
         return
+    actors = _command_actors(update)
+    if actors is None:
+        return
+    user, message = actors
     try:
-        project = _resolve_project(_store(), update.effective_user.id, (context.args or [None])[0])
+        project = _resolve_project(_store(), user.id, (context.args[0] if context.args else None))
         job = _store().request_cancel(str(project["id"]))
-        await update.effective_message.reply_text(f"🛑 Запрос остановки принят для задания #{job['id']}.")
+        await message.reply_text(f"🛑 Запрос остановки принят для задания #{job['id']}.")
     except Exception as exc:
-        await update.effective_message.reply_text("⚠️ " + html.escape(_short(str(exc), 800)), parse_mode="HTML")
+        await message.reply_text("⚠️ " + html.escape(_short(str(exc), 800)), parse_mode="HTML")
 
 
 def _outputs_text(project: dict[str, Any]) -> str:
@@ -500,16 +547,24 @@ def _outputs_text(project: dict[str, Any]) -> str:
 async def dubfiles_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _admin(update):
         return
+    actors = _command_actors(update)
+    if actors is None:
+        return
+    user, message = actors
     try:
-        project = _resolve_project(_store(), update.effective_user.id, (context.args or [None])[0])
-        await update.effective_message.reply_text(_outputs_text(project), parse_mode="HTML")
+        project = _resolve_project(_store(), user.id, (context.args[0] if context.args else None))
+        await message.reply_text(_outputs_text(project), parse_mode="HTML")
     except Exception as exc:
-        await update.effective_message.reply_text("⚠️ " + html.escape(_short(str(exc), 800)), parse_mode="HTML")
+        await message.reply_text("⚠️ " + html.escape(_short(str(exc), 800)), parse_mode="HTML")
 
 
 async def dubworker_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _admin(update):
         return
+    actors = _command_actors(update)
+    if actors is None:
+        return
+    _user, message = actors
     worker = _store().latest_worker()
     if not worker:
         text = (
@@ -530,7 +585,7 @@ async def dubworker_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             f"Этап: <code>{html.escape(_short(str(details.get('stage') or '—'), 120))}</code>\n"
             f"Прогресс: <b>{int(details.get('progress') or 0)}%</b>"
         )
-    await update.effective_message.reply_text(text, parse_mode="HTML")
+    await message.reply_text(text, parse_mode="HTML")
 
 
 async def handle_dub_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -540,6 +595,9 @@ async def handle_dub_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.answer()
     if not await _admin(update):
         return
+    user = update.effective_user
+    if user is None:
+        return
     parts = str(query.data or "").split("|", 2)
     if len(parts) != 3 or parts[0] != "dub":
         return
@@ -548,7 +606,7 @@ async def handle_dub_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         store = _store()
         project = store.get_project(project_id)
-        if not _project_owned_by(project, update.effective_user.id):
+        if not _project_owned_by(project, user.id):
             raise PermissionError("Это не ваш проект.")
 
         if action == "status":

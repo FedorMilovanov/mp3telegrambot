@@ -6,6 +6,7 @@ Command Handlers — /start, /help, /settings, /resetcache, /pdf, /stop.
 """
 
 import html as html_mod
+from typing import Any
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from core.globals import (
@@ -41,6 +42,7 @@ from core.segment_planner import (
     format_segments_text,
     get_segment_by_index,
     parse_segment_selection,
+    PlannedSegment,
 )
 from core.observability import format_gemini_metrics_report
 from core.prompt_health import format_prompt_health_report
@@ -99,7 +101,7 @@ def _file_size(path: str | Path) -> int:
     return Path(path).stat().st_size
 
 
-def _database_status(path: str) -> tuple[int, str]:
+def _database_status(path: str | Path) -> tuple[int, str]:
     database = Path(path)
     size_kb = database.stat().st_size // 1024
     backups = sorted(database.parent.glob(database.name + ".bak.*"))
@@ -118,7 +120,7 @@ def _start_keyboard(is_admin: bool) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-async def start(update, context):
+async def start(update: Any, context: Any) -> None:
     # /start is a hard navigation reset: the next ordinary link must not be
     # consumed by a half-finished Dub Studio wizard.
     context.user_data.pop("dub_universal_wizard", None)
@@ -190,7 +192,7 @@ async def start(update, context):
         )
 
 
-async def help_command(update, context) -> None:
+async def help_command(update: Any, context: Any) -> None:
     """Describe the actual source-owned LiveDub delivery contract."""
     user_id = update.effective_user.id
     limit_line = (
@@ -228,11 +230,11 @@ def _extract_yt_id_from_text(text: str) -> str | None:
     return m.group(1) if m else None
 
 
-async def _do_resetcache_one(video_id: str, update) -> None:
+async def _do_resetcache_one(video_id: str, update: Any) -> None:
     """Удаляет одну запись кэша и отвечает в чат."""
     loop = asyncio.get_running_loop()
 
-    def _delete():
+    def _delete() -> int:
         with _db_conn() as conn:
             r = conn.execute("DELETE FROM video_cache WHERE video_id = ?", (video_id,)).rowcount
             conn.commit()
@@ -248,7 +250,7 @@ async def _do_resetcache_one(video_id: str, update) -> None:
         await update.message.reply_text(f"⚠️ Не найдено в кэше: <code>{safe_video_id}</code>", parse_mode="HTML")
 
 
-async def reset_cache_command(update, context):
+async def reset_cache_command(update: Any, context: Any) -> None:
     """Удаляет кэш видео — для принудительной переобработки."""
 
     user_id = update.effective_user.id
@@ -296,7 +298,7 @@ async def reset_cache_command(update, context):
     if arg.lower() == "all":
         loop = asyncio.get_running_loop()
 
-        def _delete_all():
+        def _delete_all() -> int:
             with _db_conn() as conn:
                 r = conn.execute("DELETE FROM video_cache").rowcount
                 conn.commit()
@@ -311,7 +313,7 @@ async def reset_cache_command(update, context):
     await _do_resetcache_one(video_id, update)
 
 
-async def status_command(update, context):
+async def status_command(update: Any, context: Any) -> None:
     """Здоровье бота одним сообщением: инструменты, диск, БД, режим (round 32)."""
     user_id = update.effective_user.id
     if not ADMIN_IDS or user_id not in ADMIN_IDS:
@@ -391,7 +393,7 @@ async def status_command(update, context):
     await update.message.reply_text(_html_message_limit("\n".join(lines)), parse_mode="HTML")
 
 
-async def metrics_command(update, context):
+async def metrics_command(update: Any, context: Any) -> None:
     """Показывает администратору сводку Gemini observability."""
     user_id = update.effective_user.id
     if not ADMIN_IDS or user_id not in ADMIN_IDS:
@@ -411,7 +413,7 @@ async def metrics_command(update, context):
     await update.message.reply_text(_html_message_limit(report), parse_mode="HTML", disable_web_page_preview=True)
 
 
-async def codehealth_command(update, context):
+async def codehealth_command(update: Any, context: Any) -> None:
     """Admin readout for regex/postprocess code health."""
     user_id = update.effective_user.id
     if not ADMIN_IDS or user_id not in ADMIN_IDS:
@@ -422,7 +424,7 @@ async def codehealth_command(update, context):
     await update.message.reply_text(_html_message_limit(report), parse_mode="HTML", disable_web_page_preview=True)
 
 
-async def archivequality_command(update, context):
+async def archivequality_command(update: Any, context: Any) -> None:
     """Admin readout for archive quality warnings and prompt variants."""
     user_id = update.effective_user.id
     if not ADMIN_IDS or user_id not in ADMIN_IDS:
@@ -436,7 +438,7 @@ async def archivequality_command(update, context):
     await update.message.reply_text(_html_message_limit(report), parse_mode="HTML", disable_web_page_preview=True)
 
 
-async def comparevariants_command(update, context):
+async def comparevariants_command(update: Any, context: Any) -> None:
     """Compare two prompt variants from the archive quality readout."""
     user_id = update.effective_user.id
     if not ADMIN_IDS or user_id not in ADMIN_IDS:
@@ -459,7 +461,7 @@ async def comparevariants_command(update, context):
     await update.message.reply_text(_html_message_limit(report), parse_mode="HTML", disable_web_page_preview=True)
 
 
-async def archivequalityfile_command(update, context):
+async def archivequalityfile_command(update: Any, context: Any) -> None:
     """Build and send archive quality markdown/json export."""
     user_id = update.effective_user.id
     if not ADMIN_IDS or user_id not in ADMIN_IDS:
@@ -489,7 +491,7 @@ async def archivequalityfile_command(update, context):
         )
 
 
-async def qualityrecords_command(update, context):
+async def qualityrecords_command(update: Any, context: Any) -> None:
     """List archive records that need manual quality review."""
     user_id = update.effective_user.id
     if not ADMIN_IDS or user_id not in ADMIN_IDS:
@@ -509,7 +511,7 @@ async def qualityrecords_command(update, context):
     await update.message.reply_text(_html_message_limit(report), parse_mode="HTML", disable_web_page_preview=True)
 
 
-async def promptrecommend_command(update, context):
+async def promptrecommend_command(update: Any, context: Any) -> None:
     """Recommend prompt variant promotion candidates from archive warnings."""
     user_id = update.effective_user.id
     if not ADMIN_IDS or user_id not in ADMIN_IDS:
@@ -521,7 +523,7 @@ async def promptrecommend_command(update, context):
     await update.message.reply_text(_html_message_limit(report), parse_mode="HTML", disable_web_page_preview=True)
 
 
-async def prompthealth_command(update, context):
+async def prompthealth_command(update: Any, context: Any) -> None:
     """Admin readout for prompt size/balance diagnostics."""
     user_id = update.effective_user.id
     if not ADMIN_IDS or user_id not in ADMIN_IDS:
@@ -532,7 +534,7 @@ async def prompthealth_command(update, context):
     await update.message.reply_text(_html_message_limit(report), parse_mode="HTML", disable_web_page_preview=True)
 
 
-async def pdf_command(update, context):
+async def pdf_command(update: Any, context: Any) -> None:
     """Генерирует и отправляет PDF из кэша/архива для указанного видео.
 
     Использование:
@@ -580,14 +582,14 @@ async def pdf_command(update, context):
     dur_str = format_timestamp(_dur) if _dur else ""
 
     status = await update.message.reply_text("📄 Генерирую PDF…")
-    pdf_path = None
+    pdf_path: str | None = None
     try:
         from services.pdf_generator import generate_sermon_pdf_async
 
         await asyncio.to_thread(DOWNLOAD_DIR.mkdir, parents=True, exist_ok=True)
         pdf_path = str(DOWNLOAD_DIR / f"{video_id}_{uuid.uuid4().hex[:6]}.pdf")
 
-        async def _pdf_progress(stage: str, pct: int):
+        async def _pdf_progress(stage: str, pct: int) -> None:
             await safe_edit_text(status, f"📄 PDF: {stage} ({pct}%)")
 
         result = await generate_sermon_pdf_async(
@@ -598,7 +600,8 @@ async def pdf_command(update, context):
             urls=urls,
             progress_callback=_pdf_progress,
         )
-        if result and await asyncio.to_thread(_pdf_file_is_deliverable, Path(result)):
+        deliverable = await asyncio.to_thread(_pdf_file_is_deliverable, Path(result)) if result is not None else False
+        if deliverable and result is not None:
 
             def _safe_fn(s: str) -> str:
                 return re.sub(r'[\\/:*?"<>|\n\r\t]', "", s).strip()[:80] or "doc"
@@ -627,7 +630,7 @@ async def pdf_command(update, context):
                 await asyncio.to_thread(_unlink_file, pdf_path)
 
 
-async def disk_command(update, context):
+async def disk_command(update: Any, context: Any) -> None:
     """Admin readout for disk space usage."""
     user_id = update.effective_user.id
     if not ADMIN_IDS or user_id not in ADMIN_IDS:
@@ -639,7 +642,7 @@ async def disk_command(update, context):
     lines = ["💾 <b>Использование диска</b>", ""]
     try:
 
-        def _fmt(bytes):
+        def _fmt(bytes: int | float) -> str:
             return f"{bytes / (1024**3):.1f} ГБ"
 
         du_dl = await asyncio.to_thread(_sh.disk_usage, DOWNLOAD_DIR)
@@ -664,7 +667,7 @@ async def disk_command(update, context):
     await update.message.reply_text(_html_message_limit("\n".join(lines)), parse_mode="HTML")
 
 
-async def stop_command(update, context):
+async def stop_command(update: Any, context: Any) -> None:
     """Останавливает бота. Только для администраторов."""
     user_id = update.effective_user.id
     if not ADMIN_IDS or user_id not in ADMIN_IDS:
@@ -686,7 +689,7 @@ async def stop_command(update, context):
     _local = os.getenv("DISABLE_HEALTH_CHECK", "").strip().lower() in {"1", "true", "yes", "on"}
     if _force or (not _local and os.getenv("PORT")):
 
-        async def _force_exit_fallback():
+        async def _force_exit_fallback() -> None:
             await asyncio.sleep(5)
             logger.warning("FORCE_EXIT_ON_STOP=1 — аварийный os._exit(0) после grace period")
             os._exit(0)
@@ -694,7 +697,7 @@ async def stop_command(update, context):
         asyncio.create_task(_force_exit_fallback())
 
 
-async def handle_message(update, context):
+async def handle_message(update: Any, context: Any) -> None:
     # AUDIT M20: отбиваем сообщения от других ботов
     if update.effective_user and update.effective_user.is_bot:
         return
@@ -777,7 +780,7 @@ async def handle_message(update, context):
 # ─── Запуск ──────────────────────────────────────────────────
 
 
-def _archive_parse_limit(args, default: int = 7) -> int:
+def _archive_parse_limit(args: list[str] | None, default: int = 7) -> int:
     if not args:
         return default
     try:
@@ -786,7 +789,7 @@ def _archive_parse_limit(args, default: int = 7) -> int:
         return default
 
 
-def _html_message_limit(html_text, *, limit: int = 3900, suffix: str = "\n…обрезано") -> str:
+def _html_message_limit(html_text: Any, *, limit: int = 3900, suffix: str = "\n…обрезано") -> str:
     """Trim a Telegram HTML message without cutting tags/entities."""
     text = str(html_text or "").replace("\x00", "")
     if len(text) <= limit:
@@ -837,7 +840,7 @@ def _html_message_limit(html_text, *, limit: int = 3900, suffix: str = "\n…о�
     return result if len(result) <= limit else result[:limit]
 
 
-def _html_pre_message(text, *, limit: int = 3900) -> str:
+def _html_pre_message(text: Any, *, limit: int = 3900) -> str:
     """Build a Telegram HTML <pre> message without cutting escaped entities."""
     raw = str(text or "").replace("\x00", "")
     suffix = "\n…обрезано"
@@ -859,7 +862,7 @@ def _html_pre_message(text, *, limit: int = 3900) -> str:
     return f"<pre>{best}</pre>"
 
 
-def _archive_clip_plain(value, limit: int) -> str:
+def _archive_clip_plain(value: Any, limit: int) -> str:
     text = str(value or "").replace("\x00", "").strip()
     text = re.sub(r"\s+", " ", text)
     if len(text) <= limit:
@@ -870,7 +873,7 @@ def _archive_clip_plain(value, limit: int) -> str:
     return cut.rstrip(".,;:—-") + "…"
 
 
-def _archive_format_records(records: list[dict], *, title: str) -> str:
+def _archive_format_records(records: list[dict[str, Any]], *, title: str) -> str:
     if not records:
         return f"📚 <b>{html_mod.escape(_archive_clip_plain(title, 220))}</b>\n\nНичего не найдено."
     limit = 3900
@@ -906,7 +909,7 @@ def _archive_format_records(records: list[dict], *, title: str) -> str:
     return text if len(text) <= limit else text[:limit]
 
 
-async def archive_command(update, context):
+async def archive_command(update: Any, context: Any) -> None:
     """Shows latest generated Telegraph pages from the durable archive."""
     user_id = update.effective_user.id
     if ADMIN_IDS and user_id not in ADMIN_IDS:
@@ -919,12 +922,12 @@ async def archive_command(update, context):
     await update.message.reply_text(_html_message_limit(text), parse_mode="HTML", disable_web_page_preview=True)
 
 
-async def lastpages_command(update, context):
+async def lastpages_command(update: Any, context: Any) -> None:
     """Alias for /archive."""
     await archive_command(update, context)
 
 
-async def search_archive_command(update, context):
+async def search_archive_command(update: Any, context: Any) -> None:
     """Search generated pages archive by free text."""
     user_id = update.effective_user.id
     if ADMIN_IDS and user_id not in ADMIN_IDS:
@@ -942,7 +945,7 @@ async def search_archive_command(update, context):
     )
 
 
-async def author_archive_command(update, context):
+async def author_archive_command(update: Any, context: Any) -> None:
     """Search archive by author."""
     user_id = update.effective_user.id
     if ADMIN_IDS and user_id not in ADMIN_IDS:
@@ -960,7 +963,7 @@ async def author_archive_command(update, context):
     )
 
 
-async def scripture_archive_command(update, context):
+async def scripture_archive_command(update: Any, context: Any) -> None:
     """Search archive by scripture reference."""
     user_id = update.effective_user.id
     if ADMIN_IDS and user_id not in ADMIN_IDS:
@@ -978,7 +981,7 @@ async def scripture_archive_command(update, context):
     )
 
 
-async def repairpage_command(update, context):
+async def repairpage_command(update: Any, context: Any) -> None:
     """Repair Telegraph pages using current deterministic postprocess, without Gemini calls."""
     user_id = update.effective_user.id
     if ADMIN_IDS and user_id not in ADMIN_IDS:
@@ -1039,7 +1042,7 @@ async def repairpage_command(update, context):
     await update.message.reply_text(text, parse_mode="HTML", disable_web_page_preview=True)
 
 
-async def repairrecent_command(update, context):
+async def repairrecent_command(update: Any, context: Any) -> None:
     """Repair recent archive records without Gemini calls."""
     user_id = update.effective_user.id
     if ADMIN_IDS and user_id not in ADMIN_IDS:
@@ -1058,10 +1061,12 @@ async def repairrecent_command(update, context):
     await update.message.reply_text(text, parse_mode="HTML", disable_web_page_preview=True)
 
 
-async def _resolve_segment_source(target: str) -> tuple[str, dict | None, dict | None]:
+async def _resolve_segment_source(
+    target: str,
+) -> tuple[str, dict[str, Any] | None, dict[str, Any] | None]:
     """Resolve target into (video_id, cache_record, archive_record)."""
     target = str(target or "").strip()
-    archive_record = None
+    archive_record: dict[str, Any] | None = None
     if target.lower() == "last":
         records = await aquery_generated_pages(limit=1)
         archive_record = records[0] if records else None
@@ -1081,7 +1086,10 @@ async def _resolve_segment_source(target: str) -> tuple[str, dict | None, dict |
     return target, cache, archive_record
 
 
-def _segments_from_cache(cache: dict | None, archive_record: dict | None = None) -> tuple[list, str, int, str, str]:
+def _segments_from_cache(
+    cache: dict[str, Any] | None,
+    archive_record: dict[str, Any] | None = None,
+) -> tuple[list[PlannedSegment], str, int, str, str]:
     ai = (cache or {}).get("ai_data") or {}
     duration = int((ai or {}).get("duration") or (archive_record or {}).get("duration") or 0)
     title = (ai or {}).get("real_title") or (archive_record or {}).get("title") or "Без названия"
@@ -1100,7 +1108,7 @@ def _short_title(title: str, max_len: int = 28) -> str:
 
 
 def _build_segments_keyboard(
-    video_id: str, segments: list, *, page: int = 0, per_page: int = 8
+    video_id: str, segments: list[PlannedSegment], *, page: int = 0, per_page: int = 8
 ) -> InlineKeyboardMarkup | None:
     """Build paginated inline keyboard for segment rendering.
 
@@ -1129,7 +1137,7 @@ def _build_segments_keyboard(
 
 
 def _format_segments_page_text(
-    video_id: str, title: str, fmt: str, segments: list, *, page: int = 0, per_page: int = 8
+    video_id: str, title: str, fmt: str, segments: list[PlannedSegment], *, page: int = 0, per_page: int = 8
 ) -> str:
     total_pages = max(1, (len(segments) + per_page - 1) // per_page) if segments else 1
     page = max(0, min(int(page or 0), total_pages - 1))
@@ -1143,7 +1151,7 @@ def _format_segments_page_text(
     return text
 
 
-async def segments_command(update, context):
+async def segments_command(update: Any, context: Any) -> None:
     """List selectable Q&A/theme segments from cached AI timestamps."""
     user_id = update.effective_user.id
     if ADMIN_IDS and user_id not in ADMIN_IDS:
@@ -1174,7 +1182,7 @@ async def segments_command(update, context):
     )
 
 
-async def cutseg_command(update, context):
+async def cutseg_command(update: Any, context: Any) -> None:
     """Render and send deterministic segment(s) by timestamp boundary.
 
     Usage:
@@ -1287,7 +1295,7 @@ async def cutseg_command(update, context):
         await release_render_lock(_render_token)
 
 
-async def archivefile_command(update, context):
+async def archivefile_command(update: Any, context: Any) -> None:
     """Send human-readable archive export files."""
     user_id = update.effective_user.id
     if ADMIN_IDS and user_id not in ADMIN_IDS:
@@ -1313,7 +1321,7 @@ async def archivefile_command(update, context):
         )
 
 
-async def segmentfile_command(update, context):
+async def segmentfile_command(update: Any, context: Any) -> None:
     """Send segment plan export for a cached/archived video."""
     user_id = update.effective_user.id
     if ADMIN_IDS and user_id not in ADMIN_IDS:

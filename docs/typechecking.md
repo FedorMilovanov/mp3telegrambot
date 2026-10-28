@@ -21,7 +21,9 @@
 | `converters/telegraph_nodes.py` | 0 | — |
 | `handlers/__init__.py` | 0 | — |
 | `handlers/callbacks.py` | 0 | — |
+| `handlers/commands.py` | 0 | — |
 | `handlers/dub_audio_repair.py` | 0 | — |
+| `handlers/dub_commands.py` | 0 | — |
 | `handlers/dub_delivery.py` | 0 | — |
 | `handlers/dub_health.py` | 0 | — |
 | `handlers/dub_multicommand.py` | 0 | — |
@@ -147,8 +149,8 @@
 | `services/youtube_po_token_runtime.py` | 0 | — |
 | `services/youtube_transcript.py` | 0 | — |
 
-Текущий срез — 236/241 production modules (97,9 %); вне него остаются
-5 modules (2,1 %).
+Текущий срез — 238/241 production modules (98,8 %); вне него остаются
+3 modules (1,2 %).
 
 Измерено после расширения среза на `pipelines/`: полный `mypy --strict .`
 (включая `tests/`) — 5 038 ошибок в 563 файлах; по пакетам без тестов:
