@@ -49,8 +49,9 @@
   включает `services/telegraph_repair.py`: typed transport helper сохраняет
   точные Telegraph URL, timeout и нефатальный suffix-probe fallback. Общий
   `services/process_executables.py` также входит в strict gate. Cancellation-safe
-  `services/async_process.py` добавлен без изменения process-tree ownership:
-  109/241 production modules (45,2 %) проходят `mypy --strict`.
+  `services/async_process.py` добавлен без изменения process-tree ownership;
+  `services/async_worker.py` закрепляет тот же gate для owned coroutine/soft
+  timeout helpers. 110/241 production modules (45,6 %) проходят `mypy --strict`.
 - Исполняемый контракт production-слоёв через `import-linter`: новые обратные
   импорты блокируются, а известные legacy-рёбра сокращаются по точному
   burn-down без wildcard-исключений (`tools/check_import_layers.py`).

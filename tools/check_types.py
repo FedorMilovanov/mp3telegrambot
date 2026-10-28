@@ -57,6 +57,7 @@ TYPED_SLICES: tuple[Slice, ...] = (
         ),
     ),
     Slice("services/async_process.py"),
+    Slice("services/async_worker.py"),
     Slice("services/process_executables.py"),
     Slice("services/speech_backends"),
     Slice("services/telegraph_repair.py"),

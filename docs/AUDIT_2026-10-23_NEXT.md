@@ -1532,7 +1532,9 @@ Telegraph slice содержал 107/240 production modules (44,6 %). Новый
 `services/process_executables.py` также добавлен в strict gate; на том шаге срез
 составлял 108/241 production modules (44,8 %). Затем cancellation-safe
 `services/async_process.py` добавлен без изменения process-tree ownership;
-текущий срез — 109/241 production modules (45,2 %), остаётся 132 modules (54,8 %).
+`services/async_worker.py` добавлен следом без изменения owned coroutine/soft
+timeout behavior. Текущий срез — 110/241 production modules (45,6 %), остаётся
+131 modules (54,4 %).
 
 **Найденные по дороге настоящие дефекты:** кортеж кортежей в `negative` у
 `core/source_packs.py` (работал только за счёт защитного `neg[0]`), `max()`/деление
