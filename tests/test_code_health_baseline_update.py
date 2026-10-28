@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -28,6 +29,24 @@ def _report(current: dict) -> dict:
         "current": current,
         "evidence": {"focused_tests": ["tests/test_example.py"]},
     }
+
+
+def test_git_requires_and_uses_a_resolved_executable(monkeypatch) -> None:
+    commands = []
+
+    def run(command, **kwargs):
+        commands.append(command)
+        return SimpleNamespace(returncode=0, stdout="payload\n", stderr="")
+
+    monkeypatch.setattr(guard.shutil, "which", lambda name: "/usr/bin/git" if name == "git" else None)
+    monkeypatch.setattr(guard.subprocess, "run", run)
+
+    assert guard._git("status", "--short") == "payload\n"
+    assert commands == [["/usr/bin/git", "status", "--short"]]
+
+    monkeypatch.setattr(guard.shutil, "which", lambda name: None)
+    with pytest.raises(RuntimeError, match="git executable not found"):
+        guard._git("status")
 
 
 def test_unchanged_baseline_needs_no_report(monkeypatch, tmp_path: Path):

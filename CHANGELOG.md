@@ -520,6 +520,10 @@
 
 ### Security
 
+- Пять git-subprocess вызовов в runtime identity, Required PR Gate и repository
+  tools больше не используют partial executable path: `git` разрешается через
+  `shutil.which`, отсутствие executable обрабатывается явно, shell не применяется.
+  Extended `S607` census сокращён с 23 до 18.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения

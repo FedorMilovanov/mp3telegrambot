@@ -7,6 +7,7 @@ import html
 import os
 import platform
 import re
+import shutil
 import subprocess
 from importlib import metadata
 from pathlib import Path
@@ -35,8 +36,11 @@ def _validated_sha(value: object) -> str:
 
 def _git_command(*args: str) -> subprocess.CompletedProcess[str] | None:
     try:
+        executable = shutil.which("git")
+        if executable is None:
+            return None
         return subprocess.run(
-            ["git", "-C", str(_PROJECT_ROOT), *args],
+            [executable, "-C", str(_PROJECT_ROOT), *args],
             capture_output=True,
             text=True,
             encoding="utf-8",

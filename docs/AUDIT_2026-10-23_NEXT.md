@@ -1271,6 +1271,11 @@ async-focused tests зелёные. `S110` = 0 и включён в обычны
 Повторный repository-wide `ASYNC230/ASYNC240` прогон подтвердил ноль после
 thumbnail worker fix; `ASYNC240` включён в обычный Ruff gate без новых
 suppressions. Extended census остаётся 270.
+Git executable slice удалил пять `S607` в runtime identity, Required PR Gate и
+двух repository tools. Все вызовы разрешают `git` через `shutil.which`, не
+возвращаются к partial path и не используют shell; missing-binary behavior
+покрыт executed-тестами. 27 focused tests зелёные. Текущий census — 265,
+включая 18 `S607`.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

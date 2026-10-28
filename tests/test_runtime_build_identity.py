@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+import services.runtime_build_identity as identity
 from services.runtime_build_identity import (
     RUNTIME_BUILD_IDENTITY_POLICY,
     runtime_build_identity_html_lines,
@@ -76,3 +79,29 @@ def test_invalid_build_sha_and_dirty_state_fail_safe() -> None:
     assert payload["dirty"] == "unknown"
     assert payload["gemini_client_count"] == 100
     assert "secret" not in runtime_build_identity_log_line(payload).casefold()
+
+
+def test_git_command_uses_resolved_executable(monkeypatch) -> None:
+    commands = []
+    result = SimpleNamespace(returncode=0, stdout="a" * 40 + "\n", stderr="")
+
+    def run(command, **kwargs):
+        commands.append((command, kwargs))
+        return result
+
+    monkeypatch.setattr(identity.shutil, "which", lambda name: "/usr/bin/git" if name == "git" else None)
+    monkeypatch.setattr(identity.subprocess, "run", run)
+
+    assert identity._git_command("rev-parse", "HEAD") is result
+    assert commands[0][0][:2] == ["/usr/bin/git", "-C"]
+    assert commands[0][0][-2:] == ["rev-parse", "HEAD"]
+
+
+def test_git_command_missing_executable_is_nonfatal(monkeypatch) -> None:
+    def fail_run(*args, **kwargs):
+        raise AssertionError("subprocess must not start")
+
+    monkeypatch.setattr(identity.shutil, "which", lambda name: None)
+    monkeypatch.setattr(identity.subprocess, "run", fail_run)
+
+    assert identity._git_command("status") is None
