@@ -543,6 +543,10 @@
 - Пять resolved-git `S603` прошли ручной review: Required PR Gate принимает
   только полные 40-hex SHA, а revision аргументы diff/show отделены
   `--end-of-options`; shell не используется. `S603`: 104 → 99.
+- Десять Dub/bgutil `S603` прошли ручной review с узкими обоснованиями для
+  resolved PowerShell/Node/`taskkill` и validated runner argv. Variable-command
+  `ffprobe` в artifact postcondition также переведён на общий resolver; shell,
+  process ownership и fail-closed media validation не изменены. `S603`: 99 → 89.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения

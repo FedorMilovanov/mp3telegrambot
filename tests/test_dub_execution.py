@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+import services.dub_execution as dub_execution
 from services.dub_execution import (
     ARTIFACT_VALIDATION_POLICY,
     active_execution_leases,
@@ -149,3 +151,27 @@ def test_stale_required_artifact_is_rejected(tmp_path: Path):
             work_root=str(tmp_path),
             job_started_at="2026-01-01T00:00:00+00:00",
         )
+
+
+def test_ffprobe_postcondition_uses_resolved_executable(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    calls: dict[str, object] = {}
+
+    def resolve(name: str) -> str:
+        calls["executable_name"] = name
+        return "/resolved/ffprobe"
+
+    def run(command: list[str], **kwargs: object) -> SimpleNamespace:
+        calls["command"] = command
+        calls["kwargs"] = kwargs
+        return SimpleNamespace(returncode=1)
+
+    monkeypatch.setattr(dub_execution, "resolve_required_executable", resolve)
+    monkeypatch.setattr(dub_execution.subprocess, "run", run)
+    media = tmp_path / "candidate.mp4"
+
+    assert dub_execution._ffprobe_media_ok(media, require_video=True, require_audio=True) is False
+    assert calls["executable_name"] == ("ffprobe.exe" if os.name == "nt" else "ffprobe")
+    command = calls["command"]
+    assert isinstance(command, list)
+    assert command[0] == "/resolved/ffprobe"
+    assert command[-1] == str(media)

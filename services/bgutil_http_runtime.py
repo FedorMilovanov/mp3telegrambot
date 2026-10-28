@@ -181,7 +181,7 @@ def _force_stop_tree(process: subprocess.Popen[Any]) -> None:
         return
     if os.name == "nt":
         try:
-            subprocess.run(
+            subprocess.run(  # noqa: S603 -- resolved taskkill and owned process PID, no shell
                 [resolve_required_executable("taskkill"), "/PID", str(process.pid), "/T", "/F"],
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
@@ -264,7 +264,7 @@ def ensure_bgutil_http_runtime(
         raise BgutilHttpRuntimeError("Ранее запущенный управляемый bgutil HTTP provider перестал отвечать на /ping")
 
     try:
-        process = subprocess.Popen(
+        process = subprocess.Popen(  # noqa: S603 -- resolved Node and pinned script, argv only
             [
                 str(node_executable),
                 str(main_script),
