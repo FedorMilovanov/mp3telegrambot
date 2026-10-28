@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+from unittest.mock import Mock
+
 import services.local_botapi_runtime as runtime
 
 
@@ -45,6 +48,65 @@ def test_global_termination_failure_returns_empty_result(tmp_path, monkeypatch):
     monkeypatch.setattr(runtime.subprocess, "run", fail_run)
 
     assert runtime._terminate_managed_server() == []
+
+
+def test_windows_listener_probe_uses_resolved_netstat(monkeypatch):
+    run = Mock(
+        return_value=SimpleNamespace(
+            returncode=0,
+            stdout="  TCP    127.0.0.1:8081    0.0.0.0:0    LISTENING    4242\r\n",
+        )
+    )
+    monkeypatch.setattr(runtime, "resolve_required_executable", lambda name: f"/resolved/{name}")
+    monkeypatch.setattr(runtime.subprocess, "run", run)
+
+    assert runtime._windows_listener_pids(8081) == {4242}
+    assert run.call_args.args[0] == ["/resolved/netstat", "-ano", "-p", "tcp"]
+
+
+def test_windows_name_probe_uses_resolved_tasklist(monkeypatch):
+    run = Mock(return_value=SimpleNamespace(returncode=0, stdout='"Telegram-Bot-API.exe","4242"\r\n'))
+    monkeypatch.setattr(runtime, "resolve_required_executable", lambda name: f"/resolved/{name}")
+    monkeypatch.setattr(runtime.subprocess, "run", run)
+
+    assert runtime._windows_name(4242) == "telegram-bot-api.exe"
+    assert run.call_args.args[0] == [
+        "/resolved/tasklist",
+        "/FI",
+        "PID eq 4242",
+        "/FO",
+        "CSV",
+        "/NH",
+    ]
+
+
+def test_posix_name_probe_uses_resolved_ps(monkeypatch):
+    run = Mock(return_value=SimpleNamespace(returncode=0, stdout="telegram-bot-api\n"))
+    monkeypatch.setattr(runtime, "resolve_required_executable", lambda name: f"/resolved/{name}")
+    monkeypatch.setattr(runtime.subprocess, "run", run)
+
+    assert runtime._posix_name(4242) == "telegram-bot-api"
+    assert run.call_args.args[0] == ["/resolved/ps", "-p", "4242", "-o", "comm="]
+
+
+def test_targeted_kill_uses_resolved_platform_executable(monkeypatch):
+    run = Mock(return_value=SimpleNamespace(returncode=0))
+    monkeypatch.setattr(runtime, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(runtime, "resolve_required_executable", lambda name: f"/resolved/{name}")
+    monkeypatch.setattr(runtime.subprocess, "run", run)
+
+    assert runtime._kill_pid(4242) is True
+    assert run.call_args.args[0] == ["/resolved/taskkill", "/F", "/T", "/PID", "4242"]
+
+
+def test_posix_targeted_kill_uses_resolved_executable(monkeypatch):
+    run = Mock(return_value=SimpleNamespace(returncode=0))
+    monkeypatch.setattr(runtime, "os", SimpleNamespace(name="posix"))
+    monkeypatch.setattr(runtime, "resolve_required_executable", lambda name: f"/resolved/{name}")
+    monkeypatch.setattr(runtime.subprocess, "run", run)
+
+    assert runtime._kill_pid(4242) is True
+    assert run.call_args.args[0] == ["/resolved/kill", "-TERM", "4242"]
 
 
 def test_log_tail_redacts_token_hash_and_explicit_proxy_password(tmp_path, monkeypatch):

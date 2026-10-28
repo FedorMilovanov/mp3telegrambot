@@ -24,6 +24,8 @@ import time
 from pathlib import Path
 from urllib.parse import urlparse
 
+from services.process_executables import resolve_required_executable
+
 logger = logging.getLogger(__name__)
 
 _TRUE = {"1", "true", "yes", "on"}
@@ -104,7 +106,7 @@ def _remove_pid(path: Path) -> None:
 def _windows_listener_pids(port: int) -> set[int]:
     try:
         proc = subprocess.run(
-            ["netstat", "-ano", "-p", "tcp"],
+            [resolve_required_executable("netstat"), "-ano", "-p", "tcp"],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -138,7 +140,7 @@ def _windows_listener_pids(port: int) -> set[int]:
 def _windows_name(pid: int) -> str:
     try:
         proc = subprocess.run(
-            ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+            [resolve_required_executable("tasklist"), "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -158,7 +160,7 @@ def _windows_name(pid: int) -> str:
 def _posix_name(pid: int) -> str:
     try:
         proc = subprocess.run(
-            ["ps", "-p", str(pid), "-o", "comm="],
+            [resolve_required_executable("ps"), "-p", str(pid), "-o", "comm="],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -181,9 +183,9 @@ def _is_botapi(pid: int) -> bool:
 def _kill_pid(pid: int) -> bool:
     try:
         if os.name == "nt":
-            cmd = ["taskkill", "/F", "/T", "/PID", str(pid)]
+            cmd = [resolve_required_executable("taskkill"), "/F", "/T", "/PID", str(pid)]
         else:
-            cmd = ["kill", "-TERM", str(pid)]
+            cmd = [resolve_required_executable("kill"), "-TERM", str(pid)]
         proc = subprocess.run(
             cmd,
             stdout=subprocess.DEVNULL,
@@ -219,9 +221,9 @@ def _terminate_managed_server() -> list[int]:
     if not killed and _enabled("LOCAL_BOT_API_ALLOW_GLOBAL_KILL", False):
         try:
             cmd = (
-                ["taskkill", "/F", "/T", "/IM", "telegram-bot-api.exe"]
+                [resolve_required_executable("taskkill"), "/F", "/T", "/IM", "telegram-bot-api.exe"]
                 if os.name == "nt"
-                else ["pkill", "-f", "telegram-bot-api"]
+                else [resolve_required_executable("pkill"), "-f", "telegram-bot-api"]
             )
             proc = subprocess.run(
                 cmd,
