@@ -108,14 +108,7 @@ async def transcribe_short_clip(
         wav_for_thread = wav_path
 
         def _run_whisper():
-            try:
-                import torch
-
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                    torch.cuda.synchronize()
-            except Exception:
-                pass
+            _impl._clear_torch_cuda_cache()
             model = _impl._get_whisper_model(model_size)
             segments, info = model.transcribe(
                 str(wav_for_thread),

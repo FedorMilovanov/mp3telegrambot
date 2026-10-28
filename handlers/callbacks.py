@@ -59,6 +59,16 @@ def _path_exists(path: Path) -> bool:
     return path.exists()
 
 
+async def _release_render_lock(token) -> None:
+    """Release a segment lock without masking the callback's render result."""
+    try:
+        from core.render_locks import release_render_lock
+
+        await release_render_lock(token)
+    except Exception:
+        logger.warning("segcut: failed to release render lock", exc_info=True)
+
+
 def _strip_btn_icon(label: str) -> str:
     """Убирает иконку (любую комбинацию emoji + selector) в начале метки кнопки."""
     return _BTN_ICON_PREFIX_RE.sub("", label).strip()
@@ -279,7 +289,7 @@ async def handle_callback(update, context) -> None:
         await query.answer(f"🎬 Рендерю сегмент {idx}...")
         _render_token = None
         try:
-            from core.render_locks import release_render_lock, render_lock_key, try_acquire_render_lock
+            from core.render_locks import render_lock_key, try_acquire_render_lock
             from core.segment_planner import get_segment_by_index, seconds_to_timestamp
             from handlers.commands import _resolve_segment_source, _segments_from_cache
             from services.segment_render import render_and_send_segment
@@ -332,12 +342,7 @@ async def handle_callback(update, context) -> None:
                 await query.message.reply_text(f"❌ Ошибка сегмента: {_mask(str(exc))[:160]}")
         finally:
             if _render_token is not None:
-                try:
-                    from core.render_locks import release_render_lock
-
-                    await release_render_lock(_render_token)
-                except Exception:
-                    pass
+                await _release_render_lock(_render_token)
         return
 
     # ── Short trim (подрезка начала/конца) ──────────────────────

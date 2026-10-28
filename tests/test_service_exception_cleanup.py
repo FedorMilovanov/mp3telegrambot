@@ -34,6 +34,35 @@ def test_wkhtmltopdf_failure_removes_partial_output(monkeypatch, tmp_path: Path)
     assert not output.exists()
 
 
+def test_wkhtmltopdf_timeout_survives_kill_failure(monkeypatch, tmp_path: Path) -> None:
+    executable = tmp_path / "wkhtmltopdf"
+    executable.write_text("", encoding="utf-8")
+
+    class TimedOutProcess:
+        kill_attempted = False
+
+        def communicate(self, timeout: int) -> tuple[bytes, bytes]:
+            raise pdf_generator._subprocess.TimeoutExpired("wkhtmltopdf", timeout)
+
+        def kill(self) -> None:
+            self.kill_attempted = True
+            raise RuntimeError("process handle unavailable")
+
+    process = TimedOutProcess()
+    monkeypatch.setattr(pdf_generator._subprocess, "Popen", lambda *args, **kwargs: process)
+
+    result = pdf_generator._gen_wkhtmltopdf(
+        "html",
+        str(tmp_path / "timeout.pdf"),
+        "title",
+        "author",
+        str(executable),
+    )
+
+    assert result is None
+    assert process.kill_attempted is True
+
+
 def test_weasyprint_failure_removes_partial_output(monkeypatch, tmp_path: Path) -> None:
     output = tmp_path / "partial.pdf"
 
@@ -125,6 +154,46 @@ async def test_short_transcription_cleans_wav_after_extraction_failure(monkeypat
     )
 
     assert await shorts_transcription.transcribe_short_clip(video) == []
+
+
+@pytest.mark.asyncio
+async def test_short_transcription_uses_shared_cuda_cleanup(monkeypatch, tmp_path: Path) -> None:
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"video")
+    wav_paths: list[Path] = []
+    profile = {
+        "model_name": "large-v3",
+        "karaoke": False,
+        "word_timestamps": False,
+        "light": False,
+        "gemini_hints": False,
+    }
+    segment = SimpleNamespace(start=0.0, end=1.0, text=" text ", words=[])
+    info = SimpleNamespace(duration=1.0, language="ru", language_probability=0.99)
+    model = SimpleNamespace(transcribe=Mock(return_value=([segment], info)))
+    clear_cuda = Mock()
+
+    async def fake_ffmpeg(command, timeout: int):
+        wav_path = Path(command[-1])
+        wav_paths.append(wav_path)
+        wav_path.write_bytes(b"x" * 2048)
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(shorts_transcription._impl, "HAS_FASTER_WHISPER", True)
+    monkeypatch.setattr(shorts_transcription._impl, "get_subtitles_mode_settings", lambda: profile)
+    monkeypatch.setattr(shorts_transcription._impl, "build_whisper_initial_prompt", lambda *_a, **_k: "prompt")
+    monkeypatch.setattr(shorts_transcription._impl, "_clear_torch_cuda_cache", clear_cuda)
+    monkeypatch.setattr(shorts_transcription._impl, "_get_whisper_model", lambda _size: model)
+    monkeypatch.setattr(shorts_transcription._impl, "_polish_subtitle_text", lambda text: text.strip())
+    monkeypatch.setattr(shorts_transcription.shutil, "which", lambda _name: "/ffmpeg")
+    monkeypatch.setattr(shorts_transcription, "run_cancellable_process", fake_ffmpeg)
+
+    result = await shorts_transcription.transcribe_short_clip(video)
+
+    assert result == [{"start": 0.0, "end": 1.0, "text": "text", "words": []}]
+    clear_cuda.assert_called_once_with()
+    model.transcribe.assert_called_once()
+    assert wav_paths and not wav_paths[0].exists()
 
 
 def test_whisper_reset_releases_existing_model(monkeypatch) -> None:

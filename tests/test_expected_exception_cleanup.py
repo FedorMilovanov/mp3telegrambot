@@ -18,6 +18,18 @@ def _glob_paths(directory: Path, pattern: str) -> list[Path]:
 
 
 @pytest.mark.asyncio
+async def test_segment_lock_release_failure_does_not_mask_render_result(monkeypatch) -> None:
+    from core import render_locks
+
+    release = AsyncMock(side_effect=RuntimeError("lock store unavailable"))
+    monkeypatch.setattr(render_locks, "release_render_lock", release)
+
+    await callbacks._release_render_lock("render-token")
+
+    release.assert_awaited_once_with("render-token")
+
+
+@pytest.mark.asyncio
 async def test_nosub_invalid_candidate_json_still_sends_saved_video(monkeypatch, tmp_path: Path) -> None:
     video = tmp_path / "saved_nosub.mp4"
     video.write_bytes(b"video")

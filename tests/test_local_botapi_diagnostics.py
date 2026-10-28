@@ -19,3 +19,11 @@ def test_cloud_local_registration_conflict_mentions_logout():
 
 def test_proxy_label_never_exposes_credentials():
     assert _proxy_label("http://user:secret@127.0.0.1:8080") == "http://127.0.0.1:8080"
+
+
+def test_malformed_proxy_label_uses_generic_safe_fallback(caplog):
+    caplog.set_level("DEBUG", logger="services.local_botapi_diagnostics")
+
+    assert _proxy_label("http://user:proxy-secret@127.0.0.1:not-a-port") == "application proxy"
+    assert "using generic label" in caplog.text
+    assert "proxy-secret" not in caplog.text
