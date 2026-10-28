@@ -1427,7 +1427,12 @@ contracts; реальный `.cmd` roundtrip с cmd-метасимволами �
 Windows-sensitive CI suite, а не только собран на Linux. POSIX npx split и
 exception chaining сохранены. Primary diff-cover — 100 % (22/22).
 Текущий census — 145/705 (20,6 % remaining, 79,4 % closed): `E402` 97,
-`S603` 1, `PLW0603` 47; `S607` остаётся 0.
+`S603` 1, `PLW0603` 47; `S607` остаётся 0. Windows CI #404 подтвердил все
+9 реальных `.cmd` argv roundtrips. Последний `S603` в legacy Bot API autostart
+получил manual justification: configured executable, argv sequence, no-shell
+detach; executable AST не изменён. `S603` и `S607` теперь оба равны 0.
+Текущий census — 144/705 (20,4 % remaining, 79,6 % closed): `E402` 97,
+`PLW0603` 47.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

@@ -597,7 +597,7 @@ async def run_bot_async():
                 except OSError:
                     _lf = _sp.DEVNULL
                 try:
-                    _pr = _sp.Popen(_cmd, stdout=_lf, stderr=_sp.STDOUT, **kwargs)
+                    _pr = _sp.Popen(_cmd, stdout=_lf, stderr=_sp.STDOUT, **kwargs)  # noqa: S603 -- configured argv, no shell
                 finally:
                     try:
                         if _lf is not _sp.DEVNULL:
