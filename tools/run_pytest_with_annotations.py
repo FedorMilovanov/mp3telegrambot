@@ -26,7 +26,7 @@ def _annotation(nodeid: str) -> str:
 def main(argv: list[str]) -> int:
     args = argv or ["-q"]
     command = [sys.executable, "-m", "pytest", *args]
-    process = subprocess.run(
+    process = subprocess.run(  # noqa: S603 -- current interpreter, pytest args stay separate
         command,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,

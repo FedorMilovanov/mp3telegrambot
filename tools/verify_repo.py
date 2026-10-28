@@ -40,7 +40,7 @@ class CheckResult:
 def _run(name: str, command: list[str], cwd: Path) -> CheckResult:
     print(f"\n=== {name} ===")
     print("$ " + " ".join(command))
-    proc = subprocess.run(command, cwd=str(cwd), check=False)
+    proc = subprocess.run(command, cwd=str(cwd), check=False)  # noqa: S603 -- fixed verifier argv, no shell
     return CheckResult(name=name, command=tuple(command), returncode=proc.returncode)
 
 

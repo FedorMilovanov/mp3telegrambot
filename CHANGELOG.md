@@ -579,6 +579,10 @@
   resolved Service Controller и два ffprobe probe используют отдельный argv без
   shell. Owned PDF kill/reap, output gates, privacy-safe runner reports и
   отсутствие model-weight execution в новых tests сохранены. `S603`: 49 → 45.
+- Восемь engineering-tool `S603` прошли ручной review: model drill, env snapshot,
+  lock audit/install, import/type/verifier runners и pytest annotations используют
+  current/resolved executables без shell. Пять новых tests выполняют ранее
+  непокрытые process lines; lock pins и typed slice не изменены. `S603`: 45 → 37.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения

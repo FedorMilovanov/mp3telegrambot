@@ -159,7 +159,7 @@ def _policy_owned() -> dict[str, list[str]]:
         "configure_gemini_policy();"
         "print(json.dumps({k: list(v) for k, v in POLICY_OWNED.items()}))"
     )
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: S603 -- current interpreter and fixed policy snapshot
         [sys.executable, "-c", code],
         cwd=str(ROOT),
         capture_output=True,

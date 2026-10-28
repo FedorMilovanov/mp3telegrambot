@@ -141,7 +141,7 @@ def _pip_audit_executable() -> str:
 def audit(lock_path: Path = DEFAULT_LOCK, *, today: dt.date | None = None) -> dict[str, object]:
     """Return a report dict; ``blocking`` is empty when the policy passes."""
     current_day = today or dt.date.today()
-    process = subprocess.run(
+    process = subprocess.run(  # noqa: S603 -- resolved pip-audit and fixed lock-audit argv
         [
             _pip_audit_executable(),
             "-r",

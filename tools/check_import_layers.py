@@ -32,7 +32,9 @@ def command(root: Path = ROOT) -> list[str]:
 
 def check(root: Path = ROOT) -> int:
     """Return the import-linter exit status without creating a graph cache."""
-    return subprocess.run(command(root), cwd=root, check=False).returncode
+    return subprocess.run(  # noqa: S603 -- current interpreter and fixed import-linter config
+        command(root), cwd=root, check=False
+    ).returncode
 
 
 def main() -> int:

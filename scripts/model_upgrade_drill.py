@@ -90,7 +90,7 @@ CONTRACT_TESTS = [
 
 
 def _run(args: list[str], *, quiet: bool = False) -> subprocess.CompletedProcess[str]:
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: S603 -- drill-owned interpreter commands, no shell
         args,
         cwd=ROOT,
         capture_output=True,

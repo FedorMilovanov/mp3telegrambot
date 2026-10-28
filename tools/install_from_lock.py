@@ -84,7 +84,7 @@ def main(argv: list[str] | None = None) -> int:
     command = [sys.executable, "-m", "pip", "install", "--disable-pip-version-check"]
     command.extend(requirements)
     print("installing from lock:", " ".join(requirements), flush=True)
-    return subprocess.call(command)
+    return subprocess.call(command)  # noqa: S603 -- current interpreter installs exact locked pins
 
 
 if __name__ == "__main__":
