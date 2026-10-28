@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import ast
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 
@@ -51,9 +52,16 @@ def same_ast(before: str, after: str, *, ignore_docstrings: bool = False) -> boo
         return False
 
 
+def _git_executable() -> str:
+    executable = shutil.which("git")
+    if executable is None:
+        raise FileNotFoundError("git executable not found in PATH")
+    return executable
+
+
 def _changed_paths(root: Path, compare_ref: str) -> list[tuple[str, str]]:
     result = subprocess.run(
-        ["git", "diff", "--name-status", "-z", "--no-renames", compare_ref, "--"],
+        [_git_executable(), "diff", "--name-status", "-z", "--no-renames", compare_ref, "--"],
         cwd=root,
         check=True,
         stdout=subprocess.PIPE,
@@ -70,7 +78,7 @@ def _changed_paths(root: Path, compare_ref: str) -> list[tuple[str, str]]:
 
 def _base_source(root: Path, compare_ref: str, path: str) -> str:
     result = subprocess.run(
-        ["git", "show", f"{compare_ref}:{path}"],
+        [_git_executable(), "show", f"{compare_ref}:{path}"],
         cwd=root,
         check=True,
         stdout=subprocess.PIPE,

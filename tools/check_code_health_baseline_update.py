@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -16,8 +17,11 @@ POLICY = "evidence-backed-code-health-baseline-update-v1"
 
 
 def _git(*args: str) -> str:
+    executable = shutil.which("git")
+    if executable is None:
+        raise RuntimeError("git executable not found in PATH")
     process = subprocess.run(
-        ["git", *args],
+        [executable, *args],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,

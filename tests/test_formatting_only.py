@@ -6,6 +6,9 @@ from pathlib import Path
 import subprocess
 import tomllib
 
+import pytest
+
+from tools import check_formatting_only as formatting
 from tools.check_formatting_only import classify, main, same_ast
 
 
@@ -27,6 +30,24 @@ def _repository(tmp_path: Path) -> Path:
     _git(tmp_path, "add", ".")
     _git(tmp_path, "commit", "-qm", "base")
     return tmp_path
+
+
+def test_git_helpers_require_and_use_a_resolved_executable(monkeypatch) -> None:
+    commands = []
+
+    def run(command, **kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout=b"M\0services/example.py\0", stderr=b"")
+
+    monkeypatch.setattr(formatting.shutil, "which", lambda name: "/usr/bin/git" if name == "git" else None)
+    monkeypatch.setattr(formatting.subprocess, "run", run)
+
+    assert formatting._changed_paths(Path("/repo"), "HEAD") == [("M", "services/example.py")]
+    assert commands[0][0] == "/usr/bin/git"
+
+    monkeypatch.setattr(formatting.shutil, "which", lambda name: None)
+    with pytest.raises(FileNotFoundError, match="git executable not found"):
+        formatting._base_source(Path("/repo"), "HEAD", "services/example.py")
 
 
 def test_ast_comparison_detects_semantics_not_layout() -> None:

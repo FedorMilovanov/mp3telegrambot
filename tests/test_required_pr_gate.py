@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+import scripts.required_pr_gate as required_gate
 from scripts.required_pr_gate import (
     GATE_WORKFLOW,
     MissingPullRequestTrigger,
@@ -15,6 +16,24 @@ from scripts.required_pr_gate import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_changed_files_requires_and_uses_a_resolved_git(monkeypatch) -> None:
+    commands = []
+
+    def check_output(command, **kwargs):
+        commands.append(command)
+        return "services/example.py\n"
+
+    monkeypatch.setattr(required_gate.shutil, "which", lambda name: "/usr/bin/git" if name == "git" else None)
+    monkeypatch.setattr(required_gate.subprocess, "check_output", check_output)
+
+    assert required_gate.changed_files("a" * 40, "b" * 40) == ("services/example.py",)
+    assert commands == [["/usr/bin/git", "diff", "--name-only", f"{'a' * 40}...{'b' * 40}"]]
+
+    monkeypatch.setattr(required_gate.shutil, "which", lambda name: None)
+    with pytest.raises(RuntimeError, match="git executable not found"):
+        required_gate.changed_files("a" * 40, "b" * 40)
 
 
 def test_github_path_match_supports_repository_workflow_patterns():

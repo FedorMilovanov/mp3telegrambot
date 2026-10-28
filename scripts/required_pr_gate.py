@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -190,8 +191,11 @@ def expected_profile_workflows(
 
 
 def changed_files(base_sha: str, head_sha: str) -> tuple[str, ...]:
+    executable = shutil.which("git")
+    if executable is None:
+        raise RuntimeError("git executable not found in PATH")
     output = subprocess.check_output(
-        ["git", "diff", "--name-only", f"{base_sha}...{head_sha}"],
+        [executable, "diff", "--name-only", f"{base_sha}...{head_sha}"],
         text=True,
     )
     files = tuple(line.strip() for line in output.splitlines() if line.strip())
