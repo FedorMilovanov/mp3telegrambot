@@ -64,6 +64,15 @@ def test_repair_tool_reports_failed_edit_and_supports_fail_on_unresolved():
     assert "args.fail_on_unresolved" in src
 
 
+def test_repair_tool_nodes_signature_is_deterministic():
+    from tools import repair_telegraph_pages
+
+    first = {"b": [1], "a": "ё"}
+    second = {"a": "ё", "b": [1]}
+    assert repair_telegraph_pages._nodes_signature(first) == '{"a":"ё","b":[1]}'
+    assert repair_telegraph_pages._nodes_signature(second) == repair_telegraph_pages._nodes_signature(first)
+
+
 def test_audit_tool_can_write_repair_targets(tmp_path):
     from core.telegraph_dom_audit import TelegraphDomIssue
     from tools.audit_telegraph_pages import write_repair_targets

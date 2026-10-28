@@ -26,9 +26,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from services.async_process import run_cancellable_process
+# Project imports require the repo-root path when this file runs as a script.
+from services.async_process import run_cancellable_process  # noqa: E402
 
-from core.bgutil_pin import (
+from core.bgutil_pin import (  # noqa: E402
     BGUTIL_COMMIT,
     BGUTIL_MIN_NODE_MAJOR,
     BGUTIL_MIN_NPM_MAJOR,

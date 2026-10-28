@@ -24,15 +24,16 @@ import time
 from pathlib import Path
 from typing import Iterable
 
+import requests
+
 logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import requests
-
-from core.telegraph_dom_audit import TelegraphDomIssue, audit_telegraph_html, summarize_dom_issues
+# Project imports require the repo-root path when this file runs as a script.
+from core.telegraph_dom_audit import TelegraphDomIssue, audit_telegraph_html, summarize_dom_issues  # noqa: E402
 
 
 def write_repair_targets(path: Path, results: list[tuple[str, list[TelegraphDomIssue]]]) -> int:

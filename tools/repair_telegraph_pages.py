@@ -20,16 +20,17 @@ import time
 from pathlib import Path
 from typing import Any
 
+import requests
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import requests
-
-from converters.md_telegraph import _edit_telegraph_page, _postprocess_telegraph_nodes
-from core.page_audit import audit_telegraph_page, format_audit_issues
-from services.telegraph_repair import expand_telegraph_page_chain, telegraph_path_from_url
-from tools.audit_telegraph_pages import extract_telegraph_urls
+# Project imports require the repo-root path when this file runs as a script.
+from converters.md_telegraph import _edit_telegraph_page, _postprocess_telegraph_nodes  # noqa: E402
+from core.page_audit import audit_telegraph_page, format_audit_issues  # noqa: E402
+from services.telegraph_repair import expand_telegraph_page_chain, telegraph_path_from_url  # noqa: E402
+from tools.audit_telegraph_pages import extract_telegraph_urls  # noqa: E402
 
 
 URL_RE = re.compile(r"https://telegra\.ph/[^\s)\]]+")
