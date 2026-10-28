@@ -16,8 +16,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
-from services.translation_editorial import (
+# Project imports require the repo-root path when this file runs as a script.
+from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async  # noqa: E402
+from services.translation_editorial import (  # noqa: E402
     EXECUTABLE_ACTIONS,
     REVIEW_SCHEMA_NAME,
     REVIEW_SCHEMA_VERSION,
@@ -25,15 +26,15 @@ from services.translation_editorial import (
     sha256_file,
     validate_review_document,
 )
-from services.translation_editorial_composition import (
+from services.translation_editorial_composition import (  # noqa: E402
     build_composition_template,
     build_release_handoff,
     refresh_composition_id,
     render_composition,
     validate_composition_document,
 )
-from services.translation_editorial_pack_contract import load_verified_review_pack
-from services.translation_editorial_repair_provenance import verify_repair_provenance
+from services.translation_editorial_pack_contract import load_verified_review_pack  # noqa: E402
+from services.translation_editorial_repair_provenance import verify_repair_provenance  # noqa: E402
 
 
 def _load(path: Path) -> dict[str, Any]:
