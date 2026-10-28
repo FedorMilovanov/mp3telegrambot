@@ -70,7 +70,7 @@ def test_pdf_telegraph_cache_size_env_var():
         "assert cache._TELEGRAPH_CACHE_SIZE == 7; "
         "assert cache._TELEGRAPH_CACHE._max == 7"
     )
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: S603 -- current interpreter and fixed cache assertion
         [sys.executable, "-c", script],
         cwd=pathlib.Path(__file__).resolve().parents[1],
         env=env,

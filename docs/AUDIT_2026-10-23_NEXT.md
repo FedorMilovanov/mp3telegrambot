@@ -1413,6 +1413,13 @@ interpreter без shell. 28 focused tests зелёные и непосредс�
 test children; owned kill/wait и assertions сохранены. Текущий census — 152/705
 (21,6 % remaining, 78,4 % closed): `E402` 97, `S603` 8, `PLW0603` 47;
 `S607` остаётся 0.
+Второй test-helper slice закрыл шесть `S603`: media test helper, standalone
+master, version/import/cache probes и Node syntax используют resolved/current
+executables без shell. 27 focused passed / 1 skipped; historical FFmpeg
+integration skip сохранён, а его helper отдельно выполнен через exact-argv double.
+Test files больше не содержат `S603`. Текущий census — 146/705
+(20,7 % remaining, 79,3 % closed): `E402` 97, `S603` 2, `PLW0603` 47;
+`S607` остаётся 0.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**
