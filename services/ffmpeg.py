@@ -129,7 +129,7 @@ def _version_tuple_from_text(text: str) -> tuple[int, ...]:
 
 def _probe_js_runtime_version(exe: str, args: list[str]) -> tuple[int, ...]:
     try:
-        proc = subprocess.run(
+        proc = subprocess.run(  # noqa: S603 -- caller supplies resolved Node and fixed --version
             [exe, *args],
             capture_output=True,
             text=True,
@@ -347,7 +347,7 @@ def normalize_mp3_lossless(mp3_path: Path, target_db: float = 92.0) -> bool:
         # /r: track gain, /d: смещение цели от 89 dB, /c: без вопросов про клиппинг,
         # /t: писать тег APE с undo-информацией
         offset = target_db - 89.0
-        proc = subprocess.run(
+        proc = subprocess.run(  # noqa: S603 -- resolved mp3gain, numeric gain, media path is data
             [mp3gain, "-r", "-c", "-d", f"{offset:.1f}", str(mp3_path)],
             timeout=600,
             **kwargs,
@@ -411,7 +411,7 @@ def _get_video_encoder() -> tuple[str, list[str], list[str]]:
     if ffmpeg and not _force_cpu:
         # Пробуем AV1 NVENC (Ada Lovelace+)
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # noqa: S603 -- resolved ffmpeg and fixed AV1 probe argv
                 [ffmpeg, "-f", "lavfi", "-i", "nullsrc=s=720x1280:d=0.1", "-c:v", "av1_nvenc", "-f", "null", "-"],
                 capture_output=True,
                 timeout=5,
@@ -426,7 +426,7 @@ def _get_video_encoder() -> tuple[str, list[str], list[str]]:
 
         # Пробуем H264 NVENC
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # noqa: S603 -- resolved ffmpeg and fixed H264 probe argv
                 [ffmpeg, "-f", "lavfi", "-i", "nullsrc=s=720x1280:d=0.1", "-c:v", "h264_nvenc", "-f", "null", "-"],
                 capture_output=True,
                 timeout=10,
