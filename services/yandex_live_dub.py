@@ -103,6 +103,9 @@ def _windows_batch_invocation(cmd_parts: list[str], environ: Mapping[str, str]) 
         value = str(part)
         if any(char in value for char in ('"', "\r", "\n", "\0")):
             raise ValueError("Windows LiveDub arguments cannot contain quotes, newlines, or NUL")
+        if not value:
+            placeholders.append('""')
+            continue
         trailing = len(value) - len(value.rstrip("\\"))
         if trailing:
             value = value[:-trailing] + "\\" * (trailing * 2)

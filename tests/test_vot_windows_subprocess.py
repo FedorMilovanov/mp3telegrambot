@@ -29,6 +29,14 @@ def test_windows_batch_command_contains_only_fixed_placeholders() -> None:
     assert original["MP3BOT_VOT_ARG_2"] == "stale"
 
 
+def test_windows_batch_empty_argument_uses_literal_empty_quotes() -> None:
+    command, child_env = yandex_live_dub._windows_batch_invocation(["vot-cli-live.cmd", ""], {})
+
+    assert '"%MP3BOT_VOT_ARG_0%" ""' in command
+    assert "MP3BOT_VOT_ARG_1" not in command
+    assert "MP3BOT_VOT_ARG_1" not in child_env
+
+
 @pytest.mark.parametrize("bad", ['"', "\r", "\n", "\0"])
 def test_windows_batch_rejects_command_line_control_characters(bad: str) -> None:
     with pytest.raises(ValueError, match="arguments cannot contain"):
@@ -88,14 +96,5 @@ def test_windows_batch_arguments_roundtrip_through_real_cmd(tmp_path: Path, argu
 
     stdout, stderr, returncode = yandex_live_dub._run_subprocess([str(script), argument], timeout=30)
 
-    try:
-        parsed = json.loads(stdout)
-    except json.JSONDecodeError:
-        parsed = None
-    if returncode != 0 or parsed != [argument]:
-        detail = json.dumps({"returncode": returncode, "stdout": stdout, "stderr": stderr}, ensure_ascii=True).replace(
-            "%", "%25"
-        )
-        print(f"::error title=cmd-roundtrip::{detail}")
     assert returncode == 0, stderr or stdout
-    assert parsed == [argument]
+    assert json.loads(stdout) == [argument]
