@@ -53,8 +53,9 @@
   `services/async_worker.py` закрепляет тот же gate для owned coroutine/soft
   timeout helpers. `services/media_delivery_probe.py` добавляет delivery timing,
   size, probe и silence contracts без смены behavior. `services/media_masters.py`
-  закрепляет backend-neutral master/validator boundaries. 112/241 production
-  modules (46,5 %) проходят `mypy --strict`.
+  закрепляет backend-neutral master/validator boundaries, а
+  `services/dub_delivery.py` — output discovery/delivery contracts. 113/241
+  production modules (46,9 %) проходят `mypy --strict`.
 - Исполняемый контракт production-слоёв через `import-linter`: новые обратные
   импорты блокируются, а известные legacy-рёбра сокращаются по точному
   burn-down без wildcard-исключений (`tools/check_import_layers.py`).
