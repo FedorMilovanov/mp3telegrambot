@@ -115,6 +115,7 @@ def _force_cleanup(pid: int) -> None:
         os.kill(pid, signal.SIGKILL)
 
 
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_timeout_stops_grandchild_that_ignores_graceful_signal(
     tmp_path: Path,

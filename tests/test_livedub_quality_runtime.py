@@ -77,6 +77,7 @@ def test_info_owner_refuses_stale_35_semantic_env(monkeypatch) -> None:
     assert info.get_light_model_fallbacks() == []
 
 
+@pytest.mark.slow
 def test_info_card_uses_shared_bounded_transport_without_mutating_registry(monkeypatch) -> None:
     import services.livedub_info as info
 

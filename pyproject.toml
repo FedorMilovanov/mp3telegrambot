@@ -69,6 +69,9 @@ show_missing = true
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-q"
+markers = [
+  "slow: real waits or process timing; deselect only for the optional local quick loop",
+]
 
 [tool.mypy]
 # Строгость живёт здесь, а не в командной строке CI: один источник правды.

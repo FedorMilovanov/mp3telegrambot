@@ -22,6 +22,10 @@
 - `Secret scan` (gitleaks, полная история + weekly) и `CodeQL` (python +
   javascript-typescript, `security-extended`).
 - pre-commit: ruff из lock'а, `pre-commit-hooks`, `verify_repo.py` на `pre-push`.
+- `.editorconfig` с UTF-8/LF, 4-space indentation и CRLF для PowerShell;
+  зарегистрирован opt-in pytest marker `slow` для двух тестов с реальными
+  ожиданиями. Полный pytest и CI по-прежнему выполняют их; быстрый локальный
+  режим — явный `-m "not slow"`.
 - Измерение покрытия: `branch = true`, порог 52 %, `diff-cover` (75 % на изменённые строки).
 - `--version` / `-V` у `bot_new.py` и консольная команда `mp3bot`.
 - `/healthz`: JSON с причинами нездоровья (`problems[]`) и `503`, когда бот не
