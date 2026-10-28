@@ -575,6 +575,10 @@
   bounded renderer/master/validator, resolved ffprobe и ffmpeg encoder probe
   запускаются без shell. Новые tests подтверждают fixed argv, AV/delivery contract,
   checked preflight runtime и NVENC cache/fallback вход. `S603`: 54 → 49.
+- Четыре PDF/weighted-TTS `S603` прошли ручной review: configured wkhtmltopdf,
+  resolved Service Controller и два ffprobe probe используют отдельный argv без
+  shell. Owned PDF kill/reap, output gates, privacy-safe runner reports и
+  отсутствие model-weight execution в новых tests сохранены. `S603`: 49 → 45.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения
