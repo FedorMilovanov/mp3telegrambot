@@ -48,9 +48,12 @@ def run_checked(command: list[str]) -> None:
 
 
 def probe_duration(path: Path) -> float:
+    ffprobe = shutil.which("ffprobe")
+    if ffprobe is None:
+        raise FileNotFoundError("Required executable not found on PATH: ffprobe")
     proc = subprocess.run(
         [
-            "ffprobe",
+            ffprobe,
             "-v",
             "error",
             "-show_entries",

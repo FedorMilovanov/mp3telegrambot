@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
@@ -74,6 +76,25 @@ def test_post_aac_gate_rejects_late_broadband_synthesis_burst() -> None:
     assert report["passed"] is False
     assert report["late_tail"]["suspicious"] is True
     assert "late_broadband_burst" in report["failures"]
+
+
+def test_final_encoded_decode_uses_resolved_ffmpeg(monkeypatch, tmp_path: Path) -> None:
+    video = tmp_path / "russian_only.mp4"
+    video.write_bytes(b"video")
+    run = Mock(
+        return_value=SimpleNamespace(
+            returncode=0,
+            stdout=np.zeros(qa.SAMPLE_RATE // 4, dtype="<f4").tobytes(),
+            stderr=b"",
+        )
+    )
+    monkeypatch.setattr(qa, "resolve_required_executable", lambda _name: "/resolved/ffmpeg")
+    monkeypatch.setattr(qa.subprocess, "run", run)
+
+    audio = qa._decode_segment(video, start=1.0, duration=2.0)
+
+    assert audio.size == qa.SAMPLE_RATE // 4
+    assert run.call_args.args[0][0] == "/resolved/ffmpeg"
 
 
 def test_failed_final_encoded_segment_advances_only_its_seed_epoch(

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from core.media_title_policy import canonical_media_title
 from services.dub_worker_release import WORKER_RUNTIME
+from services.process_executables import resolve_required_executable
 
 import asyncio
 import html
@@ -71,6 +72,20 @@ def _pid_running(pid: int) -> bool:
     return True
 
 
+def _stop_stale_windows_worker(worker_pid: int) -> None:
+    try:
+        subprocess.run(
+            [resolve_required_executable("taskkill"), "/PID", str(worker_pid), "/T", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=30,
+            check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except Exception as exc:
+        logger.warning("Could not replace old Dub Studio worker: %s", exc)
+
+
 def ensure_worker_running() -> bool:
     if not enabled() or not _flag("DUB_STUDIO_AUTOSTART_WORKER", True):
         return False
@@ -87,17 +102,7 @@ def ensure_worker_running() -> bool:
         logger.info("Older Dub Studio worker is busy; replacement deferred until job end")
         return True
     if fresh_running and os.name == "nt":
-        try:
-            subprocess.run(
-                ["taskkill", "/PID", str(worker_pid), "/T", "/F"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=30,
-                check=False,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            )
-        except Exception as exc:
-            logger.warning("Could not replace old Dub Studio worker: %s", exc)
+        _stop_stale_windows_worker(worker_pid)
 
     root = studio_root()
     root.mkdir(parents=True, exist_ok=True)

@@ -1287,6 +1287,13 @@ Local Bot API slice удалил пять `S607` и заодно разреши�
 зелёные. Resolved dynamic argv перевёл три ранее literal-only вызова в
 отдельную manual `S603` очередь (103 → 106); suppressions не добавлены.
 Текущий census — 259/705 (36,7 % remaining, 63,3 % closed), включая 9 `S607`.
+Production media slice удалил последние пять production `S607`: Dub Studio,
+Factory benchmark, final encoded QA и два standalone VoxCPM2 preflight/probe.
+Standalone scripts не получили project-import dependency, missing `ffprobe`
+остаётся `FileNotFoundError`, а stale-worker failure остаётся нефатальным.
+64 focused tests зелёные, включая executed `ensure_worker_running` wrapper.
+Текущий census — 254/705 (36,0 % remaining,
+64,0 % closed), включая только четыре test-helper `S607`; `S603` = 106.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

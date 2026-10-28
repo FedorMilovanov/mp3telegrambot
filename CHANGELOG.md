@@ -534,6 +534,9 @@
   `pkill` до subprocess launch; targeted/global termination policy, opt-in
   global kill и обработку ошибок это не меняет. `S607`: 14 → 9; три resolved
   dynamic argv остаются в отдельной ручной `S603` очереди без suppressions.
+- Dub Studio и четыре media tool разрешают `taskkill`/`ffmpeg`/`ffprobe` до
+  запуска. Standalone VoxCPM2 scripts сохраняют независимый запуск и прежний
+  missing-executable error; постобработка и QA gate не изменены. `S607`: 9 → 4.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения
