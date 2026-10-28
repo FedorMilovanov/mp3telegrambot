@@ -1529,8 +1529,10 @@ runtime tuple и registry behavior не изменены. На том шаге s
 typed helper + `functools.partial`; executed chain test фиксирует точные URL,
 `return_content` и 30-second timeout, а failed suffix probe остаётся нефатальным.
 Telegraph slice содержал 107/240 production modules (44,6 %). Новый общий
-`services/process_executables.py` также добавлен в strict gate; текущий срез —
-108/241 production modules (44,8 %), остаётся 55,2 %.
+`services/process_executables.py` также добавлен в strict gate; на том шаге срез
+составлял 108/241 production modules (44,8 %). Затем cancellation-safe
+`services/async_process.py` добавлен без изменения process-tree ownership;
+текущий срез — 109/241 production modules (45,2 %), остаётся 132 modules (54,8 %).
 
 **Найденные по дороге настоящие дефекты:** кортеж кортежей в `negative` у
 `core/source_packs.py` (работал только за счёт защитного `neg[0]`), `max()`/деление
