@@ -551,6 +551,10 @@
   targeted PID, opt-in global matcher и configured executable используются без
   shell. Targeted/global termination policy и startup secrets не изменены.
   `S603`: 89 → 83.
+- Семь LiveDub mix `S603` прошли ручной review: loudness/probe/metadata,
+  internally built ffmpeg mix argv и thumbnail launch используют resolved
+  executables без shell. Filter/fallback chain, RU truncation rejection и
+  output-size gate сохранены. `S603`: 83 → 76.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения
