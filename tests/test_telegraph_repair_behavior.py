@@ -55,7 +55,11 @@ def test_chain_probes_conventional_second_part(monkeypatch):
         "https://telegra.ph/Page",
         "https://telegra.ph/Page-2",
     ]
-    assert len(calls) == 3
+    assert calls == [
+        ("https://api.telegra.ph/getPage/Page?return_content=true", {"timeout": 30}),
+        ("https://api.telegra.ph/getPage/Page-2?return_content=false", {"timeout": 30}),
+        ("https://api.telegra.ph/getPage/Page-2?return_content=true", {"timeout": 30}),
+    ]
 
 
 def test_chain_ignores_failed_second_part_probe(monkeypatch):

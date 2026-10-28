@@ -1319,8 +1319,12 @@ Lazy imports и security-правила разбираются отдельно,
 Следующий срез добавил `services/speech_backends/` целиком (14 modules).
 Единственная ошибка пакета — слишком узкий inferred type
 `VoxCPM2Backend.aliases` — исправлена annotation к `tuple[str, ...]`;
-runtime tuple и registry behavior не изменены. Текущий strict срез —
-106/240 production modules (44,2 %), остаётся 55,8 %.
+runtime tuple и registry behavior не изменены. На том шаге strict срез
+составлял 106/240 production modules (44,2 %).
+Затем добавлен `services/telegraph_repair.py`: два network lambda заменены
+typed helper + `functools.partial`; executed chain test фиксирует точные URL,
+`return_content` и 30-second timeout, а failed suffix probe остаётся нефатальным.
+Текущий strict срез — 107/240 production modules (44,6 %), остаётся 55,4 %.
 
 **Найденные по дороге настоящие дефекты:** кортеж кортежей в `negative` у
 `core/source_packs.py` (работал только за счёт защитного `neg[0]`), `max()`/деление

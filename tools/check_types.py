@@ -57,6 +57,7 @@ TYPED_SLICES: tuple[Slice, ...] = (
         ),
     ),
     Slice("services/speech_backends"),
+    Slice("services/telegraph_repair.py"),
 )
 
 #: mypy возвращает 2 на фатальных ошибках (нет модуля, битый конфиг).

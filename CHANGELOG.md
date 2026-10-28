@@ -45,7 +45,9 @@
   срез с `docs/typechecking.md`. Срез: `core/` и `pipelines/` (кроме
   `main_pipeline.py`, см. P0-3). Срез расширен на `services/speech_backends/`:
   14 modules доведены до strict-zero; annotation `VoxCPM2Backend.aliases`
-  соответствует `SpeechBackend` без изменения runtime-значения.
+  соответствует `SpeechBackend` без изменения runtime-значения. Срез также
+  включает `services/telegraph_repair.py`: typed transport helper сохраняет
+  точные Telegraph URL, timeout и нефатальный suffix-probe fallback.
 - Исполняемый контракт production-слоёв через `import-linter`: новые обратные
   импорты блокируются, а известные legacy-рёбра сокращаются по точному
   burn-down без wildcard-исключений (`tools/check_import_layers.py`).

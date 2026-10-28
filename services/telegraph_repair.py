@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from functools import partial
 import logging
 import re
 from typing import Any
@@ -87,6 +88,14 @@ def _extract_next_part_urls(nodes: Any, *, base: str = "https://telegra.ph") -> 
     return out
 
 
+def _get_telegraph_page(path: str, *, return_content: bool) -> requests.Response:
+    content_flag = "true" if return_content else "false"
+    return requests.get(
+        f"https://api.telegra.ph/getPage/{path}?return_content={content_flag}",
+        timeout=30,
+    )
+
+
 async def expand_telegraph_page_chain(url: str, *, max_pages: int | None = None) -> list[str]:
     """Return the full chained Telegraph page set unless an explicit limit is requested."""
     start = str(url or "").strip()
@@ -107,10 +116,7 @@ async def expand_telegraph_page_chain(url: str, *, max_pages: int | None = None)
         try:
             resp = await loop.run_in_executor(
                 None,
-                lambda p=path: requests.get(
-                    f"https://api.telegra.ph/getPage/{p}?return_content=true",
-                    timeout=30,
-                ),
+                partial(_get_telegraph_page, path, return_content=True),
             )
             data = resp.json()
             if not data.get("ok"):
@@ -128,10 +134,7 @@ async def expand_telegraph_page_chain(url: str, *, max_pages: int | None = None)
                         gpath = telegraph_path_from_url(guessed)
                         gresp = await loop.run_in_executor(
                             None,
-                            lambda p=gpath: requests.get(
-                                f"https://api.telegra.ph/getPage/{p}?return_content=false",
-                                timeout=30,
-                            ),
+                            partial(_get_telegraph_page, gpath, return_content=False),
                         )
                         if (gresp.json() or {}).get("ok"):
                             next_urls.append(guessed)
