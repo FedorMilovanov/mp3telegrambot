@@ -563,6 +563,10 @@
   ffmpeg/ffprobe, fixed/bounded argv и отсутствие shell задокументированы на
   вызовах. Duration/output postconditions, segment atomic replace и temp cleanup
   сохранены. `S603`: 72 → 66.
+- Пять Local Bot API bootstrap/YouTube PO-token `S603` прошли ручной review:
+  legacy explicit restart, configured server, isolated pinned plugin probe и
+  resolved Node version запускаются без shell. Active targeted/opt-in termination
+  policy и fail-closed bgutil readiness не изменены. `S603`: 66 → 61.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения

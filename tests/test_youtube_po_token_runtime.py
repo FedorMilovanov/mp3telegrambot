@@ -369,6 +369,22 @@ def test_default_client_config_and_cookies_file_are_composed_together(
     assert f"--cookies {cookies}" in joined
 
 
+def test_require_node_executes_resolved_version_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[list[str], dict[str, object]]] = []
+    monkeypatch.setattr(po.shutil, "which", lambda name: "/resolved/node" if name == "node" else None)
+
+    def run(command: list[str], **kwargs: object) -> SimpleNamespace:
+        calls.append((command, kwargs))
+        return SimpleNamespace(returncode=0, stdout="v22.14.0\n", stderr="")
+
+    monkeypatch.setattr(po.subprocess, "run", run)
+
+    assert po._require_node() == "22.14.0"
+    command, kwargs = calls[0]
+    assert command == ["/resolved/node", "--version"]
+    assert "shell" not in kwargs
+
+
 def test_start_launcher_provisions_bgutil_before_bot() -> None:
     launcher = Path("Start Bot.bat").read_text(encoding="utf-8")
     provision = launcher.index("tools\\ensure_bgutil_provider.py")

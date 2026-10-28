@@ -147,6 +147,34 @@ def test_stale_posix_server_uses_resolved_pkill(monkeypatch):
     assert run.call_args.args[0] == ["/resolved/pkill", "-f", "telegram-bot-api"]
 
 
+def test_start_local_server_uses_configured_file_with_argv(monkeypatch, tmp_path):
+    executable = tmp_path / "telegram-bot-api.exe"
+    executable.write_bytes(b"test-double")
+    data_dir = tmp_path / "data"
+    monkeypatch.setenv("TELEGRAM_API_ID", "12345")
+    monkeypatch.setenv("TELEGRAM_API_HASH", "test-api-hash")
+    monkeypatch.setenv("LOCAL_BOT_API_EXE", str(executable))
+    monkeypatch.setenv("LOCAL_BOT_API_DATA_DIR", str(data_dir))
+    popen = Mock(return_value=_RunningProcess())
+    monkeypatch.setattr(bootstrap.subprocess, "Popen", popen)
+
+    process, log_path = bootstrap._start_local_server("127.0.0.1", 8081)
+
+    assert process is popen.return_value
+    assert log_path == str(tmp_path / "botapi-server.log")
+    assert popen.call_args.args[0] == [
+        str(executable),
+        "--api-id=12345",
+        "--api-hash=test-api-hash",
+        "--local",
+        "--http-port=8081",
+        f"--dir={data_dir}",
+        f"--log={tmp_path / 'botapi-server.log'}",
+        "--verbosity=2",
+    ]
+    assert "shell" not in popen.call_args.kwargs
+
+
 def test_wait_loop_uses_one_real_deadline_and_short_probes():
     timeouts = []
 

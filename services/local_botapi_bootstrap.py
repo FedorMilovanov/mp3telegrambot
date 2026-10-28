@@ -110,7 +110,7 @@ def _system_telegram_route_available(timeout_sec: float = 2.0) -> bool:
 
 def _terminate_stale_server() -> None:
     if os.name == "nt":
-        subprocess.run(
+        subprocess.run(  # noqa: S603 -- legacy explicit restart, resolved fixed-name taskkill
             [resolve_required_executable("taskkill"), "/F", "/T", "/IM", "telegram-bot-api.exe"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -118,7 +118,7 @@ def _terminate_stale_server() -> None:
             timeout=8,
         )
     else:
-        subprocess.run(
+        subprocess.run(  # noqa: S603 -- legacy explicit restart, resolved fixed pkill matcher
             [resolve_required_executable("pkill"), "-f", "telegram-bot-api"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -204,7 +204,7 @@ def _start_local_server(host: str, port: int) -> tuple[subprocess.Popen[bytes] |
             kwargs["creationflags"] = 0x8 | 0x200 | 0x08000000
         else:
             kwargs["start_new_session"] = True
-        process = subprocess.Popen(command, **kwargs)  # type: ignore[arg-type]
+        process = subprocess.Popen(command, **kwargs)  # type: ignore[arg-type]  # noqa: S603 -- configured file, argv only
         return process, str(log_path)
     except Exception as exc:
         return None, f"{type(exc).__name__}: {exc}"
