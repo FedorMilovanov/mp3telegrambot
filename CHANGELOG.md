@@ -330,6 +330,8 @@
   cleanup и приоритет poster→snapshot→none сохранены; thumbnail file reads
   выполняются в owned worker. 169 pipeline-focused и 47 async-focused tests
   зелёные. `S110` = 0 и включён в обязательный Ruff gate; extended census — 270.
+- `ASYNC240` включён в обязательный Ruff gate после повторного repository-wide
+  нулевого census; `ASYNC230` остаётся включён, новых suppressions нет.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):
