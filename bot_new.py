@@ -80,7 +80,7 @@ if not _gemini_keys_configured:
 # versions as CI and Start Bot.bat. Verify before singleton ownership or any
 # child/provider runtime starts. google-genai remains optional when no configured
 # Gemini credential exists, matching the existing non-AI startup contract.
-from services.runtime_dependency_lock import (
+from services.runtime_dependency_lock import (  # noqa: E402 -- ordered after env/version validation
     RuntimeDependencyLockError,
     validate_runtime_dependency_lock,
 )
@@ -103,7 +103,7 @@ else:
 # pre-main manifest invokes this installer again later; acquire_early_singleton
 # is intentionally idempotent for the same PID. This ordering prevents a second
 # bot launch from colliding with a healthy first bot's bgutil provider.
-from services.process_singleton import acquire_early_singleton
+from services.process_singleton import acquire_early_singleton  # noqa: E402 -- after dependency validation
 
 if not acquire_early_singleton():
     print("❌ Уже запущен другой экземпляр MP3 Telegram Bot; второй запуск остановлен.")
@@ -113,7 +113,7 @@ if not acquire_early_singleton():
 # provider listening on 4416. Once this process owns the singleton, a listener
 # matching this repository's exact server/build/main.js command is necessarily
 # orphaned and can be removed safely. Unknown listeners remain fail-closed.
-from services.bgutil_orphan_recovery import (
+from services.bgutil_orphan_recovery import (  # noqa: E402 -- after singleton ownership
     BgutilOrphanRecoveryError,
     recover_orphaned_bgutil_http_runtime,
 )
@@ -133,7 +133,7 @@ else:
 # a missing or damaged one is rebuilt from the exact reviewed upstream commit.
 # The provisioner and yt-dlp.conf both own one fixed repo-local path; there is no
 # production BGUTIL_PROVIDER_HOME override to drift away from that policy.
-from tools.ensure_bgutil_provider import ProvisionError, ensure_bgutil_provider
+from tools.ensure_bgutil_provider import ProvisionError, ensure_bgutil_provider  # noqa: E402 -- after orphan recovery
 
 try:
     ensure_bgutil_provider()
@@ -148,7 +148,7 @@ except ProvisionError as exc:
 # its persistent local HTTP provider before the bot accepts work. The old script
 # cold-path warmup is deliberately absent: production no longer executes the
 # per-yt-dlp generate_once.js provider route.
-from services.youtube_po_token_runtime import (
+from services.youtube_po_token_runtime import (  # noqa: E402 -- after source provisioning
     YouTubePoTokenRuntimeError,
     require_youtube_po_token_runtime,
 )
@@ -162,10 +162,10 @@ except YouTubePoTokenRuntimeError as exc:
 else:
     print(f"✅ YouTube PO Token: {_youtube_po_runtime.status_text()}")
 
-from services import emit_service_bootstrap_diagnostics
-from services.bot_lifecycle import run_bot_process
-from services.database_migrations import apply_database_migrations
-from services.runtime_manifest import (
+from services import emit_service_bootstrap_diagnostics  # noqa: E402 -- after provider startup
+from services.bot_lifecycle import run_bot_process  # noqa: E402 -- after provider startup
+from services.database_migrations import apply_database_migrations  # noqa: E402 -- after provider startup
+from services.runtime_manifest import (  # noqa: E402 -- after provider startup
     RuntimeBootstrapError,
     bootstrap_post_main,
     bootstrap_pre_main,
@@ -181,7 +181,7 @@ except RuntimeBootstrapError as exc:
 
 # Deliberately use module ownership rather than "from main import main": the
 # lifecycle service must execute run_bot_async exactly once in one event loop.
-import main as _main_module
+import main as _main_module  # noqa: E402 -- must follow bootstrap_pre_main
 
 try:
     apply_database_migrations(_main_module)

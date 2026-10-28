@@ -1451,6 +1451,10 @@ signature test; итог — 51 focused passed и supplemental 100 % (9/9).
 repo-root bootstrap или prepare/provenance/composition behavior. 81 focused test
 прошёл, supplemental diff-cover — 100 % (11/11). Текущий census — 111/705
 (15,7 % remaining, 84,3 % closed): `E402` 64, `PLW0603` 47; `S603`/`S607` 0.
+Десять `bot_new.py` `E402` получили stage-specific justifications; обязательный
+bootstrap order и `main`-after-pre-main contract не изменены. 37 focused tests
+прошли; real Telegram launch не выполнялся. Текущий census — 101/705
+(14,3 % remaining, 85,7 % closed): `E402` 54, `PLW0603` 47; `S603`/`S607` 0.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

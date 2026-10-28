@@ -636,6 +636,10 @@
   imports остаются ниже repo-root `sys.path` setup. Prepare/provenance/composition
   behavior не изменён; 81 focused test и supplemental 100 % (11/11).
   `E402`: 75 → 64.
+- Десять `bot_new.py` `E402` получили stage-specific justifications. Порядок
+  env/version → dependency lock → singleton → recovery/provisioning → pre-main →
+  `main` не изменён; 37 focused tests прошли без real Telegram launch.
+  `E402`: 64 → 54.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения
