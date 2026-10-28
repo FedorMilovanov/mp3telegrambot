@@ -42,7 +42,14 @@ def test_no_known_bad_html_slice_or_nested_segment_code_regression():
 def test_no_runtime_databases_or_local_git_identity_are_tracked():
     import subprocess
 
-    tracked = subprocess.check_output(["git", "ls-files"], text=True, encoding="utf-8").splitlines()
+    from services.process_executables import resolve_required_executable
+
+    # Fixed repository-query argv; resolved executable and no shell.
+    tracked = subprocess.check_output(  # noqa: S603
+        [resolve_required_executable("git"), "ls-files"],
+        text=True,
+        encoding="utf-8",
+    ).splitlines()
     forbidden_suffixes = (".db", ".sqlite", ".sqlite3")
     forbidden_names = {".gitconfig", ".git-credentials", "bot.log"}
     offenders = []

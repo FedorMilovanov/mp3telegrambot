@@ -537,6 +537,9 @@
 - Dub Studio и четыре media tool разрешают `taskkill`/`ffmpeg`/`ffprobe` до
   запуска. Standalone VoxCPM2 scripts сохраняют независимый запуск и прежний
   missing-executable error; постобработка и QA gate не изменены. `S607`: 9 → 4.
+- Последние четыре test-only `S607` устранены resolved `git`/`node`/`taskkill`;
+  фиксированные argv без shell прошли ручной `S603` review с узкими обоснованными
+  исключениями. `S607` = 0 и включён в обычный Ruff gate; `S603`: 106 → 104.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения
