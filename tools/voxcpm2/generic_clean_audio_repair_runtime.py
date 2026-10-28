@@ -422,9 +422,10 @@ _source_main = main
 _BASE_ALL = tuple(globals().get("__all__", ()))
 
 
-from tools.voxcpm2 import clean_production_core as strict_core
+# Late compatibility imports stay below legacy main and the _BASE_ALL snapshot.
+from tools.voxcpm2 import clean_production_core as strict_core  # noqa: E402
 
-from tools.voxcpm2 import clean_request_settings
+from tools.voxcpm2 import clean_request_settings  # noqa: E402
 
 
 _legacy_update_manifest = _update_manifest
