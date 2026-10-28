@@ -1357,6 +1357,12 @@ shell. 53 focused tests зелёные; пять новых tests выполня
 tools-only coverage report подтвердил 100 % changed lines, основной coverage
 scope не менялся. Текущий census — 198/705 (28,1 % remaining, 71,9 % closed):
 `E402` 97, `S603` 54, `PLW0603` 47; `S607` остаётся 0.
+Dub/Factory media review закрыл ещё пять `S603`: checked preflight Python,
+bounded component commands, resolved ffprobe и fixed ffmpeg encoder probe не
+используют shell. 60 focused tests зелёные; пять новых tests выполняют preflight
+import graph, component `_run`, delivery/final AV probes и cached NVENC probe.
+Diff-cover 100 % (5/5). Текущий census — 193/705 (27,4 % remaining,
+72,6 % closed): `E402` 97, `S603` 49, `PLW0603` 47; `S607` остаётся 0.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

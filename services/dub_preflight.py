@@ -197,7 +197,7 @@ def _probe_imports(plan: dict[str, Any]) -> dict[str, Any]:
     env["PYTHONPATH"] = repo + (os.pathsep + current if current else "")
     env["PYTHONUTF8"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
-    process = subprocess.run(
+    process = subprocess.run(  # noqa: S603 -- checked runtime Python and pinned import graph
         [str(python), "-c", script],
         cwd=str(plan["repo"]),
         env=env,

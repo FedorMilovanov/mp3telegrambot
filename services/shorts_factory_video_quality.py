@@ -321,7 +321,7 @@ def _h264_nvenc_available_sync(ffmpeg: str) -> bool:
         _H264_NVENC_AVAILABLE = False
         return False
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # noqa: S603 -- resolved ffmpeg and fixed encoder-list probe
             [ffmpeg, "-hide_banner", "-encoders"],
             capture_output=True,
             text=True,

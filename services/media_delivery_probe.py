@@ -186,7 +186,7 @@ def probe_media(path: Path, *, timeout: int = 20) -> MediaProbe | None:
         str(path),
     ]
     try:
-        process = subprocess.run(
+        process = subprocess.run(  # noqa: S603 -- resolved ffprobe and fixed delivery probe
             command,
             capture_output=True,
             text=True,
