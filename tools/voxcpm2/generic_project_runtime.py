@@ -182,7 +182,7 @@ def _download_track(
         mode = ["--write-subs", "--no-write-auto-subs"]
     else:
         mode = ["--no-write-subs", "--write-auto-subs"]
-    proc = subprocess.run(
+    proc = subprocess.run(  # noqa: S603 -- pinned yt-dlp caption argv, URL/language are data
         [
             *pipeline._ytdlp_base(),
             "--no-playlist",
@@ -639,7 +639,9 @@ def _run_voxcpm_and_master(
             "base_seed": str(int(request.get("base_seed") or 2026072800)),
         },
     )
-    result = subprocess.run(synth, cwd=str(repo), env=env, check=False)
+    result = subprocess.run(  # noqa: S603 -- validated backend renderer argv and checked CPU runtime
+        synth, cwd=str(repo), env=env, check=False
+    )
     if result.returncode != 0:
         raise RuntimeError(f"Speech backend {backend.backend_id} CPU-синтез завершился с кодом {result.returncode}.")
 
@@ -658,7 +660,9 @@ def _run_voxcpm_and_master(
             "target_tp": "-1.0",
         },
     )
-    result = subprocess.run(master, cwd=str(repo), env=env, check=False)
+    result = subprocess.run(  # noqa: S603 -- validated backend master argv and checked CPU runtime
+        master, cwd=str(repo), env=env, check=False
+    )
     if result.returncode != 0:
         raise RuntimeError(f"Финальный master завершился с кодом {result.returncode}.")
     return russian_timeline

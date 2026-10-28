@@ -567,6 +567,10 @@
   legacy explicit restart, configured server, isolated pinned plugin probe и
   resolved Node version запускаются без shell. Active targeted/opt-in termination
   policy и fail-closed bgutil readiness не изменены. `S603`: 66 → 61.
+- Семь generic Short/Dub Studio `S603` прошли ручной review: pinned yt-dlp,
+  internal checked tools и validated backend renderer/master commands работают
+  без shell. Полный Short main и project speech/master paths получили executed
+  tests с checked CPU runtime; production outputs не изменены. `S603`: 61 → 54.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения
