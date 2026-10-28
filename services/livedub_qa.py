@@ -371,6 +371,15 @@ def _parse_qa_json(text: str) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
+async def _delete_uploaded_qa_file_best_effort(client_used, uploaded_file) -> None:
+    if client_used is None:
+        return
+    try:
+        await client_used.aio.files.delete(name=uploaded_file.name)
+    except Exception:
+        logger.debug("Failed to delete uploaded LiveDub QA audio", exc_info=True)
+
+
 async def _run_translation_qa_base(
     dub_video_path: Path,
     original_audio_path: Path | None,
@@ -662,7 +671,7 @@ async def _run_translation_qa_base(
                         raw_text[:160],
                     )
                 except Exception:
-                    pass
+                    logger.debug("Failed to log malformed LiveDub QA response details", exc_info=True)
                 last_err = RuntimeError("ответ модели не распарсился в QA-JSON")
             except Exception as exc:
                 last_err = exc
@@ -672,8 +681,7 @@ async def _run_translation_qa_base(
                 )
             finally:
                 for uploaded_file in uploaded:
-                    with contextlib.suppress(Exception):
-                        await client.aio.files.delete(name=uploaded_file.name)
+                    await _delete_uploaded_qa_file_best_effort(client, uploaded_file)
                 uploaded.clear()
 
             if last_err is not None and is_overload_error(last_err):
@@ -689,11 +697,7 @@ async def _run_translation_qa_base(
         return None
     finally:
         for uploaded_file in uploaded:
-            try:
-                if client_used is not None:
-                    await client_used.aio.files.delete(name=uploaded_file.name)
-            except Exception:
-                pass
+            await _delete_uploaded_qa_file_best_effort(client_used, uploaded_file)
         # This finally also runs during cancellation; keep cleanup synchronous.
         with contextlib.suppress(Exception):
             qa_audio.unlink(missing_ok=True)
