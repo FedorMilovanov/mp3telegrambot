@@ -1584,7 +1584,7 @@ def _gen_wkhtmltopdf(
                 proc.kill()
                 proc.communicate(timeout=5)
             except Exception:
-                pass
+                logger.debug("wkhtmltopdf: failed to kill/reap timed-out process", exc_info=True)
             return None
 
         if proc.returncode != 0:

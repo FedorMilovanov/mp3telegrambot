@@ -16,12 +16,15 @@ from __future__ import annotations
 
 import contextlib
 import csv
+import logging
 import os
 import re
 import subprocess
 import time
 from pathlib import Path
 from urllib.parse import urlparse
+
+logger = logging.getLogger(__name__)
 
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
@@ -230,7 +233,7 @@ def _terminate_managed_server() -> list[int]:
             if proc.returncode == 0:
                 killed.append(-1)
         except Exception:
-            pass
+            logger.debug("Global Local Bot API termination failed", exc_info=True)
     return killed
 
 

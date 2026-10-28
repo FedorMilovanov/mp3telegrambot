@@ -320,6 +320,11 @@
   audit. Cache invalidation, suffix probes и Playwright→requests fallback
   остаются нефатальными; grounding сохраняет границу 24 000 символов. 88 focused
   tests зелёные. `S110` — 17, extended census — 287.
+- Extended Ruff, service fallbacks: семь silent handlers в segment callback,
+  Gemini, Local Bot API, PDF, Quiz и owned Shorts transcription получили явную
+  диагностику. Segment lock release не маскирует результат рендера, malformed
+  proxy label не раскрывает credentials, Whisper использует общий CUDA cleanup.
+  99 focused tests зелёные. `S110` — 10, extended census — 280.
 - Проверки допуска в `pipelines/main_pipeline.py` вынесены в
   `pipelines/media_guards.py` (`live_skip`, `duration_skip`, `disk_skip`,
   `env_int`, `info_timeout_seconds`, `first_entry`, `parse_info_stdout`):

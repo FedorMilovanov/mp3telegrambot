@@ -262,6 +262,15 @@ def _validate_and_fix_timestamps(data: dict, duration: int) -> dict:
     return data
 
 
+def _log_gemini_finish_reason(response) -> None:
+    """Log response metadata without rejecting an otherwise usable response."""
+    try:
+        finish_reason = response.candidates[0].finish_reason if response.candidates else "NO_CANDIDATES"
+        logger.info("Gemini response: finish_reason=%s", finish_reason)
+    except Exception:
+        logger.debug("Gemini finish-reason inspection failed", exc_info=True)
+
+
 async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg, prefix=""):
     """Анализирует аудио через Gemini API без retry-storm и model downgrade."""
     if not duration or duration <= 0:
@@ -583,11 +592,7 @@ async def gemini_analyze_audio(mp3_path, title, performer, duration, status_msg,
             )
             raise _err
 
-        try:
-            _fin = response.candidates[0].finish_reason if response.candidates else "NO_CANDIDATES"
-            logger.info(f"Gemini response: finish_reason={_fin}")
-        except Exception:
-            pass
+        _log_gemini_finish_reason(response)
 
         def _extract_raw_text(resp) -> str | None:
             _txt = None

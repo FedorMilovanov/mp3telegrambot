@@ -33,6 +33,20 @@ def test_targeted_termination_ignores_unrelated_listener(tmp_path, monkeypatch):
     assert not runtime._pid_path(data_dir).exists()
 
 
+def test_global_termination_failure_returns_empty_result(tmp_path, monkeypatch):
+    _base_env(monkeypatch)
+    monkeypatch.setenv("LOCAL_BOT_API_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("LOCAL_BOT_API_ALLOW_GLOBAL_KILL", "1")
+    monkeypatch.setattr(runtime, "_windows_listener_pids", lambda _port: set())
+
+    def fail_run(*_args, **_kwargs):
+        raise RuntimeError("task manager unavailable")
+
+    monkeypatch.setattr(runtime.subprocess, "run", fail_run)
+
+    assert runtime._terminate_managed_server() == []
+
+
 def test_log_tail_redacts_token_hash_and_explicit_proxy_password(tmp_path, monkeypatch):
     _base_env(monkeypatch)
     monkeypatch.setenv("TELEGRAM_API_HASH", "private-api-hash")

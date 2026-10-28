@@ -8,10 +8,13 @@ still has no system route to Telegram data centres.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from pathlib import Path
 from urllib.parse import urlparse
+
+logger = logging.getLogger(__name__)
 
 
 def _proxy_label(value: str) -> str:
@@ -20,8 +23,8 @@ def _proxy_label(value: str) -> str:
         if parsed.scheme and parsed.hostname:
             port = f":{parsed.port}" if parsed.port else ""
             return f"{parsed.scheme}://{parsed.hostname}{port}"
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Proxy label parsing failed (%s); using generic label", type(exc).__name__)
     return "application proxy"
 
 

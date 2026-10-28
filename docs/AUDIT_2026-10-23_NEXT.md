@@ -1257,6 +1257,11 @@ grounding, chain repair и DOM audit. Cache invalidation, dirty-node cleanup,
 suffix probes и Playwright→requests fallback остаются нефатальными; grounding
 вынесен в проверяемый bounded helper. 88 focused tests зелёные. Текущий census —
 287, включая 17 `S110`.
+Service fallback slice удалил ещё семь `S110` в segment callback, Gemini,
+Local Bot API, PDF, Quiz и owned Shorts transcription. Segment lock release не
+маскирует результат, proxy diagnostics не раскрывает credentials, а Whisper
+переиспользует общий нефатальный CUDA cleanup. 99 focused tests зелёные.
+Текущий census — 280, включая 10 `S110`.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

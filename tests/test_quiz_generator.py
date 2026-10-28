@@ -1,4 +1,12 @@
-from services.quiz_generator import _format_ai_context, _parse_quiz_json, _sanitize_poll_payload, quiz_response_schema
+from types import SimpleNamespace
+
+from services.quiz_generator import (
+    _extract_quiz_candidate_text,
+    _format_ai_context,
+    _parse_quiz_json,
+    _sanitize_poll_payload,
+    quiz_response_schema,
+)
 
 
 def test_parse_quiz_json_requires_four_unique_options_and_valid_correct():
@@ -69,6 +77,30 @@ def test_parse_quiz_json_dedupes_questions_and_trims_lengths():
     assert len(parsed[0]["question"]) <= 255
     assert len(parsed[0]["options"][0]) <= 100
     assert len(parsed[0]["explanation"]) <= 200
+
+
+def test_quiz_candidate_text_skips_thoughts_and_survives_malformed_response():
+    response = SimpleNamespace(
+        candidates=[
+            SimpleNamespace(
+                content=SimpleNamespace(
+                    parts=[
+                        SimpleNamespace(thought=True, text="hidden"),
+                        SimpleNamespace(thought=False, text=""),
+                        SimpleNamespace(thought=False, text="visible"),
+                    ]
+                )
+            )
+        ]
+    )
+    assert _extract_quiz_candidate_text(response) == "visible"
+
+    class BrokenResponse:
+        @property
+        def candidates(self):
+            raise RuntimeError("malformed response")
+
+    assert _extract_quiz_candidate_text(BrokenResponse()) == ""
 
 
 def test_quiz_context_includes_argument_terms_and_timestamps():

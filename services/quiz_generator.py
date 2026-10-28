@@ -387,6 +387,17 @@ def _format_ai_context(ai_data: dict | None) -> str:
     return "\n\n".join(parts)
 
 
+def _extract_quiz_candidate_text(resp) -> str:
+    """Read visible candidate text while treating malformed metadata as empty."""
+    try:
+        for part in resp.candidates[0].content.parts:
+            if not getattr(part, "thought", False) and getattr(part, "text", None):
+                return part.text
+    except Exception:
+        logger.debug("[Quiz] Gemini candidate-part text extraction failed", exc_info=True)
+    return ""
+
+
 async def generate_quiz(
     ai_data: dict,
     title: str = "",
@@ -494,13 +505,7 @@ async def generate_quiz(
             resp = await _generate_one(attempt_prompt)
             raw = getattr(resp, "text", "") or ""
             if not raw:
-                try:
-                    for part in resp.candidates[0].content.parts:
-                        if not getattr(part, "thought", False) and getattr(part, "text", None):
-                            raw = part.text
-                            break
-                except Exception:
-                    pass
+                raw = _extract_quiz_candidate_text(resp)
             last_raw = raw or last_raw
             if not raw:
                 await alog_gemini_response(
