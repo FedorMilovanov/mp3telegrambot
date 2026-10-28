@@ -632,6 +632,10 @@
   repo-root bootstrap, семь project imports сохранены ниже `sys.path` setup.
   Repair tool получил executed deterministic signature test; supplemental
   diff-cover 100 % (9/9). `E402`: 84 → 75.
+- Одиннадцать editorial CLI `E402` получили точечные justifications: project
+  imports остаются ниже repo-root `sys.path` setup. Prepare/provenance/composition
+  behavior не изменён; 81 focused test и supplemental 100 % (11/11).
+  `E402`: 75 → 64.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения

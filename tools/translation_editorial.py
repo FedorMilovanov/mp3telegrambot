@@ -16,10 +16,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from services.async_process import run_cancellable_process
-from services.ffmpeg import YTDLP_BASE_ARGS
-from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
-from services.translation_editorial import (
+# Project imports require the repo-root path when this file runs as a script.
+from services.async_process import run_cancellable_process  # noqa: E402
+from services.ffmpeg import YTDLP_BASE_ARGS  # noqa: E402
+from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async  # noqa: E402
+from services.translation_editorial import (  # noqa: E402
     EXECUTABLE_ACTIONS,
     REVIEW_SCHEMA_NAME,
     REVIEW_SCHEMA_VERSION,
@@ -31,8 +32,8 @@ from services.translation_editorial import (
     transcribe_russian_whisper,
     validate_review_document,
 )
-from services.translation_editorial_pack_contract import load_verified_review_pack
-from services.translation_editorial_repair_provenance import (
+from services.translation_editorial_pack_contract import load_verified_review_pack  # noqa: E402
+from services.translation_editorial_repair_provenance import (  # noqa: E402
     build_repair_provenance,
     verify_repair_provenance,
     write_repair_provenance,

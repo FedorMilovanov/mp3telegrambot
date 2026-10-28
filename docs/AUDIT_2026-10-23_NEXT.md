@@ -1447,6 +1447,10 @@ repo-root bootstrap, семь project imports сохранены ниже `sys.p
 signature test; итог — 51 focused passed и supplemental 100 % (9/9).
 Текущий census — 122/705 (17,3 % remaining, 82,7 % closed): `E402` 75,
 `PLW0603` 47; `S603`/`S607` 0.
+Одиннадцать editorial CLI `E402` получили точечные justifications без изменения
+repo-root bootstrap или prepare/provenance/composition behavior. 81 focused test
+прошёл, supplemental diff-cover — 100 % (11/11). Текущий census — 111/705
+(15,7 % remaining, 84,3 % closed): `E402` 64, `PLW0603` 47; `S603`/`S607` 0.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**
