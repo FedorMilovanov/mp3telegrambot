@@ -64,3 +64,28 @@ def test_successful_legacy_edit_invalidates_core_cache(monkeypatch) -> None:
 
     assert asyncio.run(edit()) is True
     assert invalidated == [page_url]
+
+
+def test_successful_legacy_edit_survives_cache_invalidation_failure(monkeypatch) -> None:
+    monkeypatch.setattr(md_telegraph, "TELEGRAPH_TOKEN", "token")
+
+    def invalidate(_url):
+        raise RuntimeError("cache unavailable")
+
+    class Response:
+        def json(self):
+            return {"ok": True}
+
+    monkeypatch.setattr(telegraph_cache, "invalidate_telegraph_url", invalidate)
+    monkeypatch.setattr(md_telegraph.requests, "post", lambda *_args, **_kwargs: Response())
+
+    async def edit():
+        return await md_telegraph._edit_telegraph_page(
+            "https://telegra.ph/cache-edit-failure",
+            "Title",
+            "Author",
+            [{"tag": "p", "children": ["Real content"]}],
+            asyncio.get_running_loop(),
+        )
+
+    assert asyncio.run(edit()) is True

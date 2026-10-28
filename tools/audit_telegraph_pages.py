@@ -17,11 +17,14 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import re
 import sys
 import time
 from pathlib import Path
 from typing import Iterable
+
+logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -120,7 +123,7 @@ def expand_telegraph_url_chain_sync(url: str, *, max_pages: int | None = None, t
                         if (gresp.json() or {}).get("ok"):
                             next_urls.append(guessed)
                     except Exception:
-                        pass
+                        logger.debug("Telegraph suffix probe failed; keeping discovered chain", exc_info=True)
             for nxt in next_urls:
                 if nxt not in seen and nxt not in queue:
                     queue.append(nxt)
@@ -186,7 +189,7 @@ async def fetch_page_html(url: str, *, prefer_playwright: bool = True, timeout: 
         except Exception:
             # Browser unavailable or page load failed; requests fallback still gives
             # deterministic Telegraph HTML for the text-level audit.
-            pass
+            logger.debug("Playwright fetch failed; using requests fallback", exc_info=True)
     return _fetch_with_requests(url, timeout), "requests"
 
 

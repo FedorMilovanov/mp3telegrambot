@@ -147,7 +147,7 @@ async def _edit_telegraph_page_classified(
 
             invalidate_telegraph_url(page_url)
         except Exception:
-            pass
+            logger.debug("Telegraph cache invalidation failed after successful edit", exc_info=True)
     return result
 
 
@@ -201,7 +201,7 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
         # Убираем пустые ноды после чистки
         nodes = [n for n in nodes if n and (not isinstance(n, dict) or n.get("children", [True]))]
     except Exception:
-        pass
+        logger.debug("Telegraph dirty-node cleanup failed; using previously cleaned nodes", exc_info=True)
 
     token = TELEGRAPH_TOKEN
     if not token:
@@ -344,6 +344,31 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
     toc_title = compose_telegraph_title(title, " — Содержание")
     toc_url, _ = await _post_once(toc_title, toc_nodes)
     return toc_url
+
+
+def _attach_synopsis_grounding(ai_data, sections) -> None:
+    """Attach bounded verbatim evidence without making page publication fail."""
+    # Study/Reflection are text-only. Keep this private blackboard key out of
+    # the persistent cache while giving them actual speech fragments to quote.
+    try:
+        if isinstance(ai_data, dict) and sections:
+            _ground_parts: list[str] = []
+            _ground_len = 0
+            for _gs in sections:
+                _g_title = str((_gs or {}).get("title") or "").strip()
+                _g_time = str((_gs or {}).get("time") or "").strip()
+                _g_text = str((_gs or {}).get("content") or "").strip()
+                if not _g_text:
+                    continue
+                _chunk = f"### {_g_title} ({_g_time})\n{_g_text}"
+                _ground_parts.append(_chunk)
+                _ground_len += len(_chunk)
+                if _ground_len > 24000:
+                    break
+            if _ground_parts:
+                ai_data["_synopsis_grounding"] = "\n\n".join(_ground_parts)[:24000]
+    except Exception:
+        logger.debug("Failed to attach Synopsis grounding; continuing without it", exc_info=True)
 
 
 async def create_telegraph_synopsis(
@@ -1211,30 +1236,7 @@ async def create_telegraph_synopsis(
                 f"Synopsis v2: мало nodes ({total_nodes_estimate}) для {mins}мин — конспект может быть слишком коротким"
             )
 
-        # AUDIT R5 GROUNDING: сохраняем фрагменты финальной стенограммы в
-        # общий ai_data (in-memory blackboard) — Study/Reflection работают
-        # text-only и без этого просили verbatim-цитаты у модели, у которой
-        # нет текста речи (главный источник галлюцинаций цитат).
-        # Ключ приватный: db_save его отбрасывает, в кэш не попадает.
-        try:
-            if isinstance(ai_data, dict) and sections:
-                _ground_parts: list[str] = []
-                _ground_len = 0
-                for _gs in sections:
-                    _g_title = str((_gs or {}).get("title") or "").strip()
-                    _g_time = str((_gs or {}).get("time") or "").strip()
-                    _g_text = str((_gs or {}).get("content") or "").strip()
-                    if not _g_text:
-                        continue
-                    _chunk = f"### {_g_title} ({_g_time})\n{_g_text}"
-                    _ground_parts.append(_chunk)
-                    _ground_len += len(_chunk)
-                    if _ground_len > 24000:
-                        break
-                if _ground_parts:
-                    ai_data["_synopsis_grounding"] = "\n\n".join(_ground_parts)[:24000]
-        except Exception:
-            pass
+        _attach_synopsis_grounding(ai_data, sections)
 
         # ── Рекурсивная публикация по sections ───────────────
         # Стратегия: publish-first → при CONTENT_TOO_BIG делить sections пополам.

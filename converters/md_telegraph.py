@@ -2133,7 +2133,7 @@ async def _edit_telegraph_page(page_url: str, title: str, author: str, nodes: li
 
                     invalidate_telegraph_url(page_url)
                 except Exception:
-                    pass
+                    logger.debug("Telegraph cache invalidation failed after successful edit", exc_info=True)
                 return True
             err_msg = data.get("error", "unknown error")
             flood_m = re.match(r"FLOOD_WAIT_(\d+)", err_msg)

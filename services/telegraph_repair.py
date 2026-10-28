@@ -136,7 +136,7 @@ async def expand_telegraph_page_chain(url: str, *, max_pages: int | None = None)
                         if (gresp.json() or {}).get("ok"):
                             next_urls.append(guessed)
                     except Exception:
-                        pass
+                        logger.debug("Telegraph suffix probe failed; keeping discovered chain", exc_info=True)
             for nxt in next_urls:
                 if nxt not in seen and nxt not in queue:
                     queue.append(nxt)

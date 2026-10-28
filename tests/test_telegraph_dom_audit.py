@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 from core.telegraph_dom_audit import audit_telegraph_html, summarize_dom_issues
@@ -152,3 +153,38 @@ def test_audit_chain_has_suffix_probe_for_outdated_first_part():
     assert guess_telegraph_part_url("https://telegra.ph/Page-06-17", 2) == "https://telegra.ph/Page-06-17-2"
     src = Path("tools/audit_telegraph_pages.py").read_text(encoding="utf-8")
     assert "guess_telegraph_part_url(start, 2)" in src
+
+
+def test_audit_chain_survives_suffix_probe_failure(monkeypatch):
+    from tools import audit_telegraph_pages
+
+    calls = []
+
+    class Response:
+        def json(self):
+            return {"ok": True, "result": {"content": []}}
+
+    def fake_get(url, **_kwargs):
+        calls.append(url)
+        if "return_content=false" in url:
+            raise RuntimeError("suffix probe unavailable")
+        return Response()
+
+    monkeypatch.setattr(audit_telegraph_pages.requests, "get", fake_get)
+    chain = audit_telegraph_pages.expand_telegraph_url_chain_sync("https://telegra.ph/Probe-1")
+
+    assert chain == ["https://telegra.ph/Probe-1"]
+    assert len(calls) == 2
+
+
+def test_dom_audit_falls_back_to_requests_when_playwright_fails(monkeypatch):
+    from tools import audit_telegraph_pages
+
+    async def fail_playwright(_url, _timeout_ms):
+        raise RuntimeError("browser unavailable")
+
+    monkeypatch.setattr(audit_telegraph_pages, "_fetch_with_playwright", fail_playwright)
+    monkeypatch.setattr(audit_telegraph_pages, "_fetch_with_requests", lambda _url, _timeout: "requests html")
+
+    result = asyncio.run(audit_telegraph_pages.fetch_page_html("https://telegra.ph/Page"))
+    assert result == ("requests html", "requests")

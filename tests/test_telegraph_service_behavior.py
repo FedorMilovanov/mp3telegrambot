@@ -32,6 +32,28 @@ def test_synopsis_feature_flags(monkeypatch, name, enabled, default):
     assert enabled() is True
 
 
+def test_synopsis_grounding_helper_stores_bounded_verbatim_text():
+    data = {}
+    telegraph._attach_synopsis_grounding(
+        data,
+        [
+            {"title": "First", "time": "00:01", "content": "a" * 20000},
+            {"title": "Second", "time": "00:02", "content": "b" * 5000},
+        ],
+    )
+
+    grounding = data["_synopsis_grounding"]
+    assert len(grounding) == 24000
+    assert grounding.startswith("### First (00:01)\n" + "a" * 100)
+    assert "### Second (00:02)" in grounding
+
+
+def test_synopsis_grounding_helper_survives_malformed_sections():
+    data = {"existing": "kept"}
+    telegraph._attach_synopsis_grounding(data, [object()])
+    assert data == {"existing": "kept"}
+
+
 def test_classified_edit_requires_token_and_honors_strict_audit(monkeypatch):
     monkeypatch.setattr(telegraph, "TELEGRAPH_TOKEN", "")
     result = _run(
@@ -292,6 +314,21 @@ def test_post_cleans_dirty_fields_and_returns_url(monkeypatch):
         {"tag": "p", "children": [""]},
         {"tag": "p", "children": ["real"]},
     ]
+
+
+def test_post_uses_pre_cleaned_nodes_when_dirty_cleanup_fails(monkeypatch):
+    def respond(_kwargs, _count):
+        return Response(payload={"ok": True, "result": {"url": "https://telegra.ph/fallback"}})
+
+    def fail_dump(*_args, **_kwargs):
+        raise ValueError("unserializable node")
+
+    calls, _sleeps = _prepare_post(monkeypatch, respond)
+    monkeypatch.setattr(telegraph.json, "dumps", fail_dump)
+    nodes = [{"tag": "p", "children": ["already cleaned"]}]
+
+    assert _post("Title", nodes) == "https://telegra.ph/fallback"
+    assert calls[0]["json"]["content"] == nodes
 
 
 def test_post_without_token_or_with_unserializable_nodes_returns_none(monkeypatch):
