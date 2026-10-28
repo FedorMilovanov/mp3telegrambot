@@ -1407,6 +1407,12 @@ internal/resolved argv без shell, NVENC fallback и segmented CPU policy не
 supplemental diff-cover 100 % (3/3). VoxCPM2 tools больше не содержат `S603`.
 Текущий census — 157/705 (22,3 % remaining, 77,7 % closed): `E402` 97,
 `S603` 13, `PLW0603` 47; `S607` остаётся 0.
+Первый test-helper slice закрыл пять `S603`: bgutil lock owner, deterministic
+CLI, два isolated source-contract и env-reference generator используют current
+interpreter без shell. 28 focused tests зелёные и непосредственно выполняют эти
+test children; owned kill/wait и assertions сохранены. Текущий census — 152/705
+(21,6 % remaining, 78,4 % closed): `E402` 97, `S603` 8, `PLW0603` 47;
+`S607` остаётся 0.
 Lazy imports и security-правила разбираются отдельно, без autofix.
 
 **Решение:**

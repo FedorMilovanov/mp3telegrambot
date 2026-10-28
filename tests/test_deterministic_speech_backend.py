@@ -95,7 +95,7 @@ def test_deterministic_cli_produces_pcm_without_model_archive(tmp_path: Path):
         json.dumps({"segments": [{"id": 1, "text": "Тест"}]}),
         encoding="utf-8",
     )
-    proc = subprocess.run(
+    proc = subprocess.run(  # noqa: S603 -- current interpreter and deterministic test runtime
         [
             sys.executable,
             "-m",

@@ -211,7 +211,7 @@ def test_second_pass_contracts_in_isolated_process() -> None:
     environment["PYTHONPATH"] = os.pathsep.join(
         value for value in (str(repo), environment.get("PYTHONPATH", "")) if value
     )
-    process = subprocess.run(
+    process = subprocess.run(  # noqa: S603 -- current interpreter and fixed isolated test script
         [sys.executable, "-c", SCRIPT],
         cwd=repo,
         env=environment,
