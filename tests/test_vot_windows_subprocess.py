@@ -65,26 +65,33 @@ def test_windows_wrapper_uses_placeholders_and_never_shell(monkeypatch: pytest.M
     assert kwargs["timeout"] == 7
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="real cmd.exe roundtrip runs on Windows CI")
-def test_windows_batch_arguments_roundtrip_through_real_cmd(tmp_path: Path) -> None:
+_ROUNDTRIP_CASES = [
+    pytest.param("plain", id="plain"),
+    pytest.param("with spaces", id="spaces"),
+    pytest.param("https://example.invalid/watch?a=1&b=2", id="url-metacharacters"),
+    pytest.param("100%PATH%!delayed!", id="percent-and-delayed-expansion"),
+    pytest.param("caret^ pipe| less< greater> (paren) semi; equals=", id="other-metacharacters"),
+    pytest.param("русский текст", id="unicode"),
+    pytest.param("one trailing\\", id="one-trailing-backslash"),
+    pytest.param("two trailing\\\\", id="two-trailing-backslashes"),
+    pytest.param("", id="empty"),
+]
+
+
+@pytest.mark.parametrize(
+    "argument",
+    _ROUNDTRIP_CASES if sys.platform == "win32" else [pytest.param(None, id="windows-only")],
+)
+def test_windows_batch_arguments_roundtrip_through_real_cmd(tmp_path: Path, argument: str | None) -> None:
+    if argument is None:
+        pytest.skip("real cmd.exe roundtrip runs on Windows CI")
     script = tmp_path / "echo arguments.cmd"
     script.write_text(
         f'@echo off\r\n"{sys.executable}" -X utf8 -c "import json,sys; print(json.dumps(sys.argv[1:]))" %*\r\n',
         encoding="utf-8",
     )
-    arguments = [
-        "plain",
-        "with spaces",
-        "https://example.invalid/watch?a=1&b=2",
-        "100%PATH%!delayed!",
-        "caret^ pipe| less< greater> (paren) semi; equals=",
-        "русский текст",
-        "one trailing\\",
-        "two trailing\\\\",
-        "",
-    ]
 
-    stdout, stderr, returncode = yandex_live_dub._run_subprocess([str(script), *arguments], timeout=30)
+    stdout, stderr, returncode = yandex_live_dub._run_subprocess([str(script), argument], timeout=30)
 
     assert returncode == 0, stderr or stdout
-    assert json.loads(stdout) == arguments
+    assert json.loads(stdout) == [argument]
