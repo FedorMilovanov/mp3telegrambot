@@ -612,6 +612,11 @@
   resolved/current executables без shell. Отсутствующий FFmpeg не скрыт: historical
   integration skip сохранён, а helper получил отдельный executed double. Test
   files: `S603` 0; общий счёт: 8 → 2.
+- LiveDub Windows fallback больше не передаёт raw URL/argv через `shell=True`.
+  `.cmd/.bat` по-прежнему запускаются через `cmd.exe`, но command line содержит
+  только fixed placeholders, значения живут в child-only environment, AutoRun и
+  delayed expansion отключены. Trailing backslashes сохраняют C-argv roundtrip;
+  raw quote/newline/NUL отклоняются. POSIX/npx split не изменён. `S603`: 2 → 1.
 - Все GitHub Actions workflow явно ограничивают `GITHUB_TOKEN`: семь оставшихся
   workflow получили верхнеуровневый `permissions: contents: read`, а contract-тест
   запрещает возврат к неявным repository-default permissions. Job-level разрешения
