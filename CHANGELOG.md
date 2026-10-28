@@ -55,8 +55,10 @@
   size, probe и silence contracts без смены behavior. `services/media_masters.py`
   закрепляет backend-neutral master/validator boundaries, а
   `services/dub_delivery.py` — output discovery/delivery contracts, а
-  `services/mp3_conversion.py` — atomic re-encoding/probe boundaries. 114/241
-  production modules (47,3 %) проходят `mypy --strict`.
+  `services/mp3_conversion.py` — atomic re-encoding/probe boundaries.
+  `services/latency_trace.py` добавляет typed task/trace registry без смены
+  aggregation или log-only behavior. 115/241 production modules (47,7 %)
+  проходят `mypy --strict`.
 - Исполняемый контракт production-слоёв через `import-linter`: новые обратные
   импорты блокируются, а известные legacy-рёбра сокращаются по точному
   burn-down без wildcard-исключений (`tools/check_import_layers.py`).

@@ -1537,8 +1537,10 @@ timeout behavior. Затем `services/media_delivery_probe.py` добавлен
 delivery timing/size/probe/silence behavior; `services/media_masters.py`
 добавляет backend-neutral master/validator boundaries, а
 `services/dub_delivery.py` — output discovery/delivery contracts, а
-`services/mp3_conversion.py` — atomic re-encoding/probe boundaries. Текущий срез —
-114/241 production modules (47,3 %), остаётся 127 modules (52,7 %).
+`services/mp3_conversion.py` — atomic re-encoding/probe boundaries. Затем
+`services/latency_trace.py` добавлен после уточнения generic-типов task/trace
+registry; aggregation и log-only behavior не изменились. Текущий срез — 115/241
+production modules (47,7 %), остаётся 126 modules (52,3 %).
 
 **Найденные по дороге настоящие дефекты:** кортеж кортежей в `negative` у
 `core/source_packs.py` (работал только за счёт защитного `neg[0]`), `max()`/деление

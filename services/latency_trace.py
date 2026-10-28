@@ -18,6 +18,7 @@ import time
 import uuid
 import weakref
 from dataclasses import dataclass, field
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -36,16 +37,16 @@ class _LatencyTrace:
 
 @dataclass
 class _TraceHandle:
-    task: asyncio.Task
+    task: asyncio.Task[Any]
     trace: _LatencyTrace
     previous: _LatencyTrace | None
 
 
-_TRACE_BY_TASK: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+_TRACE_BY_TASK: weakref.WeakKeyDictionary[asyncio.Task[Any], _LatencyTrace] = weakref.WeakKeyDictionary()
 _TRACE_LOCK = threading.RLock()
 
 
-def _current_task() -> asyncio.Task | None:
+def _current_task() -> asyncio.Task[Any] | None:
     try:
         return asyncio.current_task()
     except RuntimeError:
