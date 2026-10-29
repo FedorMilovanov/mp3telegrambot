@@ -90,3 +90,22 @@ def test_census_covers_additional_quota_consuming_model_calls() -> None:
         "models.embed_content",
     ):
         assert f'"{suffix}"' in source
+
+
+def test_census_tracks_typed_capacity_callback_owners() -> None:
+    from scripts.gemini_caller_census import DIRECT_CLASSIFICATIONS
+
+    current = {
+        ("services/livedub_publication_core.py", "_call", "inference_async"),
+        ("services/shorts_factory_capacity_runtime.py", "_get_file", "files_get_async"),
+        ("services/shorts_factory_capacity_runtime.py", "_upload", "files_upload_async"),
+    }
+    previous = {
+        ("services/livedub_publication_core.py", "_generate_quality", "inference_async"),
+        ("services/shorts_factory_capacity_runtime.py", "_wait_factory_upload", "files_get_async"),
+        ("services/shorts_factory_capacity_runtime.py", "create_factory_plan_resumable", "files_upload_async"),
+    }
+    for signature in current:
+        assert DIRECT_CLASSIFICATIONS[signature] == ("B", 1)
+    for signature in previous:
+        assert signature not in DIRECT_CLASSIFICATIONS
