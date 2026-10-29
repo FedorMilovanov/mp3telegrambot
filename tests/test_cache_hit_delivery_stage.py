@@ -6,20 +6,21 @@ import asyncio
 import logging
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from pipelines.cache_hit_delivery_stage import CacheHitDeliveryRequest, deliver_cache_hit
-from pipelines.cached_presentation_stage import CachedCaption, CachedPageLinks
-from pipelines.delivery_stage import DeliveryOutcome
+from pipelines.cached_presentation_stage import CachedCaption, CachedPageLinks, CachedPresentationRequest
+from pipelines.delivery_stage import DeliveryOutcome, DeliveryRequest
 
 
-def _request(events) -> CacheHitDeliveryRequest:
-    async def send_livedub():
+def _request(events: list[tuple[Any, ...]]) -> CacheHitDeliveryRequest:
+    async def send_livedub() -> bool:
         events.append(("livedub",))
         return False
 
-    def cleanup(media_id):
+    def cleanup(media_id: str) -> None:
         events.append(("cleanup", media_id))
 
     return CacheHitDeliveryRequest(
@@ -56,14 +57,14 @@ def _request(events) -> CacheHitDeliveryRequest:
     )
 
 
-def _dependencies(events, *, fail_at=""):
-    async def prepare(request):
+def _dependencies(events: list[tuple[Any, ...]], *, fail_at: str = "") -> dict[str, Any]:
+    async def prepare(request: CachedPresentationRequest) -> CachedCaption:
         events.append(("presentation", request))
         if fail_at == "presentation":
             raise RuntimeError("presentation failed")
         return CachedCaption(caption="caption", full_caption="full caption")
 
-    async def deliver(request):
+    async def deliver(request: DeliveryRequest) -> DeliveryOutcome:
         events.append(("delivery", request))
         if fail_at == "delivery":
             raise RuntimeError("delivery failed")
@@ -78,8 +79,8 @@ def _dependencies(events, *, fail_at=""):
     return {"prepare": prepare, "deliver": deliver}
 
 
-def test_cache_hit_success_preserves_requests_order_and_cleanup(caplog):
-    events = []
+def test_cache_hit_success_preserves_requests_order_and_cleanup(caplog: pytest.LogCaptureFixture) -> None:
+    events: list[tuple[Any, ...]] = []
     request = _request(events)
 
     with caplog.at_level(logging.INFO):
@@ -147,12 +148,12 @@ def test_cache_hit_success_preserves_requests_order_and_cleanup(caplog):
         ("livedub", ["presentation", "delivery", "livedub"]),
     ],
 )
-def test_failures_propagate_without_success_cleanup(fail_at, expected_events):
-    events = []
+def test_failures_propagate_without_success_cleanup(fail_at: str, expected_events: list[str]) -> None:
+    events: list[tuple[Any, ...]] = []
     request = _request(events)
     if fail_at == "livedub":
 
-        async def broken_livedub():
+        async def broken_livedub() -> bool:
             events.append(("livedub",))
             raise RuntimeError("livedub failed")
 

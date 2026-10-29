@@ -12,6 +12,7 @@ from __future__ import annotations
 import itertools
 
 import pytest
+from typing import Any
 
 from pipelines.publication_plan import (
     TERMS_FIELDS,
@@ -28,7 +29,7 @@ from pipelines.publication_plan import (
 
 
 @pytest.mark.parametrize("ai_data", [None, {}, {"real_title": ""}, {"questions": []}])
-def test_empty_analysis_is_not_an_analysis(ai_data) -> None:
+def test_empty_analysis_is_not_an_analysis(ai_data: dict[str, Any] | None) -> None:
     assert has_ai_analysis(ai_data) is False
 
 
@@ -43,7 +44,7 @@ def test_empty_analysis_is_not_an_analysis(ai_data) -> None:
         {"terms_data": {"scripture": ["Ин. 3:16"]}},
     ],
 )
-def test_any_meaningful_field_counts(ai_data) -> None:
+def test_any_meaningful_field_counts(ai_data: dict[str, Any] | None) -> None:
     assert has_ai_analysis(ai_data) is True
 
 
@@ -122,7 +123,7 @@ def test_terms_are_dropped_when_both_new_pages_run() -> None:
 
 
 @pytest.mark.parametrize(("study", "reflection"), [(True, False), (False, True), (False, False)])
-def test_terms_survive_if_at_least_one_new_page_is_off(study, reflection) -> None:
+def test_terms_survive_if_at_least_one_new_page_is_off(study: bool, reflection: bool) -> None:
     plan = page_plan(FeatureFlags(False, False, True, study, reflection))
     assert plan.terms is True
 

@@ -7,7 +7,7 @@ from core.content_audit import audit_expanded_sections
 from services.telegraph_pages import create_telegraph_study_reflection_combined
 
 
-def _flat(node):
+def _flat(node: object) -> str:
     if isinstance(node, str):
         return node
     if isinstance(node, dict):
@@ -17,7 +17,7 @@ def _flat(node):
     return ""
 
 
-def test_navigation_block_uses_space_outside_bold_label():
+def test_navigation_block_uses_space_outside_bold_label() -> None:
     """Пробел — вне <b>: иначе рендер срезает его и получается **...:**[ссылка]."""
     from pipelines.telegraph_nav import NAV_HEADER, nav_nodes
 
@@ -34,7 +34,7 @@ def test_navigation_block_uses_space_outside_bold_label():
     assert "Читать также: " not in NAV_HEADER
 
 
-def test_combined_pages_publish_with_page_prefix_and_quality_size_guard():
+def test_combined_pages_publish_with_page_prefix_and_quality_size_guard() -> None:
     src = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
     assert "COMBINED_STUDY_REFLECTION_MAX_PROMPT_CHARS" in src
     assert "prompt too large for quality-first mode" in src
@@ -42,7 +42,7 @@ def test_combined_pages_publish_with_page_prefix_and_quality_size_guard():
     assert "full_page_title," in src
 
 
-def test_content_audit_removes_channel_position_and_material_wording():
+def test_content_audit_removes_channel_position_and_material_wording() -> None:
     sections = [
         {
             "title": "Лексика",
@@ -64,7 +64,7 @@ def test_content_audit_removes_channel_position_and_material_wording():
     assert any(i.code == "prompt_context_leak_fixed" for i in issues)
 
 
-def test_structured_block_aliases_render_without_schema_warnings():
+def test_structured_block_aliases_render_without_schema_warnings() -> None:
     section = {
         "title": "T",
         "content": "fallback",
@@ -97,20 +97,20 @@ def test_structured_block_aliases_render_without_schema_warnings():
     assert "Текст задаёт критерий проверки" in flat
 
 
-def test_combined_function_exists_but_docstring_says_quality_first_opt_in():
+def test_combined_function_exists_but_docstring_says_quality_first_opt_in() -> None:
     assert create_telegraph_study_reflection_combined.__name__ == "create_telegraph_study_reflection_combined"
     doc = create_telegraph_study_reflection_combined.__doc__ or ""
     assert "Optional" in doc or "Disabled by default" in doc
 
 
-def test_prompts_ban_channel_position_and_bare_key_texts():
+def test_prompts_ban_channel_position_and_bare_key_texts() -> None:
     src = Path("core/prompts.py").read_text(encoding="utf-8")
     assert "Никогда не публикуй внутреннюю редакционную рамку" in src
     assert "нельзя давать голую подборку стихов" in src
     assert "не ограничивайся словарным значением" in src
 
 
-def test_error_heading_cross_is_moved_after_full_heading():
+def test_error_heading_cross_is_moved_after_full_heading() -> None:
     from converters.md_telegraph import _postprocess_telegraph_nodes
 
     nodes = [{"tag": "p", "children": ["**Внутренний свет** ❌ **как высший авторитет .**"]}]
@@ -121,7 +121,7 @@ def test_error_heading_cross_is_moved_after_full_heading():
     assert not flat.strip().endswith("❌")
 
 
-def test_source_cards_are_title_first_with_original_parenthetical():
+def test_source_cards_are_title_first_with_original_parenthetical() -> None:
     from core.source_titles import normalize_source_card_line
 
     assert normalize_source_card_line("• John MacArthur, Strange Fire") == (
@@ -129,7 +129,7 @@ def test_source_cards_are_title_first_with_original_parenthetical():
     )
 
 
-def test_scripture_text_only_block_is_not_lost_or_warned():
+def test_scripture_text_only_block_is_not_lost_or_warned() -> None:
     from core.content_audit import audit_expanded_sections
 
     section = {
@@ -149,13 +149,13 @@ def test_scripture_text_only_block_is_not_lost_or_warned():
     assert "Этот текст задаёт стандарт" in flat
 
 
-def test_prompts_require_cross_in_middle_not_end():
+def test_prompts_require_cross_in_middle_not_end() -> None:
     src = Path("core/prompts.py").read_text(encoding="utf-8")
     assert "Красный крест НЕ ставь" in src
     assert "**Тема** ❌ **Подмена:" in src
 
 
-def test_synopsis_prompt_demands_transcript_like_fidelity_and_inline_anchors():
+def test_synopsis_prompt_demands_transcript_like_fidelity_and_inline_anchors() -> None:
     src = Path("core/prompts.py").read_text(encoding="utf-8")
     assert "РЕЖИМ 100% ПОДРОБНОЙ ТРАНСКРИПЦИИ (АБСОЛЮТНО БЕЗ СЖАТИЯ)" in src
     assert "Джоне Роджерсе" in src
@@ -164,7 +164,7 @@ def test_synopsis_prompt_demands_transcript_like_fidelity_and_inline_anchors():
     assert "нормально, если Telegraph\nполучится в 2 части" in src
 
 
-def test_structured_schema_has_argument_and_application_blocks():
+def test_structured_schema_has_argument_and_application_blocks() -> None:
     from core.candidate_schema import expanded_page_response_schema
 
     schema = expanded_page_response_schema()
@@ -178,7 +178,7 @@ def test_structured_schema_has_argument_and_application_blocks():
     assert "common_misreading" not in props
 
 
-def test_synopsis_density_audit_requires_inline_anchors_for_long_transcripts():
+def test_synopsis_density_audit_requires_inline_anchors_for_long_transcripts() -> None:
     from core.synopsis_quality import audit_synopsis_density, get_synopsis_density_profile
 
     assert get_synopsis_density_profile(3600).min_total_chars >= 8500
@@ -187,7 +187,7 @@ def test_synopsis_density_audit_requires_inline_anchors_for_long_transcripts():
     assert "synopsis_missing_inline_anchors" in {i.code for i in issues}
 
 
-def test_new_structured_blocks_render_argument_spine_pull_quote_and_application():
+def test_new_structured_blocks_render_argument_spine_pull_quote_and_application() -> None:
     section = {
         "title": "T",
         "content": "fallback",

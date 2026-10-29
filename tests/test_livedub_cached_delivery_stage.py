@@ -1,5 +1,8 @@
 """Cached LiveDub pair delivery and rollback contracts."""
 
+from typing import Any
+from collections.abc import Awaitable, Callable
+
 import asyncio
 from types import SimpleNamespace
 
@@ -9,54 +12,60 @@ from pipelines.livedub_cached_delivery_stage import deliver_cached_livedub
 
 
 class Bot:
-    def __init__(self, *, video_error=None, message_error=None):
+    def __init__(self, *, video_error: BaseException | None = None, message_error: BaseException | None = None) -> None:
         self.video_error = video_error
         self.message_error = message_error
         self.video_message = SimpleNamespace(message_id=99)
-        self.videos = []
-        self.messages = []
+        self.videos: list[dict[str, Any]] = []
+        self.messages: list[dict[str, Any]] = []
 
-    async def send_video(self, **kwargs):
+    async def send_video(self, **kwargs: Any) -> SimpleNamespace:
         self.videos.append(kwargs)
         if self.video_error is not None:
             raise self.video_error
         return self.video_message
 
-    async def send_message(self, **kwargs):
+    async def send_message(self, **kwargs: Any) -> None:
         self.messages.append(kwargs)
         if self.message_error is not None:
             raise self.message_error
 
 
 def _invoke(
-    bot,
-    monkeypatch,
+    bot: Bot,
+    monkeypatch: pytest.MonkeyPatch,
     *,
-    companions_ok=True,
-    invalidate=None,
-    flush=None,
-):
-    events = []
+    companions_ok: bool = True,
+    invalidate: Callable[..., Awaitable[None]] | None = None,
+    flush: Callable[[str], Awaitable[None]] | None = None,
+) -> list[tuple[Any, ...]]:
+    events: list[tuple[Any, ...]] = []
     card = {"title": "Cached title"}
 
-    async def companions(received_bot, **kwargs):
+    async def companions(received_bot: Any, **kwargs: Any) -> bool:
         events.append(("companions", received_bot, kwargs))
         return companions_ok
 
-    async def delete(*args):
+    async def delete(*args: Any) -> None:
         events.append(("delete", *args))
 
-    if invalidate is None:
+    invalidate_callback = invalidate
+    if invalidate_callback is None:
 
-        async def invalidate(*args):
+        async def default_invalidate(*args: Any) -> None:
             events.append(("invalidate", *args))
 
-    if flush is None:
+        invalidate_callback = default_invalidate
 
-        async def flush(reason):
+    flush_callback = flush
+    if flush_callback is None:
+
+        async def default_flush(reason: str) -> None:
             events.append(("flush", reason))
 
-    def discard(reason):
+        flush_callback = default_flush
+
+    def discard(reason: str) -> None:
         events.append(("discard", reason))
 
     monkeypatch.setattr(
@@ -67,7 +76,7 @@ def _invoke(
         "pipelines.livedub_cached_delivery_stage.coordinator.delete_message_best_effort",
         delete,
     )
-    monkeypatch.setattr("core.database.adb_set_livedub_file_id", invalidate)
+    monkeypatch.setattr("core.database.adb_set_livedub_file_id", invalidate_callback)
     asyncio.run(
         deliver_cached_livedub(
             bot,
@@ -77,14 +86,14 @@ def _invoke(
             caption="caption",
             publication_card=card,
             media_id="media1",
-            flush_source_audio=flush,
+            flush_source_audio=flush_callback,
             discard_source_audio=discard,
         )
     )
     return events
 
 
-def test_cached_pair_success_discards_deferred_source_audio(monkeypatch):
+def test_cached_pair_success_discards_deferred_source_audio(monkeypatch: pytest.MonkeyPatch) -> None:
     bot = Bot()
     events = _invoke(bot, monkeypatch)
 
@@ -112,7 +121,7 @@ def test_cached_pair_success_discards_deferred_source_audio(monkeypatch):
     assert bot.messages == []
 
 
-def test_missing_companions_rolls_back_invalidates_flushes_and_notifies(monkeypatch):
+def test_missing_companions_rolls_back_invalidates_flushes_and_notifies(monkeypatch: pytest.MonkeyPatch) -> None:
     bot = Bot()
     events = _invoke(bot, monkeypatch, companions_ok=False)
 
@@ -127,11 +136,11 @@ def test_missing_companions_rolls_back_invalidates_flushes_and_notifies(monkeypa
     assert "MP3-комплект устарел" in bot.messages[0]["text"]
 
 
-def test_invalidation_failure_still_flushes_and_notifies(monkeypatch):
+def test_invalidation_failure_still_flushes_and_notifies(monkeypatch: pytest.MonkeyPatch) -> None:
     bot = Bot()
-    calls = []
+    calls: list[tuple[Any, ...]] = []
 
-    async def invalidate(*args):
+    async def invalidate(*args: Any) -> None:
         calls.append(args)
         raise RuntimeError("database unavailable")
 
@@ -142,7 +151,7 @@ def test_invalidation_failure_still_flushes_and_notifies(monkeypatch):
     assert len(bot.messages) == 1
 
 
-def test_video_rejection_has_no_message_rollback_but_invalidates_pair(monkeypatch):
+def test_video_rejection_has_no_message_rollback_but_invalidates_pair(monkeypatch: pytest.MonkeyPatch) -> None:
     bot = Bot(video_error=RuntimeError("stale file id"))
     events = _invoke(bot, monkeypatch)
 
@@ -152,8 +161,8 @@ def test_video_rejection_has_no_message_rollback_but_invalidates_pair(monkeypatc
     assert len(bot.messages) == 1
 
 
-def test_invalidation_and_notice_failures_are_best_effort(monkeypatch):
-    async def invalidate(*_args):
+def test_invalidation_and_notice_failures_are_best_effort(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def invalidate(*_args: Any) -> None:
         raise RuntimeError("database unavailable")
 
     bot = Bot(message_error=RuntimeError("notice unavailable"))
@@ -168,8 +177,8 @@ def test_invalidation_and_notice_failures_are_best_effort(monkeypatch):
     assert len(bot.messages) == 1
 
 
-def test_source_audio_flush_error_is_not_hidden(monkeypatch):
-    async def flush(_reason):
+def test_source_audio_flush_error_is_not_hidden(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def flush(_reason: str) -> None:
         raise RuntimeError("source audio failed")
 
     bot = Bot()
@@ -179,7 +188,7 @@ def test_source_audio_flush_error_is_not_hidden(monkeypatch):
     assert bot.messages == []
 
 
-def test_cancellation_propagates_without_cached_pair_invalidation(monkeypatch):
+def test_cancellation_propagates_without_cached_pair_invalidation(monkeypatch: pytest.MonkeyPatch) -> None:
     bot = Bot(video_error=asyncio.CancelledError())
     with pytest.raises(asyncio.CancelledError):
         _invoke(bot, monkeypatch)

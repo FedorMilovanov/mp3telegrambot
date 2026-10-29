@@ -1,4 +1,8 @@
 from __future__ import annotations
+from collections.abc import Awaitable, Callable
+from typing import Any
+import pathlib
+import pytest
 
 import asyncio
 import sys
@@ -11,7 +15,7 @@ def _install_import_stubs() -> None:
         import dotenv  # noqa: F401
     except ImportError:
         dotenv_stub = ModuleType("dotenv")
-        dotenv_stub.load_dotenv = lambda: None
+        setattr(dotenv_stub, "load_dotenv", lambda: None)
         sys.modules["dotenv"] = dotenv_stub
 
     try:
@@ -20,24 +24,24 @@ def _install_import_stubs() -> None:
         flask_stub = ModuleType("flask")
 
         class _Flask:
-            def __init__(self, *args, **kwargs) -> None:
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
                 pass
 
-            def route(self, *args, **kwargs):
-                def decorator(func):
+            def route(self, *args: Any, **kwargs: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+                def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
                     return func
 
                 return decorator
 
-        flask_stub.Flask = _Flask
+        setattr(flask_stub, "Flask", _Flask)
         sys.modules["flask"] = flask_stub
 
     try:
         import telegram  # noqa: F401
     except ImportError:
         telegram_stub = ModuleType("telegram")
-        telegram_stub.InlineKeyboardButton = object
-        telegram_stub.InlineKeyboardMarkup = object
+        setattr(telegram_stub, "InlineKeyboardButton", object)
+        setattr(telegram_stub, "InlineKeyboardMarkup", object)
         sys.modules["telegram"] = telegram_stub
 
 
@@ -68,12 +72,12 @@ def _generic_quota_error() -> _ServiceError:
 
 
 class _Models:
-    def __init__(self, name: str, calls: list[tuple[str, list]], handler) -> None:
+    def __init__(self, name: str, calls: list[tuple[str, list[Any]]], handler: Callable[[], Any]) -> None:
         self._name = name
         self._calls = calls
         self._handler = handler
 
-    async def generate_content(self, **kwargs):
+    async def generate_content(self, **kwargs: Any) -> Any:
         self._calls.append((self._name, list(kwargs.get("contents") or [])))
         result = self._handler()
         if isinstance(result, BaseException):
@@ -82,13 +86,18 @@ class _Models:
 
 
 class _Files:
-    def __init__(self, name: str, calls: list[tuple[str, str]], upload_handler=None) -> None:
+    def __init__(
+        self,
+        name: str,
+        calls: list[tuple[str, str]],
+        upload_handler: Callable[[], Any] | None = None,
+    ) -> None:
         self._name = name
         self._calls = calls
         self._upload_handler = upload_handler
         self._counter = 0
 
-    async def upload(self, **kwargs):
+    async def upload(self, **kwargs: Any) -> SimpleNamespace:
         self._calls.append((self._name, "upload"))
         if self._upload_handler is not None:
             result = self._upload_handler()
@@ -97,15 +106,21 @@ class _Files:
         self._counter += 1
         return SimpleNamespace(name=f"{self._name}-file-{self._counter}", state="ACTIVE")
 
-    async def get(self, **kwargs):
+    async def get(self, **kwargs: Any) -> SimpleNamespace:
         self._calls.append((self._name, "get"))
         return SimpleNamespace(name=kwargs.get("name", "file"), state="ACTIVE")
 
-    async def delete(self, **kwargs):
+    async def delete(self, **kwargs: Any) -> None:
         self._calls.append((self._name, "delete"))
 
 
-def _client(name: str, model_calls: list, model_handler, file_calls=None, upload_handler=None):
+def _client(
+    name: str,
+    model_calls: list[tuple[str, list[Any]]],
+    model_handler: Callable[[], Any],
+    file_calls: list[tuple[str, str]] | None = None,
+    upload_handler: Callable[[], Any] | None = None,
+) -> SimpleNamespace:
     return SimpleNamespace(
         name=name,
         aio=SimpleNamespace(
@@ -119,7 +134,7 @@ def _quiz_response() -> SimpleNamespace:
     return SimpleNamespace(text="routing-ok")
 
 
-def _quiz_questions() -> list[dict]:
+def _quiz_questions() -> list[dict[str, Any]]:
     return [
         {
             "question": "Каков основной вывод?",
@@ -130,7 +145,7 @@ def _quiz_questions() -> list[dict]:
     ]
 
 
-def _install_quiz_stubs(monkeypatch) -> None:
+def _install_quiz_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(quiz_generator, "make_text_config_smart", lambda **kwargs: {})
     monkeypatch.setattr(
         quiz_generator,
@@ -138,16 +153,18 @@ def _install_quiz_stubs(monkeypatch) -> None:
         lambda raw, expected_count=None: _quiz_questions(),
     )
 
-    async def _noop(**kwargs):
+    async def _noop(**kwargs: Any) -> None:
         return None
 
     monkeypatch.setattr(quiz_generator, "alog_gemini_response", _noop)
     monkeypatch.setattr(quiz_generator, "alog_gemini_run", _noop)
 
 
-def test_quiz_project_quota_skips_same_domain_and_drops_key_bound_audio_on_failover(monkeypatch) -> None:
+def test_quiz_project_quota_skips_same_domain_and_drops_key_bound_audio_on_failover(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _install_quiz_stubs(monkeypatch)
-    calls: list[tuple[str, list]] = []
+    calls: list[tuple[str, list[Any]]] = []
     first = _client("first", calls, _project_quota_error)
     same_project = _client(
         "same-project",
@@ -179,9 +196,9 @@ def test_quiz_project_quota_skips_same_domain_and_drops_key_bound_audio_on_failo
     assert audio_part not in calls[1][1]
 
 
-def test_quiz_generic_429_still_rotates_to_same_labeled_domain(monkeypatch) -> None:
+def test_quiz_generic_429_still_rotates_to_same_labeled_domain(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_quiz_stubs(monkeypatch)
-    calls: list[tuple[str, list]] = []
+    calls: list[tuple[str, list[Any]]] = []
     first = _client("first", calls, _generic_quota_error)
     sibling = _client("sibling", calls, _quiz_response)
 
@@ -221,7 +238,7 @@ class _Budget:
         self.used += 1
 
 
-def _install_livedub_stubs(monkeypatch, clients, domains) -> None:
+def _install_livedub_stubs(monkeypatch: pytest.MonkeyPatch, clients: list[Any], domains: list[str]) -> None:
     _Budget.instances = []
     monkeypatch.setattr(livedub_qa, "HAS_GEMINI", True)
     monkeypatch.setattr(livedub_qa, "GEMINI_CLIENTS", clients)
@@ -235,14 +252,14 @@ def _install_livedub_stubs(monkeypatch, clients, domains) -> None:
     monkeypatch.setattr(capacity_control, "require_domain_available", lambda domain: None)
     monkeypatch.setattr(capacity_control, "note_overload", lambda *args, **kwargs: None)
 
-    async def _run_heavy(call, **kwargs):
+    async def _run_heavy(call: Callable[[], Awaitable[Any]], **kwargs: Any) -> Any:
         return await call()
 
     monkeypatch.setattr(capacity_control, "run_heavy_gemini_call", _run_heavy)
     monkeypatch.setattr(core_globals, "make_audio_config", lambda **kwargs: {})
 
 
-def _write_audio_inputs(tmp_path):
+def _write_audio_inputs(tmp_path: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path, pathlib.Path]:
     original = tmp_path / "original.mp3"
     dub = tmp_path / "dub.mp3"
     video = tmp_path / "video.mp4"
@@ -256,8 +273,10 @@ def _qa_response() -> SimpleNamespace:
     return SimpleNamespace(text='{"score":100,"verdict":"точно","issues":[]}')
 
 
-def test_livedub_files_project_quota_skips_same_domain_before_budget_claim(monkeypatch, tmp_path) -> None:
-    model_calls: list[tuple[str, list]] = []
+def test_livedub_files_project_quota_skips_same_domain_before_budget_claim(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    model_calls: list[tuple[str, list[Any]]] = []
     file_calls: list[tuple[str, str]] = []
     first = _client(
         "first",
@@ -297,8 +316,10 @@ def test_livedub_files_project_quota_skips_same_domain_before_budget_claim(monke
     assert [budget.used for budget in _Budget.instances[:3]] == [2, 1, 1]
 
 
-def test_livedub_inference_project_quota_skips_same_domain_before_reupload(monkeypatch, tmp_path) -> None:
-    model_calls: list[tuple[str, list]] = []
+def test_livedub_inference_project_quota_skips_same_domain_before_reupload(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    model_calls: list[tuple[str, list[Any]]] = []
     file_calls: list[tuple[str, str]] = []
     first = _client("first", model_calls, _project_quota_error, file_calls)
     same_project = _client(
@@ -333,8 +354,10 @@ def test_livedub_inference_project_quota_skips_same_domain_before_reupload(monke
     assert [budget.used for budget in _Budget.instances[:3]] == [2, 2, 2]
 
 
-def test_livedub_generic_429_keeps_same_domain_failover(monkeypatch, tmp_path) -> None:
-    model_calls: list[tuple[str, list]] = []
+def test_livedub_generic_429_keeps_same_domain_failover(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    model_calls: list[tuple[str, list[Any]]] = []
     file_calls: list[tuple[str, str]] = []
     first = _client("first", model_calls, _generic_quota_error, file_calls)
     sibling = _client("sibling", model_calls, _qa_response, file_calls)
@@ -361,8 +384,10 @@ def test_livedub_generic_429_keeps_same_domain_failover(monkeypatch, tmp_path) -
     assert [budget.used for budget in _Budget.instances[:3]] == [2, 2, 2]
 
 
-def test_livedub_key_bound_original_never_rotates_to_non_owner(monkeypatch, tmp_path) -> None:
-    model_calls: list[tuple[str, list]] = []
+def test_livedub_key_bound_original_never_rotates_to_non_owner(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    model_calls: list[tuple[str, list[Any]]] = []
     file_calls: list[tuple[str, str]] = []
     owner = _client("owner", model_calls, _project_quota_error, file_calls)
     other_project = _client(

@@ -13,27 +13,27 @@ import re
 # ─── BUG-R3-01: git/tech artifact scrub ──────────────────────────────────────
 
 
-def test_scrub_removes_git_commit():
+def test_scrub_removes_git_commit() -> None:
     from core.text_utils import _scrub_inline
 
     result = _scrub_inline("опубли commit вавшего серию")
     assert "commit" not in result, "commit must be scrubbed"
 
 
-def test_scrub_removes_git_push():
+def test_scrub_removes_git_push() -> None:
     from core.text_utils import _scrub_inline
 
     result = _scrub_inline("опубликовал push серию статей")
     assert "push" not in result, "push must be scrubbed"
 
 
-def test_scrub_removes_git_merge():
+def test_scrub_removes_git_merge() -> None:
     from core.text_utils import _scrub_inline
 
     assert "merge" not in _scrub_inline("merge конфликт"), "merge must be scrubbed"
 
 
-def test_scrub_does_not_remove_normal_russian():
+def test_scrub_does_not_remove_normal_russian() -> None:
     from core.text_utils import _scrub_inline
 
     text = "Реформация в XVI веке изменила церковь"
@@ -43,7 +43,7 @@ def test_scrub_does_not_remove_normal_russian():
 # ─── New prompt_rules constants ───────────────────────────────────────────────
 
 
-def test_third_person_ban_exists():
+def test_third_person_ban_exists() -> None:
     from core.prompt_rules import THIRD_PERSON_BAN
 
     assert "ЗАПРЕТ ОТ ТРЕТЬЕГО ЛИЦА" in THIRD_PERSON_BAN
@@ -51,7 +51,7 @@ def test_third_person_ban_exists():
     assert "Монергизм исключает синергизм" in THIRD_PERSON_BAN  # positive example
 
 
-def test_few_shot_first_section_exists():
+def test_few_shot_first_section_exists() -> None:
     from core.prompt_rules import FEW_SHOT_FIRST_SECTION
 
     assert "ПРИМЕР ПРАВИЛЬНОГО НАЧАЛА" in FEW_SHOT_FIRST_SECTION
@@ -62,19 +62,19 @@ def test_few_shot_first_section_exists():
 # ─── SYNOPSIS_V2 uses new rules ──────────────────────────────────────────────
 
 
-def test_synopsis_v2_has_third_person_ban():
+def test_synopsis_v2_has_third_person_ban() -> None:
     from core.prompts import SYNOPSIS_PROMPT_V2
 
     assert "ЗАПРЕТ ОТ ТРЕТЬЕГО ЛИЦА" in SYNOPSIS_PROMPT_V2, "SYNOPSIS_V2 must embed THIRD_PERSON_BAN"
 
 
-def test_synopsis_v2_has_few_shot_example():
+def test_synopsis_v2_has_few_shot_example() -> None:
     from core.prompts import SYNOPSIS_PROMPT_V2
 
     assert "ПРИМЕР ПРАВИЛЬНОГО НАЧАЛА" in SYNOPSIS_PROMPT_V2, "SYNOPSIS_V2 must embed FEW_SHOT_FIRST_SECTION"
 
 
-def test_synopsis_v2_no_raw_placeholders():
+def test_synopsis_v2_no_raw_placeholders() -> None:
     from core.prompts import SYNOPSIS_PROMPT_V2
 
     shared = re.compile(r"\{[A-Z_]+\}")
@@ -82,7 +82,7 @@ def test_synopsis_v2_no_raw_placeholders():
     assert not found, f"SYNOPSIS_V2 has unresolved placeholders: {found}"
 
 
-def test_synopsis_v2_format_works():
+def test_synopsis_v2_format_works() -> None:
     from core.prompts import SYNOPSIS_PROMPT_V2
 
     result = SYNOPSIS_PROMPT_V2.format(
@@ -101,7 +101,7 @@ def test_synopsis_v2_format_works():
 # ─── STUDY_ANALYSIS КРИТИЧЕСКИ ВАЖНО reduced ─────────────────────────────────
 
 
-def test_study_analysis_crit_count_reduced():
+def test_study_analysis_crit_count_reduced() -> None:
     from core.prompts import STUDY_ANALYSIS_PROMPT
 
     count = STUDY_ANALYSIS_PROMPT.count("КРИТИЧЕСКИ ВАЖНО")
@@ -112,7 +112,7 @@ def test_study_analysis_crit_count_reduced():
 # ─── All prompts no raw shared placeholders ───────────────────────────────────
 
 
-def test_all_four_prompts_no_placeholders():
+def test_all_four_prompts_no_placeholders() -> None:
     from core.prompts import (
         SYNOPSIS_PROMPT_V2,
         SYNOPSIS_PROMPT_QA,

@@ -1,13 +1,16 @@
 import asyncio
 import importlib.util
 from pathlib import Path
+from typing import Any
+
+import pytest
 
 
-def _load_module():
+def _load_module() -> Any:
     path = Path(__file__).parents[1] / "services/livedub_publication_core.py"
     spec = importlib.util.spec_from_file_location("livedub_publication_resilience_test", path)
-    module = importlib.util.module_from_spec(spec)
     assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
@@ -15,7 +18,9 @@ def _load_module():
 publication = _load_module()
 
 
-def test_stale_inflight_from_old_event_loop_is_not_awaited(monkeypatch):
+def test_stale_inflight_from_old_event_loop_is_not_awaited(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     publication._CACHE.clear()
     publication._INFLIGHT.clear()
     old_loop = asyncio.new_event_loop()
@@ -23,7 +28,7 @@ def test_stale_inflight_from_old_event_loop_is_not_awaited(monkeypatch):
     publication._INFLIGHT["url:https://youtu.be/restart"] = stale
     calls = 0
 
-    async def fake_build(source_line, source_url):
+    async def fake_build(source_line: str, source_url: str) -> dict[str, Any]:
         nonlocal calls
         calls += 1
         return {
@@ -36,8 +41,9 @@ def test_stale_inflight_from_old_event_loop_is_not_awaited(monkeypatch):
 
     monkeypatch.setattr(publication, "_build_uncached", fake_build)
 
-    async def run():
-        return await publication.build_publication_card("Title", "https://youtu.be/restart")
+    async def run() -> dict[str, Any]:
+        result: dict[str, Any] = await publication.build_publication_card("Title", "https://youtu.be/restart")
+        return result
 
     try:
         result = asyncio.run(run())
@@ -47,7 +53,7 @@ def test_stale_inflight_from_old_event_loop_is_not_awaited(monkeypatch):
     assert result["title"] == "Название После Перезапуска"
 
 
-def test_missing_quality_config_falls_back_without_unconfigured_ai_call():
+def test_missing_quality_config_falls_back_without_unconfigured_ai_call() -> None:
     src = (Path(__file__).parents[1] / "services/livedub_publication_core.py").read_text(encoding="utf-8")
     assert "if config is None:" in src
     assert "using deterministic fallback instead" in src

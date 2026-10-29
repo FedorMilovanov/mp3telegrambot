@@ -1,4 +1,5 @@
 from __future__ import annotations
+import pytest
 
 import subprocess
 import sys
@@ -7,7 +8,7 @@ from pathlib import Path
 from tools import check_youtube_gvs as probe
 
 
-def test_production_command_preserves_factory_quality_contract(monkeypatch, tmp_path):
+def test_production_command_preserves_factory_quality_contract(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     import services.ffmpeg as ff
 
     monkeypatch.setattr(
@@ -37,12 +38,12 @@ def test_production_command_preserves_factory_quality_contract(monkeypatch, tmp_
     assert "--test" not in command
 
 
-def test_download_uses_repo_owned_process_tree_runner(monkeypatch, tmp_path):
+def test_download_uses_repo_owned_process_tree_runner(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     import services.async_process as async_process
 
     captured: dict[str, object] = {}
 
-    async def fake_runner(command, **kwargs):
+    async def fake_runner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         captured["command"] = command
         captured["kwargs"] = kwargs
         return subprocess.CompletedProcess(command, 0, "ok", "")
@@ -65,7 +66,7 @@ def test_download_uses_repo_owned_process_tree_runner(monkeypatch, tmp_path):
     }
 
 
-def test_direct_cli_help_runs_from_tools_path():
+def test_direct_cli_help_runs_from_tools_path() -> None:
     process = subprocess.run(
         [sys.executable, "tools/check_youtube_gvs.py", "--help"],
         cwd=probe.PROJECT_ROOT,
@@ -81,7 +82,7 @@ def test_direct_cli_help_runs_from_tools_path():
     assert "bestaudio/best" in process.stdout
 
 
-def test_duration_parser_and_factory_tolerance_contract():
+def test_duration_parser_and_factory_tolerance_contract() -> None:
     stdout = "noise\nGVS_EXPECTED_DURATION=1000.0\n"
     assert probe._expected_duration_from_output(stdout) == 1000.0
     assert probe._duration_matches(1002.0, 1000.0)
@@ -90,7 +91,7 @@ def test_duration_parser_and_factory_tolerance_contract():
     assert not probe._duration_matches(10015.1, 10000.0)
 
 
-def test_failure_classifier_distinguishes_media_provider_and_login_layers():
+def test_failure_classifier_distinguishes_media_provider_and_login_layers() -> None:
     forbidden = subprocess.CompletedProcess(
         args=["yt-dlp"],
         returncode=1,
@@ -122,7 +123,9 @@ def test_failure_classifier_distinguishes_media_provider_and_login_layers():
     assert probe._classify_failure(login) == "FAIL_LOGIN_REQUIRED"
 
 
-def test_success_requires_complete_media_and_matching_duration(monkeypatch, capsys):
+def test_success_requires_complete_media_and_matching_duration(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr(probe, "_prepare_runtime", lambda: "source-only=on")
     monkeypatch.setattr(
         probe,
@@ -150,7 +153,9 @@ def test_success_requires_complete_media_and_matching_duration(monkeypatch, caps
     assert "ffprobe=123.456s" in output
 
 
-def test_success_without_metadata_duration_fails_closed(monkeypatch, capsys):
+def test_success_without_metadata_duration_fails_closed(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr(probe, "_prepare_runtime", lambda: "source-only=on")
     monkeypatch.setattr(
         probe,
@@ -162,7 +167,7 @@ def test_success_without_metadata_duration_fails_closed(monkeypatch, capsys):
     assert "GVS_ACCEPTANCE=FAIL_METADATA_DURATION" in capsys.readouterr().out
 
 
-def test_duration_mismatch_is_fail_closed(monkeypatch, capsys):
+def test_duration_mismatch_is_fail_closed(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setattr(probe, "_prepare_runtime", lambda: "source-only=on")
     monkeypatch.setattr(
         probe,
@@ -187,7 +192,7 @@ def test_duration_mismatch_is_fail_closed(monkeypatch, capsys):
     assert "GVS_ACCEPTANCE=FAIL_DURATION_MISMATCH" in capsys.readouterr().out
 
 
-def test_http_403_is_fail_closed(monkeypatch, capsys):
+def test_http_403_is_fail_closed(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setattr(probe, "_prepare_runtime", lambda: "source-only=on")
     monkeypatch.setattr(
         probe,
@@ -204,10 +209,10 @@ def test_http_403_is_fail_closed(monkeypatch, capsys):
     assert "GVS_ACCEPTANCE=FAIL_HTTP_403" in capsys.readouterr().out
 
 
-def test_download_timeout_is_fail_closed(monkeypatch, capsys):
+def test_download_timeout_is_fail_closed(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setattr(probe, "_prepare_runtime", lambda: "source-only=on")
 
-    def timeout(_url, _root):
+    def timeout(_url: str, _root: Path) -> None:
         raise subprocess.TimeoutExpired(cmd=["yt-dlp"], timeout=1800)
 
     monkeypatch.setattr(probe, "_run_download", timeout)

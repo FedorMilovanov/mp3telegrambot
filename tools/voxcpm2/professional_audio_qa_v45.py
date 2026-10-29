@@ -15,7 +15,7 @@ import soundfile as sf
 
 from tools.voxcpm2 import professional_audio_v45 as policy
 from tools.voxcpm2 import russian_spoken_numbers
-from tools.voxcpm2 import semantic_tts_guard_v4
+from tools.voxcpm2 import semantic_tts_guard_v4 as semantic_tts_guard_v4
 from tools.voxcpm2.direct_max_quality_analysis import activity_stats, pitch_profile
 
 POLICY = "clean-expression-aware-qa-v3"
@@ -275,14 +275,14 @@ def _voice_evaluation(
     }
 
 
-def verify_timeline_v45(
+def _legacy_verify_timeline_v45_impl(
     timeline: Path,
     segments: list[dict[str, Any]],
     report_path: Path,
 ) -> tuple[list[int], dict[str, Any]]:
     _failed, report = policy._ORIGINAL_VERIFY(timeline, segments, report_path)
     checks = {
-        int(item.get("id")): item
+        int(item["id"]): item
         for item in report.get("segments", [])
         if isinstance(item, dict) and str(item.get("id", "")).isdigit()
     }
@@ -360,7 +360,7 @@ TIMING_REPAIR_POLICY = "cheap-timeline-onset-before-resynthesis-v1"
 
 TIMING_RECHECK_POLICY = "repaired-windows-only-no-repeat-asr-v1"
 
-_legacy_verify_timeline_v45 = verify_timeline_v45
+_legacy_verify_timeline_v45 = _legacy_verify_timeline_v45_impl
 
 
 def _pre_repair_report_path(report_path: Path) -> Path:
@@ -409,7 +409,8 @@ def _remeasure_repaired_timing(
         check = check_by_id.get(segment_id)
         if not isinstance(segment, dict) or not isinstance(check, dict):
             continue
-        previous = check.get("timing") if isinstance(check.get("timing"), dict) else {}
+        previous_value: object = check.get("timing")
+        previous = previous_value if isinstance(previous_value, dict) else {}
         delay = max(0, int(segment.get("start_delay_ms", 0) or 0)) / 1000.0
         start = max(0.0, float(segment.get("start", 0.0)) + delay)
         duration = max(

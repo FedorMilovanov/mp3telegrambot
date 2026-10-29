@@ -1,5 +1,8 @@
 """Executed Telegraph edit/repair transport and archive-chain behavior."""
 
+from collections.abc import Callable, Coroutine
+from typing import Any
+
 import asyncio
 
 import pytest
@@ -8,25 +11,25 @@ from services import telegraph_edit as edit
 from services import telegraph_repair as repair
 
 
-def _run(callback, *args, **kwargs):
+def _run(callback: Callable[..., Coroutine[Any, Any, Any]], *args: Any, **kwargs: Any) -> Any:
     return asyncio.run(callback(*args, **kwargs))
 
 
 class Response:
-    def __init__(self, payload):
+    def __init__(self, payload: Any) -> None:
         self.payload = payload
 
-    def json(self):
+    def json(self) -> Any:
         return self.payload
 
 
-def test_record_and_part_url_empty_guards():
+def test_record_and_part_url_empty_guards() -> None:
     assert repair.collect_record_page_urls(None) == []
     assert repair.guess_telegraph_part_url("https://telegra.ph/Page/", 1) == ("https://telegra.ph/Page")
     assert _run(repair.expand_telegraph_page_chain, "https://example.com/Page") == []
 
 
-def test_chain_stops_on_api_error_and_survives_request_failure(monkeypatch):
+def test_chain_stops_on_api_error_and_survives_request_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         repair.requests,
         "get",
@@ -34,17 +37,17 @@ def test_chain_stops_on_api_error_and_survives_request_failure(monkeypatch):
     )
     assert _run(repair.expand_telegraph_page_chain, "https://telegra.ph/Page") == ["https://telegra.ph/Page"]
 
-    def fail(*_args, **_kwargs):
+    def fail(*_args: Any, **_kwargs: Any) -> None:
         raise OSError("offline")
 
     monkeypatch.setattr(repair.requests, "get", fail)
     assert _run(repair.expand_telegraph_page_chain, "https://telegra.ph/Page") == ["https://telegra.ph/Page"]
 
 
-def test_chain_probes_conventional_second_part(monkeypatch):
+def test_chain_probes_conventional_second_part(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = []
 
-    def get(url, **kwargs):
+    def get(url: str, **kwargs: Any) -> Response:
         calls.append((url, kwargs))
         if "return_content=false" in url:
             return Response({"ok": True})
@@ -62,8 +65,8 @@ def test_chain_probes_conventional_second_part(monkeypatch):
     ]
 
 
-def test_chain_ignores_failed_second_part_probe(monkeypatch):
-    def get(url, **_kwargs):
+def test_chain_ignores_failed_second_part_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    def get(url: str, **_kwargs: Any) -> Response:
         if "return_content=false" in url:
             raise OSError("probe unavailable")
         return Response({"ok": True, "result": {"content": []}})
@@ -72,7 +75,7 @@ def test_chain_ignores_failed_second_part_probe(monkeypatch):
     assert _run(repair.expand_telegraph_page_chain, "https://telegra.ph/Page") == ["https://telegra.ph/Page"]
 
 
-def test_repair_page_rejects_invalid_url_and_getpage_error(monkeypatch):
+def test_repair_page_rejects_invalid_url_and_getpage_error(monkeypatch: pytest.MonkeyPatch) -> None:
     result = _run(repair.repair_telegraph_page_url, "https://example.com/Page")
     assert result.ok is False
     assert result.error == "not_telegra_ph_url"
@@ -87,7 +90,7 @@ def test_repair_page_rejects_invalid_url_and_getpage_error(monkeypatch):
     assert result.error == "PAGE_NOT_FOUND"
 
 
-def test_repair_page_skips_edit_when_nodes_are_unchanged(monkeypatch):
+def test_repair_page_skips_edit_when_nodes_are_unchanged(monkeypatch: pytest.MonkeyPatch) -> None:
     nodes = [{"tag": "p", "children": ["clean"]}]
     monkeypatch.setattr(
         repair.requests,
@@ -103,7 +106,7 @@ def test_repair_page_skips_edit_when_nodes_are_unchanged(monkeypatch):
     monkeypatch.setattr(repair, "audit_telegraph_page", lambda *_a, **_k: ["warning"])
     monkeypatch.setattr(repair, "format_audit_issues", lambda *_a, **_k: "audit summary")
 
-    async def must_not_edit(*_args, **_kwargs):
+    async def must_not_edit(*_args: Any, **_kwargs: Any) -> None:
         raise AssertionError("unchanged nodes must not be edited")
 
     monkeypatch.setattr(repair, "_edit_telegraph_page", must_not_edit)
@@ -115,7 +118,7 @@ def test_repair_page_skips_edit_when_nodes_are_unchanged(monkeypatch):
 
 
 @pytest.mark.parametrize("edit_ok", [False, True])
-def test_repair_page_edits_changed_nodes_and_preserves_outcome(monkeypatch, edit_ok):
+def test_repair_page_edits_changed_nodes_and_preserves_outcome(monkeypatch: pytest.MonkeyPatch, edit_ok: bool) -> None:
     nodes = [{"tag": "p", "children": ["dirty"]}]
     monkeypatch.setattr(
         repair.requests,
@@ -134,9 +137,11 @@ def test_repair_page_edits_changed_nodes_and_preserves_outcome(monkeypatch, edit
     )
     monkeypatch.setattr(repair, "audit_telegraph_page", lambda *_a, **_k: [])
     monkeypatch.setattr(repair, "format_audit_issues", lambda *_a, **_k: "")
-    edits = []
+    edits: list[tuple[str, str, str, list[Any]]] = []
 
-    async def edit_page(url, title, author, fixed_nodes, _loop):
+    async def edit_page(
+        url: str, title: str, author: str, fixed_nodes: list[Any], _loop: asyncio.AbstractEventLoop
+    ) -> bool:
         edits.append((url, title, author, fixed_nodes))
         return edit_ok
 
@@ -148,8 +153,8 @@ def test_repair_page_edits_changed_nodes_and_preserves_outcome(monkeypatch, edit
     assert edits[0][3][-1] == {"tag": "hr"}
 
 
-def test_repair_page_converts_request_exception_to_result(monkeypatch):
-    def fail(*_args, **_kwargs):
+def test_repair_page_converts_request_exception_to_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail(*_args: Any, **_kwargs: Any) -> None:
         raise OSError("offline")
 
     monkeypatch.setattr(repair.requests, "get", fail)
@@ -158,23 +163,23 @@ def test_repair_page_converts_request_exception_to_result(monkeypatch):
     assert result.error == "OSError: offline"
 
 
-def test_repair_record_expands_deduplicates_and_paces(monkeypatch):
+def test_repair_record_expands_deduplicates_and_paces(monkeypatch: pytest.MonkeyPatch) -> None:
     assert _run(repair.repair_generated_page_record, {}) == []
 
-    async def expand(url):
+    async def expand(url: str) -> list[str]:
         if url.endswith("syn"):
             return []
         return [url, url]
 
-    repaired = []
+    repaired: list[str] = []
 
-    async def repair_url(url):
+    async def repair_url(url: str) -> repair.TelegraphRepairResult:
         repaired.append(url)
         return repair.TelegraphRepairResult(url=url, ok=True)
 
-    sleeps = []
+    sleeps: list[float] = []
 
-    async def sleep(delay):
+    async def sleep(delay: float) -> None:
         sleeps.append(delay)
 
     monkeypatch.setattr(repair, "expand_telegraph_page_chain", expand)
@@ -190,18 +195,18 @@ def test_repair_record_expands_deduplicates_and_paces(monkeypatch):
     assert sleeps == [1.0, 1.0]
 
 
-def test_repair_formatters_handle_empty_batches():
+def test_repair_formatters_handle_empty_batches() -> None:
     assert "Нечего чинить" in repair.format_repair_results([])
     assert "Нечего чинить" in repair.format_batch_repair_results([])
 
 
-def test_batch_repairs_respect_limit_and_format_overflow(monkeypatch):
-    async def repair_record(record):
+def test_batch_repairs_respect_limit_and_format_overflow(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def repair_record(record: dict[str, Any]) -> list[repair.TelegraphRepairResult]:
         return [repair.TelegraphRepairResult(url=f"https://telegra.ph/{record['video_id']}", ok=True)]
 
-    sleeps = []
+    sleeps: list[float] = []
 
-    async def sleep(delay):
+    async def sleep(delay: float) -> None:
         sleeps.append(delay)
 
     monkeypatch.setattr(repair, "repair_generated_page_record", repair_record)
@@ -228,7 +233,7 @@ def test_batch_repairs_respect_limit_and_format_overflow(monkeypatch):
     assert "…ещё 1 страниц" in text
 
 
-def test_one_shot_edit_validates_token_and_path():
+def test_one_shot_edit_validates_token_and_path() -> None:
     result = _run(
         edit.edit_telegraph_page_once,
         "https://telegra.ph/Page",
@@ -251,11 +256,11 @@ def test_one_shot_edit_validates_token_and_path():
     assert result.error == "invalid_page_path"
 
 
-def test_one_shot_edit_marks_malformed_response_nonretryable():
-    def post(*_args, **_kwargs):
+def test_one_shot_edit_marks_malformed_response_nonretryable() -> None:
+    def post(*_args: Any, **_kwargs: Any) -> Response:
         return Response(None)
 
-    async def invoke():
+    async def invoke() -> edit.TelegraphEditResult:
         return await edit.edit_telegraph_page_once(
             "https://telegra.ph/Page",
             "Title",
@@ -272,10 +277,10 @@ def test_one_shot_edit_marks_malformed_response_nonretryable():
     assert "AttributeError" in result.error
 
 
-def test_wait_before_retry_only_sleeps_for_positive_delay(monkeypatch):
-    sleeps = []
+def test_wait_before_retry_only_sleeps_for_positive_delay(monkeypatch: pytest.MonkeyPatch) -> None:
+    sleeps: list[float] = []
 
-    async def sleep(delay):
+    async def sleep(delay: float) -> None:
         sleeps.append(delay)
 
     monkeypatch.setattr(edit.asyncio, "sleep", sleep)

@@ -1,6 +1,7 @@
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -15,7 +16,7 @@ def _write_bytes(path: Path, payload: bytes) -> None:
     path.write_bytes(payload)
 
 
-def _audio_probe(codec="opus", duration=120.0):
+def _audio_probe(codec: str = "opus", duration: float = 120.0) -> SimpleNamespace:
     return SimpleNamespace(
         duration=duration,
         has_audio=True,
@@ -24,7 +25,7 @@ def _audio_probe(codec="opus", duration=120.0):
     )
 
 
-def _video_probe(duration=120.0, width=3840, height=2160):
+def _video_probe(duration: float = 120.0, width: int = 3840, height: int = 2160) -> SimpleNamespace:
     return SimpleNamespace(
         duration=duration,
         width=width,
@@ -47,16 +48,16 @@ def _video_probe(duration=120.0, width=3840, height=2160):
         (".wav", "audio/wav"),
     ],
 )
-def test_factory_audio_mime_type_uses_supported_formats(suffix, mime_type):
+def test_factory_audio_mime_type_uses_supported_formats(suffix: str, mime_type: str) -> None:
     assert source.factory_audio_mime_type(Path("audio" + suffix)) == mime_type
 
 
-def test_factory_audio_mime_type_rejects_unsupported_container():
+def test_factory_audio_mime_type_rejects_unsupported_container() -> None:
     with pytest.raises(RuntimeError, match="not supported by Gemini"):
         source.factory_audio_mime_type(Path("audio.webm"))
 
 
-def test_factory_audio_probe_requires_real_audio_evidence():
+def test_factory_audio_probe_requires_real_audio_evidence() -> None:
     assert source.factory_audio_probe_is_usable(_audio_probe()) is True
     assert source.factory_audio_probe_is_usable(None) is False
     assert (
@@ -74,13 +75,13 @@ def test_factory_audio_probe_requires_real_audio_evidence():
 
 @pytest.mark.asyncio
 async def test_factory_audio_download_uses_native_best_and_compact_aac(
-    monkeypatch,
-    tmp_path,
-):
-    commands = []
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    commands: list[list[str]] = []
     raw_path = tmp_path / "video_factory_audio_source.webm"
 
-    async def fake_run(command, **kwargs):
+    async def fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
         commands.append(list(command))
         if command[0] == "ffmpeg":
             await asyncio.to_thread(_write_bytes, Path(command[-1]), b"a" * 4096)
@@ -89,10 +90,10 @@ async def test_factory_audio_download_uses_native_best_and_compact_aac(
                 stdout="out_time_us=120000000\nprogress=end\n",
                 stderr="",
             )
-        raw_path.write_bytes(b"o" * 4096)
+        await asyncio.to_thread(raw_path.write_bytes, b"o" * 4096)
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
-    async def fake_probe(path):
+    async def fake_probe(path: Path) -> SimpleNamespace:
         return _audio_probe("aac" if path.suffix == ".aac" else "opus")
 
     monkeypatch.setattr(source, "DOWNLOAD_DIR", tmp_path)
@@ -132,14 +133,14 @@ async def test_factory_audio_download_uses_native_best_and_compact_aac(
 
 @pytest.mark.asyncio
 async def test_factory_native_aac_is_normalized_to_analysis_contract(
-    monkeypatch,
-    tmp_path,
-):
-    commands = []
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    commands: list[list[str]] = []
     raw_path = tmp_path / "native.m4a"
     raw_path.write_bytes(b"a" * 4096)
 
-    async def fake_run(command, **kwargs):
+    async def fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
         commands.append(list(command))
         await asyncio.to_thread(_write_bytes, Path(command[-1]), b"a" * 4096)
         return SimpleNamespace(
@@ -148,7 +149,7 @@ async def test_factory_native_aac_is_normalized_to_analysis_contract(
             stderr="",
         )
 
-    async def fake_probe(path):
+    async def fake_probe(path: Path) -> SimpleNamespace:
         return _audio_probe("aac")
 
     monkeypatch.setattr(source, "DOWNLOAD_DIR", tmp_path)
@@ -174,18 +175,18 @@ async def test_factory_native_aac_is_normalized_to_analysis_contract(
 
 @pytest.mark.asyncio
 async def test_factory_video_download_has_no_resolution_ceiling(
-    monkeypatch,
-    tmp_path,
-):
-    commands = []
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    commands: list[list[str]] = []
     output_path = tmp_path / "video_factory_max_source.mkv"
 
-    async def fake_run(command, **kwargs):
+    async def fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
         commands.append(list(command))
-        output_path.write_bytes(b"v" * 4096)
+        await asyncio.to_thread(output_path.write_bytes, b"v" * 4096)
         return SimpleNamespace(returncode=0, stderr="")
 
-    async def fake_probe(path):
+    async def fake_probe(path: Path) -> SimpleNamespace:
         assert path == output_path
         return _video_probe()
 
@@ -215,9 +216,9 @@ async def test_factory_video_download_has_no_resolution_ceiling(
 
 @pytest.mark.asyncio
 async def test_factory_livedub_uses_maximum_original_and_full_tail(
-    monkeypatch,
-    tmp_path,
-):
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     original_path = tmp_path / "translated_factory_max_source.mkv"
     ru_path = tmp_path / "yandex_live.mp3"
     final_path = tmp_path / "factory_max_livedub.mp4"
@@ -225,29 +226,29 @@ async def test_factory_livedub_uses_maximum_original_and_full_tail(
     ru_path.write_bytes(b"r" * 4096)
 
     async def fake_download_original(
-        url,
-        media_id,
-        workdir=None,
+        url: str,
+        media_id: str,
+        workdir: Path | None = None,
         *,
-        expected_duration=0.0,
-    ):
+        expected_duration: float = 0.0,
+    ) -> Path:
         assert media_id == "translated"
         assert expected_duration == 100.0
         return original_path
 
-    async def fake_get_live_audio(*args, **kwargs):
+    async def fake_get_live_audio(*args: Any, **kwargs: Any) -> Path:
         assert kwargs["voice_style"] == "live"
         assert kwargs["timeout"] == 1800
         return ru_path
 
-    async def fake_mix(original, ru_audio, output):
+    async def fake_mix(original: Path, ru_audio: Path, output: Path) -> Path:
         assert original == original_path
         assert ru_audio == ru_path
         assert output == final_path
-        output.write_bytes(b"m" * 4096)
+        await asyncio.to_thread(output.write_bytes, b"m" * 4096)
         return output
 
-    async def fake_probe(path):
+    async def fake_probe(path: Path) -> SimpleNamespace:
         if path == original_path:
             return _video_probe(duration=100.0)
         if path == final_path:
@@ -276,27 +277,27 @@ async def test_factory_livedub_uses_maximum_original_and_full_tail(
 
 @pytest.mark.asyncio
 async def test_factory_livedub_rejects_missing_required_tail(
-    monkeypatch,
-    tmp_path,
-):
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     original_path = tmp_path / "translated_factory_max_source.mkv"
     ru_path = tmp_path / "yandex_live.mp3"
     final_path = tmp_path / "factory_max_livedub.mp4"
     original_path.write_bytes(b"v" * 4096)
     ru_path.write_bytes(b"r" * 4096)
 
-    async def fake_download_original(*args, **kwargs):
+    async def fake_download_original(*args: Any, **kwargs: Any) -> Path:
         assert kwargs["expected_duration"] == 100.0
         return original_path
 
-    async def fake_get_live_audio(*args, **kwargs):
+    async def fake_get_live_audio(*args: Any, **kwargs: Any) -> Path:
         return ru_path
 
-    async def fake_mix(original, ru_audio, output):
-        output.write_bytes(b"m" * 4096)
+    async def fake_mix(original: Path, ru_audio: Path, output: Path) -> Path:
+        await asyncio.to_thread(output.write_bytes, b"m" * 4096)
         return output
 
-    async def fake_probe(path):
+    async def fake_probe(path: Path) -> SimpleNamespace:
         if path == original_path:
             return _video_probe(duration=100.0)
         if path == final_path:
@@ -322,30 +323,30 @@ async def test_factory_livedub_rejects_missing_required_tail(
 
 
 @pytest.mark.asyncio
-async def test_factory_plan_passes_real_prepared_audio_mime(monkeypatch, tmp_path):
-    captured_mimes = []
+async def test_factory_plan_passes_real_prepared_audio_mime(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    captured_mimes: list[str] = []
     audio_path = tmp_path / "source.aac"
     audio_path.write_bytes(b"a" * 4096)
 
     class FakePart:
         @staticmethod
-        def from_bytes(*, data, mime_type):
+        def from_bytes(*, data: bytes, mime_type: str) -> dict[str, str]:
             assert data
             captured_mimes.append(mime_type)
             return {"mime_type": mime_type}
 
     fake_types = SimpleNamespace(Part=FakePart)
 
-    async def fake_run_pass(*args, **kwargs):
+    async def fake_run_pass(*args: Any, **kwargs: Any) -> dict[str, Any]:
         prompt = kwargs["prompt"]
         if prompt == "audit":
             return {"metadata": {"language": "en"}, "stage": "audit"}
         return {"metadata": {"language": "en"}, "stage": prompt}
 
-    async def fake_verified_duration(_path):
+    async def fake_verified_duration(_path: Path) -> float:
         return 100.0
 
-    def fake_validate(*args, **kwargs):
+    def fake_validate(*args: Any, **kwargs: Any) -> dict[str, Any]:
         return {
             "metadata": {"language": "en"},
             "shorts_candidates": [
@@ -387,7 +388,7 @@ async def test_factory_plan_passes_real_prepared_audio_mime(monkeypatch, tmp_pat
     assert plan["review_passes"] == 3
 
 
-def test_source_policy_is_directly_owned_without_installation():
+def test_source_policy_is_directly_owned_without_installation() -> None:
     source_code = Path("services/shorts_factory_source.py").read_text(encoding="utf-8")
     quality = Path("services/shorts_factory_quality_gate.py").read_text(encoding="utf-8")
     capacity_runtime = Path("services/shorts_factory_capacity_runtime.py").read_text(encoding="utf-8")

@@ -1,10 +1,12 @@
 """Contract tests for source-SRT evidence used by translated Factory cuts."""
 
+import pathlib
+
 import services.shorts_factory_timing as timing
 from services.translation_editorial import parse_srt
 
 
-def test_parse_srt_exposes_text_consumed_by_boundary_proof(tmp_path):
+def test_parse_srt_exposes_text_consumed_by_boundary_proof(tmp_path: pathlib.Path) -> None:
     source = tmp_path / "source.en.srt"
     source.write_text(
         "1\n00:00:01,000 --> 00:00:03,000\nChrist is risen.\n\n2\n00:00:04,000 --> 00:00:09,000\n<i>[Music]</i>\n\n",

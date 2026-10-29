@@ -5,7 +5,7 @@ from pathlib import Path
 from core.synopsis_quality import audit_synopsis_density, get_synopsis_density_profile
 
 
-def test_synopsis_density_profiles_scale_for_long_materials():
+def test_synopsis_density_profiles_scale_for_long_materials() -> None:
     short = get_synopsis_density_profile(600)
     medium = get_synopsis_density_profile(2400)
     long = get_synopsis_density_profile(3600)
@@ -16,7 +16,7 @@ def test_synopsis_density_profiles_scale_for_long_materials():
     assert very_long.sections == "12-20"
 
 
-def test_synopsis_density_audit_flags_too_thin_long_synopsis():
+def test_synopsis_density_audit_flags_too_thin_long_synopsis() -> None:
     sections = [{"title": "A", "time": "0:00", "content": "short"} for _ in range(6)]
     issues = audit_synopsis_density(sections, 3600)
     codes = {i.code for i in issues}
@@ -24,7 +24,7 @@ def test_synopsis_density_audit_flags_too_thin_long_synopsis():
     assert "synopsis_too_few_chars" in codes
 
 
-def test_synopsis_density_audit_flags_low_time_coverage():
+def test_synopsis_density_audit_flags_low_time_coverage() -> None:
     sections = [
         {"title": "A", "time": "0:00", "content": "x" * 1000},
         {"title": "B", "time": "20:00", "content": "x" * 1000},
@@ -40,7 +40,7 @@ def test_synopsis_density_audit_flags_low_time_coverage():
     assert "synopsis_time_coverage_low" in {i.code for i in issues}
 
 
-def test_telegraph_wires_synopsis_density_profile_and_audit():
+def test_telegraph_wires_synopsis_density_profile_and_audit() -> None:
     src = Path("services/telegraph.py").read_text(encoding="utf-8")
     assert "from core.synopsis_quality import" in src
     assert "get_synopsis_density_profile(_duration)" in src
@@ -49,7 +49,7 @@ def test_telegraph_wires_synopsis_density_profile_and_audit():
     assert "density/coverage audit" in src
 
 
-def test_synopsis_density_unknown_duration_is_not_very_long():
+def test_synopsis_density_unknown_duration_is_not_very_long() -> None:
     unknown = get_synopsis_density_profile(0)
     assert unknown.name == "unknown"
     assert unknown.min_sections < get_synopsis_density_profile(7200).min_sections

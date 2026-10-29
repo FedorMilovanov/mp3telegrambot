@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from collections.abc import Callable
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -127,7 +128,7 @@ def _is_sys_meta_path(node: ast.AST) -> bool:
     )
 
 
-def _target_writes_container(target: ast.AST, predicate) -> bool:
+def _target_writes_container(target: ast.AST, predicate: Callable[[ast.AST], bool]) -> bool:
     return any(
         predicate(node) or (isinstance(node, ast.Subscript) and predicate(node.value)) for node in ast.walk(target)
     )
@@ -143,14 +144,14 @@ def _references_meta_path_finder(node: ast.AST) -> bool:
     return False
 
 
-def test_critical_runtime_surfaces_have_no_import_or_assignment_surgery():
+def test_critical_runtime_surfaces_have_no_import_or_assignment_surgery() -> None:
     for rel in CRITICAL_SURFACES:
         src = _source(rel)
         for token in FORBIDDEN_TEXT:
             assert token not in src, f"{rel} reintroduced runtime surgery: {token}"
 
 
-def test_critical_runtime_surfaces_do_not_setattr_telegram_delivery_methods():
+def test_critical_runtime_surfaces_do_not_setattr_telegram_delivery_methods() -> None:
     for rel in CRITICAL_SURFACES:
         tree = ast.parse(_source(rel), filename=rel)
         for node in ast.walk(tree):
@@ -166,7 +167,7 @@ def test_critical_runtime_surfaces_do_not_setattr_telegram_delivery_methods():
             assert method not in TELEGRAM_METHODS, f"{rel} reintroduced Telegram delivery interception: {method}"
 
 
-def test_production_has_zero_install_calls_and_no_module_alias_surgery():
+def test_production_has_zero_install_calls_and_no_module_alias_surgery() -> None:
     install_calls: list[str] = []
     module_aliases: list[str] = []
     contextvar_calls: list[str] = []
@@ -205,9 +206,9 @@ def test_production_has_zero_install_calls_and_no_module_alias_surgery():
             elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
                 targets = (node.target,)
             if any(_target_writes_container(target, _is_sys_modules) for target in targets):
-                module_aliases.append(f"{rel}:{node.lineno}:sys.modules assignment")
+                module_aliases.append(f"{rel}:{getattr(node, 'lineno', 0)}:sys.modules assignment")
             if any(_target_writes_container(target, _is_sys_meta_path) for target in targets):
-                import_hook_findings.append(f"{rel}:{node.lineno}:sys.meta_path assignment")
+                import_hook_findings.append(f"{rel}:{getattr(node, 'lineno', 0)}:sys.meta_path assignment")
 
     findings = {
         "ROOT_CALLS": install_calls,
@@ -219,7 +220,7 @@ def test_production_has_zero_install_calls_and_no_module_alias_surgery():
     assert nonempty == {}, f"ROOT_CALLS={len(install_calls)}; zero-surgery findings={nonempty}"
 
 
-def test_runtime_manifest_critical_routes_are_contracts_not_patch_stacks():
+def test_runtime_manifest_critical_routes_are_contracts_not_patch_stacks() -> None:
     src = _source("services/runtime_manifest.py")
     assert '"livedub-qa-contract"' in src
     assert '"livedub-delivery-contract"' in src
@@ -242,7 +243,7 @@ def test_runtime_manifest_critical_routes_are_contracts_not_patch_stacks():
         assert f'"{legacy}"' not in src
 
 
-def test_contextvar_exception_is_limited_to_diagnostics(tmp_path) -> None:
+def test_contextvar_exception_is_limited_to_diagnostics(tmp_path: Path) -> None:
     """Исключение не должно расползаться: ContextVar в другом файле — находка.
 
     Проверяется на синтетическом каталоге, чтобы правило не зависело от того,

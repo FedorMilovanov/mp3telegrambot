@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import Any
 
 from tools.voxcpm2.direct_source_prosody import (
     candidate_pitch_evidence_ok,
@@ -31,7 +32,7 @@ def _artifact_candidate() -> tuple[np.ndarray, int]:
     return np.concatenate([speech, quiet, noise, tail]), sample_rate
 
 
-def _candidate(audio: np.ndarray, sample_rate: int) -> dict:
+def _candidate(audio: np.ndarray, sample_rate: int) -> dict[str, Any]:
     return {
         "samples": audio,
         "sample_rate": sample_rate,
@@ -41,7 +42,7 @@ def _candidate(audio: np.ndarray, sample_rate: int) -> dict:
     }
 
 
-def _segment() -> dict:
+def _segment() -> dict[str, Any]:
     return {
         "text": "Финальная фраза.",
         "start": 0.0,
@@ -58,7 +59,7 @@ def _segment() -> dict:
     }
 
 
-def test_late_broadband_burst_is_detected():
+def test_late_broadband_burst_is_detected() -> None:
     audio, sample_rate = _artifact_candidate()
     info = detect_late_broadband_tail(audio, sample_rate)
 
@@ -68,7 +69,7 @@ def test_late_broadband_burst_is_detected():
     assert info["trailing_quiet_seconds"] >= 0.08
 
 
-def test_normal_voiced_fade_is_not_rejected():
+def test_normal_voiced_fade_is_not_rejected() -> None:
     sample_rate = 48_000
     audio = np.concatenate(
         [
@@ -79,7 +80,7 @@ def test_normal_voiced_fade_is_not_rejected():
     assert detect_late_broadband_tail(audio, sample_rate)["suspicious"] is False
 
 
-def test_tail_artifact_flows_into_candidate_acceptance_gate():
+def test_tail_artifact_flows_into_candidate_acceptance_gate() -> None:
     audio, sample_rate = _artifact_candidate()
     candidate = _candidate(audio, sample_rate)
     source_prosody_penalty(candidate, _segment())

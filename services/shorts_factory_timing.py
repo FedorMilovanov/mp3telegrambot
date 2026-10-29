@@ -19,7 +19,7 @@ import copy
 import logging
 import math
 import os
-import shutil
+import shutil as shutil
 from pathlib import Path
 from typing import Any, Literal
 

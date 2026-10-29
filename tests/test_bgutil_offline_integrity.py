@@ -66,7 +66,7 @@ def test_offline_integrity_uses_node_syntax_check_not_provider_version_execution
 
     captured: dict[str, object] = {}
 
-    def fake_owned(command, **kwargs):
+    def fake_owned(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         captured["command"] = command
         captured.update(kwargs)
         return subprocess.CompletedProcess(command, 0, "", "")
@@ -74,8 +74,10 @@ def test_offline_integrity_uses_node_syntax_check_not_provider_version_execution
     monkeypatch.setattr(setup, "_owned_run", fake_owned)
 
     assert setup._require_script_version("node", script=script, cwd=server) == setup.BGUTIL_VERSION
-    assert captured["command"] == ["node", "--check", str(script)]
-    assert "--version" not in captured["command"]
+    captured_command = captured["command"]
+    assert isinstance(captured_command, list)
+    assert captured_command == ["node", "--check", str(script)]
+    assert "--version" not in captured_command
     assert captured["timeout"] == setup._SCRIPT_PROBE_TIMEOUT_SEC
 
 

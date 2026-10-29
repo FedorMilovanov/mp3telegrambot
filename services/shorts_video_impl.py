@@ -27,7 +27,7 @@ import contextlib
 import logging
 import os  # FIX shorts_video
 import re
-import shutil
+import shutil as shutil
 import subprocess
 import threading  # FIX shorts_video
 from pathlib import Path

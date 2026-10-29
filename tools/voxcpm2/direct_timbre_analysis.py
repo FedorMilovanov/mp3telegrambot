@@ -36,8 +36,10 @@ def _mono(samples: np.ndarray) -> np.ndarray:
     return audio.reshape(-1)
 
 
-def spectral_envelope(samples: np.ndarray, sample_rate: int) -> dict[str, Any]:
+def spectral_envelope(samples: np.ndarray, sample_rate: int | str | None) -> dict[str, Any]:
     audio = _mono(samples)
+    if sample_rate is None:
+        return _empty_profile()
     try:
         rate = int(sample_rate)
     except (TypeError, ValueError, OverflowError):
@@ -167,7 +169,9 @@ def spectral_similarity(
     return float(np.clip(similarity, 0.0, 1.0)) if math.isfinite(similarity) else 0.0
 
 
-def timbre_penalty(similarity: float) -> float:
+def timbre_penalty(similarity: float | str | None) -> float:
+    if similarity is None:
+        return MAX_TIMBRE_PENALTY
     try:
         value = float(similarity)
     except (TypeError, ValueError, OverflowError):
@@ -180,7 +184,9 @@ def timbre_penalty(similarity: float) -> float:
     return (SOFT_SIMILARITY_TARGET - value) * 85.0
 
 
-def timbre_hard_ok(similarity: float) -> bool:
+def timbre_hard_ok(similarity: float | str | None) -> bool:
+    if similarity is None:
+        return False
     try:
         value = float(similarity)
     except (TypeError, ValueError, OverflowError):

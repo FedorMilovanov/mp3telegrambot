@@ -1,20 +1,26 @@
 """Executed content assembly and robust JSON parsing for Telegraph pages."""
 
+import pytest
+
 import asyncio
+from collections.abc import Callable, Coroutine
+from typing import Any
 import json
 
 from services import telegraph_pages as pages
 
 
-def _run(callback, *args, **kwargs):
+def _run(callback: Callable[..., Coroutine[Any, Any, Any]], *args: Any, **kwargs: Any) -> Any:
     return asyncio.run(callback(*args, **kwargs))
 
 
-def test_analytics_skips_empty_input_and_builds_all_sections(monkeypatch):
+def test_analytics_skips_empty_input_and_builds_all_sections(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     assert _run(pages.create_telegraph_analytics, {}, "Title", "Author") is None
-    calls = []
+    calls: list[tuple[str, str, list[dict[str, Any]]]] = []
 
-    async def post(title, author, nodes, _loop):
+    async def post(title: str, author: str, nodes: list[dict[str, Any]], _loop: asyncio.AbstractEventLoop) -> str:
         calls.append((title, author, nodes))
         return "https://telegra.ph/analytics"
 
@@ -34,7 +40,7 @@ def test_analytics_skips_empty_input_and_builds_all_sections(monkeypatch):
     assert nodes[-1]["children"] == ["Plain category."]
 
 
-def test_question_normalization_filters_deduplicates_and_caps(monkeypatch):
+def test_question_normalization_filters_deduplicates_and_caps(monkeypatch: pytest.MonkeyPatch) -> None:
     assert pages._normalize_question_items(None) == []
     monkeypatch.setattr(
         pages,
@@ -50,7 +56,9 @@ def test_question_normalization_filters_deduplicates_and_caps(monkeypatch):
     ]
 
 
-def test_questions_skip_empty_and_publish_green_blue_groups(monkeypatch):
+def test_questions_skip_empty_and_publish_green_blue_groups(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     assert _run(pages.create_telegraph_questions, [], "Title", "Author") is None
     monkeypatch.setattr(
         pages,
@@ -62,9 +70,11 @@ def test_questions_skip_empty_and_publish_green_blue_groups(monkeypatch):
             "🔵 ",
         ],
     )
-    calls = []
+    calls: list[tuple[str, str, list[dict[str, Any]]]] = []
 
-    async def create(title, author, nodes, _loop):
+    async def create(
+        title: str, author: str, nodes: list[dict[str, Any]], _loop: asyncio.AbstractEventLoop
+    ) -> tuple[str | None, str | None]:
         calls.append((title, author, nodes))
         return "https://telegra.ph/questions", None
 
@@ -78,23 +88,27 @@ def test_questions_skip_empty_and_publish_green_blue_groups(monkeypatch):
     assert nodes[-1]["children"] == ["1. Deep?"]
 
 
-def test_questions_guard_malformed_groups_and_create_failure(monkeypatch):
+def test_questions_guard_malformed_groups_and_create_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(pages, "_normalize_question_items", lambda *_a, **_k: ["unmarked"])
     assert _run(pages.create_telegraph_questions, ["input"], "T", "A") is None
 
     monkeypatch.setattr(pages, "_normalize_question_items", lambda *_a, **_k: ["🟢 Question?"])
 
-    async def fail(*_args):
+    async def fail(*_args: Any) -> tuple[None, str]:
         return None, "API_ERROR"
 
     monkeypatch.setattr(pages, "_create_telegraph_page_single", fail)
     assert _run(pages.create_telegraph_questions, ["input"], "T", "A") is None
 
 
-def _capture_terms_post(monkeypatch):
-    calls = []
+def _capture_terms_post(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[tuple[str, str, list[dict[str, Any]]]]:
+    calls: list[tuple[str, str, list[dict[str, Any]]]] = []
 
-    async def post(title, author, nodes, _loop):
+    async def post(title: str, author: str, nodes: list[dict[str, Any]], _loop: asyncio.AbstractEventLoop) -> str:
         calls.append((title, author, nodes))
         return "https://telegra.ph/terms"
 
@@ -102,7 +116,7 @@ def _capture_terms_post(monkeypatch):
     return calls
 
 
-def test_terms_skip_empty_and_render_every_supported_section(monkeypatch):
+def test_terms_skip_empty_and_render_every_supported_section(monkeypatch: pytest.MonkeyPatch) -> None:
     assert _run(pages.create_telegraph_terms, {}, "Title", "Author") is None
     calls = _capture_terms_post(monkeypatch)
     terms = {
@@ -150,7 +164,7 @@ def test_terms_skip_empty_and_render_every_supported_section(monkeypatch):
     assert nodes[-1]["tag"] == "p"
 
 
-def test_terms_render_plain_timestamps_without_youtube_url(monkeypatch):
+def test_terms_render_plain_timestamps_without_youtube_url(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = _capture_terms_post(monkeypatch)
     result = _run(
         pages.create_telegraph_terms,
@@ -163,7 +177,7 @@ def test_terms_render_plain_timestamps_without_youtube_url(monkeypatch):
     assert nodes[-1]["children"] == ["1:00", ", ", "2:00"]
 
 
-def test_parse_expanded_json_removes_fence_and_bidi_marks():
+def test_parse_expanded_json_removes_fence_and_bidi_marks() -> None:
     raw = "\u2066```json\n" + json.dumps({"outline": [{"title": "A"}], "sections": [{"title": "A"}]}) + "\n```"
     assert pages._parse_expanded_json(raw) == (
         [{"title": "A"}],
@@ -171,12 +185,12 @@ def test_parse_expanded_json_removes_fence_and_bidi_marks():
     )
 
 
-def test_parse_expanded_json_extracts_wrapped_object():
+def test_parse_expanded_json_extracts_wrapped_object() -> None:
     raw = "prefix " + json.dumps({"outline": [], "sections": [{"title": "A"}]}) + " suffix"
     assert pages._parse_expanded_json(raw) == ([], [{"title": "A"}])
 
 
-def test_parse_expanded_json_escapes_raw_control_characters():
+def test_parse_expanded_json_escapes_raw_control_characters() -> None:
     section = {"title": "A", "content": 'line1\nline2\rline3\tC:\\path "quote"'}
     payload = json.dumps({"outline": [], "sections": [section]}, ensure_ascii=False)
     raw = payload.replace("\\n", "\n").replace("\\r", "\r").replace("\\t", "\t")
@@ -184,22 +198,24 @@ def test_parse_expanded_json_escapes_raw_control_characters():
     assert parsed == ([], [section])
 
 
-def test_parse_expanded_json_recovers_last_complete_section():
+def test_parse_expanded_json_recovers_last_complete_section() -> None:
     complete = json.dumps({"title": "A", "time": "1:00", "content": 'C:\\path "quote"'})
     raw = '{"sections":[' + complete + ',{"title":"truncated"'
-    outline, sections = pages._parse_expanded_json(raw)
+    parsed = pages._parse_expanded_json(raw)
+    assert parsed is not None
+    outline, sections = parsed
     assert sections == [json.loads(complete)]
     assert outline == [{"title": "A", "time": "1:00"}]
 
 
-def test_parse_expanded_json_enforces_depth_and_iteration_limits():
+def test_parse_expanded_json_enforces_depth_and_iteration_limits() -> None:
     raw = '{"sections":[{"title":"A"},{"title":"B"'
     assert pages._parse_expanded_json(raw, max_depth=1) is None
     assert pages._parse_expanded_json(raw, max_iterations=1) is None
     assert pages._parse_expanded_json("not json") is None
 
 
-def test_parse_expanded_json_rejects_unrecoverable_fixed_payload():
+def test_parse_expanded_json_rejects_unrecoverable_fixed_payload() -> None:
     complete = json.dumps({"title": "A"})
     raw = '{bad "sections":[' + complete + ',{"title":"B"'
     assert pages._parse_expanded_json(raw) is None

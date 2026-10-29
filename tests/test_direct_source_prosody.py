@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from typing import Any
 
 import pytest
 
@@ -31,7 +32,7 @@ def _neutral_cadence_and_tail(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def _candidate(*, median: float, p90: float, voiced: float, active: float, gap: float):
+def _candidate(*, median: float, p90: float, voiced: float, active: float, gap: float) -> dict[str, Any]:
     return {
         "pitch": {
             "f0_median": median,
@@ -45,7 +46,7 @@ def _candidate(*, median: float, p90: float, voiced: float, active: float, gap: 
     }
 
 
-def _segment(*, tier: str = "emphatic"):
+def _segment(*, tier: str = "emphatic") -> dict[str, Any]:
     return {
         "expression_tier": tier,
         "style_instruction": "firm and emphatic, controlled intensity, never shout",
@@ -143,7 +144,7 @@ def test_contradictory_pitch_shape_fails_raw_hard_floor_without_ranking_penalty(
 
 
 def test_missing_candidate_pitch_is_diagnostic_but_still_fails_pitch_gate() -> None:
-    candidate: dict = {}
+    candidate: dict[str, Any] = {}
 
     penalty = source_prosody_penalty(candidate, _segment())
     report = candidate["source_prosody_match"]

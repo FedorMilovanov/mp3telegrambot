@@ -44,18 +44,18 @@ def _coverage_xml(tmp_path: Path, files: dict[str, tuple[int, int]], source: str
     return path
 
 
-def test_measure_resolves_paths_through_coverage_sources(tmp_path):
+def test_measure_resolves_paths_through_coverage_sources(tmp_path: Path) -> None:
     coverage = _coverage_xml(tmp_path, {"main_pipeline.py": (3, 4)})
     measured = measure(coverage, root=ROOT)
     assert measured["pipelines/main_pipeline.py"] == 75.0
 
 
-def test_measure_keeps_file_when_no_source_matches(tmp_path):
+def test_measure_keeps_file_when_no_source_matches(tmp_path: Path) -> None:
     coverage = _coverage_xml(tmp_path, {"nowhere.py": (1, 2)}, source="unknown_pkg")
     assert measure(coverage, root=ROOT) == {"nowhere.py": 50.0}
 
 
-def test_check_flags_a_drop_beyond_tolerance():
+def test_check_flags_a_drop_beyond_tolerance() -> None:
     violations = check(
         {"pipelines/main_pipeline.py": 10.0},
         {"pipelines/main_pipeline.py": 18.0},
@@ -64,13 +64,13 @@ def test_check_flags_a_drop_beyond_tolerance():
     assert [v.path for v in violations] == ["pipelines/main_pipeline.py"]
 
 
-def test_check_allows_noise_within_tolerance():
+def test_check_allows_noise_within_tolerance() -> None:
     baseline = {"pipelines/main_pipeline.py": 18.0}
     inside = 18.0 - TOLERANCE_PP
     assert check({"pipelines/main_pipeline.py": inside}, baseline, tracked=("pipelines/main_pipeline.py",)) == []
 
 
-def test_check_blocks_growth_expectations_only_downwards():
+def test_check_blocks_growth_expectations_only_downwards() -> None:
     """Рост покрытия — всегда ок, и это не «нарушение базы»."""
     violations = check(
         {"pipelines/main_pipeline.py": 40.0},
@@ -80,7 +80,7 @@ def test_check_blocks_growth_expectations_only_downwards():
     assert violations == []
 
 
-def test_missing_file_in_report_is_a_violation():
+def test_missing_file_in_report_is_a_violation() -> None:
     """Файл нельзя спрятать от ратчета, сломав сбор покрытия."""
     violations = check(
         {},
@@ -90,7 +90,7 @@ def test_missing_file_in_report_is_a_violation():
     assert [v.path for v in violations] == ["pipelines/main_pipeline.py"]
 
 
-def test_render_baseline_is_stable_json_with_tracked_files_only():
+def test_render_baseline_is_stable_json_with_tracked_files_only() -> None:
     rendered = render_baseline({"pipelines/main_pipeline.py": 18.71, "core/utils.py": 90.0})
     payload = json.loads(rendered)
     assert payload["files"] == {"pipelines/main_pipeline.py": 18.71}
@@ -98,13 +98,13 @@ def test_render_baseline_is_stable_json_with_tracked_files_only():
     assert rendered == render_baseline({"pipelines/main_pipeline.py": 18.71, "core/utils.py": 90.0})
 
 
-def test_committed_baseline_tracks_every_declared_file():
+def test_committed_baseline_tracks_every_declared_file() -> None:
     baseline = load_baseline(ROOT / BASELINE)
     missing = [path for path in TRACKED if path not in baseline]
     assert not missing, f"нет базовой линии для {missing}: обновите {BASELINE}"
 
 
-def test_ci_excludes_exactly_the_ratcheted_file_from_diff_cover():
+def test_ci_excludes_exactly_the_ratcheted_file_from_diff_cover() -> None:
     """Замена половин должна совпадать: исключение в diff-cover == список ратчета."""
     ci = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
     assert "check_coverage_ratchet.py" in ci, "ратчет обязан запускаться в CI"

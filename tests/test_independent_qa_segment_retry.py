@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 import pytest
+from typing import Any
 
 from tools.voxcpm2 import independent_qa_retry as recovery
 
@@ -98,7 +99,7 @@ def test_recovery_advances_seed_pairs_and_retargets_only_failed_id(
 
     monkeypatch.setattr(recovery, "_retarget_checkpoints", fake_retarget)
 
-    def original(*, request: dict[str, object], **kwargs: object) -> str:
+    def original(*, request: dict[str, Any], **kwargs: object) -> str:
         calls.append(int(request["base_seed"]))
         if len(calls) < 3:
             raise RuntimeError(_FAILURE)

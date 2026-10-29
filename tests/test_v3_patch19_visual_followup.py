@@ -7,14 +7,19 @@ Covers bugs seen after patch 18 review:
 - Reflection prompt must not conflict with THIRD_PERSON_BAN by asking to rotate author names.
 """
 
+from typing import Any
+
 from converters.md_telegraph import _postprocess_telegraph_nodes, _section_to_nodes_v2
 
 
-def _p(children):
+Node = str | dict[str, Any]
+
+
+def _p(children: list[Node]) -> dict[str, Any]:
     return {"tag": "p", "children": children}
 
 
-def _flat(node):
+def _flat(node: Node) -> str:
     if isinstance(node, str):
         return node
     if isinstance(node, dict):
@@ -22,7 +27,7 @@ def _flat(node):
     return ""
 
 
-def test_scripture_trailing_dot_is_removed_not_split_to_dot_paragraph():
+def test_scripture_trailing_dot_is_removed_not_split_to_dot_paragraph() -> None:
     nodes = [
         _p(
             [
@@ -42,7 +47,7 @@ def test_scripture_trailing_dot_is_removed_not_split_to_dot_paragraph():
     ]
 
 
-def test_scripture_inline_explanation_strips_leading_dot_after_split():
+def test_scripture_inline_explanation_strips_leading_dot_after_split() -> None:
     nodes = [
         _p(
             [
@@ -60,7 +65,7 @@ def test_scripture_inline_explanation_strips_leading_dot_after_split():
     assert _flat(out[1]) == "Этот отрывок выступает главным императивом."
 
 
-def test_source_map_section_unwraps_bold_card_heading():
+def test_source_map_section_unwraps_bold_card_heading() -> None:
     nodes = _section_to_nodes_v2(
         {
             "title": "Карта источников для дальнейшего изучения",
@@ -72,7 +77,7 @@ def test_source_map_section_unwraps_bold_card_heading():
     assert not any(isinstance(c, dict) and c.get("tag") in ("b", "strong") for c in card.get("children", []))
 
 
-def test_source_map_unwrap_keeps_italic_book_titles():
+def test_source_map_unwrap_keeps_italic_book_titles() -> None:
     nodes = _section_to_nodes_v2(
         {
             "title": "Карта источников для дальнейшего изучения",
@@ -84,7 +89,7 @@ def test_source_map_unwrap_keeps_italic_book_titles():
     assert any(isinstance(c, dict) and c.get("tag") in ("i", "em") for c in card.get("children", []))
 
 
-def test_reflection_prompt_no_longer_requires_author_name_rotation():
+def test_reflection_prompt_no_longer_requires_author_name_rotation() -> None:
     from core.prompts import REFLECTION_APPLICATION_PROMPT
 
     assert "Чередуй полное имя и фамилию" not in REFLECTION_APPLICATION_PROMPT
@@ -93,7 +98,7 @@ def test_reflection_prompt_no_longer_requires_author_name_rotation():
     assert "перепиши напрямую" in REFLECTION_APPLICATION_PROMPT
 
 
-def test_source_map_prompt_explicitly_forbids_bold_document_card():
+def test_source_map_prompt_explicitly_forbids_bold_document_card() -> None:
     from core.prompts import STUDY_ANALYSIS_PROMPT
 
     assert "Чикагское заявление о безошибочности Писания" in STUDY_ANALYSIS_PROMPT

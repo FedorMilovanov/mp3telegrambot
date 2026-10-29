@@ -3,12 +3,15 @@
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
+
+import pytest
 
 import services.youtube_transcript as youtube_transcript
 from services.youtube_transcript import timed_text_last_second, vtt_to_timed_text
 
 
-def _flat(node):
+def _flat(node: Any) -> str:
     if isinstance(node, str):
         return node
     if isinstance(node, dict):
@@ -18,8 +21,8 @@ def _flat(node):
     return ""
 
 
-def _find_links(node):
-    found = []
+def _find_links(node: Any) -> list[dict[str, Any]]:
+    found: list[dict[str, Any]] = []
     if isinstance(node, dict):
         if node.get("tag") == "a":
             found.append(node)
@@ -31,7 +34,7 @@ def _find_links(node):
     return found
 
 
-def test_vtt_to_timed_text_parses_and_dedupes_cues():
+def test_vtt_to_timed_text_parses_and_dedupes_cues() -> None:
     raw = """WEBVTT
 
 00:00:01.000 --> 00:00:03.000 align:start position:0%
@@ -48,7 +51,7 @@ Start with Scripture and prayer.
     assert out.count("We need family worship") == 1
 
 
-def test_vtt_collapses_render_states_inside_one_cue_but_keeps_separated_repeat():
+def test_vtt_collapses_render_states_inside_one_cue_but_keeps_separated_repeat() -> None:
     raw = """WEBVTT
 
 00:00:01.000 --> 00:00:04.000
@@ -67,11 +70,11 @@ Again
     assert "Again And then Again" in out
 
 
-def test_timed_text_last_second_for_coverage_gate():
+def test_timed_text_last_second_for_coverage_gate() -> None:
     assert timed_text_last_second("[0:07] a\n[1:02:03] b") == 3723
 
 
-def test_vtt_keeps_real_rhetorical_repetition_inside_one_chunk():
+def test_vtt_keeps_real_rhetorical_repetition_inside_one_chunk() -> None:
     raw = """WEBVTT
 
 00:00:01.000 --> 00:00:03.000
@@ -87,7 +90,7 @@ Grace alone.
     assert out.lower().count("grace alone") == 2
 
 
-def test_vtt_keeps_real_repetition_across_chunk_boundary():
+def test_vtt_keeps_real_repetition_across_chunk_boundary() -> None:
     raw = """WEBVTT
 
 00:00:01.000 --> 00:00:03.000
@@ -103,13 +106,17 @@ Grace alone.
     assert out.lower().count("grace alone") == 2
 
 
-def test_transcript_prefers_source_language_over_larger_english_vtt(tmp_path, monkeypatch):
-    async def fake_run(_cmd, **_kwargs):
-        (tmp_path / "yt_transcript_vid.ru.vtt").write_text(
+def test_transcript_prefers_source_language_over_larger_english_vtt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def fake_run(_cmd: list[str], **_kwargs: object) -> SimpleNamespace:
+        await asyncio.to_thread(
+            (tmp_path / "yt_transcript_vid.ru.vtt").write_text,
             "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nРусский источник.\n",
             encoding="utf-8",
         )
-        (tmp_path / "yt_transcript_vid.en.vtt").write_text(
+        await asyncio.to_thread(
+            (tmp_path / "yt_transcript_vid.en.vtt").write_text,
             "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\n"
             + ("English translation is deliberately much larger. " * 20)
             + "\n",
@@ -129,10 +136,10 @@ def test_transcript_prefers_source_language_over_larger_english_vtt(tmp_path, mo
     assert "English translation" not in out
 
 
-def test_partial_manual_transcript_falls_back_to_full_auto(tmp_path, monkeypatch):
-    calls = []
+def test_partial_manual_transcript_falls_back_to_full_auto(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
 
-    async def fake_run(cmd, **_kwargs):
+    async def fake_run(cmd: list[str], **_kwargs: object) -> SimpleNamespace:
         auto = "--write-auto-subs" in cmd
         calls.append("auto" if auto else "manual")
         if auto:
@@ -153,7 +160,7 @@ Manual partial start.
 00:10:00.000 --> 00:10:05.000
 Manual partial end.
 """
-        (tmp_path / "yt_transcript_vid.en.vtt").write_text(body, encoding="utf-8")
+        await asyncio.to_thread((tmp_path / "yt_transcript_vid.en.vtt").write_text, body, encoding="utf-8")
         return SimpleNamespace(returncode=0, stderr="")
 
     monkeypatch.setattr(youtube_transcript, "run_cancellable_process", fake_run)
@@ -170,9 +177,10 @@ Manual partial end.
     assert "Manual partial" not in out
 
 
-def test_coverage_uses_raw_vtt_timeline_not_max_chars_clip(tmp_path, monkeypatch):
-    async def fake_run(_cmd, **_kwargs):
-        (tmp_path / "yt_transcript_vid.en.vtt").write_text(
+def test_coverage_uses_raw_vtt_timeline_not_max_chars_clip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_run(_cmd: list[str], **_kwargs: object) -> SimpleNamespace:
+        await asyncio.to_thread(
+            (tmp_path / "yt_transcript_vid.en.vtt").write_text,
             """WEBVTT
 
 00:00:01.000 --> 00:00:03.000
@@ -198,7 +206,7 @@ Final sentence.
     assert out
 
 
-def test_verbatim_synopsis_bare_timestamps_become_youtube_links():
+def test_verbatim_synopsis_bare_timestamps_become_youtube_links() -> None:
     from converters.md_telegraph import _section_to_nodes_v2
 
     nodes = _section_to_nodes_v2(
@@ -212,7 +220,7 @@ def test_verbatim_synopsis_bare_timestamps_become_youtube_links():
     assert any("t=161" in h for h in hrefs)
 
 
-def test_dot_bold_list_items_are_repaired_before_telegraph_parse():
+def test_dot_bold_list_items_are_repaired_before_telegraph_parse() -> None:
     from services.telegraph import _md_to_telegraph_nodes
 
     nodes = _md_to_telegraph_nodes(".**От сухого интеллектуализма к заветной нежности.** Текст")
@@ -221,7 +229,7 @@ def test_dot_bold_list_items_are_repaired_before_telegraph_parse():
     assert "**" not in flat
 
 
-def test_escaped_markdown_markers_are_not_rendered_raw():
+def test_escaped_markdown_markers_are_not_rendered_raw() -> None:
     from converters.md_telegraph import _section_to_nodes_v2
     from services.telegraph import _md_to_telegraph_nodes
 
@@ -235,7 +243,7 @@ def test_escaped_markdown_markers_are_not_rendered_raw():
     assert "\\" not in _flat(sec_nodes)
 
 
-def test_misbolded_bullet_lead_keeps_only_term_bold():
+def test_misbolded_bullet_lead_keeps_only_term_bold() -> None:
     from converters.md_telegraph import _section_to_nodes_v2
     from services.telegraph import _md_to_telegraph_nodes
 
@@ -251,7 +259,7 @@ def test_misbolded_bullet_lead_keeps_only_term_bold():
     assert "Directory for Family Worship — Исторический документ" in _flat(sec_nodes)
 
 
-def test_synopsis_wires_youtube_transcript_into_prompt():
+def test_synopsis_wires_youtube_transcript_into_prompt() -> None:
     src = Path("services/telegraph.py").read_text(encoding="utf-8")
     ytt = Path("services/youtube_transcript.py").read_text(encoding="utf-8")
     prompts = Path("core/prompts.py").read_text(encoding="utf-8")
@@ -283,18 +291,18 @@ def test_synopsis_wires_youtube_transcript_into_prompt():
     assert "use_schema=False" in src  # density retry should not be schema-compressed
 
 
-def test_pipeline_passes_youtube_language_to_synopsis_transcript():
+def test_pipeline_passes_youtube_language_to_synopsis_transcript() -> None:
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     assert "source_lang=source_lang" in src
 
 
-def test_transcript_language_globs_are_deduped_in_source():
+def test_transcript_language_globs_are_deduped_in_source() -> None:
     src = Path("services/youtube_transcript.py").read_text(encoding="utf-8")
     assert 'prefs = [f"{lang_root}.*", lang_root, "en.*", "en"]' in src
     assert "seen: set[str]" in src
 
 
-def test_transcript_env_documented():
+def test_transcript_env_documented() -> None:
     env = Path(".env.example").read_text(encoding="utf-8")
     assert "SYNOPSIS_YT_TRANSCRIPT=1" in env
     assert "SYNOPSIS_YT_TRANSCRIPT_MAX_CHARS" in env

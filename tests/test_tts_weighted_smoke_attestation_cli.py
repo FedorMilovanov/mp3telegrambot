@@ -1,16 +1,20 @@
 from __future__ import annotations
+import pytest
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 import sys
 
 import tools.build_tts_weighted_smoke_attestation as cli
+from services.tts_weighted_smoke_attestation import WeightedTTSSmokeAttestationContext
 
 
 COMMIT_SHA = "d" * 40
 
 
-def _github_environment(monkeypatch) -> None:
+def _github_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GITHUB_REPOSITORY", "FedorMilovanov/mp3telegrambot")
     monkeypatch.setenv("GITHUB_SHA", COMMIT_SHA)
     monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
@@ -24,15 +28,15 @@ def _github_environment(monkeypatch) -> None:
 
 
 def test_cli_uses_immutable_github_environment_and_writes_attestation(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    capsys,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     _github_environment(monkeypatch)
     doctor = tmp_path / "doctor" / "report.json"
     smoke = tmp_path / "smoke" / "report.json"
     output = tmp_path / "attestation" / "attestation.json"
-    captured: dict = {}
+    captured: dict[str, Any] = {}
 
     monkeypatch.setattr(
         cli,
@@ -40,7 +44,13 @@ def test_cli_uses_immutable_github_environment_and_writes_attestation(
         lambda path, label: {"label": label, "source": str(path.name)},
     )
 
-    def fake_build(doctor_report, smoke_report, context, *, forbidden_values):
+    def fake_build(
+        doctor_report: Mapping[str, Any],
+        smoke_report: Mapping[str, Any],
+        context: WeightedTTSSmokeAttestationContext,
+        *,
+        forbidden_values: tuple[str, ...],
+    ) -> dict[str, Any]:
         captured["doctor"] = doctor_report
         captured["smoke"] = smoke_report
         captured["context"] = context
@@ -58,7 +68,7 @@ def test_cli_uses_immutable_github_environment_and_writes_attestation(
             "digest_sha256": "a" * 64,
         }
 
-    def fake_write(path: Path, payload) -> None:
+    def fake_write(path: Path, payload: Mapping[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload), encoding="utf-8")
 

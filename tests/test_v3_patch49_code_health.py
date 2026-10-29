@@ -5,7 +5,7 @@ from pathlib import Path
 from core.code_health import collect_code_health, format_code_health_report
 
 
-def test_code_health_collects_regex_and_registry_metrics():
+def test_code_health_collects_regex_and_registry_metrics() -> None:
     report = collect_code_health(Path("."))
     assert report.files_scanned > 10
     assert report.total_regex_markers > 0
@@ -14,7 +14,7 @@ def test_code_health_collects_regex_and_registry_metrics():
     assert report.top_files
 
 
-def test_code_health_report_is_admin_html_readout():
+def test_code_health_report_is_admin_html_readout() -> None:
     text = format_code_health_report(Path("."))
     assert "Code health" in text
     assert "regex_markers" in text
@@ -23,7 +23,7 @@ def test_code_health_report_is_admin_html_readout():
     assert "registry" in text
 
 
-def test_codehealth_command_is_registered():
+def test_codehealth_command_is_registered() -> None:
     commands = Path("handlers/commands.py").read_text(encoding="utf-8")
     main = Path("main.py").read_text(encoding="utf-8")
     assert "from core.code_health import format_code_health_report" in commands

@@ -13,39 +13,45 @@ import services.search as S
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _reset():
+def _reset() -> None:
     S._RUTUBE_LISTING_CACHE.clear()
 
 
-def test_cache_stores_completeness_flag():
+def test_cache_stores_completeness_flag() -> None:
     _reset()
     S._set_rutube_listing_cache("c1", [{"id": "1"}], False)
-    res, complete = S._get_rutube_listing_cache("c1")
+    cached = S._get_rutube_listing_cache("c1")
+    assert cached is not None
+    res, complete = cached
     assert res == [{"id": "1"}]
     assert complete is False
 
 
-def test_partial_cache_does_not_overwrite_complete():
+def test_partial_cache_does_not_overwrite_complete() -> None:
     """Полный листинг не должен затираться частичным (другое видео рано вышло)."""
     _reset()
     S._set_rutube_listing_cache("c1", [{"id": a} for a in "12345"], True)
     S._set_rutube_listing_cache("c1", [{"id": "1"}], False)  # частичный — должен игнорироваться
-    res, complete = S._get_rutube_listing_cache("c1")
+    cached = S._get_rutube_listing_cache("c1")
+    assert cached is not None
+    res, complete = cached
     assert complete is True
     assert len(res) == 5
 
 
-def test_complete_cache_can_be_set_over_partial():
+def test_complete_cache_can_be_set_over_partial() -> None:
     """Частичный кэш ЗАМЕНЯЕТСЯ полным при дозагрузке."""
     _reset()
     S._set_rutube_listing_cache("c1", [{"id": "1"}], False)
     S._set_rutube_listing_cache("c1", [{"id": a} for a in "123456"], True)
-    res, complete = S._get_rutube_listing_cache("c1")
+    cached = S._get_rutube_listing_cache("c1")
+    assert cached is not None
+    res, complete = cached
     assert complete is True
     assert len(res) == 6
 
 
-def test_cache_ttl_expiry_still_works():
+def test_cache_ttl_expiry_still_works() -> None:
     _reset()
     S._set_rutube_listing_cache("c1", [{"id": "1"}], True)
     # искусственно состарим запись
@@ -54,7 +60,7 @@ def test_cache_ttl_expiry_still_works():
     assert S._get_rutube_listing_cache("c1") is None
 
 
-def test_search_rutube_resumes_on_partial_cache_miss():
+def test_search_rutube_resumes_on_partial_cache_miss() -> None:
     """Ключевой сценарий бага: частичный кэш без совпадения → дозагрузка."""
     src = (ROOT / "services/search.py").read_text(encoding="utf-8")
     fn = src.split("async def search_rutube", 1)[1]
@@ -63,7 +69,7 @@ def test_search_rutube_resumes_on_partial_cache_miss():
     assert "allow_early_exit=False" in fn
 
 
-def test_load_helper_marks_early_exit_incomplete():
+def test_load_helper_marks_early_exit_incomplete() -> None:
     """_load_rutube_listing помечает ранний выход как complete=False."""
     src = (ROOT / "services/search.py").read_text(encoding="utf-8")
     helper = src.split("async def _load_rutube_listing", 1)[1].split("async def search_rutube", 1)[0]
@@ -77,7 +83,7 @@ def test_load_helper_marks_early_exit_incomplete():
 # ── Тайминг-фикс из того же прогона: точка после ⏱ сквозь жирный ──
 
 
-def test_ts_period_order_handles_bold_close_before_timestamp():
+def test_ts_period_order_handles_bold_close_before_timestamp() -> None:
     """Дамп 07-09: application-блок Reflection даёт «**…истории.** ⏱ 20:17»
     (точка ВНУТРИ жирного). Точка обязана уехать за таймкод, жирный — цел."""
     from converters.md_telegraph import _fix_ts_period_order
@@ -89,7 +95,7 @@ def test_ts_period_order_handles_bold_close_before_timestamp():
     assert _fix_ts_period_order("крушение рамок. ⏱ 6:16") == "крушение рамок ⏱ 6:16."
 
 
-def test_application_block_no_period_before_timestamp():
+def test_application_block_no_period_before_timestamp() -> None:
     """Сквозной путь application-блока: в готовых узлах нет «. ⏱»."""
     from converters.md_telegraph import _structured_blocks_to_nodes_v2
 
@@ -105,9 +111,9 @@ def test_application_block_no_period_before_timestamp():
         yt_url="https://youtu.be/x",
         duration=3600,
     )
-    flat = []
+    flat: list[str] = []
 
-    def walk(n):
+    def walk(n: object) -> None:
         if isinstance(n, str):
             flat.append(n)
         elif isinstance(n, dict):

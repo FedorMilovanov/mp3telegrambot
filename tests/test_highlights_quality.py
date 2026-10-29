@@ -1,4 +1,6 @@
 from types import SimpleNamespace
+from collections.abc import Awaitable, Callable
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -13,7 +15,7 @@ from services.highlights_quality import (
 )
 
 
-def _segment(start, end, text, words=None):
+def _segment(start: float, end: float, text: str, words: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     return {
         "start": start,
         "end": end,
@@ -65,7 +67,7 @@ def test_refine_rejects_unfinished_quote() -> None:
     }
 
 
-def test_refine_rejects_long_internal_silence(monkeypatch) -> None:
+def test_refine_rejects_long_internal_silence(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HIGHLIGHTS_MAX_INTERNAL_SILENCE_SECONDS", "2.5")
     fragment = {"start_seconds": 10.0, "end_seconds": 20.0}
     segments = [
@@ -215,7 +217,9 @@ def test_probe_mapping_clips_word_evidence_to_exact_window() -> None:
 
 
 @pytest.mark.asyncio
-async def test_coherence_judge_executes_typed_gemini_callback(monkeypatch) -> None:
+async def test_coherence_judge_executes_typed_gemini_callback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     response = SimpleNamespace(text='{"accept":true,"keep_indices":[1,2,3,4],"reason":"connected"}')
     generate_content = AsyncMock(return_value=response)
     client = SimpleNamespace(aio=SimpleNamespace(models=SimpleNamespace(generate_content=generate_content)))
@@ -223,7 +227,7 @@ async def test_coherence_judge_executes_typed_gemini_callback(monkeypatch) -> No
     monkeypatch.setattr(highlights_quality, "GEMINI_CLIENTS", [client])
     monkeypatch.setattr(highlights_quality, "make_text_config_smart", lambda **kwargs: kwargs)
 
-    async def generate(clients, callback):
+    async def generate(clients: list[Any], callback: Callable[[Any], Awaitable[Any]]) -> Any:
         return await callback(clients[0])
 
     monkeypatch.setattr(highlights_quality, "gemini_generate", generate)
@@ -238,4 +242,6 @@ async def test_coherence_judge_executes_typed_gemini_callback(monkeypatch) -> No
     )
 
     assert (accepted, keep, reason) == (True, [1, 2, 3, 4], "connected")
-    assert generate_content.await_args.kwargs["config"]["response_mime_type"] == "application/json"
+    await_args = generate_content.await_args
+    assert await_args is not None
+    assert await_args.kwargs["config"]["response_mime_type"] == "application/json"

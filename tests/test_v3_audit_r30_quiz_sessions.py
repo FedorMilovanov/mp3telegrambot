@@ -6,6 +6,8 @@
 
 import types
 from pathlib import Path
+from collections.abc import Iterator
+from typing import Any
 
 import pytest
 
@@ -13,50 +15,50 @@ import services.quiz_sessions as qs
 
 
 class _FakePoll:
-    def __init__(self, pid):
+    def __init__(self, pid: str) -> None:
         self.id = pid
 
 
 class _FakeMessage:
-    def __init__(self, pid):
+    def __init__(self, pid: str) -> None:
         self.poll = _FakePoll(pid)
 
 
 class _FakeBot:
-    def __init__(self):
-        self.polls = []
-        self.messages = []
+    def __init__(self) -> None:
+        self.polls: list[dict[str, Any]] = []
+        self.messages: list[dict[str, Any]] = []
         self._n = 0
 
-    async def send_poll(self, **kw):
+    async def send_poll(self, **kw: Any) -> _FakeMessage:
         self._n += 1
         self.polls.append(kw)
         return _FakeMessage(f"poll{self._n}")
 
-    async def send_message(self, **kw):
+    async def send_message(self, **kw: Any) -> None:
         self.messages.append(kw)
 
 
 class _FakeCtx:
-    def __init__(self):
+    def __init__(self) -> None:
         self.bot = _FakeBot()
 
 
-def _update():
+def _update() -> types.SimpleNamespace:
     chat = types.SimpleNamespace(id=555)
     msg = types.SimpleNamespace(message_id=1)
     return types.SimpleNamespace(effective_chat=chat, message=msg)
 
 
-def _answer(poll_id, option):
+def _answer(poll_id: str, option: int) -> types.SimpleNamespace:
     pa = types.SimpleNamespace(poll_id=poll_id, option_ids=[option])
     return types.SimpleNamespace(poll_answer=pa)
 
 
 @pytest.fixture(autouse=True)
-def _passthrough_payload(monkeypatch):
+def _passthrough_payload(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     # Тестируем логику СЕССИИ, а не качество вопросов — payload делаем прямым.
-    def _fake(q, *, index, total):
+    def _fake(q: dict[str, Any], *, index: int, total: int) -> dict[str, Any]:
         return {
             "question": q["question"],
             "options": q["options"],
@@ -70,12 +72,12 @@ def _passthrough_payload(monkeypatch):
     qs._polls.clear()
 
 
-def _questions(n=3):
+def _questions(n: int = 3) -> list[dict[str, Any]]:
     return [{"question": f"Q{i}?", "options": ["a", "b", "c", "d"], "correct": 0, "explanation": "e"} for i in range(n)]
 
 
 @pytest.mark.asyncio
-async def test_only_one_poll_sent_at_start():
+async def test_only_one_poll_sent_at_start() -> None:
     ctx = _FakeCtx()
     started = await qs.start_quiz_session(_questions(3), _update(), ctx, title="T")
     assert started == 3
@@ -85,7 +87,7 @@ async def test_only_one_poll_sent_at_start():
 
 
 @pytest.mark.asyncio
-async def test_answering_advances_and_final_score():
+async def test_answering_advances_and_final_score() -> None:
     ctx = _FakeCtx()
     await qs.start_quiz_session(_questions(3), _update(), ctx, title="Тест")
     # ответить на Q1 верно
@@ -102,19 +104,19 @@ async def test_answering_advances_and_final_score():
 
 
 @pytest.mark.asyncio
-async def test_unknown_poll_answer_ignored():
+async def test_unknown_poll_answer_ignored() -> None:
     ctx = _FakeCtx()
     await qs.handle_quiz_poll_answer(_answer("nonexistent", 0), ctx)
     assert ctx.bot.polls == [] and ctx.bot.messages == []
 
 
-def test_bulk_send_replaced_by_session():
+def test_bulk_send_replaced_by_session() -> None:
     src = Path("services/quiz_generator.py").read_text(encoding="utf-8")
     assert "start_quiz_session" in src
     # старой пачки (цикл по всем вопросам с send_poll внутри) быть не должно
     assert "is_anonymous=True" not in src
 
 
-def test_handler_registered_in_main():
+def test_handler_registered_in_main() -> None:
     src = Path("main.py").read_text(encoding="utf-8")
     assert "PollAnswerHandler(handle_quiz_poll_answer)" in src

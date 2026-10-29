@@ -9,7 +9,7 @@ from core.title_topic_audit import audit_title_topic_consistency
 from core.globals import _is_gemini_3x
 
 
-def test_json_parser_recovers_truncated_object_without_final_top_level_brace():
+def test_json_parser_recovers_truncated_object_without_final_top_level_brace() -> None:
     raw = """```json
 {
   "real_author": "A",
@@ -31,7 +31,7 @@ def test_json_parser_recovers_truncated_object_without_final_top_level_brace():
     assert parsed["hermeneutic_method"] == "mixed"
 
 
-def test_postprocess_double_slash_preserves_urls_and_paragraph_boundaries():
+def test_postprocess_double_slash_preserves_urls_and_paragraph_boundaries() -> None:
     nodes = [{"tag": "p", "children": ["См. https://example.com/a / / Новый абзац"]}]
     out = _postprocess_telegraph_nodes(nodes)
     text = out[0]["children"][0]
@@ -39,7 +39,7 @@ def test_postprocess_double_slash_preserves_urls_and_paragraph_boundaries():
     assert "a\n\nНовый абзац" in text
 
 
-def test_synopsis_density_score_does_not_let_coverage_beat_deep_content():
+def test_synopsis_density_score_does_not_let_coverage_beat_deep_content() -> None:
     deep = [{"title": "A", "time": "0:00", "content": "x" * 3000}]
     thin_late = [
         {"title": "A", "time": "0:00", "content": "x" * 200},
@@ -48,7 +48,7 @@ def test_synopsis_density_score_does_not_let_coverage_beat_deep_content():
     assert synopsis_density_score(deep, 3600) > synopsis_density_score(thin_late, 3600)
 
 
-def test_title_topic_audit_warns_when_only_one_weak_overlap_exists():
+def test_title_topic_audit_warns_when_only_one_weak_overlap_exists() -> None:
     issue = audit_title_topic_consistency(
         "Святой Дух Откровения",
         "Пастырская верность и церковная дисциплина. Дух служителя проявляется в терпении.",
@@ -58,7 +58,7 @@ def test_title_topic_audit_warns_when_only_one_weak_overlap_exists():
     assert issue.code == "title_topic_low_overlap"
 
 
-def test_gemini_3x_detection_is_exact_model_family():
+def test_gemini_3x_detection_is_exact_model_family() -> None:
     assert _is_gemini_3x("gemini-3.5-flash") is True
     assert _is_gemini_3x("gemini-3-flash-preview") is True
     # Gemini 4 also uses thinking config and must not receive temperature.
@@ -68,7 +68,7 @@ def test_gemini_3x_detection_is_exact_model_family():
     assert _is_gemini_3x("gemini-40-argon") is False
 
 
-def test_content_audit_logging_uses_explicit_ternary_not_short_circuit():
+def test_content_audit_logging_uses_explicit_ternary_not_short_circuit() -> None:
     pages = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
     telegraph = Path("services/telegraph.py").read_text(encoding="utf-8")
     assert "and logger.warning or logger.info" not in pages
@@ -77,7 +77,7 @@ def test_content_audit_logging_uses_explicit_ternary_not_short_circuit():
     assert "logger.warning if has_content_audit_warnings" in telegraph
 
 
-def test_cache_caption_branch_no_longer_deletes_timestamps_as_first_fallback():
+def test_cache_caption_branch_no_longer_deletes_timestamps_as_first_fallback() -> None:
     # P0-3, шаг 5: обрезка подписи вынесена в общую стадию. Кэш-хит больше не
     # содержит своей копии алгоритма — значит и «сначала удалить таймкоды»
     # вернуться не может: порядок шагов один на оба пути.

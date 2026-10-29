@@ -9,7 +9,7 @@ import services.shorts_factory_source as source
 _GIB = 1024**3
 
 
-def test_selection_payload_sums_selected_video_and_audio_streams():
+def test_selection_payload_sums_selected_video_and_audio_streams() -> None:
     payload = {
         "duration": 600,
         "requested_downloads": [
@@ -26,7 +26,7 @@ def test_selection_payload_sums_selected_video_and_audio_streams():
     assert duration == 600
 
 
-def test_selection_payload_uses_bitrate_when_size_is_missing():
+def test_selection_payload_uses_bitrate_when_size_is_missing() -> None:
     payload = {
         "duration": 120,
         "requested_formats": [
@@ -39,7 +39,7 @@ def test_selection_payload_uses_bitrate_when_size_is_missing():
     assert duration == 120
 
 
-def test_audio_disk_model_includes_native_stream_and_pcm_working_peak():
+def test_audio_disk_model_includes_native_stream_and_pcm_working_peak() -> None:
     estimate = 500 * 1024**2
     duration = 3 * 3600
     required = disk_guard.required_factory_free_bytes("audio", estimate, duration)
@@ -49,30 +49,30 @@ def test_audio_disk_model_includes_native_stream_and_pcm_working_peak():
     assert required >= 2 * _GIB
 
 
-def test_unknown_audio_and_video_sizes_use_conservative_floors():
+def test_unknown_audio_and_video_sizes_use_conservative_floors() -> None:
     assert disk_guard.required_factory_free_bytes("audio", 0, 0) >= 4 * _GIB
     assert disk_guard.required_factory_free_bytes("video", 0, 0) >= 6 * _GIB
 
 
-def test_video_disk_model_includes_separate_streams_and_merged_output():
+def test_video_disk_model_includes_separate_streams_and_merged_output() -> None:
     estimate = 4 * _GIB
     required = disk_guard.required_factory_free_bytes("video", estimate, 3600)
     assert required >= estimate * 2.20 + _GIB
 
 
-def test_unknown_video_size_uses_duration_based_model():
+def test_unknown_video_size_uses_duration_based_model() -> None:
     duration = 2 * 3600
     required = disk_guard.required_factory_free_bytes("video", 0, duration)
     twelve_mbps_bytes = duration * 12_000_000 / 8
     assert required >= twelve_mbps_bytes * 2.20 + _GIB
 
 
-def test_invalid_disk_estimate_kind_fails_closed():
+def test_invalid_disk_estimate_kind_fails_closed() -> None:
     with pytest.raises(ValueError, match="Unsupported Factory disk estimate"):
         disk_guard.required_factory_free_bytes("unknown", 1, 1)
 
 
-def test_factory_delivery_sort_prefers_sdr_then_maximizes_resolution():
+def test_factory_delivery_sort_prefers_sdr_then_maximizes_resolution() -> None:
     base = [
         "--format-sort-reset",
         "--no-format-sort-force",
@@ -83,10 +83,12 @@ def test_factory_delivery_sort_prefers_sdr_then_maximizes_resolution():
     assert result[-2:] == ["--format-sort", "hdr:0,res,fps"]
 
 
-def test_free_space_guard_checks_every_target_and_rejects_shortage(monkeypatch, tmp_path):
-    checked = []
+def test_free_space_guard_checks_every_target_and_rejects_shortage(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    checked: list[Path] = []
 
-    def fake_usage(path):
+    def fake_usage(path: str | Path) -> SimpleNamespace:
         checked.append(Path(path))
         free = 8 * _GIB if Path(path).name == "enough" else 1 * _GIB
         return SimpleNamespace(free=free)
@@ -104,7 +106,7 @@ def test_free_space_guard_checks_every_target_and_rejects_shortage(monkeypatch, 
     assert shortage in checked
 
 
-def test_source_owns_delivery_sort_and_pre_download_capacity_checks():
+def test_source_owns_delivery_sort_and_pre_download_capacity_checks() -> None:
     source_code = Path(source.__file__).read_text(encoding="utf-8")
     assert "factory_delivery_sort_args(" in source_code
     assert "ensure_factory_audio_space(" in source_code
@@ -113,7 +115,7 @@ def test_source_owns_delivery_sort_and_pre_download_capacity_checks():
     assert "hdr:0,res,fps" in Path(disk_guard.__file__).read_text(encoding="utf-8")
 
 
-def test_factory_pipeline_is_audio_plan_first_without_event_state():
+def test_factory_pipeline_is_audio_plan_first_without_event_state() -> None:
     pipeline = Path("pipelines/shorts_factory.py").read_text(encoding="utf-8")
     audio_pos = pipeline.index("mp3_path = await _download_factory_audio(")
     plan_pos = pipeline.index("plan = await create_factory_plan(")
@@ -129,7 +131,7 @@ def test_factory_pipeline_is_audio_plan_first_without_event_state():
     assert "mark_factory_analysis_audio_skipped" not in guard
 
 
-def test_translation_source_checks_capacity_with_known_duration_before_download():
+def test_translation_source_checks_capacity_with_known_duration_before_download() -> None:
     source_code = Path(source.__file__).read_text(encoding="utf-8")
     function = source_code[source_code.index("async def prepare_factory_translation_video") :]
     ensure_pos = function.index("ensure_factory_video_space(")

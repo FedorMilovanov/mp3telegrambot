@@ -297,7 +297,7 @@ class _AudioSpec:
         self.encode_sample_rate = _integer(encode, "encode_sample_rate")
         self.output_sample_rate = _integer(output, "output_sample_rate")
         self.cache_length = _integer(cache_length, "cache_length")
-        self.seconds_per_step = None
+        self.seconds_per_step: float | None = None
         if min(self.encode_sample_rate, self.output_sample_rate) <= 0:
             raise RuntimeError("Sample rate должен быть > 0.")
         if not 2048 <= self.cache_length <= 131072:
@@ -333,7 +333,15 @@ class _AudioSpec:
 
 
 class _LazySession:
-    def __init__(self, backend, config, *, encode, output, log) -> None:
+    def __init__(
+        self,
+        backend: Any,
+        config: Any,
+        *,
+        encode: int,
+        output: int,
+        log: Callable[[str], Any],
+    ) -> None:
         self._backend, self._config, self._log, self._real = backend, config, log, None
         options = getattr(config, "options", {}) or {}
         if not isinstance(options, Mapping):
@@ -348,7 +356,7 @@ class _LazySession:
     def opened(self) -> bool:
         return self._real is not None
 
-    def ensure_open(self):
+    def ensure_open(self) -> Any:
         if self._real is None:
             started = time.perf_counter()
             real = self._backend.open_session(self._config)
@@ -359,12 +367,12 @@ class _LazySession:
             self._log(f"Модель реально загружена за {time.perf_counter() - started:.1f} сек.")
         return self._real
 
-    def generate(self, request):
+    def generate(self, request: Any) -> Any:
         return self.ensure_open().generate(request)
 
 
 def _scope_epochs(payload: Mapping[str, Any]) -> dict[str, int]:
-    result = {}
+    result: dict[str, int] = {}
     raw = payload.get("scope_epochs")
     if isinstance(raw, Mapping):
         for key, value in raw.items():
@@ -375,7 +383,7 @@ def _scope_epochs(payload: Mapping[str, Any]) -> dict[str, int]:
                 continue
             if fingerprint and 0 <= epoch <= MAX_SCOPE_EPOCH:
                 result[fingerprint] = max(result.get(fingerprint, 0), epoch)
-    counts = {}
+    counts: dict[str, int] = {}
     for entry in payload.get("history") or []:
         if not isinstance(entry, Mapping):
             continue

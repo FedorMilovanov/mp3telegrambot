@@ -17,7 +17,7 @@ from typing import Any
 import numpy as np
 
 from services.speech_backends import BackendGenerationProfileRequest, default_backend
-from tools.voxcpm2 import direct_timeline_delivery_qa
+from tools.voxcpm2 import direct_timeline_delivery_qa as direct_timeline_delivery_qa
 from tools.voxcpm2.direct_max_quality_io import (
     EXPECTED_OUTPUT_SR,
     SPEECH_SLOT_POLICY,
@@ -28,7 +28,7 @@ from tools.voxcpm2.direct_max_quality_io import (
 )
 
 
-def build_timeline(
+def _legacy_build_timeline_impl(
     fitted_segments: list[tuple[dict[str, Any], Path]],
     output: Path,
     total_duration: float,
@@ -80,7 +80,7 @@ def set_seed(seed: int, torch_module: Any) -> None:
     torch_module.manual_seed(seed)
 
 
-def _generation_profile(
+def _legacy_generation_profile(
     attempt: int,
     base_cfg: float,
     base_steps: int,
@@ -171,7 +171,7 @@ TIMELINE_COMPACTION_POLICY = "no-late-shift-monolithic-assembly-v2"
 
 FADE_POLICY = "cadence-aware-short-boundary-envelope-v1"
 
-_legacy_build_timeline = build_timeline
+_legacy_build_timeline = _legacy_build_timeline_impl
 
 
 def _generation_profile(attempt: int, base_cfg: float, base_steps: int) -> tuple[float, int]:

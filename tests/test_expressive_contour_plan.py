@@ -2,13 +2,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 import numpy as np
 import soundfile as sf
 
 from tools.voxcpm2 import expressive_continuity
 
 
-def test_expression_plan_embeds_source_contour_without_changing_text(tmp_path, monkeypatch):
+def test_expression_plan_embeds_source_contour_without_changing_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     sample_rate = 16_000
     duration = 4.0
     time = np.arange(int(sample_rate * duration), dtype=np.float64) / sample_rate
@@ -16,8 +20,9 @@ def test_expression_plan_embeds_source_contour_without_changing_text(tmp_path, m
     source = tmp_path / "source.wav"
     sf.write(source, audio, sample_rate)
 
-    def fake_decode(path: Path, decoded: Path):
-        return sf.read(path, dtype="float32")
+    def fake_decode(path: Path, decoded: Path) -> tuple[np.ndarray, int]:
+        result: tuple[np.ndarray, int] = sf.read(path, dtype="float32")
+        return result
 
     monkeypatch.setattr(expressive_continuity.audio_policy, "_decode", fake_decode)
     monkeypatch.setattr(

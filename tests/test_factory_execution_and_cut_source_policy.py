@@ -12,18 +12,18 @@ from services.shorts_factory_execution_guard import (
 from services.shorts_factory_quality_gate import validated_factory_plan_language
 
 
-def test_factory_quality_gate_requires_proven_dominant_spoken_language():
+def test_factory_quality_gate_requires_proven_dominant_spoken_language() -> None:
     assert validated_factory_plan_language({"metadata": {"language": "en"}}) == "en"
     with pytest.raises(RuntimeError, match="доминирующий язык речи"):
         validated_factory_plan_language({"metadata": {"language": "mixed"}})
 
 
-def test_factory_spoken_language_prefers_audio_plan_over_title_metadata():
+def test_factory_spoken_language_prefers_audio_plan_over_title_metadata() -> None:
     assert resolve_factory_spoken_language({"metadata": {"language": "English"}}, {"title": "Русский"}) == "en"
     assert factory_language_needs_translation("en") is True
 
 
-def test_factory_russian_audio_skips_translation_even_with_english_title():
+def test_factory_russian_audio_skips_translation_even_with_english_title() -> None:
     assert resolve_factory_spoken_language({"metadata": {"language": "русский"}}, {"title": "English title"}) == "ru"
     assert factory_language_needs_translation("ru") is False
 
@@ -32,21 +32,21 @@ def test_factory_russian_audio_skips_translation_even_with_english_title():
     ("value", "expected"),
     [("en-US", "en"), ("English", "en"), ("русский", "ru"), ("ukr", "uk"), ("Belarusian", "be"), ("fr-FR", "fr")],
 )
-def test_factory_language_normalization(value, expected):
+def test_factory_language_normalization(value: str, expected: str) -> None:
     assert normalize_factory_language(value) == expected
 
 
 @pytest.mark.parametrize("language", ["uk", "be", "en", "fr", "de"])
-def test_every_proven_non_russian_language_requires_russian_livedub(language):
+def test_every_proven_non_russian_language_requires_russian_livedub(language: str) -> None:
     assert factory_language_needs_translation(language) is True
 
 
-def test_factory_unknown_language_is_fail_closed_without_title_guessing():
+def test_factory_unknown_language_is_fail_closed_without_title_guessing() -> None:
     with pytest.raises(RuntimeError, match="Не удалось доказать язык речи"):
         resolve_factory_spoken_language({"metadata": {"language": "unknown"}}, {"title": "Евангелие"})
 
 
-def test_factory_translation_preflight_requires_route_and_oauth_by_default():
+def test_factory_translation_preflight_requires_route_and_oauth_by_default() -> None:
     assert factory_translation_preflight_issues(
         oauth_present=False, helper_available=False, cli_available=False, require_oauth=True
     ) == (
@@ -55,7 +55,7 @@ def test_factory_translation_preflight_requires_route_and_oauth_by_default():
     )
 
 
-def test_factory_translation_preflight_allows_explicit_cached_only_opt_out():
+def test_factory_translation_preflight_allows_explicit_cached_only_opt_out() -> None:
     assert (
         factory_translation_preflight_issues(
             oauth_present=False, helper_available=True, cli_available=False, require_oauth=False
@@ -64,7 +64,7 @@ def test_factory_translation_preflight_allows_explicit_cached_only_opt_out():
     )
 
 
-def test_factory_preflight_reports_every_missing_runtime_dependency():
+def test_factory_preflight_reports_every_missing_runtime_dependency() -> None:
     assert factory_preflight_issues(
         gemini_available=False,
         whisper_available=False,
@@ -81,7 +81,7 @@ def test_factory_preflight_reports_every_missing_runtime_dependency():
     )
 
 
-def test_factory_owner_proves_language_before_selecting_source_backend():
+def test_factory_owner_proves_language_before_selecting_source_backend() -> None:
     source = Path("pipelines/shorts_factory.py").read_text(encoding="utf-8")
     plan_pos = source.index("plan = await create_factory_plan(")
     language_pos = source.index("spoken_language = resolve_factory_spoken_language(plan, info)")
@@ -91,7 +91,7 @@ def test_factory_owner_proves_language_before_selecting_source_backend():
     assert "factory_language_needs_translation(spoken_language)" in source
 
 
-def test_factory_quality_and_execution_contracts_are_not_installer_stacks():
+def test_factory_quality_and_execution_contracts_are_not_installer_stacks() -> None:
     quality = Path("services/shorts_factory_quality_gate.py").read_text(encoding="utf-8")
     execution = Path("services/shorts_factory_execution_guard.py").read_text(encoding="utf-8")
     assert "install_factory_plan_quality_gate" not in quality

@@ -27,14 +27,14 @@ def _blur_background_is_aspect_preserving(src: str) -> None:
     assert "[bg]scale=720:1280,gblur=sigma=20[blurred]" not in src
 
 
-def test_shorts_blur_background_not_squished():
+def test_shorts_blur_background_not_squished() -> None:
     _blur_background_is_aspect_preserving(SHORTS)
 
 
-def test_montage_blur_background_not_squished():
+def test_montage_blur_background_not_squished() -> None:
     _blur_background_is_aspect_preserving(MONTAGE)
 
 
-def test_crop_zoom_path_unchanged_for_real_video():
+def test_crop_zoom_path_unchanged_for_real_video() -> None:
     # Реальное видео (проповедник по центру) остаётся на crop_zoom — не трогаем.
     assert "crop=ih*9/16:ih:(iw-ih*9/16)/2:0" in SHORTS

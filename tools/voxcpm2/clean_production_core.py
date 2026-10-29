@@ -19,13 +19,14 @@ import subprocess as subprocess
 from pathlib import Path
 from typing import Any
 
-from tools.voxcpm2 import clean_runtime_contract
+from tools.voxcpm2 import clean_runtime_contract as clean_runtime_contract
 from tools.voxcpm2 import dub_quality_v4
 from tools.voxcpm2 import generic_short_production as pipeline
 from tools.voxcpm2 import professional_audio_qa_v45
 from tools.voxcpm2 import professional_audio_v45
 from tools.voxcpm2 import semantic_tts_guard_v4
-from services.speech_backends import DEFAULT_BACKEND_ID, get_backend
+from services.speech_backends import DEFAULT_BACKEND_ID as DEFAULT_BACKEND_ID
+from services.speech_backends import get_backend as get_backend
 
 POLICY = "clean-direct-production-v2"
 TARGET_SECONDS = 4.2
@@ -39,7 +40,7 @@ def log(message: str) -> None:
     print(f"[CLEAN-DUB] {message}", flush=True)
 
 
-def _finite(value: Any, *, field: str) -> float:
+def _legacy_finite(value: Any, *, field: str) -> float:
     try:
         result = float(value)
     except (TypeError, ValueError) as exc:
@@ -99,7 +100,7 @@ def build_render_segments(
     return segments, subtitles
 
 
-def build_direct_segments(
+def _legacy_build_direct_segments_impl(
     groups: list[dict[str, Any]],
     *,
     delay_ms: int,
@@ -114,9 +115,9 @@ def build_direct_segments(
     return segments, subtitles
 
 
-def _mark_and_validate_segments(
-    segments: list[dict[str, Any]],
-    duration: float,
+def _legacy_mark_and_validate_segments(
+    segments: list[Any],
+    duration: float | str,
 ) -> None:
     duration_value = _finite(duration, field="video_duration")
     if duration_value <= 0.0:
@@ -316,7 +317,7 @@ def _remove_render_state(work_dir: Path) -> None:
         (work_dir / marker).unlink(missing_ok=True)
 
 
-def render_and_master(
+def _legacy_render_and_master_impl(
     *,
     root: Path,
     request: dict[str, Any],
@@ -556,7 +557,9 @@ __all__ = [
 _BASE_ALL = tuple(globals().get("__all__", ()))
 
 
-import subprocess as _stdlib_subprocess  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
+import subprocess as _stdlib_subprocess_module  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
+
+_stdlib_subprocess = _stdlib_subprocess_module
 
 
 from tools.voxcpm2 import final_encoded_delivery_qa  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
@@ -565,7 +568,7 @@ from tools.voxcpm2 import semantic_block_runtime  # noqa: E402 -- late compatibi
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
-_legacy_build_direct_segments = build_direct_segments
+_legacy_build_direct_segments = _legacy_build_direct_segments_impl
 
 CHILD_PYTHON_POLICY = "repo-root-pythonpath-master-stderr-and-post-aac-v2"
 
@@ -702,7 +705,7 @@ def _verify_post_aac_master_output(command: Any) -> dict[str, Any]:
     )
 
 
-def _run_child_process(command: Any, *args: Any, **kwargs: Any):
+def _run_child_process(command: Any, *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[Any]:
     """Run child commands with deterministic imports and fail-closed release QA."""
     global _LAST_CHILD_STDERR  # noqa: PLW0603 -- latest child stderr is module-owned diagnostic evidence
 
@@ -772,8 +775,8 @@ def _strict_int(
 
 
 def _mark_and_validate_segments(
-    segments: list[dict[str, Any]],
-    duration: float,
+    segments: list[Any],
+    duration: float | str,
 ) -> None:
     duration_value = _finite(duration, field="video_duration")
     if duration_value <= 0.0:
@@ -865,7 +868,7 @@ _finite = _finite
 
 _mark_and_validate_segments = _mark_and_validate_segments
 
-_legacy_render_and_master = render_and_master
+_legacy_render_and_master = _legacy_render_and_master_impl
 
 
 def _retryable_delivery_failure(detail: str) -> bool:
@@ -929,7 +932,7 @@ def _delivery_failure_detail(
     return "\n".join(unique)
 
 
-def render_and_master(*args: Any, **kwargs: Any) -> Any:
+def render_and_master(*args: Any, **kwargs: Any) -> Path:
     """Retry quality-only failures in-place while preserving good checkpoints."""
     global _LAST_CHILD_STDERR  # noqa: PLW0603 -- each render retry resets the module-owned child diagnostic
 

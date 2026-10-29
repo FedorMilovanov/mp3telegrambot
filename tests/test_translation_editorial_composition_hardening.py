@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 from pathlib import Path
+from typing import Any
 
 import services.translation_editorial_composition as composition
 from services.translation_editorial_composition import (
@@ -11,7 +12,7 @@ from services.translation_editorial_composition import (
 )
 
 
-def _plan(tmp_path: Path) -> dict:
+def _plan(tmp_path: Path) -> dict[str, Any]:
     source = tmp_path / "clean.mp4"
     source.write_bytes(b"x" * 2048)
     plan = build_composition_template(

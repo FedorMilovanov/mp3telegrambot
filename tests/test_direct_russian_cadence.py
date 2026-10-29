@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import Any
 
 from tools.voxcpm2.direct_russian_cadence import (
     classify_cadence,
@@ -9,7 +10,7 @@ from tools.voxcpm2.direct_russian_cadence import (
 )
 
 
-def _chirp(start_hz: float, end_hz: float, *, duration: float = 2.0, tail: float = 0.18):
+def _chirp(start_hz: float, end_hz: float, *, duration: float = 2.0, tail: float = 0.18) -> tuple[np.ndarray, int]:
     sample_rate = 48_000
     time = np.arange(int(duration * sample_rate), dtype=np.float64) / sample_rate
     slope = (end_hz - start_hz) / duration
@@ -21,7 +22,7 @@ def _chirp(start_hz: float, end_hz: float, *, duration: float = 2.0, tail: float
     return np.concatenate([audio.astype(np.float32), np.zeros(int(tail * sample_rate), dtype=np.float32)]), sample_rate
 
 
-def _evaluate(text: str, start_hz: float, end_hz: float):
+def _evaluate(text: str, start_hz: float, end_hz: float) -> dict[str, Any]:
     audio, sample_rate = _chirp(start_hz, end_hz)
     candidate = {
         "samples": audio,
@@ -37,7 +38,7 @@ def _evaluate(text: str, start_hz: float, end_hz: float):
     return evaluate_candidate_cadence(candidate, segment)
 
 
-def test_classify_russian_cadence_contract():
+def test_classify_russian_cadence_contract() -> None:
     assert classify_cadence("Завершение.") == "terminal"
     assert classify_cadence("Удар!") == "firm_terminal"
     assert classify_cadence("Вопрос?") == "question"
@@ -47,7 +48,7 @@ def test_classify_russian_cadence_contract():
     assert classify_cadence("Помните мой любимый стих") == "linked"
 
 
-def test_rising_declarative_is_rejected_but_falling_one_passes():
+def test_rising_declarative_is_rejected_but_falling_one_passes() -> None:
     rising = _evaluate("И не на то, что выйдет замуж.", 80.0, 200.0)
     falling = _evaluate("И не на то, что выйдет замуж.", 200.0, 80.0)
 
@@ -59,7 +60,7 @@ def test_rising_declarative_is_rejected_but_falling_one_passes():
     assert falling["penalty"] < rising["penalty"]
 
 
-def test_linked_phrase_must_not_close_like_a_full_stop():
+def test_linked_phrase_must_not_close_like_a_full_stop() -> None:
     closed = _evaluate("Помните мой любимый стих", 240.0, 60.0)
     open_phrase = _evaluate("Помните мой любимый стих", 100.0, 160.0)
 
@@ -69,7 +70,7 @@ def test_linked_phrase_must_not_close_like_a_full_stop():
     assert open_phrase["hard_ok"] is True
 
 
-def test_prosody_contour_exposes_five_bin_emphasis_shape():
+def test_prosody_contour_exposes_five_bin_emphasis_shape() -> None:
     audio, sample_rate = _chirp(100.0, 160.0)
     contour = prosody_contour(audio, sample_rate)
 
@@ -79,7 +80,7 @@ def test_prosody_contour_exposes_five_bin_emphasis_shape():
     assert contour["voiced_ending"] is True
 
 
-def test_terminal_octave_glitch_is_corrected_before_cadence_decision():
+def test_terminal_octave_glitch_is_corrected_before_cadence_decision() -> None:
     sample_rate = 48_000
     first_duration = 1.72
     glitch_duration = 0.18
@@ -114,7 +115,7 @@ def test_terminal_octave_glitch_is_corrected_before_cadence_decision():
     assert "terminal_rises" not in result["failures"]
 
 
-def _enveloped_chirp(start_hz: float, end_hz: float, start_amp: float, end_amp: float):
+def _enveloped_chirp(start_hz: float, end_hz: float, start_amp: float, end_amp: float) -> tuple[np.ndarray, int]:
     sample_rate = 48_000
     duration = 2.0
     time = np.arange(int(duration * sample_rate), dtype=np.float64) / sample_rate
@@ -128,7 +129,7 @@ def _enveloped_chirp(start_hz: float, end_hz: float, start_amp: float, end_amp: 
     return np.concatenate([audio.astype(np.float32), np.zeros(int(0.12 * sample_rate), dtype=np.float32)]), sample_rate
 
 
-def test_slight_terminal_rise_requires_an_energy_resolution():
+def test_slight_terminal_rise_requires_an_energy_resolution() -> None:
     unresolved_audio, sample_rate = _enveloped_chirp(110.0, 132.0, 0.08, 0.28)
     resolved_audio, _ = _enveloped_chirp(110.0, 132.0, 0.28, 0.06)
     segment = {

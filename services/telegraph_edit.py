@@ -9,7 +9,7 @@ the exact API error and classifies whether another identical request can help.
 
 from __future__ import annotations
 
-import asyncio
+import asyncio as asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 import re

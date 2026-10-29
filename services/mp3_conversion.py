@@ -8,7 +8,7 @@ import contextlib
 import json
 import logging
 import os
-import shutil
+import shutil as shutil
 import uuid
 from pathlib import Path
 

@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-def test_start_bot_recreates_unsupported_virtualenv_before_launch():
+def test_start_bot_recreates_unsupported_virtualenv_before_launch() -> None:
     source = Path("Start Bot.bat").read_text(encoding="utf-8")
 
     version_check = "(3, 12) <= sys.version_info[:2] < (3, 14)"
@@ -10,7 +10,7 @@ def test_start_bot_recreates_unsupported_virtualenv_before_launch():
     assert source.index(version_check) < source.index('if not exist "%VENV_PYTHON%" (')
 
 
-def test_start_bot_reinstalls_when_locked_dependencies_change():
+def test_start_bot_reinstalls_when_locked_dependencies_change() -> None:
     source = Path("Start Bot.bat").read_text(encoding="utf-8")
 
     assert 'set "REQUIREMENTS_FILE=requirements-lock.txt"' in source
@@ -21,7 +21,7 @@ def test_start_bot_reinstalls_when_locked_dependencies_change():
     assert '>"%SETUP_MARKER%" echo !CURRENT_REQ_HASH!' in source
 
 
-def test_start_bot_hash_uses_temp_file_not_nested_for_f_quoting():
+def test_start_bot_hash_uses_temp_file_not_nested_for_f_quoting() -> None:
     source = Path("Start Bot.bat").read_text(encoding="utf-8")
 
     assert 'set "REQ_HASH_FILE=%VENV_DIR%\\.requirements-hash.tmp"' in source
@@ -31,7 +31,7 @@ def test_start_bot_hash_uses_temp_file_not_nested_for_f_quoting():
     assert 'for /f "delims=" %%H' not in source
 
 
-def test_start_bot_verifies_lock_after_install():
+def test_start_bot_verifies_lock_after_install() -> None:
     source = Path("Start Bot.bat").read_text(encoding="utf-8")
 
     assert "tools\\check_requirements_lock.py" in source

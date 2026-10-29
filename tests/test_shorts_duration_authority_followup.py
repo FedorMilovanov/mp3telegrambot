@@ -1,13 +1,15 @@
 from pathlib import Path
 
+from typing import Any
+
 import services.shorts_duration_safety as safety
 
 
-def _candidate(start: float, end: float) -> dict:
+def _candidate(start: float, end: float) -> dict[str, Any]:
     return {"start_seconds": start, "end_seconds": end, "title": "Short"}
 
 
-def test_semantic_candidate_past_source_duration_is_rejected():
+def test_semantic_candidate_past_source_duration_is_rejected() -> None:
     assert (
         safety.plan_short_source_window(
             _candidate(850.0, 901.0),
@@ -21,7 +23,7 @@ def test_semantic_candidate_past_source_duration_is_rejected():
     )
 
 
-def test_nonfinite_optional_padding_does_not_poison_window():
+def test_nonfinite_optional_padding_does_not_poison_window() -> None:
     plan = safety.plan_short_source_window(
         _candidate(10.0, 100.0),
         speed=1.0,
@@ -35,7 +37,7 @@ def test_nonfinite_optional_padding_does_not_poison_window():
     assert plan[1] == 100.0
 
 
-def test_saved_replay_start_uses_actual_reclaimed_render_window():
+def test_saved_replay_start_uses_actual_reclaimed_render_window() -> None:
     plan = safety.plan_short_source_window(
         _candidate(100.0, 368.0),
         speed=1.5,
@@ -52,7 +54,7 @@ def test_saved_replay_start_uses_actual_reclaimed_render_window():
     assert safety.authoritative_short_source_start(pipeline_start, None) == pipeline_start
 
 
-def test_duration_owner_wires_authoritative_delivery_timing():
+def test_duration_owner_wires_authoritative_delivery_timing() -> None:
     safety_source = Path("services/shorts_duration_safety.py").read_text(encoding="utf-8")
     pipeline_source = Path("pipelines/shorts.py").read_text(encoding="utf-8")
 

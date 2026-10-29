@@ -1,4 +1,6 @@
+from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -7,11 +9,11 @@ import handlers.mode_command as mode_command
 import services.shorts_factory_full_video as full_video
 
 
-def _button_texts(markup):
+def _button_texts(markup: Any) -> list[str]:
     return [button.text for row in markup.inline_keyboard for button in row]
 
 
-def test_factory_full_video_toggle_ui():
+def test_factory_full_video_toggle_ui() -> None:
     regular = _button_texts(mode_command._analysis_keyboard("rus"))
     factory_off = _button_texts(mode_command._analysis_keyboard("shorts_max", full_video=False))
     factory_on = _button_texts(mode_command._analysis_keyboard("shorts_max", full_video=True))
@@ -21,15 +23,17 @@ def test_factory_full_video_toggle_ui():
     assert "☑️ Полный видео-перевод + нарезки" in factory_on
 
 
-def test_factory_full_video_text_documents_no_retranslation():
+def test_factory_full_video_text_documents_no_retranslation() -> None:
     text = mode_command._analysis_text("shorts_max", full_video=True)
     assert "тот же готовый Yandex LiveDub-файл" in text
     assert "повторный перевод не запускается" in text
 
 
 @pytest.mark.asyncio
-async def test_factory_full_video_request_reads_core_owned_setting(monkeypatch):
-    async def enabled(user_id):
+async def test_factory_full_video_request_reads_core_owned_setting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def enabled(user_id: int) -> bool:
         assert user_id == 42
         return True
 
@@ -40,8 +44,8 @@ async def test_factory_full_video_request_reads_core_owned_setting(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_full_translation_delivery_reuses_existing_file(monkeypatch, tmp_path):
-    async def enabled(_update):
+async def test_full_translation_delivery_reuses_existing_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    async def enabled(_update: Any) -> bool:
         return True
 
     monkeypatch.setattr(full_video, "factory_full_video_requested", enabled)
@@ -49,14 +53,14 @@ async def test_full_translation_delivery_reuses_existing_file(monkeypatch, tmp_p
     path.write_bytes(b"x" * 2048)
 
     class Message:
-        def __init__(self):
-            self.calls = []
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
 
-        async def reply_video(self, **kwargs):
+        async def reply_video(self, **kwargs: Any) -> str:
             self.calls.append(kwargs)
             return "sent"
 
-        async def reply_text(self, _text):
+        async def reply_text(self, _text: str) -> None:
             return None
 
     message = Message()
@@ -76,8 +80,10 @@ async def test_full_translation_delivery_reuses_existing_file(monkeypatch, tmp_p
 
 
 @pytest.mark.asyncio
-async def test_full_translation_not_sent_when_source_needs_no_translation(monkeypatch, tmp_path):
-    async def enabled(_update):
+async def test_full_translation_not_sent_when_source_needs_no_translation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    async def enabled(_update: Any) -> bool:
         return True
 
     monkeypatch.setattr(full_video, "factory_full_video_requested", enabled)
@@ -85,7 +91,7 @@ async def test_full_translation_not_sent_when_source_needs_no_translation(monkey
     path.write_bytes(b"x" * 2048)
 
     class Message:
-        async def reply_video(self, **_kwargs):
+        async def reply_video(self, **_kwargs: Any) -> None:
             raise AssertionError("unexpected send")
 
     message = Message()
@@ -103,8 +109,10 @@ async def test_full_translation_not_sent_when_source_needs_no_translation(monkey
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("content", [None, b""])
-async def test_full_translation_rejects_missing_or_empty_source(monkeypatch, tmp_path, content):
-    async def enabled(_update):
+async def test_full_translation_rejects_missing_or_empty_source(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, content: bytes | None
+) -> None:
+    async def enabled(_update: Any) -> bool:
         return True
 
     monkeypatch.setattr(full_video, "factory_full_video_requested", enabled)
@@ -113,7 +121,7 @@ async def test_full_translation_rejects_missing_or_empty_source(monkeypatch, tmp
         path.write_bytes(content)
 
     class Message:
-        async def reply_video(self, **_kwargs):
+        async def reply_video(self, **_kwargs: Any) -> None:
             raise AssertionError("missing or empty source must not be uploaded")
 
     message = Message()

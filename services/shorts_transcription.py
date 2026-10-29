@@ -7,12 +7,14 @@ import asyncio
 import contextlib
 import logging
 import os
-import shutil
+import shutil as shutil
 import tempfile
 from pathlib import Path
 from typing import Any
 
-from services import shorts_video_impl as _impl
+from services import shorts_video_impl as shorts_video_impl
+
+_impl = shorts_video_impl
 from services.async_process import run_cancellable_process
 from services.async_worker import await_owned_coroutine
 

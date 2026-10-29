@@ -82,6 +82,8 @@ import signal
 import threading
 import time
 from pathlib import Path
+from types import FrameType
+from typing import Any, BinaryIO
 
 logger = logging.getLogger(__name__)
 
@@ -113,9 +115,10 @@ def _pid_is_running(pid: int) -> bool:
         import ctypes
 
         _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-        handle = ctypes.windll.kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        kernel32 = getattr(ctypes, "windll").kernel32
+        handle = kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
         if handle:
-            ctypes.windll.kernel32.CloseHandle(handle)
+            kernel32.CloseHandle(handle)
             return True
         return False
     try:
@@ -169,10 +172,10 @@ def _release_singleton_lock() -> None:
         pass
 
 
-async def run_bot_async():
+async def run_bot_async() -> str | None:
     if not BOT_TOKEN:
         logger.error("❌ BOT_TOKEN не найден!")
-        return
+        return None
 
     if not _acquire_singleton_lock():
         return "singleton_conflict"
@@ -323,7 +326,7 @@ async def run_bot_async():
             logger.info(f"💬 Субтитры Shorts: ✅ включены ({_sub_mode})")
 
             # Preload запустим в фоне после старта бота — не блокируем polling
-            async def _preload_whisper_bg():
+            async def _preload_whisper_bg() -> None:
                 try:
                     loop = asyncio.get_running_loop()
                     await loop.run_in_executor(None, lambda: _get_whisper_model(_sub_cfg["model_name"]))
@@ -338,6 +341,8 @@ async def run_bot_async():
         logger.info("💬 Субтитры Shorts: ❌ (faster-whisper не установлен)")
 
     from telegram.request import HTTPXRequest
+
+    from services.polling_reliability_runtime import PollingHeartbeatHTTPXRequest
 
     # Кастомный request с увеличенными таймаутами — решает проблему
     # обрывов соединения в httpx 0.28+ (агрессивное закрытие idle-соединений)
@@ -404,7 +409,7 @@ async def run_bot_async():
         _cloud_fallback_proxy_url = _proxy_url_for_httpx(
             _local_botapi_proxy_url_for_fallback.replace("socks5://", "socks5h://", 1)
         )
-    _request_kwargs = dict(
+    _request_kwargs: dict[str, Any] = dict(
         connection_pool_size=32,
         read_timeout=120.0,
         write_timeout=120.0,
@@ -421,7 +426,7 @@ async def run_bot_async():
             "а если /getMe зависнет — быстро fallback'нусь на облачный Bot API через этот proxy"
         )
     t_request = HTTPXRequest(**_request_kwargs)
-    get_updates_request = HTTPXRequest(**_request_kwargs)
+    get_updates_request = PollingHeartbeatHTTPXRequest(**_request_kwargs)
 
     # FIX 2026-06-10: по умолчанию PTB обрабатывает апдейты ПОСЛЕДОВАТЕЛЬНО —
     # во время 10-20-минутной обработки видео бот не отвечал ни на /stop,
@@ -493,7 +498,7 @@ async def run_bot_async():
             # сервера мы не видели ПРИЧИНУ: битые ключи, занятый порт, права).
             _srv_log_path = _P(_data).parent / "botapi-server.log"
 
-            def _botapi_proxy_args() -> list[str]:
+            def _build_botapi_proxy_args() -> list[str]:
                 """Proxy-аргументы, которые реально поддерживает telegram-bot-api.exe.
 
                 ВАЖНО 2026-06-12: официальный tdlib/telegram-bot-api НЕ имеет
@@ -548,7 +553,7 @@ async def run_bot_async():
                     )
                 return []
 
-            _botapi_proxy_args = _botapi_proxy_args()
+            _botapi_proxy_args = _build_botapi_proxy_args()
             cmd = [
                 _exe,
                 f"--api-id={_api_id}",
@@ -560,7 +565,7 @@ async def run_bot_async():
                 "--verbosity=2",
                 *_botapi_proxy_args,
             ]
-            kwargs: dict = {}
+            kwargs: dict[str, Any] = {}
             kwargs["env"] = dict(os.environ)
             kwargs["env"].setdefault("PYTHONIOENCODING", "utf-8")
             if os.name == "nt":
@@ -569,7 +574,7 @@ async def run_bot_async():
             else:
                 kwargs["start_new_session"] = True
 
-            def _spawn(_cmd, _log_path):
+            def _spawn(_cmd: list[str], _log_path: Path) -> tuple[bool, str]:
                 """Start server and capture *startup* stderr/stdout into log.
 
                 OptionParser errors happen before --log is initialized; DEVNULL
@@ -578,6 +583,7 @@ async def run_bot_async():
                 """
                 import time as _t
 
+                _lf: int | BinaryIO
                 try:
                     _log_path.parent.mkdir(parents=True, exist_ok=True)
                     _safe_cmd = []
@@ -600,7 +606,7 @@ async def run_bot_async():
                     _pr = _sp.Popen(_cmd, stdout=_lf, stderr=_sp.STDOUT, **kwargs)  # noqa: S603 -- configured argv, no shell
                 finally:
                     try:
-                        if _lf is not _sp.DEVNULL:
+                        if not isinstance(_lf, int):
                             _lf.close()
                     except Exception:
                         logger.debug("Local Bot API log handle close failed", exc_info=True)
@@ -813,7 +819,7 @@ async def run_bot_async():
                 )
                 _request_kwargs["proxy"] = _cloud_fallback_proxy_url
                 t_request = HTTPXRequest(**_request_kwargs)
-                get_updates_request = HTTPXRequest(**_request_kwargs)
+                get_updates_request = PollingHeartbeatHTTPXRequest(**_request_kwargs)
                 builder = (
                     Application.builder()
                     .token(BOT_TOKEN)
@@ -858,7 +864,7 @@ async def run_bot_async():
         polling_error_callback,
     )
 
-    async def _pending_update_guard(update, context):
+    async def _pending_update_guard(update: Update, context: Any) -> None:
         del context
         # AUDIT 2026-10-24: все апдейты проходят здесь, поэтому именно здесь
         # считаются метрики и привязывается корреляция логов. Тело апдейта и
@@ -920,7 +926,7 @@ async def run_bot_async():
     # FIX 2026-06-10: глобальный error handler. Без него необработанное
     # исключение в хендлере = тихая строка 'No error handlers are registered'
     # в логе, пользователь остаётся без ответа и без объяснений.
-    async def _global_error_handler(update, context):
+    async def _global_error_handler(update: Any, context: Any) -> None:
         err = context.error
         # NetworkError при поллинге — шум, не показываем юзеру
         import telegram.error as _tg_err
@@ -952,11 +958,12 @@ async def run_bot_async():
         try:
             loop.add_signal_handler(_sig, _request_stop_from_signal, _sig.name)
         except (NotImplementedError, RuntimeError, ValueError):
+
+            def _signal_handler(_signum: int, _frame: FrameType | None, name: str = _sig.name) -> None:
+                _request_stop_from_signal(name)
+
             try:
-                signal.signal(
-                    _sig,
-                    lambda _signum, _frame, name=_sig.name: _request_stop_from_signal(name),
-                )
+                signal.signal(_sig, _signal_handler)
             except (ValueError, RuntimeError):
                 logger.debug("signal handler не установлен для %s", _sig)
 
@@ -981,7 +988,11 @@ async def run_bot_async():
         try:
             # PTB 22.8: Updater.start_polling no longer accepts read_timeout /
             # pool_timeout kwargs; timeouts are configured on HTTPXRequest above.
-            await app.updater.start_polling(
+            updater = app.updater
+            if updater is None:
+                raise RuntimeError("PTB Updater is unavailable; polling cannot start")
+            runtime_status.record_polling_started()
+            await updater.start_polling(
                 allowed_updates=Update.ALL_TYPES,
                 drop_pending_updates=False,
                 error_callback=polling_error_callback,
@@ -1081,7 +1092,7 @@ async def run_bot_async():
                 except Exception as _send_error:  # сеть/бот заблокирован
                     logger.warning("maintenance alert не отправлен: %s", _send_error)
 
-        async def _periodic_maintenance():
+        async def _periodic_maintenance() -> None:
             loop = asyncio.get_running_loop()
             while not app.bot_data.get("stop_requested", False):
                 mark_bot_alive()
@@ -1114,7 +1125,7 @@ async def run_bot_async():
                         logger.warning("maintenance alert упал: %s", _alert_error)
                 await asyncio.sleep(3600)
 
-        def _on_maintenance_done(task):
+        def _on_maintenance_done(task: asyncio.Task[None]) -> None:
             """Фоновая задача не должна умирать молча.
 
             Если она завершится с исключением, `/healthz` покажет
@@ -1145,7 +1156,7 @@ async def run_bot_async():
                 await asyncio.sleep(1)
 
 
-def run_bot():
+def run_bot():  # type: () -> None
     from services.restart_state_runtime import reset_cross_loop_state
 
     restart_delay = 5  # базовая задержка между перезапусками
@@ -1198,7 +1209,7 @@ def run_bot():
         time.sleep(_delay)
 
 
-def main():
+def main():  # type: () -> None
     # AUDIT: если DISABLE_HEALTH_CHECK=1 (локальный запуск на Windows),
     # запускаем бота в main thread напрямую без Flask.
     # Flask daemon=True → если порт занят, бот убивается мгновенно.
@@ -1210,7 +1221,7 @@ def main():
     # V3-P1 fix: сигналы работают только в main thread. Регистрируем здесь,
     # ДО старта waitress: Render/Railway шлют SIGTERM при redeploy — без этого
     # процесс убивался мгновенно посреди обработки видео.
-    def _sig_stop(signum, _frame):
+    def _sig_stop(signum: int, _frame: FrameType | None) -> None:
         try:
             name = signal.Signals(signum).name
         except Exception:
@@ -1226,7 +1237,7 @@ def main():
     # но waitress в main thread продолжал бы жить вечно — процесс «зависал»,
     # а на Render контейнер перезапускался по STALE health-check, тихо отменяя
     # /stop. Завершаем процесс явно.
-    def _run_bot_then_exit():
+    def _run_bot_then_exit() -> None:
         run_bot()
         logger.info("🛑 Бот остановлен — завершаем процесс целиком")
         logging.shutdown()

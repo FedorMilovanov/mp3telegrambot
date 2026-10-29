@@ -3,19 +3,20 @@ from __future__ import annotations
 import json
 import zipfile
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from services import translation_editorial_pack_v2 as pack_v2
 
 
-def _fake_v1_builder(*args, **kwargs) -> Path:
+def _fake_v1_builder(*args: Any, **kwargs: Any) -> Path:
     output_dir = Path(kwargs.get("output_dir") or args[0])
     output_dir.mkdir(parents=True, exist_ok=True)
     media_id = str(kwargs.get("media_id") or "media")
     original = b"1\n00:00:00,000 --> 00:00:01,000\nHello\n"
     russian = b"1\n00:00:00,600 --> 00:00:01,600\nPrivet\n"
-    candidates = {"shorts": [], "long_clips": []}
+    candidates: dict[str, list[Any]] = {"shorts": [], "long_clips": []}
     manifest = {
         "schema_name": pack_v2.PACK_SCHEMA_NAME,
         "schema_version": 1,
@@ -53,7 +54,7 @@ def _fake_v1_builder(*args, **kwargs) -> Path:
     return destination
 
 
-def _build(monkeypatch, output_dir: Path) -> Path:
+def _build(monkeypatch: pytest.MonkeyPatch, output_dir: Path) -> Path:
     monkeypatch.setattr(pack_v2, "_build_review_pack_v1", _fake_v1_builder)
     return pack_v2.build_review_pack(
         output_dir=output_dir,
@@ -72,10 +73,10 @@ def _build(monkeypatch, output_dir: Path) -> Path:
     )
 
 
-def test_v2_race_collision_chains_file_exists(monkeypatch, tmp_path):
+def test_v2_race_collision_chains_file_exists(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     real_open = Path.open
 
-    def racing_open(self, mode="r", *args, **kwargs):
+    def racing_open(self: Path, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
         if mode == "xb" and "_translation_editorial_v2_" in self.name:
             raise FileExistsError(self)
         return real_open(self, mode, *args, **kwargs)
@@ -87,7 +88,9 @@ def test_v2_race_collision_chains_file_exists(monkeypatch, tmp_path):
     assert isinstance(caught.value.__cause__, FileExistsError)
 
 
-def test_v2_identity_binds_review_contract_and_exact_instructions(monkeypatch, tmp_path):
+def test_v2_identity_binds_review_contract_and_exact_instructions(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     first = _build(monkeypatch, tmp_path / "first")
     first_manifest = pack_v2.load_verified_review_pack(first)
     assert first_manifest["schema_version"] == 2
@@ -108,7 +111,7 @@ def test_v2_identity_binds_review_contract_and_exact_instructions(monkeypatch, t
     assert second_manifest["review_instructions_sha256"] != first_manifest["review_instructions_sha256"]
 
 
-def test_v2_builder_leaves_no_legacy_pack_in_output(monkeypatch, tmp_path):
+def test_v2_builder_leaves_no_legacy_pack_in_output(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     output_dir = tmp_path / "packs"
     pack = _build(monkeypatch, output_dir)
     assert pack.exists()
@@ -116,7 +119,7 @@ def test_v2_builder_leaves_no_legacy_pack_in_output(monkeypatch, tmp_path):
     assert list(output_dir.glob("*_translation_editorial_v2_*.zip")) == [pack]
 
 
-def test_v2_verifier_rejects_modified_instructions(monkeypatch, tmp_path):
+def test_v2_verifier_rejects_modified_instructions(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     pack = _build(monkeypatch, tmp_path / "packs")
     tampered = tmp_path / "tampered.zip"
     with (

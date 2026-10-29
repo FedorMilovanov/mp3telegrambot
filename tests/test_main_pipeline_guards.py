@@ -9,6 +9,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from pipelines import livedub_title, main_pipeline, media_guards as guards
@@ -26,7 +28,7 @@ from pipelines import livedub_title, main_pipeline, media_guards as guards
         {"live_status": "post_live"},
     ],
 )
-def test_live_streams_are_refused(info: dict) -> None:
+def test_live_streams_are_refused(info: dict[str, Any]) -> None:
     skip = guards.live_skip(info)
     assert skip is not None
     assert skip.reason == "live-stream"
@@ -43,7 +45,7 @@ def test_live_streams_are_refused(info: dict) -> None:
         "не словарь",
     ],
 )
-def test_finished_streams_are_processed(info) -> None:
+def test_finished_streams_are_processed(info: object) -> None:
     assert guards.live_skip(info) is None
 
 
@@ -60,7 +62,7 @@ def test_long_video_is_refused_with_readable_minutes() -> None:
 
 
 @pytest.mark.parametrize("duration", [None, 0, -5, 3600, "не число"])
-def test_unknown_or_short_duration_is_not_a_refusal(duration) -> None:
+def test_unknown_or_short_duration_is_not_a_refusal(duration: int | str | None) -> None:
     """`duration` не всегда есть в метаданных: отказ на пустом месте хуже попытки."""
     assert guards.duration_skip(duration, 3600) is None
 
@@ -94,7 +96,7 @@ def test_disk_boundary() -> None:
 def test_free_gb_handles_unusable_path(monkeypatch: pytest.MonkeyPatch) -> None:
     import shutil
 
-    def boom(_path):
+    def boom(_path: str) -> None:
         raise OSError("device not ready")
 
     monkeypatch.setattr(shutil, "disk_usage", boom)
@@ -109,7 +111,7 @@ def test_lowest_free_gb_takes_the_worst_disk(monkeypatch: pytest.MonkeyPatch) ->
 
     usage = namedtuple("usage", "total used free")
 
-    def fake_disk_usage(path):
+    def fake_disk_usage(path: str) -> tuple[int, int, int]:
         return usage(total=100, used=0, free=50 * 1024**3 if path == "/big" else 1024**3)
 
     monkeypatch.setattr(shutil_mod, "disk_usage", fake_disk_usage)
@@ -131,7 +133,7 @@ def test_lowest_free_gb_takes_the_worst_disk(monkeypatch: pytest.MonkeyPatch) ->
         ("много", 180),
     ],
 )
-def test_info_timeout_is_clamped(raw, expected) -> None:
+def test_info_timeout_is_clamped(raw: str | None, expected: int) -> None:
     assert guards.info_timeout_seconds(raw) == expected
 
 
@@ -168,7 +170,7 @@ def test_playlist_container_is_reduced_to_first_entry() -> None:
 
 def test_playlist_container_without_entries_is_returned_as_is() -> None:
     """Пустой контейнер — это «метаданных нет», а не «видео не найдено»."""
-    info = {"entries": []}
+    info: dict[str, Any] = {"entries": []}
     assert guards.first_entry(info) is info
 
 

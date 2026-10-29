@@ -12,7 +12,7 @@ from typing import TypeVar
 _Result = TypeVar("_Result")
 
 
-def _finite_timeout(value: float) -> float:
+def _finite_timeout(value: float | str) -> float:
     try:
         seconds = float(value)
     except (TypeError, ValueError, OverflowError) as exc:
@@ -60,7 +60,7 @@ async def await_owned_coroutine(awaitable: Awaitable[_Result]) -> _Result:
 
 async def await_owned_with_soft_timeout(
     awaitable: Awaitable[_Result],
-    timeout: float,
+    timeout: float | str,
 ) -> tuple[_Result, bool]:
     """Apply a deadline without orphaning work that cannot be force-stopped.
 

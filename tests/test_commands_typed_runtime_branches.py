@@ -2,7 +2,9 @@
 
 import asyncio
 import contextlib
+from collections.abc import Coroutine, Iterator
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -11,15 +13,15 @@ from handlers import commands
 
 
 class Message:
-    def __init__(self):
-        self.replies = []
+    def __init__(self) -> None:
+        self.replies: list[tuple[str, dict[str, Any]]] = []
 
-    async def reply_text(self, text, **kwargs):
+    async def reply_text(self, text: str, **kwargs: Any) -> SimpleNamespace:
         self.replies.append((text, kwargs))
         return SimpleNamespace()
 
 
-def _update(*, user_id=1):
+def _update(*, user_id: int = 1) -> SimpleNamespace:
     return SimpleNamespace(
         effective_user=SimpleNamespace(id=user_id),
         message=Message(),
@@ -28,30 +30,32 @@ def _update(*, user_id=1):
 
 
 @pytest.fixture
-def connection(monkeypatch):
+def connection(monkeypatch: pytest.MonkeyPatch) -> Any:
     class Connection:
-        def __init__(self):
+        def __init__(self) -> None:
             self.commits = 0
-            self.statements = []
+            self.statements: list[tuple[str, tuple[Any, ...]]] = []
 
-        def execute(self, statement, params=()):
+        def execute(self, statement: str, params: tuple[Any, ...] = ()) -> SimpleNamespace:
             self.statements.append((statement, params))
             return SimpleNamespace(rowcount=1)
 
-        def commit(self):
+        def commit(self) -> None:
             self.commits += 1
 
     conn = Connection()
 
     @contextlib.contextmanager
-    def connect():
+    def connect() -> Iterator[Any]:
         yield conn
 
     monkeypatch.setattr(commands, "_db_conn", connect)
     return conn
 
 
-def test_reset_cache_delete_workers_execute_with_owned_connections(connection, monkeypatch):
+def test_reset_cache_delete_workers_execute_with_owned_connections(
+    connection: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
     update = _update()
     context = SimpleNamespace(args=["all"])
     monkeypatch.setattr(commands, "ADMIN_IDS", {1})
@@ -64,7 +68,9 @@ def test_reset_cache_delete_workers_execute_with_owned_connections(connection, m
     assert len(update.message.replies) == 2
 
 
-def test_stop_force_exit_fallback_is_executed_without_exiting_pytest(monkeypatch):
+def test_stop_force_exit_fallback_is_executed_without_exiting_pytest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     update = _update()
     context = SimpleNamespace(application=SimpleNamespace(bot_data={}))
     monkeypatch.setattr(commands, "ADMIN_IDS", {1})
@@ -74,10 +80,10 @@ def test_stop_force_exit_fallback_is_executed_without_exiting_pytest(monkeypatch
     monkeypatch.setattr(commands.asyncio, "sleep", sleep)
     monkeypatch.setattr(commands.os, "_exit", exit_mock)
 
-    async def exercise():
-        created = []
+    async def exercise() -> None:
+        created: list[Coroutine[Any, Any, Any]] = []
 
-        def capture(coroutine):
+        def capture(coroutine: Coroutine[Any, Any, Any]) -> SimpleNamespace:
             created.append(coroutine)
             return SimpleNamespace()
 
@@ -93,7 +99,7 @@ def test_stop_force_exit_fallback_is_executed_without_exiting_pytest(monkeypatch
     exit_mock.assert_called_once_with(0)
 
 
-def test_resolve_segment_source_executes_typed_archive_boundary(monkeypatch):
+def test_resolve_segment_source_executes_typed_archive_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(commands, "adb_get", AsyncMock(return_value=None))
     archive = AsyncMock(return_value=None)
     monkeypatch.setattr(commands, "aget_generated_page_record", archive)

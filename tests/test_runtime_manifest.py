@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import pytest
 
@@ -17,7 +18,7 @@ from services.runtime_manifest import (
 )
 
 
-def _module(name: str, **functions):
+def _module(name: str, **functions: Any) -> ModuleType:
     module = ModuleType(name)
     for function_name, function in functions.items():
         setattr(module, function_name, function)
@@ -25,10 +26,10 @@ def _module(name: str, **functions):
     return module
 
 
-def test_required_feature_failure_is_fail_closed():
+def test_required_feature_failure_is_fail_closed() -> None:
     name = "_test_runtime_required_failure"
 
-    def explode():
+    def explode() -> None:
         raise ValueError("broken")
 
     _module(name, install=explode)
@@ -52,16 +53,16 @@ def test_required_feature_failure_is_fail_closed():
     assert payload["features"]["required"]["state"] == RuntimeFeatureState.FAILED.value
 
 
-def test_optional_failure_is_recorded_without_hiding_required_success():
+def test_optional_failure_is_recorded_without_hiding_required_success() -> None:
     optional_name = "_test_runtime_optional_failure"
     required_name = "_test_runtime_required_success"
 
-    def explode():
+    def explode() -> None:
         raise RuntimeError("optional unavailable")
 
     calls = []
 
-    def install_required():
+    def install_required() -> None:
         calls.append("required")
 
     _module(optional_name, install=explode)
@@ -94,15 +95,15 @@ def test_optional_failure_is_recorded_without_hiding_required_success():
     assert payload["features"]["required"]["state"] == RuntimeFeatureState.INSTALLED.value
 
 
-def test_required_dependency_failure_stops_dependent_feature():
+def test_required_dependency_failure_stops_dependent_feature() -> None:
     dependency_name = "_test_runtime_dependency_failure"
     dependent_name = "_test_runtime_dependent"
     calls = []
 
-    def fail_dependency():
+    def fail_dependency() -> None:
         raise RuntimeError("no dependency")
 
-    def install_dependent():
+    def install_dependent() -> None:
         calls.append("dependent")
 
     _module(dependency_name, install=fail_dependency)
@@ -133,11 +134,11 @@ def test_required_dependency_failure_stops_dependent_feature():
     assert manifest.as_dict()["features"]["dependent"]["state"] == "failed"
 
 
-def test_main_module_is_passed_only_to_declared_installers():
+def test_main_module_is_passed_only_to_declared_installers() -> None:
     name = "_test_runtime_main_module"
-    received = []
+    received: list[ModuleType] = []
 
-    def install(main_module):
+    def install(main_module: ModuleType) -> None:
         received.append(main_module)
 
     _module(name, install=install)
@@ -160,7 +161,7 @@ def test_main_module_is_passed_only_to_declared_installers():
     assert received == [main_module]
 
 
-def test_explicit_false_is_a_failure_for_boolean_guards():
+def test_explicit_false_is_a_failure_for_boolean_guards() -> None:
     name = "_test_runtime_false_guard"
     _module(name, install=lambda: False)
     manifest = RuntimeManifest(
@@ -179,7 +180,7 @@ def test_explicit_false_is_a_failure_for_boolean_guards():
         manifest.activate_phase(RuntimePhase.PRE_MAIN)
 
 
-def test_shorts_factory_is_source_owned_not_a_runtime_manifest_feature():
+def test_shorts_factory_is_source_owned_not_a_runtime_manifest_feature() -> None:
     feature_ids = {item.feature_id for item in DEFAULT_RUNTIME_FEATURES}
     manifest_source = Path("services/runtime_manifest.py").read_text(encoding="utf-8")
     dispatch_source = Path("pipelines/video_dispatch.py").read_text(encoding="utf-8")

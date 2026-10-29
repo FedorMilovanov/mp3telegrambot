@@ -3,7 +3,7 @@
 from pathlib import Path
 
 
-def test_admin_bot_command_menu_includes_new_archive_repair_segment_health_commands():
+def test_admin_bot_command_menu_includes_new_archive_repair_segment_health_commands() -> None:
     src = Path("main.py").read_text(encoding="utf-8")
     for command in [
         "archive",
@@ -19,7 +19,7 @@ def test_admin_bot_command_menu_includes_new_archive_repair_segment_health_comma
         assert f'BotCommand("{command}"' in src
 
 
-def test_all_registered_command_handlers_have_menu_or_are_intentionally_secondary():
+def test_all_registered_command_handlers_have_menu_or_are_intentionally_secondary() -> None:
     src = Path("main.py").read_text(encoding="utf-8")
     registered = set()
     for line in src.splitlines():

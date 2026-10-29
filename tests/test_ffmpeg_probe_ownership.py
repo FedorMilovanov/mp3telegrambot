@@ -43,11 +43,11 @@ def test_async_probe_surface_uses_process_tree_owner() -> None:
 
 
 @pytest.mark.asyncio
-async def test_silence_probe_preserves_nearest_boundary(monkeypatch, tmp_path) -> None:
+async def test_silence_probe_preserves_nearest_boundary(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     video_path = tmp_path / "video.mp4"
     video_path.write_bytes(b"video")
 
-    async def fake_owner(command, **kwargs):
+    async def fake_owner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(
             command,
             0,
@@ -64,7 +64,7 @@ async def test_silence_probe_preserves_nearest_boundary(monkeypatch, tmp_path) -
 
 
 @pytest.mark.asyncio
-async def test_crop_probe_owns_header_samples_and_dimensions(monkeypatch, tmp_path) -> None:
+async def test_crop_probe_owns_header_samples_and_dimensions(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     video_path = tmp_path / "video.mp4"
     video_path.write_bytes(b"video")
     calls: list[tuple[list[str], dict[str, object]]] = []
@@ -79,7 +79,7 @@ async def test_crop_probe_owns_header_samples_and_dimensions(monkeypatch, tmp_pa
         ]
     )
 
-    async def fake_owner(command, **kwargs):
+    async def fake_owner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         calls.append((list(command), dict(kwargs)))
         return subprocess.CompletedProcess(command, 0, "", next(responses))
 
@@ -94,10 +94,12 @@ async def test_crop_probe_owns_header_samples_and_dimensions(monkeypatch, tmp_pa
 
 
 @pytest.mark.asyncio
-async def test_language_probe_uses_owned_ytdlp_metadata(monkeypatch) -> None:
+async def test_language_probe_uses_owned_ytdlp_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     calls: list[tuple[list[str], dict[str, object]]] = []
 
-    async def fake_owner(command, **kwargs):
+    async def fake_owner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         calls.append((list(command), dict(kwargs)))
         return subprocess.CompletedProcess(
             command,
@@ -116,13 +118,13 @@ async def test_language_probe_uses_owned_ytdlp_metadata(monkeypatch) -> None:
     assert kwargs == {"timeout": 30, "text": True}
 
 
-def test_av1_probe_failure_falls_through_to_h264(monkeypatch) -> None:
+def test_av1_probe_failure_falls_through_to_h264(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("VIDEO_FORCE_CPU", raising=False)
     monkeypatch.setattr(ffmpeg, "_VIDEO_ENCODER", None)
     monkeypatch.setattr(ffmpeg.shutil, "which", lambda _name: "/usr/bin/ffmpeg")
     calls: list[list[str]] = []
 
-    def fake_run(command, **kwargs):
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         calls.append(list(command))
         if "av1_nvenc" in command:
             raise OSError("AV1 is unavailable")
@@ -137,13 +139,13 @@ def test_av1_probe_failure_falls_through_to_h264(monkeypatch) -> None:
     assert "h264_nvenc" in calls[1]
 
 
-def test_h264_probe_failure_uses_cpu_fallback(monkeypatch) -> None:
+def test_h264_probe_failure_uses_cpu_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("VIDEO_FORCE_CPU", raising=False)
     monkeypatch.delenv("VIDEO_CPU_PRESET", raising=False)
     monkeypatch.setattr(ffmpeg, "_VIDEO_ENCODER", None)
     monkeypatch.setattr(ffmpeg.shutil, "which", lambda _name: "/usr/bin/ffmpeg")
 
-    def fake_run(command, **kwargs):
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         if "h264_nvenc" in command:
             raise OSError("H.264 NVENC is unavailable")
         return subprocess.CompletedProcess(command, 1)
@@ -154,8 +156,8 @@ def test_h264_probe_failure_uses_cpu_fallback(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_language_probe_failure_returns_none(monkeypatch) -> None:
-    async def fake_owner(command, **kwargs):
+async def test_language_probe_failure_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_owner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         raise RuntimeError("metadata probe failed")
 
     monkeypatch.setattr(ffmpeg, "run_cancellable_process", fake_owner)
@@ -163,14 +165,14 @@ async def test_language_probe_failure_returns_none(monkeypatch) -> None:
     assert await ffmpeg.probe_video_language("https://example.invalid/video") is None
 
 
-def test_mp3gain_normalization_uses_resolved_executable(monkeypatch, tmp_path) -> None:
+def test_mp3gain_normalization_uses_resolved_executable(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     source = tmp_path / "voice.mp3"
     source.write_bytes(b"mp3")
     monkeypatch.delenv("MP3_LOUDNORM", raising=False)
     monkeypatch.setattr(ffmpeg.shutil, "which", lambda name: f"/resolved/{name}")
     calls: list[tuple[list[str], dict[str, object]]] = []
 
-    def fake_run(command, **kwargs):
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         calls.append((list(command), dict(kwargs)))
         return subprocess.CompletedProcess(command, 0, "", "")
 

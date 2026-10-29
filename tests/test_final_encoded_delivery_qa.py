@@ -78,7 +78,7 @@ def test_post_aac_gate_rejects_late_broadband_synthesis_burst() -> None:
     assert "late_broadband_burst" in report["failures"]
 
 
-def test_final_encoded_decode_uses_resolved_ffmpeg(monkeypatch, tmp_path: Path) -> None:
+def test_final_encoded_decode_uses_resolved_ffmpeg(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     video = tmp_path / "russian_only.mp4"
     video.write_bytes(b"video")
     run = Mock(

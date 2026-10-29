@@ -33,7 +33,7 @@ from core.code_health import (  # noqa: E402
 def _configure_stdout() -> None:
     """Keep Cyrillic/emoji diagnostics safe on Windows legacy consoles."""
     with contextlib.suppress(Exception):
-        sys.stdout.reconfigure(errors="backslashreplace")
+        getattr(sys.stdout, "reconfigure")(errors="backslashreplace")
 
 
 def _safe_print(value: object = "") -> None:

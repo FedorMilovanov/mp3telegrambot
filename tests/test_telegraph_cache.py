@@ -2,6 +2,8 @@
 
 import asyncio
 
+import pytest
+
 from converters import md_telegraph
 from core import telegraph_cache
 from services import pdf_generator
@@ -40,19 +42,21 @@ def test_pdf_exports_use_the_shared_core_cache() -> None:
     assert telegraph_cache._TELEGRAPH_CACHE.get_cached(url) is None
 
 
-def test_successful_legacy_edit_invalidates_core_cache(monkeypatch) -> None:
+def test_successful_legacy_edit_invalidates_core_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     page_url = "https://telegra.ph/cache-edit-test"
     invalidated: list[str] = []
     monkeypatch.setattr(md_telegraph, "TELEGRAPH_TOKEN", "token")
     monkeypatch.setattr(telegraph_cache, "invalidate_telegraph_url", invalidated.append)
 
     class Response:
-        def json(self):
+        def json(self) -> dict[str, bool]:
             return {"ok": True}
 
     monkeypatch.setattr(md_telegraph.requests, "post", lambda *_args, **_kwargs: Response())
 
-    async def edit():
+    async def edit() -> bool:
         loop = asyncio.get_running_loop()
         return await md_telegraph._edit_telegraph_page(
             page_url,
@@ -66,20 +70,22 @@ def test_successful_legacy_edit_invalidates_core_cache(monkeypatch) -> None:
     assert invalidated == [page_url]
 
 
-def test_successful_legacy_edit_survives_cache_invalidation_failure(monkeypatch) -> None:
+def test_successful_legacy_edit_survives_cache_invalidation_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(md_telegraph, "TELEGRAPH_TOKEN", "token")
 
-    def invalidate(_url):
+    def invalidate(_url: str) -> None:
         raise RuntimeError("cache unavailable")
 
     class Response:
-        def json(self):
+        def json(self) -> dict[str, bool]:
             return {"ok": True}
 
     monkeypatch.setattr(telegraph_cache, "invalidate_telegraph_url", invalidate)
     monkeypatch.setattr(md_telegraph.requests, "post", lambda *_args, **_kwargs: Response())
 
-    async def edit():
+    async def edit() -> bool:
         return await md_telegraph._edit_telegraph_page(
             "https://telegra.ph/cache-edit-failure",
             "Title",

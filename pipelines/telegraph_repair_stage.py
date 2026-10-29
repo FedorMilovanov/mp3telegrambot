@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
@@ -33,7 +34,7 @@ REPAIR_DELAY = 0.5
 #: Значения, которые считаются «выключено».
 FALSY = {"0", "false", "no", "off"}
 
-ExpandFn = Callable[[str], Awaitable[list[str] | None]]
+ExpandFn = Callable[[str], Awaitable[Sequence[str | None] | None]]
 RepairFn = Callable[[str], Awaitable[Any]]
 
 

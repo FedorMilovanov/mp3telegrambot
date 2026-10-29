@@ -22,11 +22,11 @@ import core.database as db
 _BARE_CONSTANT_RE = re.compile(r"\bMAX_FILE_SIZE_MB\b")
 
 
-def test_get_max_file_size_mb_returns_current_value():
+def test_get_max_file_size_mb_returns_current_value() -> None:
     assert db.get_max_file_size_mb() == db.MAX_FILE_SIZE_MB
 
 
-def test_setter_switches_between_cloud_and_local_limits():
+def test_setter_switches_between_cloud_and_local_limits() -> None:
     was_explicit = db._MAX_FILE_SIZE_MB_EXPLICIT
     db._MAX_FILE_SIZE_MB_EXPLICIT = False
     try:
@@ -38,7 +38,7 @@ def test_setter_switches_between_cloud_and_local_limits():
         db._MAX_FILE_SIZE_MB_EXPLICIT = was_explicit
 
 
-def test_setter_is_noop_when_operator_set_env_explicitly():
+def test_setter_is_noop_when_operator_set_env_explicitly() -> None:
     """Ручной выбор оператора (.env MAX_FILE_SIZE_MB=...) должен всегда
     побеждать над автоопределением локальный/облачный."""
     was_explicit = db._MAX_FILE_SIZE_MB_EXPLICIT
@@ -55,7 +55,7 @@ def test_setter_is_noop_when_operator_set_env_explicitly():
         db.MAX_FILE_SIZE_MB = was_value
 
 
-def test_main_calls_setter_after_fallback_decision_is_final():
+def test_main_calls_setter_after_fallback_decision_is_final() -> None:
     """set_effective_max_file_size_mb() должен вызываться ПОСЛЕ того, как
     _using_local_bot_api получил своё окончательное значение (включая
     возможный откат на облако при неотвечающем /getMe), а не до него."""
@@ -70,7 +70,7 @@ def test_main_calls_setter_after_fallback_decision_is_final():
     )
 
 
-def test_no_production_consumer_imports_frozen_constant_directly():
+def test_no_production_consumer_imports_frozen_constant_directly() -> None:
     """`from core.database import MAX_FILE_SIZE_MB` замораживает значение
     на момент импорта — все потребители обязаны читать через
     get_max_file_size_mb()."""
@@ -96,6 +96,6 @@ def test_no_production_consumer_imports_frozen_constant_directly():
     )
 
 
-def test_database_module_exposes_getter_and_setter():
+def test_database_module_exposes_getter_and_setter() -> None:
     assert callable(db.get_max_file_size_mb)
     assert callable(db.set_effective_max_file_size_mb)

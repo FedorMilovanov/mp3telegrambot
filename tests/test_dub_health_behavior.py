@@ -1,7 +1,10 @@
 """Direct behavior tests for Dub Studio local health preflight."""
 
+import pathlib
+
 import asyncio
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
@@ -12,7 +15,7 @@ from services import dub_studio_runtime
 
 
 @pytest.fixture(autouse=True)
-def _fresh_worker_contract(monkeypatch):
+def _fresh_worker_contract(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         health,
         "worker_is_fresh",
@@ -20,7 +23,7 @@ def _fresh_worker_contract(monkeypatch):
     )
 
 
-def _worker(*, status="idle", fresh=False, current=False):
+def _worker(*, status: str = "idle", fresh: bool = False, current: bool = False) -> dict[str, Any]:
     return {
         "status": status,
         "pid": 123,
@@ -29,25 +32,25 @@ def _worker(*, status="idle", fresh=False, current=False):
     }
 
 
-def test_worker_currency_requires_freshness_and_current_runtime():
+def test_worker_currency_requires_freshness_and_current_runtime() -> None:
     assert health._worker_is_current(_worker(fresh=True, current=True)) is True
     assert health._worker_is_current(_worker(fresh=True, current=False)) is False
     assert health._worker_is_current(_worker(fresh=False, current=True)) is False
     assert health._worker_is_current(None) is False
 
 
-def test_worker_snapshot_does_not_repair_current_or_busy_workers(monkeypatch):
+def test_worker_snapshot_does_not_repair_current_or_busy_workers(monkeypatch: pytest.MonkeyPatch) -> None:
     current = _worker(fresh=True, current=True)
     busy = _worker(status="busy")
     workers = iter((current, busy))
 
     class Store:
-        def latest_worker(self):
+        def latest_worker(self) -> dict[str, Any]:
             return next(workers)
 
     monkeypatch.setattr(health, "DubStore", Store)
 
-    def repair_must_not_run():
+    def repair_must_not_run() -> None:
         raise AssertionError("current and busy workers need no repair")
 
     monkeypatch.setattr(dub_studio_runtime, "ensure_worker_running", repair_must_not_run)
@@ -56,34 +59,34 @@ def test_worker_snapshot_does_not_repair_current_or_busy_workers(monkeypatch):
     assert health._worker_snapshot_with_repair() is busy
 
 
-def test_worker_snapshot_returns_stale_worker_when_repair_is_not_requested(monkeypatch):
+def test_worker_snapshot_returns_stale_worker_when_repair_is_not_requested(monkeypatch: pytest.MonkeyPatch) -> None:
     stale = _worker()
 
     class Store:
-        def latest_worker(self):
+        def latest_worker(self) -> dict[str, Any]:
             return stale
 
     monkeypatch.setattr(health, "DubStore", Store)
     monkeypatch.setattr(dub_studio_runtime, "ensure_worker_running", lambda: False)
     assert health._worker_snapshot_with_repair() is stale
 
-    def fail_repair():
+    def fail_repair() -> None:
         raise RuntimeError("cannot request worker")
 
     monkeypatch.setattr(dub_studio_runtime, "ensure_worker_running", fail_repair)
     assert health._worker_snapshot_with_repair() is stale
 
 
-def test_worker_snapshot_polls_until_repaired_worker_is_current(monkeypatch):
+def test_worker_snapshot_polls_until_repaired_worker_is_current(monkeypatch: pytest.MonkeyPatch) -> None:
     stale = _worker()
     current = _worker(fresh=True, current=True)
     workers = iter((stale, stale, current))
 
     class Store:
-        def latest_worker(self):
+        def latest_worker(self) -> dict[str, Any]:
             return next(workers)
 
-    sleeps = []
+    sleeps: list[float] = []
     monkeypatch.setattr(health, "DubStore", Store)
     monkeypatch.setattr(dub_studio_runtime, "ensure_worker_running", lambda: True)
     monkeypatch.setattr(health.time, "sleep", sleeps.append)
@@ -92,19 +95,19 @@ def test_worker_snapshot_polls_until_repaired_worker_is_current(monkeypatch):
     assert sleeps == [0.1]
 
 
-def test_worker_snapshot_has_bounded_polling_and_returns_last_snapshot(monkeypatch):
+def test_worker_snapshot_has_bounded_polling_and_returns_last_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
     stale = _worker()
 
     class Store:
-        def __init__(self):
+        def __init__(self) -> None:
             self.calls = 0
 
-        def latest_worker(self):
+        def latest_worker(self) -> dict[str, Any]:
             self.calls += 1
             return stale
 
     store = Store()
-    sleeps = []
+    sleeps: list[float] = []
     monkeypatch.setattr(health, "DubStore", lambda: store)
     monkeypatch.setattr(dub_studio_runtime, "ensure_worker_running", lambda: True)
     monkeypatch.setattr(health.time, "sleep", sleeps.append)
@@ -114,7 +117,7 @@ def test_worker_snapshot_has_bounded_polling_and_returns_last_snapshot(monkeypat
     assert sleeps == [0.1] * 30
 
 
-def _empty_quality_repo(root):
+def _empty_quality_repo(root: pathlib.Path) -> pathlib.Path:
     relatives = (
         "tools/voxcpm2/clean_runtime_contract.py",
         "tools/voxcpm2/clean_production_core.py",
@@ -140,7 +143,7 @@ def _empty_quality_repo(root):
     return root
 
 
-def test_quality_contract_reports_missing_canonical_owners(tmp_path):
+def test_quality_contract_reports_missing_canonical_owners(tmp_path: pathlib.Path) -> None:
     ok, detail = health._quality_contract(tmp_path)
 
     assert ok is False
@@ -149,7 +152,9 @@ def test_quality_contract_reports_missing_canonical_owners(tmp_path):
     assert "worker" in detail
 
 
-def test_quality_contract_fails_closed_on_all_invalid_contracts(tmp_path, monkeypatch):
+def test_quality_contract_fails_closed_on_all_invalid_contracts(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     repo = _empty_quality_repo(tmp_path)
     monkeypatch.setattr(
         health,
@@ -174,11 +179,13 @@ def test_quality_contract_fails_closed_on_all_invalid_contracts(tmp_path, monkey
         assert failure in detail
 
 
-def test_quality_contract_converts_recipe_errors_to_failed_routing(tmp_path, monkeypatch):
+def test_quality_contract_converts_recipe_errors_to_failed_routing(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     repo = _empty_quality_repo(tmp_path)
     monkeypatch.setattr(health, "_read", lambda _path: "")
 
-    def fail_recipe(_recipe_id):
+    def fail_recipe(_recipe_id: str) -> None:
         raise RuntimeError("recipe unavailable")
 
     monkeypatch.setattr(health, "load_recipe", fail_recipe)
@@ -189,8 +196,8 @@ def test_quality_contract_converts_recipe_errors_to_failed_routing(tmp_path, mon
     assert "recipe-routing" in detail
 
 
-def test_recipe_checks_return_three_failed_checks_on_error(monkeypatch):
-    def fail_recipe(_recipe_id):
+def test_recipe_checks_return_three_failed_checks_on_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail_recipe(_recipe_id: str) -> None:
         raise RuntimeError("recipe boom")
 
     monkeypatch.setattr(health, "load_recipe", fail_recipe)
@@ -202,7 +209,7 @@ def test_recipe_checks_return_three_failed_checks_on_error(monkeypatch):
     assert {check["detail"] for check in checks} == {"recipe boom"}
 
 
-def _collect_dependencies(monkeypatch, tmp_path, *, available):
+def _collect_dependencies(monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path, *, available: bool) -> pathlib.Path:
     monkeypatch.setattr(
         health,
         "_recipe_checks",
@@ -256,7 +263,7 @@ def _collect_dependencies(monkeypatch, tmp_path, *, available):
         )
     else:
 
-        def fail_worker():
+        def fail_worker() -> None:
             raise RuntimeError("worker down")
 
         monkeypatch.setattr(health, "_worker_snapshot_with_repair", fail_worker)
@@ -273,7 +280,9 @@ def _collect_dependencies(monkeypatch, tmp_path, *, available):
     return storage
 
 
-def test_collect_dub_health_reports_available_environment(tmp_path, monkeypatch):
+def test_collect_dub_health_reports_available_environment(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     storage = _collect_dependencies(monkeypatch, tmp_path, available=True)
 
     checks = health.collect_dub_health()
@@ -292,7 +301,9 @@ def test_collect_dub_health_reports_available_environment(tmp_path, monkeypatch)
     assert not (storage / ".dub-health-write-test").exists()
 
 
-def test_collect_dub_health_reports_missing_dependencies_and_io_errors(tmp_path, monkeypatch):
+def test_collect_dub_health_reports_missing_dependencies_and_io_errors(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _collect_dependencies(monkeypatch, tmp_path, available=False)
 
     checks = health.collect_dub_health()
@@ -310,14 +321,16 @@ def test_collect_dub_health_reports_missing_dependencies_and_io_errors(tmp_path,
 
 
 class Message:
-    def __init__(self):
-        self.replies = []
+    def __init__(self) -> None:
+        self.replies: list[tuple[str, dict[str, Any]]] = []
 
-    async def reply_text(self, text, **kwargs):
+    async def reply_text(self, text: str, **kwargs: Any) -> None:
         self.replies.append((text, kwargs))
 
 
-def _update(*, user_id=1, with_user=True, with_message=True):
+def _update(
+    *, user_id: int = 1, with_user: bool = True, with_message: bool = True
+) -> tuple[SimpleNamespace, Message | None]:
     message = Message() if with_message else None
     update = SimpleNamespace(
         effective_user=SimpleNamespace(id=user_id) if with_user else None,
@@ -326,20 +339,21 @@ def _update(*, user_id=1, with_user=True, with_message=True):
     return update, message
 
 
-def test_health_admin_gate_handles_admin_denied_and_missing_user(monkeypatch):
+def test_health_admin_gate_handles_admin_denied_and_missing_user(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(health, "ADMIN_IDS", {1})
     update, _ = _update(user_id=1)
-    assert asyncio.run(health._admin(update)) is True
+    assert asyncio.run(health._admin(cast(Any, update))) is True
 
     update, message = _update(user_id=2)
-    assert asyncio.run(health._admin(update)) is False
+    assert message is not None
+    assert asyncio.run(health._admin(cast(Any, update))) is False
     assert message.replies == [("⛔ /dubcheck доступна только администратору.", {})]
 
     update, _ = _update(with_user=False, with_message=False)
-    assert asyncio.run(health._admin(update)) is False
+    assert asyncio.run(health._admin(cast(Any, update))) is False
 
 
-def test_dubcheck_command_renders_escaped_bounded_health_report(monkeypatch):
+def test_dubcheck_command_renders_escaped_bounded_health_report(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(health, "ADMIN_IDS", {1})
     checks = [
         {"label": "<ok>", "detail": "<" + "x" * 1000, "ok": True},
@@ -347,8 +361,9 @@ def test_dubcheck_command_renders_escaped_bounded_health_report(monkeypatch):
     ]
     monkeypatch.setattr(health, "collect_dub_health", lambda: checks)
     update, message = _update()
+    assert message is not None
 
-    asyncio.run(health.dubcheck_command(update, SimpleNamespace()))
+    asyncio.run(health.dubcheck_command(cast(Any, update), cast(Any, SimpleNamespace())))
 
     text, kwargs = message.replies[0]
     assert "Пройдено: <b>1/2</b>" in text
@@ -360,38 +375,39 @@ def test_dubcheck_command_renders_escaped_bounded_health_report(monkeypatch):
     assert kwargs == {"parse_mode": "HTML"}
 
 
-def test_dubcheck_command_returns_after_admin_rejection(monkeypatch):
+def test_dubcheck_command_returns_after_admin_rejection(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(health, "ADMIN_IDS", set())
 
-    def health_must_not_run():
+    def health_must_not_run() -> None:
         raise AssertionError("unauthorized health checks must not run")
 
     monkeypatch.setattr(health, "collect_dub_health", health_must_not_run)
     update, message = _update(user_id=2)
+    assert message is not None
 
-    asyncio.run(health.dubcheck_command(update, SimpleNamespace()))
+    asyncio.run(health.dubcheck_command(cast(Any, update), cast(Any, SimpleNamespace())))
 
     assert len(message.replies) == 1
     assert message.replies[0][0].startswith("⛔")
 
 
-def test_dubcheck_command_handles_missing_effective_message(monkeypatch):
+def test_dubcheck_command_handles_missing_effective_message(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(health, "ADMIN_IDS", {1})
     monkeypatch.setattr(health, "collect_dub_health", lambda: [])
     update, message = _update(with_message=False)
 
-    asyncio.run(health.dubcheck_command(update, SimpleNamespace()))
+    asyncio.run(health.dubcheck_command(cast(Any, update), cast(Any, SimpleNamespace())))
 
     assert message is None
 
 
-def test_health_registration_is_idempotent():
+def test_health_registration_is_idempotent() -> None:
     class Application:
-        def __init__(self):
-            self.bot_data = {}
-            self.handlers = []
+        def __init__(self) -> None:
+            self.bot_data: dict[str, Any] = {}
+            self.handlers: list[Any] = []
 
-        def add_handler(self, handler):
+        def add_handler(self, handler: Any) -> None:
             self.handlers.append(handler)
 
     application = Application()

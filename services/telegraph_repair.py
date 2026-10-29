@@ -7,14 +7,14 @@ node postprocess/audit, editPage, and optionally refresh archive timestamps late
 
 from __future__ import annotations
 
-import asyncio
+import asyncio as asyncio
 from dataclasses import dataclass
 from functools import partial
 import logging
 import re
 from typing import Any
 
-import requests
+import requests as requests
 
 from converters.md_telegraph import _edit_telegraph_page, _postprocess_telegraph_nodes
 from core.page_audit import audit_telegraph_page, format_audit_issues

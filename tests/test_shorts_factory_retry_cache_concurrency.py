@@ -1,9 +1,13 @@
 from __future__ import annotations
+import pathlib
+import pytest
 
 import services.shorts_factory_retry_cache as retry_cache
 
 
-def test_active_orphan_cache_file_survives_cleanup_until_last_holder_releases(monkeypatch, tmp_path):
+def test_active_orphan_cache_file_survives_cleanup_until_last_holder_releases(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     cache = tmp_path / "cache"
     cache.mkdir()
     monkeypatch.setattr(retry_cache, "FACTORY_CACHE_DIR", cache)
@@ -29,7 +33,9 @@ def test_active_orphan_cache_file_survives_cleanup_until_last_holder_releases(mo
     assert media.exists() is False
 
 
-def test_active_metadata_temp_is_not_removed_by_concurrent_cleanup(monkeypatch, tmp_path):
+def test_active_metadata_temp_is_not_removed_by_concurrent_cleanup(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     cache = tmp_path / "cache"
     cache.mkdir()
     monkeypatch.setattr(retry_cache, "FACTORY_CACHE_DIR", cache)
@@ -47,7 +53,7 @@ def test_active_metadata_temp_is_not_removed_by_concurrent_cleanup(monkeypatch, 
     assert temp.exists() is False
 
 
-def test_cache_active_refcount_returns_to_zero(tmp_path):
+def test_cache_active_refcount_returns_to_zero(tmp_path: pathlib.Path) -> None:
     media = tmp_path / "same.flac"
     key = retry_cache._cache_path_key(media)
     retry_cache._set_cache_path_active(media, True)

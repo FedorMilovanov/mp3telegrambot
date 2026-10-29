@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 import math
-import shutil
+import shutil as shutil
 from pathlib import Path
 from typing import Any, Iterable
 

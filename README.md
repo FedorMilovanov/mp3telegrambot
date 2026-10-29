@@ -328,7 +328,7 @@ python tools/audit_requirements_lock.py   # требует pip-audit в PATH
 Те же проверки, что в CI, но до пуша:
 
 ```bash
-pip install -r requirements-dev.txt
+python -m pip install -r requirements-lock.txt
 pre-commit install && pre-commit install --hook-type pre-push
 ```
 

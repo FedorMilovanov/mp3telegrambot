@@ -46,7 +46,7 @@ def _finite(value: Any, default: float = 0.0) -> float:
     return result if math.isfinite(result) else float(default)
 
 
-def _mono(samples: Any) -> np.ndarray:
+def _legacy_mono(samples: Any) -> np.ndarray:
     audio = np.asarray(samples, dtype=np.float32)
     if audio.ndim > 1:
         audio = audio.mean(axis=1)
@@ -93,16 +93,17 @@ def set_current_segment_id(segment_id: Any) -> None:
 
 
 def _identity_from_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
-    pitch = candidate.get("pitch") or {}
-    activity = candidate.get("activity") or {}
+    pitch: dict[str, Any] = candidate.get("pitch") or {}
+    activity: dict[str, Any] = candidate.get("activity") or {}
     timbre = candidate.get("timbre")
     if not isinstance(timbre, dict):
+        samples: Any = candidate.get("samples")
         timbre = spectral_envelope(
-            candidate.get("samples"),
+            samples,
             int(candidate.get("sample_rate") or 1),
         )
         candidate["timbre"] = timbre
-    voice = candidate.get("voice_match") or {}
+    voice: dict[str, Any] = candidate.get("voice_match") or {}
     return {
         "f0_median": _finite(pitch.get("f0_median")),
         "f0_p90": _finite(pitch.get("f0_p90")),
@@ -120,7 +121,8 @@ def _identity_from_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
 def _identity_from_report(payload: Any) -> dict[str, Any] | None:
     if not isinstance(payload, dict):
         return None
-    report = payload.get("report") if isinstance(payload.get("report"), dict) else payload
+    report_value: object = payload.get("report")
+    report = report_value if isinstance(report_value, dict) else payload
     selected_source = report.get("selected_source_prosody_match")
     if isinstance(selected_source, dict):
         monolith = selected_source.get("monolith_identity")
@@ -168,7 +170,7 @@ def _load_previous_checkpoint(work_dir: Path, segment_id: int) -> dict[str, Any]
     return None
 
 
-def _start_artifact(samples: Any, sample_rate: int) -> dict[str, Any]:
+def _legacy_start_artifact(samples: Any, sample_rate: int) -> dict[str, Any]:
     audio = _mono(samples)
     rate = max(1, int(sample_rate))
     if len(audio) < int(rate * 0.18):
@@ -243,7 +245,7 @@ def _ratio(value: float, reference: float) -> float:
     return value / reference
 
 
-def evaluate_candidate(candidate: dict[str, Any], segment: dict[str, Any]) -> dict[str, Any]:
+def _legacy_evaluate_candidate_impl(candidate: dict[str, Any], segment: dict[str, Any]) -> dict[str, Any]:
     global _PREVIOUS_IDENTITY  # noqa: PLW0603 -- previous identity checkpoint is lazy state across candidate evaluation
     segment_id = int(segment.get("id") or 0)
     set_current_segment_id(segment_id)
@@ -430,7 +432,7 @@ START_VOICE_IMPLEMENTATION_POLICY = "short-island-before-sustained-voice-v3"
 
 SOURCE_RELATIVE_POLICY = direct_source_relative_continuity.POLICY
 
-_legacy_evaluate_candidate = evaluate_candidate
+_legacy_evaluate_candidate = _legacy_evaluate_candidate_impl
 
 
 def _mono(samples: Any) -> np.ndarray:

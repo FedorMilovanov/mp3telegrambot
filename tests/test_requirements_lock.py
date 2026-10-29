@@ -11,14 +11,18 @@ def _write(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def test_repository_lock_covers_all_direct_requirements():
+def test_repository_lock_covers_all_direct_requirements() -> None:
     result = validate_lock()
     assert result["policy"] == POLICY
-    assert result["direct_count"] > 0
-    assert result["locked_count"] >= result["direct_count"]
+    direct_count = result["direct_count"]
+    locked_count = result["locked_count"]
+    assert isinstance(direct_count, int)
+    assert isinstance(locked_count, int)
+    assert direct_count > 0
+    assert locked_count >= direct_count
 
 
-def test_missing_direct_package_fails(tmp_path: Path):
+def test_missing_direct_package_fails(tmp_path: Path) -> None:
     direct = tmp_path / "requirements.txt"
     lock = tmp_path / "requirements-lock.txt"
     _write(direct, "requests>=2\npython-dotenv>=1\n")
@@ -28,7 +32,7 @@ def test_missing_direct_package_fails(tmp_path: Path):
         validate_lock(direct_paths=(direct,), lock_path=lock)
 
 
-def test_non_exact_or_duplicate_lock_entry_fails(tmp_path: Path):
+def test_non_exact_or_duplicate_lock_entry_fails(tmp_path: Path) -> None:
     direct = tmp_path / "requirements.txt"
     lock = tmp_path / "requirements-lock.txt"
     _write(direct, "requests>=2\n")
@@ -41,7 +45,7 @@ def test_non_exact_or_duplicate_lock_entry_fails(tmp_path: Path):
         validate_lock(direct_paths=(direct,), lock_path=lock)
 
 
-def test_locked_version_must_satisfy_direct_range(tmp_path: Path):
+def test_locked_version_must_satisfy_direct_range(tmp_path: Path) -> None:
     direct = tmp_path / "requirements.txt"
     lock = tmp_path / "requirements-lock.txt"
     _write(direct, "requests>=3\n")

@@ -34,7 +34,7 @@ from core.text_utils import _scrub_inline
 from services import gemini_capacity_control as capacity_control
 from services.gemini_quota_domains import ProjectQuotaDomainTracker
 
-import asyncio
+import asyncio as asyncio
 import contextlib
 import logging
 import re

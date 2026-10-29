@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 import math
-import subprocess
+import subprocess as subprocess
 from pathlib import Path
 from typing import Any
 
@@ -233,13 +233,13 @@ def verify_final_encoded_russian(
     if final_media_report_path is not None:
         _attach_to_final_report(final_media_report_path, delivery)
     if not delivery["passed"]:
-        reasons = ",".join(str(item) for item in delivery.get("failures") or [])
+        reason_text = ",".join(str(item) for item in delivery.get("failures") or [])
         cadence = delivery.get("cadence") or {}
         invalidated = delivery.get("invalidated_for_retry") or {}
         raise RuntimeError(
             "Финальная AAC-дорожка не прошла ending/tail QA; "
             "последняя реплика переведена на новый seed epoch: "
-            f"segment #{delivery['segment_id']}; reasons={reasons or 'delivery_qa'}; "
+            f"segment #{delivery['segment_id']}; reasons={reason_text or 'delivery_qa'}; "
             f"ending={float(cadence.get('ending_delta_semitones') or 0.0):.2f}st; "
             f"next_epoch={invalidated.get('retry_epoch')}. Отчёт: {report_path}"
         )

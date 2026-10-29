@@ -1,34 +1,42 @@
 """ENG Full QA cache, input, autofix, and status lifecycle contracts."""
 
+from collections.abc import Awaitable, Callable
+from typing import Any
+
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from pipelines.livedub_full_qa_stage import run_livedub_full_qa
+from pipelines.livedub_full_qa_stage import FullQaResult, run_livedub_full_qa
 
-_DEFAULT = object()
+
+class _DefaultType:
+    pass
+
+
+_DEFAULT = _DefaultType()
 
 
 class Status:
-    def __init__(self, *, delete_error=None):
+    def __init__(self, *, delete_error: Exception | None = None) -> None:
         self.delete_error = delete_error
         self.deleted = False
 
-    async def delete(self):
+    async def delete(self) -> None:
         self.deleted = True
         if self.delete_error:
             raise self.delete_error
 
 
 class Bot:
-    def __init__(self, *, status_error=None, delete_error=None):
+    def __init__(self, *, status_error: Exception | None = None, delete_error: Exception | None = None) -> None:
         self.status_error = status_error
         self.status = Status(delete_error=delete_error)
-        self.messages = []
+        self.messages: list[dict[str, Any]] = []
 
-    async def send_message(self, **kwargs):
+    async def send_message(self, **kwargs: Any) -> Status:
         self.messages.append(kwargs)
         if self.status_error:
             raise self.status_error
@@ -36,67 +44,73 @@ class Bot:
 
 
 def _invoke(
-    tmp_path,
-    monkeypatch,
-    qa_result,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    qa_result: Any,
     *,
-    autofix=False,
-    cached=_DEFAULT,
-    cache_result=(True, ""),
-    cache_error=None,
-    audio_part=None,
-    client=None,
-    max_size=50,
-    bot=None,
-    workdir=_DEFAULT,
-    primary_mp3=True,
-    secondary_mp3=False,
-    find_tracks=None,
-    fix=None,
-    prepare=None,
-):
+    autofix: bool = False,
+    cached: dict[str, Any] | None | _DefaultType = _DEFAULT,
+    cache_result: tuple[bool, str] = (True, ""),
+    cache_error: Exception | None = None,
+    audio_part: Any = None,
+    client: Any = None,
+    max_size: int = 50,
+    bot: Bot | None = None,
+    workdir: Path | None | _DefaultType = _DEFAULT,
+    primary_mp3: bool = True,
+    secondary_mp3: bool = False,
+    find_tracks: Callable[[Path], tuple[Any, Path | None]] | None = None,
+    fix: Callable[..., Awaitable[Path | None]] | None = None,
+    prepare: Callable[..., Path] | None = None,
+) -> tuple[FullQaResult, Bot, list[tuple[str, Any]], Path, Path | None]:
     video = tmp_path / "dub.mp4"
     video.write_bytes(b"video")
-    if workdir is _DEFAULT:
-        workdir = tmp_path / "work"
-        workdir.mkdir(exist_ok=True)
-        (workdir / "translation.srt").write_text("translation", encoding="utf-8")
-        (workdir / "gemini_subs.srt").write_text("excluded", encoding="utf-8")
+    workdir_value: Path | None
+    if isinstance(workdir, _DefaultType):
+        workdir_value = tmp_path / "work"
+        workdir_value.mkdir(exist_ok=True)
+        (workdir_value / "translation.srt").write_text("translation", encoding="utf-8")
+        (workdir_value / "gemini_subs.srt").write_text("excluded", encoding="utf-8")
+    else:
+        workdir_value = workdir
     download = tmp_path / "downloads"
     download.mkdir(exist_ok=True)
     if primary_mp3:
         (download / "media1.mp3").write_bytes(b"primary")
     if secondary_mp3:
         (download / "media1_64.mp3").write_bytes(b"secondary")
-    if cached is _DEFAULT:
-        cached = {"ai_data": {"title": "cached analysis"}}
-    calls = []
+    cached_value: dict[str, Any] | None
+    if isinstance(cached, _DefaultType):
+        cached_value = {"ai_data": {"title": "cached analysis"}}
+    else:
+        cached_value = cached
+    calls: list[tuple[str, Any]] = []
 
-    async def run_qa(**kwargs):
+    async def run_qa(**kwargs: Any) -> Any:
         calls.append(("qa", kwargs))
         if isinstance(qa_result, BaseException):
             raise qa_result
         return qa_result
 
-    async def get_cached(media_id):
+    async def get_cached(media_id: str) -> Any:
         calls.append(("cache", media_id))
         if cache_error:
             raise cache_error
-        return cached
+        return cached_value
 
-    def validate(received):
+    def validate(received: Any) -> tuple[bool, str]:
         calls.append(("validate", received))
         return cache_result
 
     if find_tracks is None:
         clean = tmp_path / "clean.mp3"
         clean.write_bytes(b"clean")
-        find_tracks = lambda received: (None, clean if received == workdir else None)
+        find_tracks = lambda received: (None, clean if received == workdir_value else None)
 
-    async def default_fix(*_args):
+    async def default_fix(*_args: Any) -> None:
         raise AssertionError("unexpected autofix")
 
-    def default_prepare(path, *_args, **_kwargs):
+    def default_prepare(path: Path, *_args: Any, **_kwargs: Any) -> Path:
         return path
 
     monkeypatch.setattr("services.livedub_qa.run_translation_qa", run_qa)
@@ -107,7 +121,7 @@ def _invoke(
     result = asyncio.run(
         run_livedub_full_qa(
             video_path=video,
-            workdir=workdir,
+            workdir=workdir_value,
             download_dir=download,
             media_id="media1",
             title_line="Title - Author",
@@ -123,15 +137,15 @@ def _invoke(
             max_file_size_mb=lambda: max_size,
         )
     )
-    return result, bot, calls, video, workdir
+    return result, bot, calls, video, workdir_value
 
 
-def test_qa_asset_discovery_failure_is_nonfatal(tmp_path, monkeypatch):
-    def fail_exists(_path):
+def test_qa_asset_discovery_failure_is_nonfatal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail_exists(_path: Path) -> bool:
         raise OSError("workdir unavailable")
 
     monkeypatch.setattr("pipelines.livedub_full_qa_stage._path_exists", fail_exists)
-    qa = {"issues": []}
+    qa: dict[str, list[Any]] = {"issues": []}
 
     result, _bot, calls, video, _workdir = _invoke(tmp_path, monkeypatch, qa)
 
@@ -141,10 +155,10 @@ def test_qa_asset_discovery_failure_is_nonfatal(tmp_path, monkeypatch):
     assert kwargs["dub_audio_path"] is None
 
 
-def test_valid_cache_inputs_and_reused_part_reach_qa(tmp_path, monkeypatch):
+def test_valid_cache_inputs_and_reused_part_reach_qa(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     part = SimpleNamespace(name="audio-part")
     client = SimpleNamespace(name="client")
-    qa = {"issues": []}
+    qa: dict[str, list[Any]] = {"issues": []}
 
     result, bot, calls, video, workdir = _invoke(
         tmp_path,
@@ -155,6 +169,7 @@ def test_valid_cache_inputs_and_reused_part_reach_qa(tmp_path, monkeypatch):
     )
 
     assert result == (video, qa, "")
+    assert workdir is not None
     assert bot.status.deleted
     assert bot.messages[0]["reply_to_message_id"] == 777
     kwargs = next(call[1] for call in calls if call[0] == "qa")
@@ -170,7 +185,7 @@ def test_valid_cache_inputs_and_reused_part_reach_qa(tmp_path, monkeypatch):
     }
 
 
-def test_secondary_audio_and_part_without_name_use_fallbacks(tmp_path, monkeypatch):
+def test_secondary_audio_and_part_without_name_use_fallbacks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     result, _bot, calls, _video, _workdir = _invoke(
         tmp_path,
         monkeypatch,
@@ -191,7 +206,7 @@ def test_secondary_audio_and_part_without_name_use_fallbacks(tmp_path, monkeypat
     assert result[2] == ""
 
 
-def test_stale_cache_is_ignored(tmp_path, monkeypatch):
+def test_stale_cache_is_ignored(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _result, _bot, calls, _video, _workdir = _invoke(
         tmp_path,
         monkeypatch,
@@ -205,7 +220,7 @@ def test_stale_cache_is_ignored(tmp_path, monkeypatch):
     assert kwargs["original_audio_path"] is None
 
 
-def test_cache_error_is_noncritical(tmp_path, monkeypatch):
+def test_cache_error_is_noncritical(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _result, _bot, calls, _video, _workdir = _invoke(
         tmp_path,
         monkeypatch,
@@ -216,8 +231,10 @@ def test_cache_error_is_noncritical(tmp_path, monkeypatch):
     assert next(call[1] for call in calls if call[0] == "qa")["ai_data"] is None
 
 
-def test_discovery_and_clean_track_errors_fall_back_to_video_audio(tmp_path, monkeypatch):
-    def no_tracks(_workdir):
+def test_discovery_and_clean_track_errors_fall_back_to_video_audio(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def no_tracks(_workdir: Path) -> tuple[Any, Path | None]:
         raise RuntimeError("tracks unavailable")
 
     _result, _bot, calls, _video, _workdir = _invoke(
@@ -232,7 +249,7 @@ def test_discovery_and_clean_track_errors_fall_back_to_video_audio(tmp_path, mon
     assert kwargs["dub_audio_path"] is None
 
 
-def test_missing_workdir_skips_discovery(tmp_path, monkeypatch):
+def test_missing_workdir_skips_discovery(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _result, _bot, calls, _video, _workdir = _invoke(
         tmp_path,
         monkeypatch,
@@ -245,10 +262,10 @@ def test_missing_workdir_skips_discovery(tmp_path, monkeypatch):
     assert kwargs["dub_audio_path"] is None
 
 
-def test_discovery_error_and_empty_qa_result_are_noncritical(tmp_path, monkeypatch):
+def test_discovery_error_and_empty_qa_result_are_noncritical(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     real_glob = Path.glob
 
-    def broken_glob(path, pattern):
+    def broken_glob(path: Path, pattern: str) -> Any:
         if path.name == "work":
             raise RuntimeError("directory listing failed")
         return real_glob(path, pattern)
@@ -268,7 +285,7 @@ def test_discovery_error_and_empty_qa_result_are_noncritical(tmp_path, monkeypat
     assert kwargs["dub_audio_path"] is None
 
 
-def test_enabled_autofix_does_not_run_without_major_issues(tmp_path, monkeypatch):
+def test_enabled_autofix_does_not_run_without_major_issues(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     qa = {"issues": [{"severity": "minor"}]}
     result, _bot, _calls, video, _workdir = _invoke(
         tmp_path,
@@ -280,19 +297,19 @@ def test_enabled_autofix_does_not_run_without_major_issues(tmp_path, monkeypatch
     assert result == (video, qa, "")
 
 
-def test_major_autofix_success_uses_prepared_fixed_video(tmp_path, monkeypatch):
+def test_major_autofix_success_uses_prepared_fixed_video(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     fixed = tmp_path / "fixed.mp4"
     fixed.write_bytes(b"fixed")
     prepared = tmp_path / "prepared.mp4"
     prepared.write_bytes(b"prepared")
     issues = [{"severity": "major"}, {"severity": "minor"}]
-    calls = []
+    calls: list[tuple[Any, ...]] = []
 
-    async def fix(workdir, received_issues):
+    async def fix(workdir: Path, received_issues: list[dict[str, Any]]) -> Path:
         calls.append(("fix", workdir, received_issues))
         return fixed
 
-    def prepare(path, title, *, fallback):
+    def prepare(path: Path, title: str, *, fallback: str) -> Path:
         calls.append(("prepare", path, title, fallback))
         return prepared
 
@@ -306,17 +323,18 @@ def test_major_autofix_success_uses_prepared_fixed_video(tmp_path, monkeypatch):
     )
 
     assert result[0] == prepared
+    assert workdir is not None
     assert "В 1 месте(ах)" in result[2]
     assert ("fix", workdir, issues) in calls
     assert ("prepare", fixed, "Title - Author", "media1_fixed") in calls
     assert next(call[1] for call in qa_calls if call[0] == "qa")
 
 
-def test_oversized_fix_keeps_original_without_note(tmp_path, monkeypatch):
+def test_oversized_fix_keeps_original_without_note(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     fixed = tmp_path / "fixed.mp4"
     fixed.write_bytes(b"fixed")
 
-    async def fix(*_args):
+    async def fix(*_args: Any) -> Path:
         return fixed
 
     result, _bot, _calls, video, _workdir = _invoke(
@@ -331,8 +349,8 @@ def test_oversized_fix_keeps_original_without_note(tmp_path, monkeypatch):
     assert result == (video, {"issues": [{"severity": "major"}]}, "")
 
 
-def test_missing_fix_has_honest_note(tmp_path, monkeypatch):
-    async def fix(*_args):
+def test_missing_fix_has_honest_note(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fix(*_args: Any) -> None:
         return None
 
     result, _bot, _calls, video, _workdir = _invoke(
@@ -347,8 +365,8 @@ def test_missing_fix_has_honest_note(tmp_path, monkeypatch):
     assert "авто-приглушение не удалось" in result[2]
 
 
-def test_autofix_error_keeps_original_and_qa_result(tmp_path, monkeypatch):
-    async def fix(*_args):
+def test_autofix_error_keeps_original_and_qa_result(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fix(*_args: Any) -> None:
         raise RuntimeError("fix failed")
 
     qa = {"issues": [{"severity": "major"}]}
@@ -363,7 +381,7 @@ def test_autofix_error_keeps_original_and_qa_result(tmp_path, monkeypatch):
     assert result == (video, qa, "")
 
 
-def test_qa_error_still_deletes_status(tmp_path, monkeypatch):
+def test_qa_error_still_deletes_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     result, bot, _calls, video, _workdir = _invoke(
         tmp_path,
         monkeypatch,
@@ -374,7 +392,7 @@ def test_qa_error_still_deletes_status(tmp_path, monkeypatch):
     assert bot.status.deleted
 
 
-def test_status_send_and_delete_errors_are_best_effort(tmp_path, monkeypatch):
+def test_status_send_and_delete_errors_are_best_effort(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     bot = Bot(status_error=RuntimeError("status unavailable"))
     result, bot, calls, video, _workdir = _invoke(
         tmp_path,
@@ -396,6 +414,6 @@ def test_status_send_and_delete_errors_are_best_effort(tmp_path, monkeypatch):
     assert bot.status.deleted
 
 
-def test_qa_cancellation_propagates_but_deletes_status(tmp_path, monkeypatch):
+def test_qa_cancellation_propagates_but_deletes_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(asyncio.CancelledError):
         _invoke(tmp_path, monkeypatch, asyncio.CancelledError())

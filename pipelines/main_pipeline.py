@@ -11,7 +11,7 @@ from services.ffmpeg import YTDLP_BASE_ARGS  # FIX #23: нужен резуль�
 from services.async_process import run_cancellable_process
 from services.async_worker import await_owned_with_soft_timeout
 from core.globals import (
-    DOWNLOAD_DIR,
+    DOWNLOAD_DIR as DOWNLOAD_DIR,
     THUMBS_DIR,
     GEMINI_CLIENTS,
 )
@@ -58,13 +58,13 @@ from pipelines.livedub_failure_stage import (
 )
 from pipelines.livedub_publication_stage import prepare_livedub_publication
 from pipelines.livedub_quick_qa_stage import run_livedub_quick_qa
-from pipelines.livedub_quick_stage import finish_livedub_quick
+from pipelines.livedub_quick_stage import finish_livedub_quick as finish_livedub_quick
 from pipelines.livedub_video_assets_stage import (
     get_livedub_technical_warnings,
     prepare_livedub_video_assets,
 )
 from pipelines.livedub_video_delivery_stage import send_livedub_video_with_cover
-from pipelines.publication_context_stage import prepare_publication_context
+from pipelines.publication_context_stage import prepare_publication_context as prepare_publication_context
 from services.telegraph_pages import combined_study_reflection_enabled
 from pipelines.telegraph_nav import add_navigation
 from pipelines.telegraph_repair_stage import repair_enabled, repair_pages
@@ -74,7 +74,7 @@ from core.url_utils import get_youtube_video_url
 from core.progress import set_progress
 from pipelines.audio_failure_stage import fail_audio_too_large
 from pipelines.audio_stage import (
-    AudioTooLarge,
+    AudioTooLarge as AudioTooLarge,
     prepare_audio,
 )
 from pipelines.resource_cleanup_stage import cleanup_pipeline_resources

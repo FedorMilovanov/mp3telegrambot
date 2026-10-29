@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import Any
 
 from tools.voxcpm2.direct_source_prosody import (
     candidate_pitch_evidence_ok,
@@ -8,7 +9,7 @@ from tools.voxcpm2.direct_source_prosody import (
 )
 
 
-def _chirp(start_hz: float, end_hz: float):
+def _chirp(start_hz: float, end_hz: float) -> tuple[np.ndarray, int]:
     sample_rate = 48_000
     duration = 2.0
     time = np.arange(int(duration * sample_rate), dtype=np.float64) / sample_rate
@@ -22,7 +23,7 @@ def _chirp(start_hz: float, end_hz: float):
     return audio, sample_rate
 
 
-def _candidate(start_hz: float, end_hz: float):
+def _candidate(start_hz: float, end_hz: float) -> dict[str, Any]:
     audio, sample_rate = _chirp(start_hz, end_hz)
     return {
         "samples": audio,
@@ -40,7 +41,7 @@ def _candidate(start_hz: float, end_hz: float):
     }
 
 
-def _segment(text: str):
+def _segment(text: str) -> dict[str, Any]:
     return {
         "text": text,
         "start": 0.0,
@@ -58,7 +59,7 @@ def _segment(text: str):
     }
 
 
-def test_russian_cadence_controls_acceptance_while_source_penalty_stays_zero():
+def test_russian_cadence_controls_acceptance_while_source_penalty_stays_zero() -> None:
     rising = _candidate(80.0, 200.0)
     falling = _candidate(200.0, 80.0)
 
@@ -75,7 +76,7 @@ def test_russian_cadence_controls_acceptance_while_source_penalty_stays_zero():
     assert candidate_pitch_evidence_ok(falling) is True
 
 
-def test_linked_phrase_underfill_is_deferred_to_timeline_without_cross_language_score():
+def test_linked_phrase_underfill_is_deferred_to_timeline_without_cross_language_score() -> None:
     candidate = _candidate(100.0, 150.0)
     candidate["duration"] = 0.95
 

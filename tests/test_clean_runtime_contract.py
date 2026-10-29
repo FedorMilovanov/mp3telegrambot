@@ -82,7 +82,7 @@ def test_valid_runtime_settings_are_canonical() -> None:
 
 
 def test_render_and_release_fingerprints_change_independently(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     repo = tmp_path / "repo"
@@ -120,7 +120,7 @@ def test_render_and_release_fingerprints_change_independently(
     assert second["release_contract_sha256"] != third["release_contract_sha256"]
 
 
-def test_model_manifest_tracks_weight_content(monkeypatch, tmp_path: Path) -> None:
+def test_model_manifest_tracks_weight_content(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     model = tmp_path / "snapshot"
     model.mkdir()
     (model / "config.json").write_text('{"model":"v2"}', encoding="utf-8")

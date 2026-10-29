@@ -7,14 +7,19 @@ Covers formatting bugs seen in live Study pages:
 - prompts must instruct the model to use the same structure.
 """
 
+from typing import Any
+
 from converters.md_telegraph import _postprocess_telegraph_nodes
 
 
-def _p(children):
+Node = str | dict[str, Any]
+
+
+def _p(children: list[Node]) -> dict[str, Any]:
     return {"tag": "p", "children": children}
 
 
-def _flat(node):
+def _flat(node: Node) -> str:
     if isinstance(node, str):
         return node
     if isinstance(node, dict):
@@ -22,7 +27,7 @@ def _flat(node):
     return ""
 
 
-def test_scripture_quote_and_explanation_are_split():
+def test_scripture_quote_and_explanation_are_split() -> None:
     nodes = [
         _p(
             [
@@ -41,7 +46,7 @@ def test_scripture_quote_and_explanation_are_split():
     assert _flat(paragraphs[1]).startswith("Разбор социального состава")
 
 
-def test_quote_first_bullet_becomes_bold_ref_micro_block():
+def test_quote_first_bullet_becomes_bold_ref_micro_block() -> None:
     nodes = [_p(["• ", "«Как прах, всеми попираемый» ", {"tag": "i", "children": [" (1 Кор 4:13)"]}, "."])]
     out = _postprocess_telegraph_nodes(nodes)
     p = out[0]
@@ -52,7 +57,7 @@ def test_quote_first_bullet_becomes_bold_ref_micro_block():
     assert _flat(p) == "• 1 Кор 4:13: «Как прах, всеми попираемый»"
 
 
-def test_bolded_quote_first_bullet_is_unwrapped_to_ref_first():
+def test_bolded_quote_first_bullet_is_unwrapped_to_ref_first() -> None:
     nodes = [
         _p(["• ", {"tag": "b", "children": ["«Безумное мира» ", {"tag": "i", "children": ["(1 Кор 1:27)"]}, "."]}])
     ]
@@ -63,7 +68,7 @@ def test_bolded_quote_first_bullet_is_unwrapped_to_ref_first():
     assert p["children"][3]["children"] == ["«Безумное мира»"]
 
 
-def test_duplicate_space_after_bold_is_removed():
+def test_duplicate_space_after_bold_is_removed() -> None:
     nodes = [
         _p(["• ", {"tag": "b", "children": ["Суверенная благодать в эффективном призвании. "]}, " Согласно 1689."])
     ]
@@ -72,20 +77,20 @@ def test_duplicate_space_after_bold_is_removed():
     assert out[0]["children"][1]["children"] == ["Суверенная благодать в эффективном призвании."]
 
 
-def test_study_prompt_requires_explanation_below_scripture_quote():
+def test_study_prompt_requires_explanation_below_scripture_quote() -> None:
     from core.prompts import STUDY_ANALYSIS_PROMPT
 
     assert "разбор — отдельным абзацем ниже" in STUDY_ANALYSIS_PROMPT
     assert "НЕ сливай цитату и объяснение в одну строку" in STUDY_ANALYSIS_PROMPT
 
 
-def test_prompt_forbids_inline_explanation_after_quote():
+def test_prompt_forbids_inline_explanation_after_quote() -> None:
     from core.prompts import STUDY_ANALYSIS_PROMPT
 
     assert "объяснение сразу после цитаты в той же строке" in STUDY_ANALYSIS_PROMPT
 
 
-def test_audio_prompt_main_topic_bans_pompous_author_labels():
+def test_audio_prompt_main_topic_bans_pompous_author_labels() -> None:
     src = open("core/prompts.py", encoding="utf-8").read()
     assert "ПРАВИЛО УПОМИНАНИЯ АВТОРОВ В main_topic" in src
     assert "богословские гиганты" in src
@@ -93,7 +98,7 @@ def test_audio_prompt_main_topic_bans_pompous_author_labels():
     assert "Панель обсуждает" in src
 
 
-def test_audio_prompt_json_example_no_third_person_main_topic():
+def test_audio_prompt_json_example_no_third_person_main_topic() -> None:
     from core.prompts import build_audio_analysis_prompt
 
     prompt = build_audio_analysis_prompt("T", "", "60:00", 3600, mode="deep")

@@ -15,7 +15,7 @@ import logging
 import math
 import os
 import re
-import shutil
+import shutil as shutil
 from pathlib import Path
 from statistics import median
 from typing import Iterable

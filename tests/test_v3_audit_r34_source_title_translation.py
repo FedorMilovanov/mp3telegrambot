@@ -18,19 +18,19 @@ from core.source_titles import normalize_source_card_line as N
 from core.source_titles import official_ru_title
 
 
-def test_owen_short_title_matches_full_registry_title():
+def test_owen_short_title_matches_full_registry_title() -> None:
     # Баг A: короткое название модели совпадает с полным из реестра.
     assert official_ru_title("John Owen", "Of the Mortification of Sin") == "Об умерщвлении греха в верующих"
     assert official_ru_title("Джон Оуэн", "Mortification of Sin") == "Об умерщвлении греха в верующих"
 
 
-def test_russian_author_resolves_official_title():
+def test_russian_author_resolves_official_title() -> None:
     # Баг B (часть): русское имя автора тоже должно находить перевод.
     assert official_ru_title("Дж. К. Райл", "Holiness") == "Святость"
     assert official_ru_title("Дж. Ч. Райл", "Holiness") == "Святость"
 
 
-def test_no_false_positive_same_title_other_author():
+def test_no_false_positive_same_title_other_author() -> None:
     # «Holiness» Райла НЕ должен подставляться другим авторам.
     assert official_ru_title("Jerry Bridges", "Holiness") == ""  # у него "The Pursuit of Holiness"
     assert official_ru_title("John MacArthur", "Holiness") == ""
@@ -38,7 +38,7 @@ def test_no_false_positive_same_title_other_author():
     assert official_ru_title("", "Holiness") == ""
 
 
-def test_canonical_card_english_title_upgraded_with_paren():
+def test_canonical_card_english_title_upgraded_with_paren() -> None:
     line = "**Of the Mortification of Sin**, Джон Оуэн (John Owen). — Практическое руководство."
     out = N(line)
     assert out.startswith("**Об умерщвлении греха в верующих**")
@@ -46,7 +46,7 @@ def test_canonical_card_english_title_upgraded_with_paren():
     assert "— Практическое руководство." in out  # хвост «зачем» сохранён
 
 
-def test_canonical_card_english_title_upgraded_without_paren():
+def test_canonical_card_english_title_upgraded_without_paren() -> None:
     line = "**Holiness**, Дж. К. Райл. — Глубокий пасторский труд о святости."
     out = N(line)
     assert out.startswith("**Святость**")
@@ -54,17 +54,17 @@ def test_canonical_card_english_title_upgraded_without_paren():
     assert "— Глубокий пасторский труд о святости." in out
 
 
-def test_already_russian_card_untouched():
+def test_already_russian_card_untouched() -> None:
     line = "**Учение о покаянии**, Томас Уотсон (The Doctrine of Repentance, Thomas Watson). — Классика."
     assert N(line) == line
 
 
-def test_unknown_book_stays_english():
+def test_unknown_book_stays_english() -> None:
     # Нет в реестре официального перевода — оставляем как есть, не выдумываем.
     line = "**The Power and Message of the Gospel**, Пол Вошер. — Современное изложение."
     assert N(line) == line
 
 
-def test_key_concept_line_not_treated_as_book_card():
+def test_key_concept_line_not_treated_as_book_card() -> None:
     line = "**Возрождение** (**Regeneration**) — сверхъестественный акт Святого Духа."
     assert N(line) == line

@@ -13,6 +13,8 @@
 6. lang исходника не доезжал до vot-merge/tts-fallback путей.
 """
 
+import pytest
+
 import os
 import time
 from pathlib import Path
@@ -32,7 +34,7 @@ def _qa_fn_src() -> str:
     return src.split("async def _run_translation_qa_base", 1)[1].split("\n\nasync def run_translation_qa", 1)[0]
 
 
-def test_qa_parses_srt_before_deciding_dub_audio():
+def test_qa_parses_srt_before_deciding_dub_audio() -> None:
     fn = _qa_fn_src()
     parse_idx = fn.index("dub_timed_text = srt_to_timed_text")
     extract_idx = fn.index("_extract_audio_for_qa(dub_video_path")
@@ -40,7 +42,7 @@ def test_qa_parses_srt_before_deciding_dub_audio():
     assert "_have_srt = bool(dub_timed_text)" in fn, "«есть SRT» = «есть распарсенный ТЕКСТ», а не «файл существует»"
 
 
-def test_qa_prompt_attachment_description_matches_reality():
+def test_qa_prompt_attachment_description_matches_reality() -> None:
     fn = _qa_fn_src()
     # один файл (EN) + текст дубляжа
     assert "Приложен ОДИН аудиофайл" in fn
@@ -55,7 +57,7 @@ def test_qa_prompt_attachment_description_matches_reality():
 # ── 3. thinking_level в текстовом fallback ───────────────────────
 
 
-def test_qa_text_fallback_respects_thinking_level_param():
+def test_qa_text_fallback_respects_thinking_level_param() -> None:
     fn = _qa_fn_src()
     fallback = fn.split("JSON-mime недоступен", 1)[1]
     head = fallback[:900]
@@ -66,7 +68,7 @@ def test_qa_text_fallback_respects_thinking_level_param():
 # ── 4. Quick QA не требует SRT и честно сообщает о пропуске ──────
 
 
-def test_quick_qa_gate_no_longer_requires_srt():
+def test_quick_qa_gate_no_longer_requires_srt() -> None:
     src = _read("pipelines/livedub_quick_qa_stage.py")
     assert "if original and workdir is not None:" in src
     assert "quick_srt and original" not in src, (
@@ -74,7 +76,7 @@ def test_quick_qa_gate_no_longer_requires_srt():
     )
 
 
-def test_quick_qa_skip_note_reaches_caption():
+def test_quick_qa_skip_note_reaches_caption() -> None:
     src = _read("pipelines/main_pipeline.py")
     stage = _read("pipelines/livedub_quick_qa_stage.py")
     assert "_quick_qa_skip_note" in src
@@ -89,7 +91,7 @@ def test_quick_qa_skip_note_reaches_caption():
 # ── 5. _find_latest_file не выдаёт оригинал за перевод ───────────
 
 
-def test_find_latest_file_skips_service_artifacts(tmp_path):
+def test_find_latest_file_skips_service_artifacts(tmp_path: Path) -> None:
     from services.yandex_live_dub import _find_latest_file
 
     real = tmp_path / "abc123.live.mp3"
@@ -105,7 +107,7 @@ def test_find_latest_file_skips_service_artifacts(tmp_path):
     assert found is not None and found.name == "abc123.live.mp3"
 
 
-def test_find_latest_file_returns_none_when_only_artifacts(tmp_path):
+def test_find_latest_file_returns_none_when_only_artifacts(tmp_path: Path) -> None:
     from services.yandex_live_dub import _find_latest_file
 
     (tmp_path / "original_audio.mp3").write_bytes(b"y")
@@ -115,7 +117,7 @@ def test_find_latest_file_returns_none_when_only_artifacts(tmp_path):
 # ── 5b. find_pro_tracks выбирает файл С видеопотоком ─────────────
 
 
-def test_find_pro_tracks_prefers_real_video(tmp_path, monkeypatch):
+def test_find_pro_tracks_prefers_real_video(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import services.livedub_mix as lm
 
     (tmp_path / "original_video.f140.m4a").write_bytes(b"a" * 200_000)
@@ -133,7 +135,7 @@ def test_find_pro_tracks_prefers_real_video(tmp_path, monkeypatch):
 # ── 6. lang доезжает до всех путей перевода ──────────────────────
 
 
-def test_lang_passthrough_video_and_tts_paths():
+def test_lang_passthrough_video_and_tts_paths() -> None:
     yl = _read("services/yandex_live_dub.py")
     video_fn = yl.split("async def get_live_dub_video", 1)[1]
     assert "lang: str" in video_fn[:400], "get_live_dub_video должен принимать lang"
@@ -149,14 +151,14 @@ def test_lang_passthrough_video_and_tts_paths():
     assert "source_lang=source_lang" in mp
 
 
-def test_dead_env_int_removed_from_yandex_live_dub():
+def test_dead_env_int_removed_from_yandex_live_dub() -> None:
     assert "def _env_int" not in _read("services/yandex_live_dub.py")
 
 
 # ── 7. Живой лог 2026-07-06: обрезание Reflection и дубль автора ─
 
 
-def test_reflection_budgets_survive_high_thinking():
+def test_reflection_budgets_survive_high_thinking() -> None:
     """thoughts+output делят ОДИН бюджет: на high thinking съедает 15-20K
     ДО ответа. balanced=26000 обрезал JSON ровно на потолке
     (18971+7013=25984) — все reflection-бюджеты должны держать
@@ -175,7 +177,7 @@ def test_reflection_budgets_survive_high_thinking():
     assert fast.max_tokens < balanced.max_tokens < deep.max_tokens < very_long.max_tokens
 
 
-def test_search_title_does_not_duplicate_author():
+def test_search_title_does_not_duplicate_author() -> None:
     """После отбраковки выдуманного названия real_title = полный YouTube-титул,
     часто уже с автором — второй раз автора не приклеиваем."""
     from services.search import _build_search_title
@@ -190,7 +192,7 @@ def test_search_title_does_not_duplicate_author():
     assert "МакАртур" in t2 and "евангелизм" in t2.lower()
 
 
-def test_truncation_visible_in_log():
+def test_truncation_visible_in_log() -> None:
     src = _read("services/telegraph_pages.py")
     assert "MAX_TOKENS" in src and "ОБРЕЗАН по max_tokens" in src, (
         "обрезание ответа должно логироваться warning'ом, а не тонуть в info"

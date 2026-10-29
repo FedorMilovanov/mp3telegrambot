@@ -22,7 +22,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from tools.voxcpm2 import spatial_bed_contract  # noqa: E402 -- repo-root bootstrap must precede absolute project imports
-from tools.voxcpm2.examples.john_piper_z20py4yqhyq import master_constant_mix as base  # noqa: E402 -- repo-root bootstrap must precede absolute project imports
+from tools.voxcpm2.examples.john_piper_z20py4yqhyq import master_constant_mix  # noqa: E402 -- repo-root bootstrap must precede absolute project imports
+
+base = master_constant_mix
 
 POLICY = spatial_bed_contract.POLICY
 SOURCE_BED_POLICY = spatial_bed_contract.SOURCE_BED_POLICY

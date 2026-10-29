@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
-import subprocess
+import subprocess as subprocess
 from typing import Any
 
 import numpy as np
@@ -139,7 +139,7 @@ def _alignment_lag(
     return int(best_lag), max(0.0, float(best_correlation))
 
 
-def _align_stereo(
+def _legacy_align_stereo(
     source: np.ndarray,
     mixed: np.ndarray,
     russian: np.ndarray,

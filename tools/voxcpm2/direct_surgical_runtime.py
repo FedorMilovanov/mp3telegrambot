@@ -14,7 +14,7 @@ guard = direct_timing_guard
 
 POLICY = "voxcpm2-surgical-runtime-v2"
 _PROGRESS_POLICY = "candidate-aware-project-progress-v2"
-_RUNTIME_SCOPE_FILES = (
+_RUNTIME_SCOPE_FILES: tuple[str, ...] = (
     "tools/voxcpm2/direct_timing_guard.py",
     "tools/voxcpm2/direct_universal_runtime.py",
     "tools/voxcpm2/direct_surgical_runtime.py",
@@ -32,8 +32,11 @@ def _segments_by_id(values: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
     for item in values:
         if not isinstance(item, dict):
             continue
+        raw_id = item.get("id")
+        if raw_id is None:
+            continue
         try:
-            segment_id = int(item.get("id"))
+            segment_id = int(raw_id)
         except (TypeError, ValueError, OverflowError):
             continue
         if segment_id > 0:

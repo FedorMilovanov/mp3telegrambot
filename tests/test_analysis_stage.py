@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -30,16 +31,19 @@ class Recorder:
     def __init__(
         self,
         *,
-        ai_data=None,
-        client=None,
-        audio_part=None,
-        links=None,
-        links_exc=None,
-        synopsis_result=("https://tg/ok", "- пункт"),
-        synopsis_enabled=True,
-        transcript=None,
-    ):
-        self.calls: list[tuple] = []
+        ai_data: dict[str, Any] | None = None,
+        client: str | None = None,
+        audio_part: Any = None,
+        links: dict[str, Any] | None = None,
+        links_exc: Exception | None = None,
+        synopsis_result: tuple[str | None, list[dict[str, Any]] | None] = (
+            "https://tg/ok",
+            [{"title": "- пункт"}],
+        ),
+        synopsis_enabled: bool = True,
+        transcript: Any = None,
+    ) -> None:
+        self.calls: list[tuple[Any, ...]] = []
         self._ai_data = ai_data
         self._client = client
         self._audio_part = audio_part
@@ -47,32 +51,32 @@ class Recorder:
         self._links_exc = links_exc
         self._synopsis_result = synopsis_result
         self._synopsis_enabled = synopsis_enabled
-        self.progress_events: list[tuple[int, dict | None]] = []
+        self.progress_events: list[tuple[int, dict[str, Any] | None]] = []
 
-    async def analyze(self, *args, **kwargs):
+    async def analyze(self, *args: Any, **kwargs: Any) -> tuple[dict[str, Any] | None, str | None, Any]:
         self.calls.append(("analyze", args, kwargs))
         return self._ai_data, self._client, self._audio_part
 
-    async def create_synopsis(self, *args, **kwargs):
+    async def create_synopsis(self, *args: Any, **kwargs: Any) -> tuple[str | None, list[dict[str, Any]] | None]:
         self.calls.append(("synopsis", args, kwargs))
         return self._synopsis_result
 
-    async def find_links(self, *args, **kwargs):
+    async def find_links(self, *args: Any, **kwargs: Any) -> dict[str, Any] | None:
         self.calls.append(("links", args, kwargs))
         if self._links_exc is not None:
             raise self._links_exc
         return self._links
 
-    async def get_setting(self, key):
+    async def get_setting(self, key: str) -> bool:
         self.calls.append(("setting", key))
         return self._synopsis_enabled
 
-    async def progress(self, status_msg, step, info=None, prefix=""):
+    async def progress(self, status_msg: Any, step: int, info: dict[str, Any] | None = None, prefix: str = "") -> None:
         self.calls.append(("progress", step))
         self.progress_events.append((step, info))
 
     @staticmethod
-    def build_search_title(ai_data, fallback_title):
+    def build_search_title(ai_data: dict[str, Any] | None, fallback_title: str) -> str:
         return f"search:{fallback_title}"
 
     def deps(self) -> AnalysisDeps:
@@ -96,8 +100,8 @@ def mp3(tmp_path: Path) -> Path:
     return path
 
 
-def make_request(mp3: Path, tmp_path: Path, **overrides) -> AnalysisRequest:
-    base = dict(
+def make_request(mp3: Path, tmp_path: Path, **overrides: Any) -> AnalysisRequest:
+    base: dict[str, Any] = dict(
         mp3_path=mp3,
         title="Проповедь",
         performer="Автор",
@@ -145,7 +149,7 @@ async def test_order_progress_then_analyze_then_links_then_synopsis(mp3: Path, t
     assert synopsis_kwargs["rutube_url"] == "https://rt/v"
     assert synopsis_kwargs["vk_url"] == "https://vk/v"
     assert outcome.telegraph_url == "https://tg/ok"
-    assert outcome.synopsis_outline == "- пункт"
+    assert outcome.synopsis_outline == [{"title": "- пункт"}]
 
 
 @pytest.mark.asyncio
@@ -228,7 +232,7 @@ async def test_degraded_timestamps_are_attached_when_available(
     monkeypatch.delenv("DEGRADED_TRANSCRIPT_TIMESTAMPS", raising=False)
     req = make_request(mp3, tmp_path)
 
-    async def fake_fetch(url, work_dir, **kwargs):
+    async def fake_fetch(url: str, work_dir: str | Path, **kwargs: Any) -> str:
         return "00:00 начало\n01:30 середина"
 
     data = await build_degraded_data(req)
@@ -287,6 +291,7 @@ async def test_safe_title_applied_before_synopsis(mp3: Path, tmp_path: Path) -> 
     outcome = await run_analysis(make_request(mp3, tmp_path, full_title="Молитва и пост"), rec.deps())
 
     assert outcome.safe_title_replaced is True
+    assert outcome.ai_data is not None
     assert outcome.ai_data["real_title"] == "Молитва и пост"
     synopsis_ai = next(c[2] for c in rec.calls if c[0] == "synopsis")["ai_data"]
     assert synopsis_ai["real_title"] == "Молитва и пост"

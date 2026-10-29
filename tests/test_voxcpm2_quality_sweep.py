@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -11,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / "tools" / "voxcpm2" / "quality_sweep.py"
 
 
-def _load_module():
+def _load_module() -> Any:
     spec = importlib.util.spec_from_file_location("voxcpm2_quality_sweep", MODULE_PATH)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)

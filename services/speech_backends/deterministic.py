@@ -52,7 +52,7 @@ class DeterministicSpeechBackend:
     """A second backend with deliberately different model/runtime assumptions."""
 
     backend_id = "deterministic-ci"
-    aliases = ("deterministic", "ci-tone")
+    aliases: tuple[str, ...] = ("deterministic", "ci-tone")
     adapter_policy = ADAPTER_POLICY
 
     def capabilities(self) -> BackendCapabilities:

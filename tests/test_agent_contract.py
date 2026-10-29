@@ -3,7 +3,7 @@
 from pathlib import Path
 
 
-def test_agents_contract_exists_and_covers_quality_policy():
+def test_agents_contract_exists_and_covers_quality_policy() -> None:
     text = Path("AGENTS.md").read_text(encoding="utf-8")
 
     required = [
@@ -22,7 +22,14 @@ def test_agents_contract_exists_and_covers_quality_policy():
         assert needle in text
 
 
-def test_all_async_command_handlers_are_registered():
+def test_verifier_install_instructions_use_the_exact_lock() -> None:
+    for filename in ("AGENTS.md", "README.md", "CONTRIBUTING.md"):
+        text = Path(filename).read_text(encoding="utf-8")
+        assert "pip install -r requirements-lock.txt" in text
+        assert "pip install -r requirements-dev.txt" not in text
+
+
+def test_all_async_command_handlers_are_registered() -> None:
     import ast
     import re
 

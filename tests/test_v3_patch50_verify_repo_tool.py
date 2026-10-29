@@ -1,11 +1,15 @@
 """Regression tests for v3 patch 50 — full repo verification tool."""
 
+from __future__ import annotations
+
 import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 
-def test_verify_repo_tool_exists_and_documents_all_checks():
+
+def test_verify_repo_tool_exists_and_documents_all_checks() -> None:
     src = Path("tools/verify_repo.py").read_text(encoding="utf-8")
     assert "compileall" in src
     assert "pytest" in src
@@ -14,12 +18,12 @@ def test_verify_repo_tool_exists_and_documents_all_checks():
     assert "Repository verification passed" in src
 
 
-def test_verify_repo_executes_ruff_format_gate(monkeypatch, tmp_path):
+def test_verify_repo_executes_ruff_format_gate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from tools import verify_repo
 
-    calls = []
+    calls: list[tuple[str, list[str], Path]] = []
 
-    def fake_run(name, command, cwd):
+    def fake_run(name: str, command: list[str], cwd: Path) -> verify_repo.CheckResult:
         calls.append((name, command, cwd))
         return verify_repo.CheckResult(name=name, command=tuple(command), returncode=0)
 
@@ -34,7 +38,7 @@ def test_verify_repo_executes_ruff_format_gate(monkeypatch, tmp_path):
     ) in calls
 
 
-def test_verify_repo_tool_help_runs():
+def test_verify_repo_tool_help_runs() -> None:
     proc = subprocess.run(
         [sys.executable, "tools/verify_repo.py", "--help"],
         capture_output=True,
@@ -46,7 +50,7 @@ def test_verify_repo_tool_help_runs():
     assert "Run full mp3telegrambot repository verification" in proc.stdout
 
 
-def test_verify_repo_tool_smoke_skip_heavy_checks():
+def test_verify_repo_tool_smoke_skip_heavy_checks() -> None:
     proc = subprocess.run(
         [sys.executable, "tools/verify_repo.py", "--skip-pytest", "--skip-ruff"],
         capture_output=True,

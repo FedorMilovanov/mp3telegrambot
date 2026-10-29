@@ -8,7 +8,7 @@ import asyncio
 import logging
 import os
 import re
-import requests
+import requests as requests
 import time
 from functools import partial
 from typing import Any

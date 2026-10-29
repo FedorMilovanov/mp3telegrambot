@@ -11,6 +11,7 @@ from services.speech_backends import (
     ModelProfileContractError,
     SpeechModelConfigurationError,
     SpeechModelProfile,
+    SpeechSelection,
     default_model_profile,
     deterministic_model_profile_contract,
     get_backend_model_contract,
@@ -25,7 +26,7 @@ from services.speech_backends import (
 )
 
 
-def _select(profile: SpeechModelProfile):
+def _select(profile: SpeechModelProfile) -> SpeechSelection:
     register_model_profile(profile)
     try:
         return select_production_speech(

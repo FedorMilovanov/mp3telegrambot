@@ -16,7 +16,9 @@ from tools.voxcpm2 import continuous_reference_policy
 from tools.voxcpm2 import controlled_reference_gate
 from tools.voxcpm2 import expressive_continuity
 from tools.voxcpm2 import expressive_translation
-from tools.voxcpm2 import generic_project_runtime as production
+from tools.voxcpm2 import generic_project_runtime as generic_project_runtime
+
+production = generic_project_runtime
 from tools.voxcpm2 import generic_short_production as pipeline
 
 _TAG_RE = re.compile(r"<[^>]+>")

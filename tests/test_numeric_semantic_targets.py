@@ -1,4 +1,6 @@
 from __future__ import annotations
+import pytest
+from typing import Any
 
 from pathlib import Path
 
@@ -6,7 +8,7 @@ from tools.voxcpm2 import professional_audio_qa_v45 as qa
 from tools.voxcpm2 import russian_spoken_numbers as numbers
 
 
-def _auto(heard: str, *, language: str = "ru", probability: float = 0.98):
+def _auto(heard: str, *, language: str = "ru", probability: float = 0.98) -> dict[str, Any]:
     return qa.semantic_tts_guard_v4.legacy.compare_spoken_text(
         "заведомо другой текст",
         heard,
@@ -104,7 +106,7 @@ def test_foreign_audio_is_not_rescued_by_numeric_target() -> None:
 
 
 def test_forced_russian_cannot_change_numeric_value(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     target = "У нас три книги."

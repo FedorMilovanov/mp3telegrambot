@@ -1,13 +1,16 @@
 import sqlite3
+from pathlib import Path
+
+import pytest
 
 from core import user_modes
 import handlers.mode_command as mode_command
 
 
-def test_factory_full_video_setting_persists_per_user(monkeypatch, tmp_path):
+def test_factory_full_video_setting_persists_per_user(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     db_path = tmp_path / "settings.sqlite3"
 
-    def connect():
+    def connect() -> sqlite3.Connection:
         conn = sqlite3.connect(db_path)
         conn.execute("CREATE TABLE IF NOT EXISTS bot_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
         return conn

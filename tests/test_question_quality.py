@@ -8,13 +8,13 @@ from core.question_quality import (
 )
 
 
-def test_question_quality_repairs_question_mark_for_question_like_start():
+def test_question_quality_repairs_question_mark_for_question_like_start() -> None:
     assert ensure_question_mark("Как этот аргумент проверяет мою веру") == "Как этот аргумент проверяет мою веру?"
     assert is_question_like("Почему это важно") is True
     assert is_question_like("Это утверждение") is False
 
 
-def test_question_quality_rejects_generic_questions():
+def test_question_quality_rejects_generic_questions() -> None:
     assert is_generic_question("Как это применить?") is True
     assert is_generic_question("Что это значит для меня?") is True
     assert is_generic_question("Что утверждает материал?") is True
@@ -22,7 +22,7 @@ def test_question_quality_rejects_generic_questions():
     assert is_generic_question("Как шесть дней творения связаны с авторитетом Бытия?") is False
 
 
-def test_question_quality_rejects_pious_but_empty_shells():
+def test_question_quality_rejects_pious_but_empty_shells() -> None:
     weak = [
         "Как нам больше доверять Богу?",
         "Какие практические шаги мы можем сделать?",
@@ -36,7 +36,7 @@ def test_question_quality_rejects_pious_but_empty_shells():
         assert question_is_usable(question) is False, question
 
 
-def test_question_quality_preserves_truth_and_distinction_questions():
+def test_question_quality_preserves_truth_and_distinction_questions() -> None:
     strong = [
         "Какая истина о Божьем характере делает тревогу несовместимой с аргументом Матфея 6?",
         "Почему совершенный вид глагола здесь не доказывает мгновенность всего процесса освящения?",
@@ -48,7 +48,7 @@ def test_question_quality_preserves_truth_and_distinction_questions():
         assert question_is_usable(question) is True, question
 
 
-def test_normalize_question_text_and_usable_contract():
+def test_normalize_question_text_and_usable_contract() -> None:
     q = normalize_question_text("🟢 Как шесть дней творения связаны с авторитетом Писания")
     assert q == "Как шесть дней творения связаны с авторитетом Писания?"
     assert question_is_usable(q) is True

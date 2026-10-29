@@ -21,7 +21,7 @@ def _telegraph_src() -> str:
 # ── 1. Сквозная нумерация вместо «•» ─────────────────────────────
 
 
-def test_global_numbering_formula_matches_expected_sequence():
+def test_global_numbering_formula_matches_expected_sequence() -> None:
     """Точная симуляция скриншота: части [4]+[2]+[3] секций → части 2 и 3
     должны продолжить нумерацию с 5 и с 7, а не начинать заново с 1."""
     parts = [
@@ -36,7 +36,7 @@ def test_global_numbering_formula_matches_expected_sequence():
         assert nums == expected[i], f"part {i}: got {nums}, expected {expected[i]}"
 
 
-def test_mini_outline_uses_global_numbering_not_bullets():
+def test_mini_outline_uses_global_numbering_not_bullets() -> None:
     src = _telegraph_src()
     block = src.split("elif total > 1:", 1)[1].split("for sec_idx, sec in enumerate(part_secs):", 1)[0]
     assert "_sec_offset_for_part = sum(len(p) for p in parts[:i])" in block
@@ -45,7 +45,7 @@ def test_mini_outline_uses_global_numbering_not_bullets():
     assert "_md_parse_inline(_ps_title)" in block
 
 
-def test_mini_outline_still_builds_real_link_after_r16_edit():
+def test_mini_outline_still_builds_real_link_after_r16_edit() -> None:
     src = _telegraph_src()
     block = src.split("elif total > 1:", 1)[1].split("for sec_idx, sec in enumerate(part_secs):", 1)[0]
     assert '"tag": "a"' in block
@@ -55,7 +55,7 @@ def test_mini_outline_still_builds_real_link_after_r16_edit():
 # ── 2. Слияние тонких хвостовых частей через реальный editPage ──
 
 
-def test_merge_loop_present_and_uses_classified_real_editpage_as_ground_truth():
+def test_merge_loop_present_and_uses_classified_real_editpage_as_ground_truth() -> None:
     src = _telegraph_src()
     block = src.split("success = await _publish_recursive(sections)", 1)[1].split(
         "total      = len(published_parts)", 1
@@ -68,13 +68,13 @@ def test_merge_loop_present_and_uses_classified_real_editpage_as_ground_truth():
     assert "published_parts[-2] = (_combined_secs, _prev_url)" in block
 
 
-def test_merge_loop_combines_sections_in_correct_order():
+def test_merge_loop_combines_sections_in_correct_order() -> None:
     src = _telegraph_src()
     block = src.split("while len(published_parts) >= 2:", 1)[1][:1000]
     assert "_combined_secs = _prev_secs + _last_secs" in block
 
 
-def test_merge_loop_has_ratelimit_pause_before_first_attempt():
+def test_merge_loop_has_ratelimit_pause_before_first_attempt() -> None:
     src = _telegraph_src()
     block = src.split("success = await _publish_recursive(sections)", 1)[1].split(
         "while len(published_parts) >= 2:", 1

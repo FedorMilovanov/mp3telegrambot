@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 import math
-import subprocess
+import subprocess as subprocess
 from pathlib import Path
 from typing import Any
 
@@ -248,7 +248,7 @@ def _empty_report(path: Path, source_duration: Any) -> dict[str, Any]:
     }
 
 
-def verify_final_file(
+def _legacy_verify_final_file_impl(
     path: Path,
     *,
     source_duration: float,
@@ -503,7 +503,7 @@ def _project_original_contract(mixed_video: Path) -> dict[str, Any]:
     }
 
 
-def _failure_summary(label: str, report: dict[str, Any]) -> str:
+def _legacy_failure_summary(label: str, report: dict[str, Any]) -> str:
     return f"{label}: " + "; ".join(str(item) for item in report.get("failures") or ["неизвестная ошибка"])
 
 
@@ -536,7 +536,7 @@ _BASE_ALL = tuple(globals().get("__all__", ()))
 
 from tools.voxcpm2 import final_media_spatial_bed  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
 
-_legacy_verify_final_file = verify_final_file
+_legacy_verify_final_file = _legacy_verify_final_file_impl
 
 probe_media = probe_media
 

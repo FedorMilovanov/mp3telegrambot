@@ -31,6 +31,7 @@ _LEGACY_CREATE_SHORT_SNAPSHOT = _impl.create_short_snapshot
 # Explicit re-export: the dynamic module fallback remains for legacy helpers,
 # but this settings boundary keeps a concrete callable type for strict callers.
 get_subtitles_mode_settings: Callable[[], dict[str, Any]] = _impl.get_subtitles_mode_settings
+build_short_caption: Callable[..., str] = _impl.build_short_caption
 
 
 def __getattr__(name: str) -> Any:

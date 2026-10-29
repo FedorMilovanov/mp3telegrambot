@@ -6,7 +6,7 @@ from core.prompts import build_audio_analysis_prompt, STUDY_ANALYSIS_PROMPT, REF
 from core.reasoning_guidance import build_reasoning_first_block, build_synopsis_reasoning_note
 
 
-def test_reasoning_guidance_blocks_are_positive_not_ban_wall():
+def test_reasoning_guidance_blocks_are_positive_not_ban_wall() -> None:
     block = build_reasoning_first_block("study")
     assert "РАЗРЕШЕНО И ЖЕЛАТЕЛЬНО" in block
     assert "материалу\nраскрыться" in block
@@ -16,7 +16,7 @@ def test_reasoning_guidance_blocks_are_positive_not_ban_wall():
     assert block.count("НЕ ") <= 1  # the block is intentionally not a ban wall
 
 
-def test_audio_prompt_puts_reasoning_before_base_principles():
+def test_audio_prompt_puts_reasoning_before_base_principles() -> None:
     prompt = build_audio_analysis_prompt("T", "A", "55:00", 3300, mode="deep")
     idx_reasoning = prompt.find("РАЗРЕШЕНО И ЖЕЛАТЕЛЬНО — REASONING-FIRST")
     idx_base = prompt.find("БАЗОВЫЕ ПРИНЦИПЫ")
@@ -25,7 +25,7 @@ def test_audio_prompt_puts_reasoning_before_base_principles():
     assert idx_reasoning < idx_base
 
 
-def test_study_reflection_prompts_accept_reasoning_guidance_via_synopsis_context():
+def test_study_reflection_prompts_accept_reasoning_guidance_via_synopsis_context() -> None:
     study_context = build_reasoning_first_block("study")
     study = STUDY_ANALYSIS_PROMPT.format(
         title="T",
@@ -66,7 +66,7 @@ def test_study_reflection_prompts_accept_reasoning_guidance_via_synopsis_context
     assert "Лестница пастырского применения" in reflection
 
 
-def test_synopsis_uses_central_reasoning_note_and_telegraph_pages_injects_blocks():
+def test_synopsis_uses_central_reasoning_note_and_telegraph_pages_injects_blocks() -> None:
     telegraph = Path("services/telegraph.py").read_text(encoding="utf-8")
     pages = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
     assert "from core.reasoning_guidance import build_synopsis_reasoning_note" in telegraph

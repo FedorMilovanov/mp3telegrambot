@@ -11,7 +11,7 @@ from pathlib import Path
 from core import prompts as P
 
 
-def test_no_dying_models_in_default_chains():
+def test_no_dying_models_in_default_chains() -> None:
     """gemini-3.1-flash-lite-preview выключен 09.07.2026,
     gemini-2.5-flash-lite — ~22.07.2026."""
     for f in (
@@ -29,14 +29,14 @@ def test_no_dying_models_in_default_chains():
             assert "3.1-flash-lite-preview" not in line, f"{f}: {line.strip()}"
 
 
-def test_reflection_examples_use_canonical_timestamp_format():
+def test_reflection_examples_use_canonical_timestamp_format() -> None:
     """Промпт сам учил формату [⏱ M:SS], который тут же запрещал и который
     постпроцессор вынужден был вычищать."""
     assert "[⏱" not in P.REFLECTION_APPLICATION_PROMPT
     assert "⏱ **M:SS**" in P.REFLECTION_APPLICATION_PROMPT
 
 
-def test_type6_not_leaked_into_synopsis_prompts():
+def test_type6_not_leaked_into_synopsis_prompts() -> None:
     """TYPE 6 — секция Study; в конспект-промптах она только путала модель."""
     assert "TYPE 6" not in P.SYNOPSIS_PROMPT_V2
     assert "TYPE 6" not in P.SYNOPSIS_PROMPT_QA
@@ -44,14 +44,14 @@ def test_type6_not_leaked_into_synopsis_prompts():
     assert "СТРУКТУРА REFLECTION" not in P.SYNOPSIS_PROMPT_V2
 
 
-def test_verbatim_prompt_has_inline_timestamp_ordering_rule():
+def test_verbatim_prompt_has_inline_timestamp_ordering_rule() -> None:
     """Дефолтный промпт конспекта — единственный, где не было правила,
     по которому его вывод аудитится (inline_timestamp_before_section)."""
     assert "по возрастанию" in P.SYNOPSIS_VERBATIM_PROMPT
     assert "РАНЬШЕ времени начала секции" in P.SYNOPSIS_VERBATIM_PROMPT
 
 
-def test_study_catalog_cut_and_contracts_added():
+def test_study_catalog_cut_and_contracts_added() -> None:
     src = Path("core/prompts.py").read_text(encoding="utf-8")
     assert "AUTHORS_REFERENCE" not in src, "мёртвый дубликат каталога удалён"
     assert len(P.STUDY_ANALYSIS_PROMPT) < 60000, "каталог уровня 2 сокращён"
@@ -67,13 +67,13 @@ def test_study_catalog_cut_and_contracts_added():
     assert "Церковь ≠ Израиль" in P.STUDY_ANALYSIS_PROMPT
 
 
-def test_reflection_application_contract_added():
+def test_reflection_application_contract_added() -> None:
     assert "КОНТРАКТ БЛОКА application" in P.REFLECTION_APPLICATION_PROMPT
     assert "anchor_timestamp" in P.REFLECTION_APPLICATION_PROMPT
     assert "concrete_step" in P.REFLECTION_APPLICATION_PROMPT
 
 
-def test_simple_prompt_shows_valid_json():
+def test_simple_prompt_shows_valid_json() -> None:
     src = Path("services/telegraph.py").read_text(encoding="utf-8")
     idx = src.find("simple_prompt = (")
     assert idx != -1
@@ -83,7 +83,7 @@ def test_simple_prompt_shows_valid_json():
     )
 
 
-def test_synopsis_grounding_flows_to_study_and_reflection():
+def test_synopsis_grounding_flows_to_study_and_reflection() -> None:
     """Study/Reflection — text-only вызовы; verbatim-стенограмма конспекта
     теперь передаётся как источник цитат (главная защита от выдуманных цитат)."""
     tg = Path("services/telegraph.py").read_text(encoding="utf-8")
@@ -95,7 +95,7 @@ def test_synopsis_grounding_flows_to_study_and_reflection():
     assert 'k.startswith("_")' in db, "приватные ключи не персистятся в кэш"
 
 
-def test_gemini_thinking_overflow_retry():
+def test_gemini_thinking_overflow_retry() -> None:
     """thinking-токены делят бюджет с max_output_tokens: MAX_TOKENS/пустой
     ответ раньше означал ПОЛНУЮ потерю анализа."""
     src = Path("services/gemini_analyze.py").read_text(encoding="utf-8")
@@ -103,14 +103,14 @@ def test_gemini_thinking_overflow_retry():
     assert 'thinking_level="low"' in src
 
 
-def test_quiz_prompt_matches_validator_rules():
+def test_quiz_prompt_matches_validator_rules() -> None:
     from services.quiz_generator import QUIZ_PROMPT
 
     assert "минимум из 2 значимых слов" in QUIZ_PROMPT
     assert "8 символов" in QUIZ_PROMPT
 
 
-def test_prompt_health_monitors_default_synopsis_prompt():
+def test_prompt_health_monitors_default_synopsis_prompt() -> None:
     from core.prompt_health import collect_prompt_health
 
     items = collect_prompt_health()
@@ -120,7 +120,7 @@ def test_prompt_health_monitors_default_synopsis_prompt():
         assert not i.leaky_literals, f"{i.name}: leaky {i.leaky_literals}"
 
 
-def test_no_named_copyable_examples_left():
+def test_no_named_copyable_examples_left() -> None:
     """AGENTS.md: pattern-level wording вместо буквальных примеров с именами."""
     for prompt in (P.SYNOPSIS_PROMPT_V2, P.REFLECTION_APPLICATION_PROMPT):
         assert "Вошер описывает" not in prompt

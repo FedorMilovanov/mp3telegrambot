@@ -5,7 +5,7 @@ from core.content_audit import audit_expanded_sections, has_content_audit_warnin
 from core.synopsis_quality import audit_synopsis_density, should_retry_synopsis_density
 
 
-def _flat(node):
+def _flat(node: object) -> str:
     if isinstance(node, str):
         return node
     if isinstance(node, dict):
@@ -15,7 +15,7 @@ def _flat(node):
     return ""
 
 
-def test_study_scripture_block_without_role_warns():
+def test_study_scripture_block_without_role_warns() -> None:
     sections = [
         {
             "title": "Ключевые тексты",
@@ -28,7 +28,7 @@ def test_study_scripture_block_without_role_warns():
     assert has_content_audit_warnings(issues) is True
 
 
-def test_study_source_and_lexicon_thin_blocks_warn():
+def test_study_source_and_lexicon_thin_blocks_warn() -> None:
     sections = [
         {
             "title": "Sources and Lexicon",
@@ -45,7 +45,7 @@ def test_study_source_and_lexicon_thin_blocks_warn():
     assert "lexicon_role_thin_warning" in codes
 
 
-def test_reflection_application_without_anchor_warns():
+def test_reflection_application_without_anchor_warns() -> None:
     sections = [
         {
             "title": "Практика",
@@ -59,7 +59,7 @@ def test_reflection_application_without_anchor_warns():
     assert any(i.code == "application_anchor_missing_warning" for i in issues)
 
 
-def test_scripture_common_misreading_field_removed_by_design():
+def test_scripture_common_misreading_field_removed_by_design() -> None:
     """R46: убрано насовсем (не запретом, а удалением инструкции/поля/рендера) —
     оператор счёл «Частая ошибка чтения» ненужным редакторским комментарием.
     Даже если модель по инерции пришлёт это поле — рендер его игнорирует."""
@@ -83,7 +83,7 @@ def test_scripture_common_misreading_field_removed_by_design():
     assert "общее уважение" not in flat
 
 
-def test_synopsis_density_warns_on_low_voice_and_short_paragraphs():
+def test_synopsis_density_warns_on_low_voice_and_short_paragraphs() -> None:
     sections = [{"title": f"S{i}", "time": f"{i * 5}:00", "content": "коротко"} for i in range(10)]
     issues = audit_synopsis_density(sections, 3600)
     codes = {i.code for i in issues}
@@ -92,14 +92,14 @@ def test_synopsis_density_warns_on_low_voice_and_short_paragraphs():
     assert should_retry_synopsis_density(issues, 3600) is True
 
 
-def test_content_audit_block_locations_are_well_formed():
+def test_content_audit_block_locations_are_well_formed() -> None:
     sections = [{"title": "Ключевые тексты", "content": "", "blocks": [{"type": "scripture", "ref": "2 Тим. 3:16"}]}]
     _, _, issues = audit_expanded_sections(sections, label="StudyAnalysis")
     assert any(".blocks[0]" in i.location for i in issues)
     assert not any(i.location.endswith("[0") for i in issues)
 
 
-def test_expanded_pipeline_has_gemini_content_audit_retry_before_publish():
+def test_expanded_pipeline_has_gemini_content_audit_retry_before_publish() -> None:
     src = __import__("pathlib").Path("services/telegraph_pages.py").read_text(encoding="utf-8")
     assert "EXPANDED_CONTENT_AUDIT_RETRY" in src
     assert "_retry_expanded_sections_for_content_audit" in src

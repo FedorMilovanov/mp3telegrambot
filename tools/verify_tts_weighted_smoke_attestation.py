@@ -104,7 +104,7 @@ def _identifier_scalar(
     return text
 
 
-def _duration_scalar(value: object) -> str:
+def _duration_scalar(value: Any) -> str:
     if isinstance(value, bool):
         raise RuntimeError("Unsafe duration output scalar.")
     try:
@@ -116,7 +116,7 @@ def _duration_scalar(value: object) -> str:
     return f"{number:.6f}".rstrip("0").rstrip(".")
 
 
-def _sample_rate_scalar(value: object) -> str:
+def _sample_rate_scalar(value: Any) -> str:
     if isinstance(value, bool):
         raise RuntimeError("Unsafe sample-rate output scalar.")
     try:

@@ -12,7 +12,7 @@ from core.segment_planner import (
 )
 
 
-def test_segment_planner_builds_qa_segments_from_timestamp_boundaries():
+def test_segment_planner_builds_qa_segments_from_timestamp_boundaries() -> None:
     timestamps = "0:00 Первый вопрос?\n5:00 Второй вопрос?\n12:00 Третий вопрос?"
     segments = build_segments_from_timestamps(timestamps, duration=20 * 60, format_name="qa", end_padding=5)
     assert len(segments) == 3
@@ -20,10 +20,12 @@ def test_segment_planner_builds_qa_segments_from_timestamp_boundaries():
     assert segments[0].end == 295
     assert segments[0].kind == "qa"
     assert segments[-1].end == 1200
-    assert get_segment_by_index(segments, 2).title == "Второй вопрос?"
+    selected = get_segment_by_index(segments, 2)
+    assert selected is not None
+    assert selected.title == "Второй вопрос?"
 
 
-def test_segment_planner_accepts_raw_gemini_timestamp_list_and_formats_text():
+def test_segment_planner_accepts_raw_gemini_timestamp_list_and_formats_text() -> None:
     raw = [
         {"time": "0:00", "topic": "**Вступление**"},
         {"time": "3:30", "topic": "Главный тезис"},
@@ -36,14 +38,14 @@ def test_segment_planner_accepts_raw_gemini_timestamp_list_and_formats_text():
     assert seconds_to_timestamp(3661) == "1:01:01"
 
 
-def test_parse_segment_selection_supports_lists_ranges_and_all():
+def test_parse_segment_selection_supports_lists_ranges_and_all() -> None:
     assert parse_segment_selection("1,3,5", 10) == [1, 3, 5]
     assert parse_segment_selection("2-4", 10) == [2, 3, 4]
     assert parse_segment_selection("all", 10, max_count=3) == [1, 2, 3]
     assert parse_segment_selection("9,2,2,bad", 3) == [2]
 
 
-def test_segment_inline_callback_is_wired():
+def test_segment_inline_callback_is_wired() -> None:
     callbacks = Path("handlers/callbacks.py").read_text(encoding="utf-8")
     assert 'data.startswith("segcut:")' in callbacks
     assert "_resolve_segment_source" in callbacks
@@ -51,7 +53,7 @@ def test_segment_inline_callback_is_wired():
     assert "release_render_lock" in callbacks
 
 
-def test_segments_and_cutseg_commands_are_registered():
+def test_segments_and_cutseg_commands_are_registered() -> None:
     commands = Path("handlers/commands.py").read_text(encoding="utf-8")
     main = Path("main.py").read_text(encoding="utf-8")
     assert "async def segments_command" in commands
@@ -69,7 +71,7 @@ def test_segments_and_cutseg_commands_are_registered():
     assert 'CommandHandler("cut"' in main
 
 
-def test_segment_commands_never_use_stale_video_cache_analysis():
+def test_segment_commands_never_use_stale_video_cache_analysis() -> None:
     commands = Path("handlers/commands.py").read_text(encoding="utf-8")
     start = commands.index("async def _resolve_segment_source")
     end = commands.index("\n\ndef _segments_from_cache", start)
@@ -81,7 +83,7 @@ def test_segment_commands_never_use_stale_video_cache_analysis():
     assert "stale video_cache ignored" in block
 
 
-def test_segment_plan_export_writes_files(tmp_path):
+def test_segment_plan_export_writes_files(tmp_path: Path) -> None:
     from core.generated_pages import save_segment_plan_export
 
     out = save_segment_plan_export(

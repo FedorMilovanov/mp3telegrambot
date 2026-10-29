@@ -5,7 +5,7 @@ from pathlib import Path
 from core.content_audit import audit_expanded_sections, format_content_audit_issues
 
 
-def test_content_audit_normalizes_section_title_content_and_outline():
+def test_content_audit_normalizes_section_title_content_and_outline() -> None:
     sections = [
         {
             "title": "Странный огонь и авторитет Слово Божьего",
@@ -28,7 +28,7 @@ def test_content_audit_normalizes_section_title_content_and_outline():
     assert "third_person_fixed" in codes
 
 
-def test_content_audit_source_map_prefers_original_and_dedupes_authors():
+def test_content_audit_source_map_prefers_original_and_dedupes_authors() -> None:
     sections = [
         {
             "title": "Карта источников для дальнейшего изучения",
@@ -49,14 +49,14 @@ def test_content_audit_source_map_prefers_original_and_dedupes_authors():
     assert any(i.code == "source_card_fixed" for i in issues)
 
 
-def test_content_audit_warns_about_mixed_greek_after_known_fixes():
+def test_content_audit_warns_about_mixed_greek_after_known_fixes() -> None:
     sections = [{"title": "Лексика", "content": "Слово αβвγ остается смешанным."}]
     out_sections, _, issues = audit_expanded_sections(sections, [], label="StudyAnalysis")
     assert out_sections[0]["content"] == "Слово αβвγ остается смешанным."
     assert any(i.code == "mixed_greek_cyrillic_warning" for i in issues)
 
 
-def test_content_audit_warns_about_bare_translation_forks():
+def test_content_audit_warns_about_bare_translation_forks() -> None:
     sections = [
         {
             "title": "Переводческие развилки",
@@ -69,7 +69,7 @@ def test_content_audit_warns_about_bare_translation_forks():
     assert "bare_translation_forks_warning" in rendered
 
 
-def test_content_audit_is_wired_into_expanded_and_synopsis_pipelines():
+def test_content_audit_is_wired_into_expanded_and_synopsis_pipelines() -> None:
     telegraph_pages = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
     telegraph = Path("services/telegraph.py").read_text(encoding="utf-8")
 
@@ -82,7 +82,7 @@ def test_content_audit_is_wired_into_expanded_and_synopsis_pipelines():
     assert "Synopsis v2: content audit before publish" in telegraph
 
 
-def test_content_audit_rewrites_dannyy_academic_source_wording():
+def test_content_audit_rewrites_dannyy_academic_source_wording() -> None:
     sections = [{"title": "Карта источников", "content": "Данный академический труд исследует тему."}]
     out, _, issues = audit_expanded_sections(sections, label="StudyAnalysis")
     assert "Данный академический" not in out[0]["content"]

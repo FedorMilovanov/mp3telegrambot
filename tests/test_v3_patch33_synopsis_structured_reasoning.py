@@ -6,16 +6,18 @@ from core.candidate_schema import expanded_page_response_schema
 from services.telegraph_pages import _parse_expanded_json
 
 
-def test_synopsis_can_use_expanded_page_schema_shape():
+def test_synopsis_can_use_expanded_page_schema_shape() -> None:
     schema = expanded_page_response_schema()
     assert schema["required"] == ["outline", "sections"]
     raw = '{"outline":[{"title":"A","time":"0:00"}],"sections":[{"title":"A","time":"0:00","content":"Text"}]}'
-    outline, sections = _parse_expanded_json(raw)
+    parsed = _parse_expanded_json(raw)
+    assert parsed is not None
+    outline, sections = parsed
     assert outline[0]["time"] == "0:00"
     assert sections[0]["content"] == "Text"
 
 
-def test_telegraph_synopsis_wires_structured_output_with_legacy_fallback():
+def test_telegraph_synopsis_wires_structured_output_with_legacy_fallback() -> None:
     src = Path("services/telegraph.py").read_text(encoding="utf-8")
     assert "from core.candidate_schema import expanded_page_response_schema" in src
     assert "def _synopsis_structured_output_enabled" in src
@@ -36,7 +38,7 @@ def test_telegraph_synopsis_wires_structured_output_with_legacy_fallback():
     assert "gemini-2.5-flash-lite" not in src
 
 
-def test_synopsis_structured_output_preserves_quota_overload_passthrough():
+def test_synopsis_structured_output_preserves_quota_overload_passthrough() -> None:
     src = Path("services/telegraph.py").read_text(encoding="utf-8")
     assert "is_quota_error(_schema_err)" in src
     assert "is_overload_error(_schema_err)" in src
@@ -45,7 +47,7 @@ def test_synopsis_structured_output_preserves_quota_overload_passthrough():
     assert "raise" in src[start:end]
 
 
-def test_synopsis_positive_reasoning_note_is_injected_into_qa_and_v2():
+def test_synopsis_positive_reasoning_note_is_injected_into_qa_and_v2() -> None:
     src = Path("services/telegraph.py").read_text(encoding="utf-8")
     assert "SYNOPSIS_REASONING_FIRST_NOTE" in src
     from core.reasoning_guidance import build_synopsis_reasoning_note

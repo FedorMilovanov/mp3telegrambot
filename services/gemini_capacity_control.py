@@ -18,7 +18,7 @@ from __future__ import annotations
 import asyncio
 import math
 import os
-import random
+import random as random
 import time
 import weakref
 from contextlib import asynccontextmanager

@@ -1,27 +1,33 @@
 """Executed regression coverage for typed RuTube/VK listing helpers."""
 
+import pytest
+
 import asyncio
+from collections.abc import Callable
+from typing import Any, cast
 from types import SimpleNamespace
 
 from services import search
 
 
 class ImmediateLoop:
-    async def run_in_executor(self, _executor, callback):
+    async def run_in_executor(self, _executor: Any, callback: Callable[[], Any]) -> Any:
         return callback()
 
 
-def test_rutube_listing_stops_cleanly_on_first_empty_page(monkeypatch):
+def test_rutube_listing_stops_cleanly_on_first_empty_page(monkeypatch: pytest.MonkeyPatch) -> None:
     response = SimpleNamespace(status_code=200, json=lambda: {"results": []})
     monkeypatch.setattr(search.requests, "get", lambda *_args, **_kwargs: response)
 
-    results, complete = asyncio.run(search._load_rutube_listing("channel", {}, ImmediateLoop(), "Title", 60))
+    results, complete = asyncio.run(
+        search._load_rutube_listing("channel", {}, cast(asyncio.AbstractEventLoop, ImmediateLoop()), "Title", 60)
+    )
 
     assert results == []
     assert complete is True
 
 
-def test_rutube_listing_fast_path_scores_cached_results(monkeypatch):
+def test_rutube_listing_fast_path_scores_cached_results(monkeypatch: pytest.MonkeyPatch) -> None:
     cached = [{"id": "video", "title": "Title", "duration": 60}]
     monkeypatch.setattr(search, "get_channel_mapping", lambda _channel: {"rutube_channel_id": "channel"})
     monkeypatch.setattr(search, "_get_rutube_listing_cache", lambda _channel: (cached, True))
@@ -32,7 +38,7 @@ def test_rutube_listing_fast_path_scores_cached_results(monkeypatch):
     assert result == "https://rutube.ru/video/video/"
 
 
-def test_vk_search_title_builder_executes_all_nested_helpers():
+def test_vk_search_title_builder_executes_all_nested_helpers() -> None:
     title = "Title"
     result = search._build_vk_search_title(
         "Author Name — Why did Paul write Romans?",
@@ -45,7 +51,7 @@ def test_vk_search_title_builder_executes_all_nested_helpers():
     assert title in result or "Paul" in result or "Romans" in result
 
 
-def test_vk_search_builds_request_params_and_returns_canonical_match(monkeypatch):
+def test_vk_search_builds_request_params_and_returns_canonical_match(monkeypatch: pytest.MonkeyPatch) -> None:
     item = {"owner_id": 123, "id": 456, "title": "Title", "duration": 60}
     response = SimpleNamespace(status_code=200, json=lambda: {"response": {"items": [item]}})
     monkeypatch.setattr(search, "get_channel_mapping", lambda _channel: {"vk_owner_id": 123})

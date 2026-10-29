@@ -12,10 +12,11 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
-import subprocess
+import subprocess as subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any, TypedDict
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -87,7 +88,14 @@ def _concat_video_hash(ffmpeg: str, concat_list: Path) -> str:
     return result.stdout.strip()
 
 
-def _probe_video(ffprobe: str, media_path: Path) -> dict[str, object]:
+class MediaProbe(TypedDict):
+    codec: str
+    width: int
+    height: int
+    duration: float
+
+
+def _probe_video(ffprobe: str, media_path: Path) -> MediaProbe:
     result = _run(
         [
             ffprobe,
@@ -157,7 +165,7 @@ async def _verify(ffmpeg: str, ffprobe: str, workdir: Path) -> dict[str, object]
     original_static = render_clips._is_static_video
     original_cleanup = render_clips._unlink_render_paths
 
-    async def _not_static(*_args, **_kwargs):
+    async def _not_static(*_args: Any, **_kwargs: Any) -> bool:
         return False
 
     render_clips._get_video_encoder = lambda: (

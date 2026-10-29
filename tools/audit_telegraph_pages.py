@@ -24,7 +24,7 @@ import time
 from pathlib import Path
 from typing import Iterable
 
-import requests
+import requests as requests
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +87,9 @@ def _extract_next_part_urls_from_nodes(nodes: object, *, base: str = "https://te
         for child in node.get("children", []) or []:
             walk(child)
 
-    for item in nodes or []:
+    if not isinstance(nodes, list):
+        return out
+    for item in nodes:
         walk(item)
     return out
 
@@ -161,7 +163,7 @@ def extract_telegraph_urls(markdown_path: Path) -> list[str]:
 
 async def _fetch_with_playwright(url: str, timeout_ms: int) -> str | None:
     try:
-        from playwright.async_api import async_playwright  # type: ignore
+        from playwright.async_api import async_playwright
     except Exception:
         return None
 
@@ -170,7 +172,10 @@ async def _fetch_with_playwright(url: str, timeout_ms: int) -> str | None:
         try:
             page = await browser.new_page()
             await page.goto(url, wait_until="networkidle", timeout=timeout_ms)
-            return await page.content()
+            content = await page.content()
+            if not isinstance(content, str):
+                raise TypeError("Playwright page content must be text")
+            return content
         finally:
             await browser.close()
 
@@ -194,7 +199,7 @@ async def fetch_page_html(url: str, *, prefer_playwright: bool = True, timeout: 
     return _fetch_with_requests(url, timeout), "requests"
 
 
-def _issues_to_dict(issues: list[TelegraphDomIssue]) -> list[dict]:
+def _issues_to_dict(issues: list[TelegraphDomIssue]) -> list[dict[str, str]]:
     return [{"code": i.code, "severity": i.severity, "message": i.message, "snippet": i.snippet} for i in issues]
 
 

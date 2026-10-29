@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from tools.voxcpm2 import clean_runtime_contract as contract
@@ -19,7 +21,7 @@ from tools.voxcpm2 import clean_runtime_contract as contract
     ],
 )
 def test_clean_runtime_rejects_bool_and_fractional_integer_settings(
-    request_payload: dict,
+    request_payload: dict[str, Any],
     message: str,
 ) -> None:
     with pytest.raises(RuntimeError, match=message):

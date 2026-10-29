@@ -43,7 +43,7 @@ def test_all_clean_entrypoints_use_continuous_reference_policy() -> None:
         assert "continuous_reference_policy.build_calm_references(" in source
 
 
-def test_unusable_continuous_window_is_not_ranked(monkeypatch) -> None:
+def test_unusable_continuous_window_is_not_ranked(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         policy,
         "_window_score",
@@ -59,7 +59,7 @@ def test_unusable_continuous_window_is_not_ranked(monkeypatch) -> None:
     assert result == []
 
 
-def test_usable_continuous_window_remains_candidate(monkeypatch) -> None:
+def test_usable_continuous_window_remains_candidate(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         policy,
         "_window_score",
@@ -77,7 +77,7 @@ def test_usable_continuous_window_remains_candidate(monkeypatch) -> None:
 
 
 def test_bad_multiwindow_fallback_is_deleted_and_rejected(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     output = tmp_path / "reference.wav"
@@ -88,7 +88,13 @@ def test_bad_multiwindow_fallback_is_deleted_and_rejected(
     )
     monkeypatch.setattr(policy, "_candidate_windows", lambda *args, **kwargs: [])
 
-    def bad_fallback(_source, _intervals, destination, *, target_seconds):
+    def bad_fallback(
+        _source: Path,
+        _intervals: list[tuple[float, float]],
+        destination: Path,
+        *,
+        target_seconds: float,
+    ) -> None:
         Path(destination).write_bytes(b"bad-reference")
         Path(destination).with_suffix(".selection.json").write_text(
             json.dumps({"selected": [{**_stats(voiced=0.01)}]}),
@@ -113,7 +119,7 @@ def test_bad_multiwindow_fallback_is_deleted_and_rejected(
 
 
 def test_good_multiwindow_fallback_keeps_explicit_mode(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     output = tmp_path / "reference.wav"
@@ -124,7 +130,13 @@ def test_good_multiwindow_fallback_keeps_explicit_mode(
     )
     monkeypatch.setattr(policy, "_candidate_windows", lambda *args, **kwargs: [])
 
-    def good_fallback(_source, _intervals, destination, *, target_seconds):
+    def good_fallback(
+        _source: Path,
+        _intervals: list[tuple[float, float]],
+        destination: Path,
+        *,
+        target_seconds: float,
+    ) -> None:
         sample_rate = 16_000
         timeline = np.arange(sample_rate * 6, dtype=np.float32) / sample_rate
         sf.write(

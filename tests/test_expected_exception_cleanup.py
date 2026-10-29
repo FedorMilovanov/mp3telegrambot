@@ -1,4 +1,6 @@
 from __future__ import annotations
+from typing import Any
+from collections.abc import Callable
 
 import asyncio
 from pathlib import Path
@@ -18,7 +20,7 @@ def _glob_paths(directory: Path, pattern: str) -> list[Path]:
 
 
 @pytest.mark.asyncio
-async def test_segment_lock_release_failure_does_not_mask_render_result(monkeypatch) -> None:
+async def test_segment_lock_release_failure_does_not_mask_render_result(monkeypatch: pytest.MonkeyPatch) -> None:
     from core import render_locks
 
     release = AsyncMock(side_effect=RuntimeError("lock store unavailable"))
@@ -30,7 +32,9 @@ async def test_segment_lock_release_failure_does_not_mask_render_result(monkeypa
 
 
 @pytest.mark.asyncio
-async def test_nosub_invalid_candidate_json_still_sends_saved_video(monkeypatch, tmp_path: Path) -> None:
+async def test_nosub_invalid_candidate_json_still_sends_saved_video(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     video = tmp_path / "saved_nosub.mp4"
     video.write_bytes(b"video")
     query = SimpleNamespace(
@@ -72,7 +76,9 @@ async def test_nosub_missing_file_has_expiry_response(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_retrim_missing_source_without_url_warns_before_render(monkeypatch, tmp_path: Path) -> None:
+async def test_retrim_missing_source_without_url_warns_before_render(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     source = tmp_path / "missing-source.mp4"
     monkeypatch.setattr(
         callbacks,
@@ -104,8 +110,10 @@ async def test_retrim_missing_source_without_url_warns_before_render(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_retrim_invalid_json_and_render_failure_still_clean_up(monkeypatch, tmp_path: Path) -> None:
-    async def fail_render(**_kwargs):
+async def test_retrim_invalid_json_and_render_failure_still_clean_up(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    async def fail_render(**_kwargs: Any) -> None:
         raise RuntimeError("synthetic render failure")
 
     monkeypatch.setattr(callbacks, "DOWNLOAD_DIR", tmp_path)
@@ -130,7 +138,7 @@ async def test_retrim_invalid_json_and_render_failure_still_clean_up(monkeypatch
 @pytest.mark.asyncio
 @pytest.mark.parametrize("nosub_available", [False, True])
 async def test_retrim_success_preserves_source_and_conditional_nosub_button(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     nosub_available: bool,
 ) -> None:
@@ -140,10 +148,10 @@ async def test_retrim_success_preserves_source_and_conditional_nosub_button(
     if nosub_available:
         nosub.write_bytes(b"nosub")
     monkeypatch.setattr(callbacks, "DOWNLOAD_DIR", tmp_path)
-    rendered = []
-    saved = []
+    rendered: list[Path] = []
+    saved: list[dict[str, Any]] = []
 
-    async def fake_render(**kwargs):
+    async def fake_render(**kwargs: Any) -> bool:
         output = kwargs["output_path"]
         output.write_bytes(b"rendered")
         rendered.append(output)
@@ -175,7 +183,7 @@ async def test_retrim_success_preserves_source_and_conditional_nosub_button(
     assert len(nosub_buttons) == int(nosub_available)
 
 
-def test_cleanup_files_ignores_locked_media(monkeypatch, tmp_path: Path) -> None:
+def test_cleanup_files_ignores_locked_media(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     download_dir = tmp_path / "downloads"
     download_dir.mkdir()
     locked = download_dir / "media-video.mp4"
@@ -184,7 +192,7 @@ def test_cleanup_files_ignores_locked_media(monkeypatch, tmp_path: Path) -> None
     monkeypatch.setattr(core_utils, "_THUMBS_LAST_CLEANUP", core_utils.time.time() + 10)
     real_unlink = Path.unlink
 
-    def locked_unlink(self, *args, **kwargs):
+    def locked_unlink(self: Path, *args: Any, **kwargs: Any) -> None:
         if self == locked:
             raise OSError("locked by ffmpeg")
         return real_unlink(self, *args, **kwargs)
@@ -195,7 +203,7 @@ def test_cleanup_files_ignores_locked_media(monkeypatch, tmp_path: Path) -> None
 
 
 @pytest.mark.parametrize("remover", [shorts_pipeline._unlink, factory_short_delivery._remove])
-def test_pipeline_unlink_helpers_accept_missing_paths(remover, tmp_path: Path) -> None:
+def test_pipeline_unlink_helpers_accept_missing_paths(remover: Callable[[Path | None], None], tmp_path: Path) -> None:
     remover(tmp_path / "already-removed.mp4")
 
 
@@ -206,7 +214,7 @@ async def test_factory_safe_status_delivers_edit() -> None:
     status.edit_text.assert_awaited_once_with("ready")
 
 
-def test_factory_source_persistence_replaces_stale_variant(monkeypatch, tmp_path: Path) -> None:
+def test_factory_source_persistence_replaces_stale_variant(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     download_dir = tmp_path / "downloads"
     download_dir.mkdir()
     stale = download_dir / "media_factory_source.old"

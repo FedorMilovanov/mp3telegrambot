@@ -3,7 +3,7 @@ from pathlib import Path
 from services.runtime_manifest import DEFAULT_RUNTIME_FEATURES
 
 
-def test_factory_execution_is_not_a_runtime_patch_feature():
+def test_factory_execution_is_not_a_runtime_patch_feature() -> None:
     feature_ids = {item.feature_id for item in DEFAULT_RUNTIME_FEATURES}
     assert "shorts-factory-max" not in feature_ids
 
@@ -12,7 +12,7 @@ def test_factory_execution_is_not_a_runtime_patch_feature():
     assert "install_shorts_factory_mode" not in manifest_source
 
 
-def test_factory_quality_and_delivery_are_owned_by_source_modules():
+def test_factory_quality_and_delivery_are_owned_by_source_modules() -> None:
     factory_source = Path("pipelines/shorts_factory.py").read_text(encoding="utf-8")
     short_delivery = Path("pipelines/factory_short_delivery.py").read_text(encoding="utf-8")
     source_owner = Path("services/shorts_factory_source.py").read_text(encoding="utf-8")
@@ -34,7 +34,7 @@ def test_factory_quality_and_delivery_are_owned_by_source_modules():
     assert "install_factory_ru_boundary_capture" not in timing_source
 
 
-def test_required_runtime_import_failure_cannot_be_silently_ignored():
+def test_required_runtime_import_failure_cannot_be_silently_ignored() -> None:
     manifest_source = Path("services/runtime_manifest.py").read_text(encoding="utf-8")
     assert "except Exception as exc:" in manifest_source
     assert "RuntimeBootstrapError" in manifest_source

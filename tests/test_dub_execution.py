@@ -4,6 +4,7 @@ import ctypes
 import json
 import os
 from pathlib import Path
+from typing import Any
 from types import SimpleNamespace
 
 import pytest
@@ -20,7 +21,7 @@ from services.dub_execution import (
 from services.dub_studio import DubStore, Recipe
 
 
-def _recipe(outputs: dict) -> Recipe:
+def _recipe(outputs: dict[str, Any]) -> Recipe:
     return Recipe(
         recipe_id="test_recipe",
         title="Test",
@@ -34,7 +35,7 @@ def _recipe(outputs: dict) -> Recipe:
     )
 
 
-def test_execution_lease_records_child_identity_and_fingerprint(tmp_path: Path):
+def test_execution_lease_records_child_identity_and_fingerprint(tmp_path: Path) -> None:
     store = DubStore(tmp_path)
     lease = record_execution_lease(
         store,
@@ -53,7 +54,7 @@ def test_execution_lease_records_child_identity_and_fingerprint(tmp_path: Path):
     assert active_execution_leases(store) == []
 
 
-def test_live_lease_cannot_be_replaced(tmp_path: Path):
+def test_live_lease_cannot_be_replaced(tmp_path: Path) -> None:
     store = DubStore(tmp_path)
     record_execution_lease(
         store,
@@ -73,7 +74,7 @@ def test_live_lease_cannot_be_replaced(tmp_path: Path):
         )
 
 
-def test_recovery_marks_nonexistent_runner_stale_before_requeue(tmp_path: Path):
+def test_recovery_marks_nonexistent_runner_stale_before_requeue(tmp_path: Path) -> None:
     store = DubStore(tmp_path)
     record_execution_lease(
         store,
@@ -93,7 +94,7 @@ def test_recovery_marks_nonexistent_runner_stale_before_requeue(tmp_path: Path):
     assert active_execution_leases(store) == []
 
 
-def test_required_artifacts_must_be_current_and_manifest_completed(tmp_path: Path):
+def test_required_artifacts_must_be_current_and_manifest_completed(tmp_path: Path) -> None:
     output = tmp_path / "output"
     output.mkdir()
     manifest = output / "manifest.json"
@@ -129,7 +130,7 @@ def test_required_artifacts_must_be_current_and_manifest_completed(tmp_path: Pat
     assert report["outputs"]["mixed"]["valid"] is True
 
 
-def test_stale_required_artifact_is_rejected(tmp_path: Path):
+def test_stale_required_artifact_is_rejected(tmp_path: Path) -> None:
     output = tmp_path / "output"
     output.mkdir()
     artifact = output / "manifest.json"
@@ -154,7 +155,7 @@ def test_stale_required_artifact_is_rejected(tmp_path: Path):
         )
 
 
-def test_ffprobe_postcondition_uses_resolved_executable(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_ffprobe_postcondition_uses_resolved_executable(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     calls: dict[str, object] = {}
 
     def resolve(name: str) -> str:
@@ -178,7 +179,9 @@ def test_ffprobe_postcondition_uses_resolved_executable(monkeypatch: pytest.Monk
     assert command[-1] == str(media)
 
 
-def test_windows_pid_check_closes_owned_process_handle(monkeypatch: pytest.MonkeyPatch):
+def test_windows_pid_check_closes_owned_process_handle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     opened: list[tuple[int, bool, int]] = []
     closed: list[int] = []
 
@@ -195,7 +198,9 @@ def test_windows_pid_check_closes_owned_process_handle(monkeypatch: pytest.Monke
     assert closed == [88]
 
 
-def test_windows_start_token_closes_handle_after_process_times(monkeypatch: pytest.MonkeyPatch):
+def test_windows_start_token_closes_handle_after_process_times(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     closed: list[int] = []
     calls: list[int] = []
 

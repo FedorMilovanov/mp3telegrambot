@@ -28,7 +28,7 @@ if str(ROOT) not in sys.path:
 OUT_DIR = ROOT / "docs" / "page_dumps"
 
 
-def _node_to_md(node, depth: int = 0) -> str:
+def _node_to_md(node: object, depth: int = 0) -> str:
     if isinstance(node, str):
         return node
     if not isinstance(node, dict):

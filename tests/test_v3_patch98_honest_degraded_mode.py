@@ -2,7 +2,7 @@ from converters.caption import build_caption
 from services.youtube_transcript import timed_text_to_caption_timestamps
 
 
-def test_transcript_to_caption_timestamps_is_grounded_and_limited():
+def test_transcript_to_caption_timestamps_is_grounded_and_limited() -> None:
     timed = "\n".join(
         f"[{i}:00] Это длинная строка субтитров номер {i}, которая должна быть укорочена для подписи."
         for i in range(10)
@@ -15,7 +15,7 @@ def test_transcript_to_caption_timestamps_is_grounded_and_limited():
     assert "…" in lines[0]
 
 
-def test_degraded_caption_announces_no_ai_pages_and_transcript_timestamps():
+def test_degraded_caption_announces_no_ai_pages_and_transcript_timestamps() -> None:
     cap = build_caption(
         "Автор",
         "Название",
@@ -38,7 +38,7 @@ def test_degraded_caption_announces_no_ai_pages_and_transcript_timestamps():
     assert "Читать Подробный Разбор" not in cap
 
 
-def test_pipeline_honest_degraded_mode_is_wired():
+def test_pipeline_honest_degraded_mode_is_wired() -> None:
     """Честная деградация подключена, а её текст и выключатель живут в своём модуле.
 
     Раньше проверка искала строку `DEGRADED_TRANSCRIPT_TIMESTAMPS` прямо в
@@ -66,14 +66,14 @@ def test_pipeline_honest_degraded_mode_is_wired():
 
 
 def _stage() -> str:
-    return __import__("pathlib").Path("pipelines/telegraph_repair_stage.py").read_text(encoding="utf-8")
+    return str(__import__("pathlib").Path("pipelines/telegraph_repair_stage.py").read_text(encoding="utf-8"))
 
 
 def _pipeline() -> str:
-    return __import__("pathlib").Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
+    return str(__import__("pathlib").Path("pipelines/main_pipeline.py").read_text(encoding="utf-8"))
 
 
-def test_pipeline_auto_repairs_telegraph_after_publish_by_default():
+def test_pipeline_auto_repairs_telegraph_after_publish_by_default() -> None:
     """Починка включена по умолчанию и подключена к пайплайну.
 
     После выноса в `pipelines/telegraph_repair_stage.py` проверяются оба конца:
@@ -88,7 +88,7 @@ def test_pipeline_auto_repairs_telegraph_after_publish_by_default():
     assert "enabled=repair_enabled()" in pipeline
 
 
-def test_pipeline_persists_auto_repair_status_in_generated_pages_archive():
+def test_pipeline_persists_auto_repair_status_in_generated_pages_archive() -> None:
     stage = _stage()
     assert "def changed_count" in stage
     archive = __import__("pathlib").Path("pipelines/archive_stage.py").read_text(encoding="utf-8")
@@ -99,14 +99,14 @@ def test_pipeline_persists_auto_repair_status_in_generated_pages_archive():
     assert "repair=_repair" in pipeline
 
 
-def test_pipeline_persists_auto_repair_unresolved_audit_summaries():
+def test_pipeline_persists_auto_repair_unresolved_audit_summaries() -> None:
     stage = _stage()
     assert "unresolved audit" in stage
     assert "audit_summary" in stage
     assert "for value in (result.error, result.audit_summary)" in stage
 
 
-def test_pipeline_auto_repair_expands_multipart_telegraph_chains():
+def test_pipeline_auto_repair_expands_multipart_telegraph_chains() -> None:
     stage = _stage()
     assert "expand_telegraph_page_chain" in stage
     assert "chain = await expand(base) or [base]" in stage

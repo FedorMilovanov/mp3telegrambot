@@ -1,4 +1,6 @@
 import asyncio
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 import pytest
 import requests
@@ -10,14 +12,14 @@ from services.telegraph_edit import TelegraphEditResult
 @pytest.mark.asyncio
 async def test_telegraph_post_retries_transient_network_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = 0
-    sleeps = []
+    sleeps: list[float] = []
 
     class Response:
         @staticmethod
-        def json():
+        def json() -> dict[str, Any]:
             return {"ok": True, "result": {"url": "https://telegra.ph/Page"}}
 
-    def post(_url, **_kwargs):
+    def post(_url: str, **_kwargs: Any) -> Response:
         nonlocal calls
         calls += 1
         if calls == 1:
@@ -48,17 +50,17 @@ async def test_telegraph_post_retries_transient_network_failure(monkeypatch: pyt
 @pytest.mark.asyncio
 async def test_telegraph_post_retries_transient_http_503(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = 0
-    sleeps = []
+    sleeps: list[float] = []
 
     class Response:
-        def __init__(self, status_code, payload):
+        def __init__(self, status_code: int, payload: dict[str, Any]) -> None:
             self.status_code = status_code
             self._payload = payload
 
-        def json(self):
+        def json(self) -> dict[str, Any]:
             return self._payload
 
-    def post(_url, **_kwargs):
+    def post(_url: str, **_kwargs: Any) -> Response:
         nonlocal calls
         calls += 1
         if calls == 1:
@@ -88,16 +90,16 @@ async def test_telegraph_post_retries_503_with_invalid_json(monkeypatch: pytest.
     calls = 0
 
     class Response:
-        def __init__(self, status_code, valid):
+        def __init__(self, status_code: int, valid: bool) -> None:
             self.status_code = status_code
             self.valid = valid
 
-        def json(self):
+        def json(self) -> dict[str, Any]:
             if not self.valid:
                 raise ValueError("html error page")
             return {"ok": True, "result": {"url": "https://telegra.ph/Page"}}
 
-    def post(_url, **_kwargs):
+    def post(_url: str, **_kwargs: Any) -> Response:
         nonlocal calls
         calls += 1
         return Response(503, False) if calls == 1 else Response(200, True)
@@ -124,7 +126,7 @@ async def test_service_edit_returns_content_too_big_after_one_transport_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls = 0
-    prepared_payloads: list[list] = []
+    prepared_payloads: list[list[dict[str, Any]]] = []
 
     monkeypatch.setattr(telegraph, "TELEGRAPH_TOKEN", "token")
     monkeypatch.setattr(telegraph, "_clean_telegraph_nodes", lambda nodes: list(nodes))
@@ -133,12 +135,12 @@ async def test_service_edit_returns_content_too_big_after_one_transport_call(
     monkeypatch.setattr(telegraph, "audit_telegraph_page", lambda *_args, **_kwargs: [])
 
     async def edit_once(
-        _page_url,
-        _title,
-        _author,
-        nodes,
-        _loop,
-        **_kwargs,
+        _page_url: str,
+        _title: str,
+        _author: str,
+        nodes: list[dict[str, Any]],
+        _loop: asyncio.AbstractEventLoop,
+        **_kwargs: Any,
     ) -> TelegraphEditResult:
         nonlocal calls
         calls += 1
@@ -183,7 +185,7 @@ async def test_service_edit_retries_transient_transport_and_invalidates_on_succe
     monkeypatch.setattr(telegraph, "_final_telegraph_polish", lambda nodes: list(nodes))
     monkeypatch.setattr(telegraph, "audit_telegraph_page", lambda *_args, **_kwargs: [])
 
-    async def edit_once(*_args, **_kwargs) -> TelegraphEditResult:
+    async def edit_once(*_args: Any, **_kwargs: Any) -> TelegraphEditResult:
         nonlocal calls
         calls += 1
         return next(outcomes)
@@ -194,7 +196,9 @@ async def test_service_edit_retries_transient_transport_and_invalidates_on_succe
     monkeypatch.setattr(telegraph, "edit_telegraph_page_once", edit_once)
     original_retry = telegraph.run_telegraph_edit_with_retry
 
-    async def patched_retry(operation, **_kwargs):
+    async def patched_retry(
+        operation: Callable[[], Awaitable[TelegraphEditResult]], **_kwargs: Any
+    ) -> TelegraphEditResult:
         return await original_retry(operation, max_attempts=3, sleep=no_sleep)
 
     monkeypatch.setattr(telegraph, "run_telegraph_edit_with_retry", patched_retry)

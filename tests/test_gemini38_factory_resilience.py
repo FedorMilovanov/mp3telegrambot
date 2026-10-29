@@ -4,6 +4,8 @@ from __future__ import annotations
 from core.model_catalog import MODEL_PRIMARY
 
 import asyncio
+from pathlib import Path
+from typing import Any
 from types import SimpleNamespace
 
 import pytest
@@ -13,21 +15,21 @@ import services.shorts_factory_capacity as capacity
 import services.shorts_factory_source as source
 
 
-def test_analysis_audio_defaults_are_quality_conservative(monkeypatch):
+def test_analysis_audio_defaults_are_quality_conservative(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SHORTS_FACTORY_GEMINI_AUDIO_BITRATE_KBPS", raising=False)
     monkeypatch.delenv("SHORTS_FACTORY_GEMINI_AUDIO_SAMPLE_RATE", raising=False)
     assert source.gemini_analysis_bitrate_kbps() == 128
     assert source.gemini_analysis_sample_rate() == 48000
 
 
-def test_analysis_audio_never_accepts_low_fidelity_env(monkeypatch):
+def test_analysis_audio_never_accepts_low_fidelity_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SHORTS_FACTORY_GEMINI_AUDIO_BITRATE_KBPS", "32")
     monkeypatch.setenv("SHORTS_FACTORY_GEMINI_AUDIO_SAMPLE_RATE", "8000")
     assert source.gemini_analysis_bitrate_kbps() == 96
     assert source.gemini_analysis_sample_rate() == 24000
 
 
-def test_priority_service_tier_is_explicit_and_fail_closed(monkeypatch):
+def test_priority_service_tier_is_explicit_and_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     from core import globals as core_globals
 
     monkeypatch.delenv("GEMINI_SERVICE_TIER", raising=False)
@@ -39,7 +41,7 @@ def test_priority_service_tier_is_explicit_and_fail_closed(monkeypatch):
         core_globals.configured_gemini_service_tier()
 
 
-def test_user_visible_publication_owner_uses_only_38_even_with_stale_env(monkeypatch):
+def test_user_visible_publication_owner_uses_only_38_even_with_stale_env(monkeypatch: pytest.MonkeyPatch) -> None:
     import services.livedub_publication_core as publication
 
     monkeypatch.setenv("LIVEDUB_INFO_MODEL", "gemini-3.5-flash-lite")
@@ -47,21 +49,23 @@ def test_user_visible_publication_owner_uses_only_38_even_with_stale_env(monkeyp
     assert publication.publication_models() == [MODEL_PRIMARY]
 
 
-def test_factory_only_clients_disable_hidden_sdk_retries(monkeypatch):
+def test_factory_only_clients_disable_hidden_sdk_retries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from core import globals as core_globals
 
-    created = []
+    created: list[dict[str, Any]] = []
 
     class Retry:
-        def __init__(self, *, attempts):
+        def __init__(self, *, attempts: int) -> None:
             self.attempts = attempts
 
     class Http:
-        def __init__(self, *, timeout, retry_options):
+        def __init__(self, *, timeout: int, retry_options: Retry) -> None:
             self.timeout = timeout
             self.retry_options = retry_options
 
-    def client(**kwargs):
+    def client(**kwargs: Any) -> dict[str, Any]:
         created.append(kwargs)
         return kwargs
 
@@ -84,7 +88,9 @@ def test_factory_only_clients_disable_hidden_sdk_retries(monkeypatch):
     assert all(item["http_options"].retry_options.attempts == 1 for item in created)
 
 
-def test_compact_analysis_audio_is_aac_mono_and_source_is_not_render_media(monkeypatch, tmp_path):
+def test_compact_analysis_audio_is_aac_mono_and_source_is_not_render_media(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     source_file = tmp_path / "video_factory_audio_source.webm"
     source_file.write_bytes(b"source" * 500)
     source_probe = SimpleNamespace(
@@ -101,7 +107,7 @@ def test_compact_analysis_audio_is_aac_mono_and_source_is_not_render_media(monke
     )
     commands: list[list[str]] = []
 
-    async def fake_run(command, *, timeout, text):
+    async def fake_run(command: list[str], *, timeout: float, text: bool) -> SimpleNamespace:
         commands.append(list(command))
         output = tmp_path / "video_factory_audio_gemini.aac"
         output.write_bytes(b"aac" * 1000)
@@ -111,7 +117,7 @@ def test_compact_analysis_audio_is_aac_mono_and_source_is_not_render_media(monke
             stderr="",
         )
 
-    async def fake_probe(_path):
+    async def fake_probe(_path: Path) -> SimpleNamespace:
         return final_probe
 
     monkeypatch.setattr(source, "DOWNLOAD_DIR", tmp_path)
@@ -137,7 +143,7 @@ def test_compact_analysis_audio_is_aac_mono_and_source_is_not_render_media(monke
     assert "flac" not in command
 
 
-def test_capacity_defaults_match_bounded_sdk_equivalent_retry_window():
+def test_capacity_defaults_match_bounded_sdk_equivalent_retry_window() -> None:
     import services.shorts_factory_capacity_runtime as runtime
 
     # SDK retries remain disabled at the transport layer; Factory owns one

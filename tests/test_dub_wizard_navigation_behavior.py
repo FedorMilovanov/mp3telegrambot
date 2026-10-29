@@ -1,5 +1,10 @@
 """Executed navigation and profile-selection contracts for Dub Studio wizard."""
 
+from collections.abc import Callable, Coroutine
+from typing import Any, TypeVar, cast
+
+import pathlib
+
 import asyncio
 from types import SimpleNamespace
 
@@ -10,11 +15,11 @@ from handlers import dub_wizard as wizard
 
 
 @pytest.fixture(autouse=True)
-def _admin_ids(monkeypatch):
+def _admin_ids(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(wizard, "ADMIN_IDS", {1})
 
 
-def _choice(profile_id="profile", *, default=False):
+def _choice(profile_id: str = "profile", *, default: bool = False) -> Any:
     return SimpleNamespace(
         profile_id=profile_id,
         display_name=f"<{profile_id}>",
@@ -28,11 +33,11 @@ def _choice(profile_id="profile", *, default=False):
     )
 
 
-def _choices(count=2):
+def _choices(count: int = 2) -> tuple[Any, ...]:
     return tuple(_choice(f"profile-{index}", default=index == 0) for index in range(count))
 
 
-def _patch_choices(monkeypatch, choices):
+def _patch_choices(monkeypatch: pytest.MonkeyPatch, choices: tuple[Any, ...]) -> None:
     monkeypatch.setattr(wizard, "production_tts_profile_choices", lambda: choices)
     monkeypatch.setattr(
         wizard,
@@ -42,30 +47,37 @@ def _patch_choices(monkeypatch, choices):
 
 
 class Message:
-    def __init__(self, *, text="", document=None):
+    def __init__(self, *, text: str = "", document: Any = None) -> None:
         self.text = text
         self.document = document
-        self.replies = []
+        self.replies: list[tuple[str, dict[str, Any]]] = []
 
-    async def reply_text(self, text, **kwargs):
+    async def reply_text(self, text: str, **kwargs: Any) -> None:
         self.replies.append((text, kwargs))
 
 
 class Query:
-    def __init__(self, data, message):
+    def __init__(self, data: str | None, message: Message | None) -> None:
         self.data = data
         self.message = message
         self.answers = 0
-        self.edits = []
+        self.edits: list[tuple[str, dict[str, Any]]] = []
 
-    async def answer(self):
+    async def answer(self) -> None:
         self.answers += 1
 
-    async def edit_message_text(self, text, **kwargs):
+    async def edit_message_text(self, text: str, **kwargs: Any) -> None:
         self.edits.append((text, kwargs))
 
 
-def _update(*, user_id=1, with_user=True, with_message=True, data=None, with_query=False):
+def _update(
+    *,
+    user_id: int = 1,
+    with_user: bool = True,
+    with_message: bool = True,
+    data: str | None = None,
+    with_query: bool = False,
+) -> tuple[Any, Any]:
     message = Message() if with_message else None
     query = Query(data, message) if with_query else None
     update = SimpleNamespace(
@@ -77,15 +89,18 @@ def _update(*, user_id=1, with_user=True, with_message=True, data=None, with_que
     return update, query if with_query else message
 
 
-def _context(*, args=None, state=None):
+def _context(*, args: list[str] | None = None, state: dict[str, Any] | None = None) -> Any:
     return SimpleNamespace(args=args, user_data={} if state is None else state)
 
 
-def _run(callback, *args):
+_T = TypeVar("_T")
+
+
+def _run(callback: Callable[..., Coroutine[Any, Any, _T]], *args: Any) -> _T:
     return asyncio.run(callback(*args))
 
 
-def test_project_root_is_contained_and_created(monkeypatch, tmp_path):
+def test_project_root_is_contained_and_created(monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path) -> None:
     monkeypatch.setattr(wizard, "studio_root", lambda: tmp_path)
 
     root = wizard._project_root("project")
@@ -96,7 +111,7 @@ def test_project_root_is_contained_and_created(monkeypatch, tmp_path):
         wizard._project_root("../outside")
 
 
-def test_catalog_and_selection_pagination_and_stale_guards(monkeypatch):
+def test_catalog_and_selection_pagination_and_stale_guards(monkeypatch: pytest.MonkeyPatch) -> None:
     choices = _choices(7)
     _patch_choices(monkeypatch, choices)
 
@@ -121,8 +136,8 @@ def test_catalog_and_selection_pagination_and_stale_guards(monkeypatch):
     assert (page, page_count) == (1, 2)
     first_keyboard = wizard._selection_keyboard(state, 0)
     second_keyboard = wizard._selection_keyboard(state, 1)
-    assert first_keyboard.inline_keyboard[-2][0].callback_data.endswith(":1")
-    assert second_keyboard.inline_keyboard[-2][0].callback_data.endswith(":0")
+    assert cast(str, first_keyboard.inline_keyboard[-2][0].callback_data).endswith(":1")
+    assert cast(str, second_keyboard.inline_keyboard[-2][0].callback_data).endswith(":0")
 
     with pytest.raises(RuntimeError, match="selection state пуст"):
         wizard._selection_page({}, 0)
@@ -134,7 +149,7 @@ def test_catalog_and_selection_pagination_and_stale_guards(monkeypatch):
         wizard._parse_selection_value(state, "deadbeef:not-an-int")
 
 
-def test_selection_keyboard_rejects_oversized_defensive_callback(monkeypatch):
+def test_selection_keyboard_rejects_oversized_defensive_callback(monkeypatch: pytest.MonkeyPatch) -> None:
     choice = _choice()
     monkeypatch.setattr(
         wizard,
@@ -146,7 +161,7 @@ def test_selection_keyboard_rejects_oversized_defensive_callback(monkeypatch):
         wizard._selection_keyboard({"selection_token": "deadbeef", "profile_ids": ["profile"]}, 0)
 
 
-def test_mode_text_keeps_gemini_and_direct_flows_distinct():
+def test_mode_text_keeps_gemini_and_direct_flows_distinct() -> None:
     choice = _choice()
 
     gemini = wizard._mode_text("gemini", choice)
@@ -160,7 +175,7 @@ def test_mode_text_keeps_gemini_and_direct_flows_distinct():
     assert "&lt;profile&gt;" in direct
 
 
-def test_env_size_mode_and_legacy_converter_validation(monkeypatch):
+def test_env_size_mode_and_legacy_converter_validation(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DUB_TTS_OPTIONS_JSON", "x" * (wizard._MAX_ENV_JSON_CHARS + 1))
     with pytest.raises(ValueError, match="слишком большой"):
         wizard._env_json_object("DUB_TTS_OPTIONS_JSON")
@@ -177,7 +192,7 @@ def test_env_size_mode_and_legacy_converter_validation(monkeypatch):
         wizard._request_payload("video", "url", "gemini", "profile")
 
 
-def test_admin_gate_and_latest_direct_draft_selection(monkeypatch, tmp_path):
+def test_admin_gate_and_latest_direct_draft_selection(monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path) -> None:
     update, _ = _update(user_id=1)
     assert _run(wizard._admin, update) is True
     update, message = _update(user_id=2)
@@ -186,7 +201,7 @@ def test_admin_gate_and_latest_direct_draft_selection(monkeypatch, tmp_path):
     update, _ = _update(with_user=False, with_message=False)
     assert _run(wizard._admin, update) is False
 
-    projects = [
+    projects: list[dict[str, Any]] = [
         {"id": "other", "recipe_id": "other", "metadata": {}, "status": "draft"},
         {
             "id": "gemini",
@@ -210,7 +225,7 @@ def test_admin_gate_and_latest_direct_draft_selection(monkeypatch, tmp_path):
     ]
 
     class Store:
-        def list_projects(self, *, owner_user_id, limit):
+        def list_projects(self, *, owner_user_id: int, limit: int) -> list[dict[str, Any]]:
             assert (owner_user_id, limit) == (1, 10)
             return projects
 
@@ -220,12 +235,14 @@ def test_admin_gate_and_latest_direct_draft_selection(monkeypatch, tmp_path):
     ready.parent.mkdir(parents=True)
     ready.touch()
 
-    assert wizard._latest_direct_draft(1)["id"] == "waiting"
+    latest = wizard._latest_direct_draft(1)
+    assert latest is not None
+    assert latest["id"] == "waiting"
     projects.clear()
     assert wizard._latest_direct_draft(1) is None
 
 
-def test_unauthorized_commands_return_before_work():
+def test_unauthorized_commands_return_before_work() -> None:
     update, message = _update(user_id=2)
 
     _run(wizard.dub_home_command, update, _context(args=[]))
@@ -236,10 +253,10 @@ def test_unauthorized_commands_return_before_work():
     assert all(text.startswith("⛔") for text, _kwargs in message.replies)
 
 
-def test_home_command_delegates_legacy_args_and_renders_default(monkeypatch):
-    calls = []
+def test_home_command_delegates_legacy_args_and_renders_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[Any, Any]] = []
 
-    async def legacy(update, context):
+    async def legacy(update: Any, context: Any) -> None:
         calls.append((update, context))
 
     monkeypatch.setattr(dub_commands, "dub_command", legacy)
@@ -260,10 +277,10 @@ def test_home_command_delegates_legacy_args_and_renders_default(monkeypatch):
     assert kwargs["parse_mode"] == "HTML"
 
 
-def test_newvideo_alias_delegates_to_home(monkeypatch):
-    calls = []
+def test_newvideo_alias_delegates_to_home(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[Any, Any]] = []
 
-    async def home(update, context):
+    async def home(update: Any, context: Any) -> None:
         calls.append((update, context))
 
     monkeypatch.setattr(wizard, "dub_home_command", home)
@@ -273,7 +290,7 @@ def test_newvideo_alias_delegates_to_home(monkeypatch):
     assert calls == [(update, context)]
 
 
-def test_dubtts_catalog_and_usage_paths(monkeypatch):
+def test_dubtts_catalog_and_usage_paths(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_choices(monkeypatch, _choices())
     update, message = _update()
 
@@ -285,14 +302,16 @@ def test_dubtts_catalog_and_usage_paths(monkeypatch):
 
 
 @pytest.mark.parametrize("changed", [True, False])
-def test_dubtts_rebinds_inactive_project(monkeypatch, tmp_path, changed):
+def test_dubtts_rebinds_inactive_project(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path, changed: bool
+) -> None:
     choices = _choices()
     _patch_choices(monkeypatch, choices)
     store = SimpleNamespace(root=tmp_path)
     monkeypatch.setattr(wizard, "DubStore", lambda: store)
-    calls = {}
+    calls: dict[str, Any] = {}
 
-    def rebind(actual_store, project_id, **kwargs):
+    def rebind(actual_store: Any, project_id: str, **kwargs: Any) -> SimpleNamespace:
         calls["rebind"] = (actual_store, project_id, kwargs)
         return SimpleNamespace(
             choice=SimpleNamespace(profile_id="profile-0"),
@@ -319,10 +338,10 @@ def test_dubtts_rebinds_inactive_project(monkeypatch, tmp_path, changed):
     assert ("Профиль закреплён:" in text) if changed else ("уже был закреплён" in text)
 
 
-def test_dubtts_reports_escaped_bounded_rebind_errors(monkeypatch, tmp_path):
+def test_dubtts_reports_escaped_bounded_rebind_errors(monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path) -> None:
     monkeypatch.setattr(wizard, "DubStore", lambda: SimpleNamespace(root=tmp_path))
 
-    def fail(*_args, **_kwargs):
+    def fail(*_args: Any, **_kwargs: Any) -> None:
         raise RuntimeError("<" + "x" * 1600)
 
     monkeypatch.setattr(wizard, "rebind_inactive_project_tts_profile", fail)
@@ -336,11 +355,11 @@ def test_dubtts_reports_escaped_bounded_rebind_errors(monkeypatch, tmp_path):
     assert kwargs == {"parse_mode": "HTML"}
 
 
-def test_show_projects_handles_empty_message_and_rich_callback(monkeypatch):
+def test_show_projects_handles_empty_message_and_rich_callback(monkeypatch: pytest.MonkeyPatch) -> None:
     class Store:
-        projects = []
+        projects: list[dict[str, Any]] = []
 
-        def list_projects(self, *, owner_user_id, limit):
+        def list_projects(self, *, owner_user_id: int, limit: int) -> list[dict[str, Any]]:
             assert (owner_user_id, limit) == (1, 10)
             return self.projects
 
@@ -387,7 +406,7 @@ def test_show_projects_handles_empty_message_and_rich_callback(monkeypatch):
     assert query.edits[0][1]["parse_mode"] == "HTML"
 
 
-def test_activate_srt_upload_validates_project_and_sets_state(monkeypatch):
+def test_activate_srt_upload_validates_project_and_sets_state(monkeypatch: pytest.MonkeyPatch) -> None:
     project = {
         "id": "p",
         "owner_user_id": 1,
@@ -396,7 +415,7 @@ def test_activate_srt_upload_validates_project_and_sets_state(monkeypatch):
     }
 
     class Store:
-        def get_project(self, project_id):
+        def get_project(self, project_id: str) -> dict[str, Any]:
             assert project_id == "p"
             return project
 
@@ -424,7 +443,7 @@ def test_activate_srt_upload_validates_project_and_sets_state(monkeypatch):
             _run(wizard._activate_srt_upload, update, context, "p")
 
 
-def test_callback_profile_lifecycle(monkeypatch):
+def test_callback_profile_lifecycle(monkeypatch: pytest.MonkeyPatch) -> None:
     choices = _choices()
     _patch_choices(monkeypatch, choices)
     update, query = _update(with_query=True, data="dubwiz|mode|direct")
@@ -451,21 +470,21 @@ def test_callback_profile_lifecycle(monkeypatch):
     assert "SRT без изменений" in query.edits[-1][0]
 
 
-def test_callback_catalog_home_projects_worker_and_srt_routes(monkeypatch):
+def test_callback_catalog_home_projects_worker_and_srt_routes(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_choices(monkeypatch, _choices())
 
     class Store:
-        def list_projects(self, **_kwargs):
+        def list_projects(self, **_kwargs: Any) -> list[dict[str, Any]]:
             return []
 
     monkeypatch.setattr(wizard, "DubStore", Store)
-    worker_calls = []
-    srt_calls = []
+    worker_calls: list[tuple[Any, Any]] = []
+    srt_calls: list[str] = []
 
-    async def worker(update, context):
+    async def worker(update: Any, context: Any) -> None:
         worker_calls.append((update, context))
 
-    async def activate(_update, _context, project_id):
+    async def activate(_update: Any, _context: Any, project_id: str) -> None:
         srt_calls.append(project_id)
 
     monkeypatch.setattr(dub_commands, "dubworker_command", worker)
@@ -491,7 +510,7 @@ def test_callback_catalog_home_projects_worker_and_srt_routes(monkeypatch):
     assert context.user_data == {}
 
 
-def test_callback_noop_admin_and_validation_paths(monkeypatch):
+def test_callback_noop_admin_and_validation_paths(monkeypatch: pytest.MonkeyPatch) -> None:
     update, _ = _update()
     _run(wizard.handle_dub_wizard_callback, update, _context())
 
@@ -526,7 +545,7 @@ def test_callback_noop_admin_and_validation_paths(monkeypatch):
     assert any("вышел за границы" in text for text in errors)
 
 
-def test_missing_telegram_context_guards_fail_closed(monkeypatch):
+def test_missing_telegram_context_guards_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     missing_message, _ = _update(with_message=False)
     _run(wizard.dub_home_command, missing_message, _context())
     _run(wizard.dubtts_command, missing_message, _context())
@@ -537,7 +556,7 @@ def test_missing_telegram_context_guards_fail_closed(monkeypatch):
     _run(wizard._show_projects, missing_user)
 
     class EmptyStore:
-        def list_projects(self, **_kwargs):
+        def list_projects(self, **_kwargs: Any) -> list[dict[str, Any]]:
             return []
 
     monkeypatch.setattr(wizard, "DubStore", EmptyStore)

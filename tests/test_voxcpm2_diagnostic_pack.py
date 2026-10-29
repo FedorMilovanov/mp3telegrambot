@@ -4,13 +4,14 @@ import importlib.util
 import json
 import zipfile
 from pathlib import Path
+from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / "tools" / "voxcpm2" / "diagnostic_pack.py"
 
 
-def _load_module():
+def _load_module() -> Any:
     spec = importlib.util.spec_from_file_location(
         "voxcpm2_diagnostic_pack",
         MODULE_PATH,

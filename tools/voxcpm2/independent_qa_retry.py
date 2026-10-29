@@ -155,7 +155,7 @@ def _retry_context(
         return None
 
     checks = {
-        int(item.get("id")): item
+        int(item["id"]): item
         for item in report.get("segments", [])
         if isinstance(item, dict) and str(item.get("id") or "").isdigit()
     }

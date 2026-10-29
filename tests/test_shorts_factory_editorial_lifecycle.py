@@ -3,13 +3,17 @@ from __future__ import annotations
 import asyncio
 import inspect
 from pathlib import Path
+from collections.abc import Awaitable
 from types import SimpleNamespace
+from typing import Any
+
+import pytest
 
 import pipelines.translation_editorial_runner as runner
 import services.shorts_factory_source as factory_source
 
 
-def test_editorial_runner_has_no_audio_ordering_marker_or_job_context():
+def test_editorial_runner_has_no_audio_ordering_marker_or_job_context() -> None:
     source = inspect.getsource(runner)
     assert "mark_factory_analysis_audio_skipped" not in source
     assert "JOB_STATE" not in source
@@ -17,14 +21,14 @@ def test_editorial_runner_has_no_audio_ordering_marker_or_job_context():
     assert "translation_editorial_pending" not in source
 
 
-def test_editorial_runner_passes_known_duration_into_source_owned_translation():
+def test_editorial_runner_passes_known_duration_into_source_owned_translation() -> None:
     source = inspect.getsource(runner.process_translation_editorial_only)
     assert 'prepare_factory_translation_video(url, workdir, duration, "en")' in source
     assert "factory_preflight_issues(" in source
     assert "enforce_factory_translation_preflight()" in source
 
 
-def test_translation_source_owns_video_capacity_proof_before_download():
+def test_translation_source_owns_video_capacity_proof_before_download() -> None:
     source = inspect.getsource(factory_source.prepare_factory_translation_video)
     ensure_pos = source.index("ensure_factory_video_space(")
     original_task_pos = source.index("download_factory_video_source(")
@@ -33,7 +37,7 @@ def test_translation_source_owns_video_capacity_proof_before_download():
     assert "expected_duration=float(duration)" in source
 
 
-def test_factory_pipeline_builds_editorial_pack_directly_without_handoff_bridge():
+def test_factory_pipeline_builds_editorial_pack_directly_without_handoff_bridge() -> None:
     source = Path("pipelines/shorts_factory.py").read_text(encoding="utf-8")
     assert "prepare_factory_editorial_review(" in source
     assert "send_factory_editorial_files(" in source
@@ -41,7 +45,7 @@ def test_factory_pipeline_builds_editorial_pack_directly_without_handoff_bridge(
     assert "editorial_source" not in source
 
 
-def test_translation_editorial_runner_is_the_only_standalone_owner():
+def test_translation_editorial_runner_is_the_only_standalone_owner() -> None:
     dispatcher = Path("pipelines/video_dispatch.py").read_text(encoding="utf-8")
     retired_bridge = Path("services/shorts_factory_overload_editorial_polish.py")
     assert "pipelines.translation_editorial_runner" in dispatcher
@@ -49,7 +53,9 @@ def test_translation_editorial_runner_is_the_only_standalone_owner():
     assert "shorts_factory_editorial_bridge" not in dispatcher
 
 
-def test_pipeline_editorial_runner_executes_success_and_cleans_workdir(monkeypatch, tmp_path):
+def test_pipeline_editorial_runner_executes_success_and_cleans_workdir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     import pipelines.shorts_factory as factory_pipeline
     import services.media_delivery_probe as delivery_probe
     import services.shorts_video_impl as shorts_video_impl
@@ -60,9 +66,9 @@ def test_pipeline_editorial_runner_executes_success_and_cleans_workdir(monkeypat
     pack = tmp_path / "pack.zip"
     review = tmp_path / "review.zip"
     markdown = tmp_path / "review.md"
-    calls = {}
+    calls: dict[str, Any] = {}
 
-    async def load_info(_url):
+    async def load_info(_url: str) -> dict[str, Any]:
         return {
             "id": "video",
             "duration": 100,
@@ -71,25 +77,25 @@ def test_pipeline_editorial_runner_executes_success_and_cleans_workdir(monkeypat
             "channel": "Channel",
         }
 
-    async def prepare_translation(url, actual_workdir, duration, language):
+    async def prepare_translation(url: str, actual_workdir: str, duration: float, language: str) -> Path:
         calls["translation"] = (url, Path(actual_workdir), duration, language)
         return translated
 
-    async def prepare_review(**kwargs):
+    async def prepare_review(**kwargs: Any) -> tuple[Path, Path, Path]:
         calls["review"] = kwargs
         return pack, review, markdown
 
-    async def heartbeat(awaitable, **kwargs):
+    async def heartbeat(awaitable: Awaitable[Any], **kwargs: Any) -> Any:
         calls.setdefault("heartbeats", []).append(kwargs["label"])
         return await awaitable
 
-    async def probe(_path):
+    async def probe(_path: Path) -> SimpleNamespace:
         return SimpleNamespace(duration=100.0)
 
-    async def send_files(update, **kwargs):
+    async def send_files(update: Any, **kwargs: Any) -> None:
         calls["send"] = (update, kwargs)
 
-    async def safe_status(status, text):
+    async def safe_status(status: Any, text: str) -> None:
         calls["status"] = (status, text)
 
     monkeypatch.setattr(runner.tempfile, "mkdtemp", lambda prefix: str(workdir))

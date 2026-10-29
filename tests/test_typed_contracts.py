@@ -21,7 +21,7 @@ from core.source_packs import _TOPIC_RULES, select_source_pack_topics
 from core.synopsis_quality import audit_synopsis_density
 
 
-def test_thinking_config_accepts_level_regardless_of_case():
+def test_thinking_config_accepts_level_regardless_of_case() -> None:
     config = core_globals._build_thinking_config("HIGH")
     assert config is not None
     # enum SDK, а не строка: именно этого требовал тип ThinkingConfig.
@@ -29,7 +29,7 @@ def test_thinking_config_accepts_level_regardless_of_case():
     assert config.thinking_budget is None
 
 
-def test_thinking_config_falls_back_to_budget_for_unknown_level():
+def test_thinking_config_falls_back_to_budget_for_unknown_level() -> None:
     config = core_globals._build_thinking_config("неведомый-уровень")
     assert config is not None
     # Неизвестный уровень — это не повод отправлять запрос без бюджета:
@@ -38,7 +38,7 @@ def test_thinking_config_falls_back_to_budget_for_unknown_level():
     assert config.thinking_budget == 24576
 
 
-def test_thinking_config_budget_map_covers_all_known_levels():
+def test_thinking_config_budget_map_covers_all_known_levels() -> None:
     for level, expected in (("minimal", 4096), ("low", 8192), ("medium", 16384), ("high", 24576)):
         config = core_globals._build_thinking_config(level)
         assert config is not None
@@ -48,7 +48,7 @@ def test_thinking_config_budget_map_covers_all_known_levels():
         assert core_globals._THINKING_BUDGETS[level.upper()] == expected
 
 
-def test_synopsis_density_ignores_missing_times_instead_of_reporting_zero_coverage():
+def test_synopsis_density_ignores_missing_times_instead_of_reporting_zero_coverage() -> None:
     sections = [
         {"title": "Вступление", "content": "Развёрнутое вступление без таймкода. " * 40},
         {"title": "Основная часть", "content": "Основная часть без таймкода. " * 60},
@@ -58,18 +58,18 @@ def test_synopsis_density_ignores_missing_times_instead_of_reporting_zero_covera
     assert "synopsis_time_coverage_low" not in codes
 
 
-def test_source_pack_negative_keywords_are_plain_strings():
+def test_source_pack_negative_keywords_are_plain_strings() -> None:
     for topic, rule in _TOPIC_RULES.items():
         assert all(isinstance(word, str) for word in rule.negative), topic
 
 
-def test_source_pack_negative_keyword_lowers_score():
+def test_source_pack_negative_keyword_lowers_score() -> None:
     topics = dict(select_source_pack_topics(["церковь", "членство"], "Церковь и членство"))
     topics_with_noise = dict(select_source_pack_topics(["церковь", "членство"], "Церковь, членство и молитва"))
     assert topics.get("ecclesiology", 0) > topics_with_noise.get("ecclesiology", 0)
 
 
-def test_quota_domain_status_code_survives_exception_without_code():
+def test_quota_domain_status_code_survives_exception_without_code() -> None:
     from services.gemini_quota_domains import _exception_status_code
 
     class _Bare(Exception):

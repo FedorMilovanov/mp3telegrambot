@@ -4,15 +4,18 @@ import asyncio
 import json
 import os
 from pathlib import Path
+from typing import Any, cast
 import time
 from types import SimpleNamespace
 
 import pytest
+from telegram import Update
+from telegram.ext import CallbackContext, ExtBot
 
 from handlers import dub_audio_repair as handler
 
 
-def _patch_project_paths(monkeypatch, root: Path) -> None:
+def _patch_project_paths(monkeypatch: pytest.MonkeyPatch, root: Path) -> None:
     monkeypatch.setattr(handler, "_project_root", lambda _project_id: root)
     monkeypatch.setattr(
         handler,
@@ -21,7 +24,7 @@ def _patch_project_paths(monkeypatch, root: Path) -> None:
     )
 
 
-def test_handler_loader_rejects_ambiguous_segment_ids(monkeypatch, tmp_path: Path) -> None:
+def test_handler_loader_rejects_ambiguous_segment_ids(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _patch_project_paths(monkeypatch, tmp_path)
     (tmp_path / "segments_ru_final.json").write_text(
         json.dumps(
@@ -41,7 +44,7 @@ def test_handler_loader_rejects_ambiguous_segment_ids(monkeypatch, tmp_path: Pat
         handler.load_repair_segments("project-1")
 
 
-def test_handler_writer_records_exact_segments_hash(monkeypatch, tmp_path: Path) -> None:
+def test_handler_writer_records_exact_segments_hash(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _patch_project_paths(monkeypatch, tmp_path)
     segments_path = tmp_path / "segments_ru_final.json"
     segments = [
@@ -80,9 +83,9 @@ def test_handler_writer_records_exact_segments_hash(monkeypatch, tmp_path: Path)
     [[True], [1.5], [1, 1], [2]],
 )
 def test_handler_writer_rejects_ambiguous_selection(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    selected,
+    selected: Any,
 ) -> None:
     _patch_project_paths(monkeypatch, tmp_path)
     segments = [
@@ -107,7 +110,7 @@ def test_handler_writer_rejects_ambiguous_selection(
         )
 
 
-def test_cross_process_lock_is_atomic_and_cleaned(monkeypatch, tmp_path: Path) -> None:
+def test_cross_process_lock_is_atomic_and_cleaned(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     lock_path = tmp_path / ".dubfix.request.lock"
     monkeypatch.setattr(handler, "_process_lock_path", lambda: lock_path)
 
@@ -126,7 +129,7 @@ def test_cross_process_lock_is_atomic_and_cleaned(monkeypatch, tmp_path: Path) -
     assert not lock_path.exists()
 
 
-def test_only_stale_process_lock_is_recovered(monkeypatch, tmp_path: Path) -> None:
+def test_only_stale_process_lock_is_recovered(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     lock_path = tmp_path / ".dubfix.request.lock"
     lock_path.write_text("stale", encoding="utf-8")
     old = time.time() - handler._DUBFIX_PROCESS_LOCK_STALE_SECONDS - 10
@@ -140,7 +143,7 @@ def test_only_stale_process_lock_is_recovered(monkeypatch, tmp_path: Path) -> No
 
 
 def test_concurrent_dubfix_commands_are_serialized(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     active = 0
@@ -152,7 +155,7 @@ def test_concurrent_dubfix_commands_are_serialized(
         lambda: tmp_path / ".dubfix.request.lock",
     )
 
-    async def fake_command(update, _context) -> None:
+    async def fake_command(update: Any, _context: Any) -> None:
         nonlocal active, maximum_active
         active += 1
         maximum_active = max(maximum_active, active)
@@ -165,8 +168,14 @@ def test_concurrent_dubfix_commands_are_serialized(
 
     async def run() -> None:
         await asyncio.gather(
-            handler.dubfix_command(SimpleNamespace(name="a"), object()),
-            handler.dubfix_command(SimpleNamespace(name="b"), object()),
+            handler.dubfix_command(
+                cast(Update, SimpleNamespace(name="a")),
+                cast(CallbackContext[ExtBot[None], dict[Any, Any], dict[Any, Any], dict[Any, Any]], object()),
+            ),
+            handler.dubfix_command(
+                cast(Update, SimpleNamespace(name="b")),
+                cast(CallbackContext[ExtBot[None], dict[Any, Any], dict[Any, Any], dict[Any, Any]], object()),
+            ),
         )
 
     asyncio.run(run())

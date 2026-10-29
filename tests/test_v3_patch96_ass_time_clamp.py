@@ -13,19 +13,19 @@ from services.shorts_video import _seconds_to_ass_time
 _ASS_TIME_RE = re.compile(r"^\d:[0-5]\d:[0-5]\d\.\d\d$")
 
 
-def test_negative_clamped_to_zero():
+def test_negative_clamped_to_zero() -> None:
     assert _seconds_to_ass_time(-0.5) == "0:00:00.00"
     assert _seconds_to_ass_time(-2.3) == "0:00:00.00"
 
 
-def test_positive_values_unchanged():
+def test_positive_values_unchanged() -> None:
     assert _seconds_to_ass_time(0) == "0:00:00.00"
     assert _seconds_to_ass_time(1.234) == "0:00:01.23"
     assert _seconds_to_ass_time(65.5) == "0:01:05.50"
     assert _seconds_to_ass_time(3661.99) == "1:01:01.99"
 
 
-def test_output_always_well_formed():
+def test_output_always_well_formed() -> None:
     for v in (-100, -0.01, 0, 0.999, 1.0, 59.99, 3600.5, 7322.42):
         out = _seconds_to_ass_time(v)
         assert _ASS_TIME_RE.match(out), f"malformed ASS time for {v!r}: {out!r}"

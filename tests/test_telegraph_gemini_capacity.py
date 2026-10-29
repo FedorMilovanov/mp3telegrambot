@@ -1,7 +1,10 @@
 from __future__ import annotations
+import pytest
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from types import SimpleNamespace
+from typing import Any
 
 from services import gemini_capacity_control as control
 from services import gemini_router
@@ -9,12 +12,12 @@ from services import telegraph_pages as telegraph
 
 
 class _FakeClient:
-    def __init__(self, name: str, responder):
+    def __init__(self, name: str, responder: Callable[[int], Awaitable[Any]]) -> None:
         self.name = name
         self.calls = 0
 
         class _Models:
-            async def generate_content(_self, **kwargs):
+            async def generate_content(_self, **kwargs: Any) -> Any:
                 del kwargs
                 self.calls += 1
                 return await responder(self.calls)
@@ -22,11 +25,11 @@ class _FakeClient:
         self.aio = SimpleNamespace(models=_Models())
 
 
-async def _noop_observe(**_kwargs):
+async def _noop_observe(**_kwargs: Any) -> None:
     return None
 
 
-def _prepare(monkeypatch, clients):
+def _prepare(monkeypatch: pytest.MonkeyPatch, clients: list[_FakeClient]) -> None:
     monkeypatch.setenv("GEMINI_TRANSIENT_MAX_ATTEMPTS", "3")
     monkeypatch.setattr(control, "transient_retry_delay", lambda _attempt: 0.0)
     monkeypatch.setattr(control, "note_overload", lambda _delay: None)
@@ -37,8 +40,8 @@ def _prepare(monkeypatch, clients):
     monkeypatch.setattr(telegraph, "alog_gemini_run", _noop_observe)
 
 
-def test_telegraph_503_never_expands_past_three_network_calls(monkeypatch):
-    async def fail_503(_count):
+def test_telegraph_503_never_expands_past_three_network_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fail_503(_count: int) -> None:
         raise RuntimeError("503 UNAVAILABLE: high demand")
 
     clients = [_FakeClient(f"c{i}", fail_503) for i in range(1, 5)]
@@ -56,8 +59,8 @@ def test_telegraph_503_never_expands_past_three_network_calls(monkeypatch):
     assert sum(client.calls for client in clients) == 3
 
 
-def test_telegraph_timeout_never_triggers_schema_fallback_or_storm(monkeypatch):
-    async def fail_timeout(_count):
+def test_telegraph_timeout_never_triggers_schema_fallback_or_storm(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fail_timeout(_count: int) -> None:
         raise asyncio.TimeoutError("request timed out")
 
     clients = [_FakeClient(f"c{i}", fail_timeout) for i in range(1, 5)]
@@ -75,8 +78,10 @@ def test_telegraph_timeout_never_triggers_schema_fallback_or_storm(monkeypatch):
     assert sum(client.calls for client in clients) == 3
 
 
-def test_telegraph_schema_compatibility_gets_one_schema_less_retry(monkeypatch):
-    async def schema_then_ok(count):
+def test_telegraph_schema_compatibility_gets_one_schema_less_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def schema_then_ok(count: int) -> SimpleNamespace:
         if count == 1:
             raise RuntimeError("response_schema unsupported")
         return SimpleNamespace(
@@ -100,7 +105,7 @@ def test_telegraph_schema_compatibility_gets_one_schema_less_retry(monkeypatch):
     assert client.calls == 2
 
 
-def test_telegraph_has_no_model_global_quota_blacklist():
+def test_telegraph_has_no_model_global_quota_blacklist() -> None:
     source = open("services/telegraph_pages.py", encoding="utf-8").read()
     assert "mark_model_exhausted" not in source
     assert "is_model_exhausted" not in source

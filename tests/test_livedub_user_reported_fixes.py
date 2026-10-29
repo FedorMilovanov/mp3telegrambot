@@ -11,31 +11,31 @@ from services.livedub_qa_trust import (
 )
 
 
-def test_livedub_video_caption_hides_provider_label():
+def test_livedub_video_caption_hides_provider_label() -> None:
     caption = "<b>Борьба с Сексуальной Распущенностью и Порнографией - Тим Конвей</b>\n🎬 Живые голоса Яндекса"
     cleaned = _clean_video_caption(caption)
     assert "Живые голоса Яндекса" not in cleaned
     assert "Тим Конвей" in cleaned
 
 
-def test_livedub_audio_caption_is_neutral():
+def test_livedub_audio_caption_is_neutral() -> None:
     assert _clean_audio_caption("🎧 Чистая аудиодорожка русского перевода Яндекса") == "🎧 Русская аудиоверсия"
 
 
-def test_tim_conway_is_split_and_canonicalized():
+def test_tim_conway_is_split_and_canonicalized() -> None:
     title, author = _split_title_author("The Battle Against Sexual Immorality & Pornography - Tim Conway")
     assert title == "The Battle Against Sexual Immorality & Pornography"
     assert author == "Тим Конвей"
 
 
-def test_russian_heading_keeps_prepositions_lowercase():
+def test_russian_heading_keeps_prepositions_lowercase() -> None:
     assert (
         _russian_heading_case("Борьба С Сексуальной Распущенностью И Порнографией")
         == "Борьба с Сексуальной Распущенностью и Порнографией"
     )
 
 
-def _issue(time: str, heard: str, problem: str, severity: str = "major") -> dict:
+def _issue(time: str, heard: str, problem: str, severity: str = "major") -> dict[str, str]:
     return {
         "time": time,
         "heard": heard,
@@ -45,7 +45,7 @@ def _issue(time: str, heard: str, problem: str, severity: str = "major") -> dict
     }
 
 
-def test_qa_confirmation_requires_time_and_lexical_agreement():
+def test_qa_confirmation_requires_time_and_lexical_agreement() -> None:
     first = _issue("18:32", "Если твой правый глаз соблазняет тебя", "Неверная цитата")
     same = _issue("18:35", "Если твой правый глаз соблазняет тебя", "Ошибка в цитате")
     unrelated = _issue("18:34", "Совсем другая фраза о другом вопросе", "Иная проблема")
@@ -53,7 +53,7 @@ def test_qa_confirmation_requires_time_and_lexical_agreement():
     assert not _issues_match(first, unrelated)
 
 
-def test_only_confirmed_qa_issues_survive_and_major_needs_two_major_votes():
+def test_only_confirmed_qa_issues_survive_and_major_needs_two_major_votes() -> None:
     confirmed = _issue("18:32", "правый глаз соблазняет тебя", "ошибка в цитате", "major")
     rejected = _issue("21:00", "несуществующая фраза", "ложная тревога", "major")
     validation = _issue("18:36", "правый глаз соблазняет тебя", "ошибка цитирования", "minor")
@@ -68,7 +68,7 @@ def test_only_confirmed_qa_issues_survive_and_major_needs_two_major_votes():
     assert result["_qa_unconfirmed_dropped"] == 1
 
 
-def test_failed_confirmation_does_not_publish_or_autofix_candidates():
+def test_failed_confirmation_does_not_publish_or_autofix_candidates() -> None:
     result = _unconfirmed_failure_result({"score": 60, "issues": [_issue("01:00", "фраза", "возможная ошибка")]})
     assert result["issues"] == []
     assert "score" not in result

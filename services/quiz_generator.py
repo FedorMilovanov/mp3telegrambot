@@ -32,7 +32,7 @@ from core.database import GEMINI_MODEL
 from core.text_utils import _scrub_inline
 from core.question_quality import normalize_question_text, question_is_usable, question_key
 from core.observability import alog_gemini_response, alog_gemini_run
-from core.prompts import QUIZ_PROMPT
+from core.prompts import QUIZ_PROMPT as QUIZ_PROMPT
 from services.gemini_quota_domains import ProjectQuotaDomainTracker
 
 logger = logging.getLogger(__name__)

@@ -6,14 +6,14 @@ from core.database import SETTINGS_DEFAULTS, SETTINGS_LABELS
 from services.shorts_video import build_whisper_initial_prompt, _extract_subtitle_hint_terms, _polish_subtitle_text
 
 
-def test_subtitle_settings_are_declared():
+def test_subtitle_settings_are_declared() -> None:
     assert SETTINGS_DEFAULTS["shorts_subtitles_gemini_hints"] is True
     assert SETTINGS_DEFAULTS["shorts_boundary_padding"] is True
     assert SETTINGS_LABELS["shorts_subtitles_gemini_hints"] == "🧠 Gemini hints"
     assert SETTINGS_LABELS["shorts_boundary_padding"] == "↔️ Запас краёв"
 
 
-def test_whisper_initial_prompt_uses_gemini_terms_without_using_generated_subtitles():
+def test_whisper_initial_prompt_uses_gemini_terms_without_using_generated_subtitles() -> None:
     ai = {
         "real_author": "Джон МакАртур",
         "real_title": "Презренный Раб Иеговы",
@@ -36,11 +36,11 @@ def test_whisper_initial_prompt_uses_gemini_terms_without_using_generated_subtit
     assert build_whisper_initial_prompt(ai, use_gemini_hints=False).count("Ключевые слова") == 0
 
 
-def test_subtitle_text_polish_applies_common_typos_and_spacing():
+def test_subtitle_text_polish_applies_common_typos_and_spacing() -> None:
     assert _polish_subtitle_text(" Странный огонь , МакАртора . ") == "Чуждый огонь, МакАртура."
 
 
-def test_shorts_pipeline_wires_boundary_padding_and_subtitle_hints():
+def test_shorts_pipeline_wires_boundary_padding_and_subtitle_hints() -> None:
     shorts = Path("pipelines/shorts.py").read_text(encoding="utf-8")
     safety = Path("services/shorts_duration_safety.py").read_text(encoding="utf-8")
     video = Path("services/shorts_video_impl.py").read_text(encoding="utf-8")

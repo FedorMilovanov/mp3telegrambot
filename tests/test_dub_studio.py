@@ -1,6 +1,9 @@
 from __future__ import annotations
+from typing import Any
 
 import asyncio
+import sqlite3
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -68,20 +71,20 @@ def test_enqueue_job_rejects_missing_sqlite_row_id(tmp_path: Path, monkeypatch: 
     original_connect = store.connect
 
     class NoRowIdConnection:
-        def __init__(self, connection):
+        def __init__(self, connection: sqlite3.Connection) -> None:
             self._connection = connection
 
-        def execute(self, query, parameters=()):
+        def execute(self, query: str, parameters: Any = ()) -> Any:
             cursor = self._connection.execute(query, parameters)
             if "INSERT INTO dub_jobs(" in query:
                 return SimpleNamespace(lastrowid=None)
             return cursor
 
-        def __getattr__(self, name):
+        def __getattr__(self, name: str) -> Any:
             return getattr(self._connection, name)
 
     @contextmanager
-    def connect():
+    def connect() -> Iterator[NoRowIdConnection]:
         with original_connect() as connection:
             yield NoRowIdConnection(connection)
 
@@ -288,7 +291,7 @@ def test_recipe_catalog_has_unique_ids() -> None:
 
 def test_noop_status_refresh_is_not_an_error() -> None:
     class Query:
-        async def edit_message_text(self, *_args, **_kwargs):
+        async def edit_message_text(self, *_args: Any, **_kwargs: Any) -> None:
             raise BadRequest("Message is not modified: specified new message content")
 
     assert asyncio.run(_safe_edit(Query(), "unchanged")) is False

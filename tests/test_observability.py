@@ -1,3 +1,5 @@
+import pathlib
+import pytest
 import asyncio
 import sqlite3
 from types import SimpleNamespace
@@ -12,7 +14,7 @@ from core.observability import (
 )
 
 
-def test_extract_usage_metadata_returns_zeroes_without_metadata():
+def test_extract_usage_metadata_returns_zeroes_without_metadata() -> None:
     assert extract_usage_metadata(object()) == {
         "input_tokens": 0,
         "output_tokens": 0,
@@ -22,7 +24,7 @@ def test_extract_usage_metadata_returns_zeroes_without_metadata():
     }
 
 
-def test_extract_usage_metadata_reads_gemini_fields():
+def test_extract_usage_metadata_reads_gemini_fields() -> None:
     response = SimpleNamespace(
         usage_metadata=SimpleNamespace(
             prompt_token_count=10,
@@ -41,13 +43,13 @@ def test_extract_usage_metadata_reads_gemini_fields():
     }
 
 
-def test_extract_finish_reason_best_effort():
+def test_extract_finish_reason_best_effort() -> None:
     response = SimpleNamespace(candidates=[SimpleNamespace(finish_reason="STOP")])
     assert extract_finish_reason(response) == "STOP"
     assert extract_finish_reason(SimpleNamespace(candidates=[])) == ""
 
 
-def test_log_gemini_run_persists_row(tmp_path, monkeypatch):
+def test_log_gemini_run_persists_row(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
     db_path = tmp_path / "obs.db"
     monkeypatch.setattr(observability, "DB_PATH", db_path)
 
@@ -83,7 +85,7 @@ def test_log_gemini_run_persists_row(tmp_path, monkeypatch):
     )
 
 
-def test_alog_gemini_run_persists_row(tmp_path, monkeypatch):
+def test_alog_gemini_run_persists_row(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
     db_path = tmp_path / "obs_async.db"
     monkeypatch.setattr(observability, "DB_PATH", db_path)
 
@@ -94,7 +96,9 @@ def test_alog_gemini_run_persists_row(tmp_path, monkeypatch):
     assert row == ("shorts", "gemini-3.5-flash", 0)
 
 
-def test_log_gemini_response_extracts_usage_and_finish_reason(tmp_path, monkeypatch):
+def test_log_gemini_response_extracts_usage_and_finish_reason(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     db_path = tmp_path / "obs_response.db"
     monkeypatch.setattr(observability, "DB_PATH", db_path)
     response = SimpleNamespace(
@@ -123,7 +127,7 @@ def test_log_gemini_response_extracts_usage_and_finish_reason(tmp_path, monkeypa
     assert row == (5, 8, 13, 26, 1234, "MAX_TOKENS", "truncated")
 
 
-def test_log_gemini_run_persists_validation_summary(tmp_path, monkeypatch):
+def test_log_gemini_run_persists_validation_summary(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
     db_path = tmp_path / "obs_validation.db"
     monkeypatch.setattr(observability, "DB_PATH", db_path)
 

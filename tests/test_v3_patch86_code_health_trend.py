@@ -16,7 +16,7 @@ from core.code_health import (
 )
 
 
-def test_code_health_report_includes_trend_and_typed_structure_flags():
+def test_code_health_report_includes_trend_and_typed_structure_flags() -> None:
     report = collect_code_health(Path("."))
     assert report.regex_threshold == 300
     assert report.structured_block_normalizer is True
@@ -28,7 +28,7 @@ def test_code_health_report_includes_trend_and_typed_structure_flags():
     assert "typed normalizers" in text
 
 
-def test_code_health_snapshot_and_delta_are_stable(tmp_path):
+def test_code_health_snapshot_and_delta_are_stable(tmp_path: Path) -> None:
     report = collect_code_health(Path("."))
     snap = code_health_snapshot(report)
     assert snap["total_regex_markers"] == report.total_regex_markers
@@ -49,7 +49,7 @@ def test_code_health_snapshot_and_delta_are_stable(tmp_path):
     assert json.loads(path.read_text(encoding="utf-8"))["typed_source_cards"] is True
 
 
-def test_check_code_health_cli_is_non_blocking_by_default():
+def test_check_code_health_cli_is_non_blocking_by_default() -> None:
     env = {**os.environ, "PYTHONIOENCODING": "cp1251"}
     result = subprocess.run(
         [sys.executable, "tools/check_code_health.py"],
@@ -66,13 +66,13 @@ def test_check_code_health_cli_is_non_blocking_by_default():
     assert "baseline_delta" in result.stdout
 
 
-def test_check_code_health_cli_configures_stdout_errors():
+def test_check_code_health_cli_configures_stdout_errors() -> None:
     src = Path("tools/check_code_health.py").read_text(encoding="utf-8")
     assert "backslashreplace" in src
     assert "_safe_print" in src
 
 
-def test_ci_runs_code_health_advisory():
+def test_ci_runs_code_health_advisory() -> None:
     workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
     assert "Code health advisory" in workflow
     assert "python tools/check_code_health.py" in workflow

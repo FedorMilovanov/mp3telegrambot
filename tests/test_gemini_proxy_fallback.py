@@ -4,7 +4,7 @@ import ast
 from pathlib import Path
 
 
-def test_globals_has_gemini_proxy_fallback():
+def test_globals_has_gemini_proxy_fallback() -> None:
     """globals.py must auto-set HTTPS_PROXY from TELEGRAM_PROXY_URL when not explicit.
 
     Without this, Gemini API calls from Russia get 400 FAILED_PRECONDITION
@@ -16,12 +16,12 @@ def test_globals_has_gemini_proxy_fallback():
     assert 'os.environ["HTTPS_PROXY"]' in src, "globals.py must set HTTPS_PROXY env var for httpx/google-genai"
 
 
-def test_env_example_documents_gemini_proxy():
+def test_env_example_documents_gemini_proxy() -> None:
     env = Path(".env.example").read_text(encoding="utf-8")
     assert "GEMINI_PROXY_URL" in env, ".env.example must document GEMINI_PROXY_URL"
 
 
-def test_auto_proxy_excludes_russian_services():
+def test_auto_proxy_excludes_russian_services() -> None:
     """When HTTPS_PROXY is auto-set from TELEGRAM_PROXY_URL, Russian services
     must be added to NO_PROXY so requests.get to RuTube/VK goes direct.
 

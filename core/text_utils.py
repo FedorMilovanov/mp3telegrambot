@@ -6,7 +6,7 @@
 
 import re
 from typing import Any
-from core.person_names import normalize_person_names
+from core.person_names import normalize_person_names as normalize_person_names
 from core.source_titles import normalize_source_card_line
 from core.core_utils import time_to_seconds  # разрыв цикла: ранее был lazy import из json_parser
 

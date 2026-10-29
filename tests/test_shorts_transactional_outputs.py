@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import subprocess
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 import pytest
@@ -29,11 +30,14 @@ def _function_source(name: str) -> str:
     return ast.get_source_segment(source, node) or ""
 
 
-def _configure_render(monkeypatch, owner) -> None:
-    async def no_snap(path, target, search_window=5.0):
+def _configure_render(
+    monkeypatch: pytest.MonkeyPatch,
+    owner: Callable[..., Awaitable[subprocess.CompletedProcess[str] | None]],
+) -> None:
+    async def no_snap(path: Path, target: Path, search_window: float = 5.0) -> Path:
         return target
 
-    async def no_crop(path, start_seconds=0.0):
+    async def no_crop(path: Path, start_seconds: float = 0.0) -> str:
         return ""
 
     monkeypatch.setattr(shorts_video._impl.shutil, "which", lambda name: "ffmpeg")
@@ -67,7 +71,7 @@ def test_active_short_outputs_have_transactional_contract() -> None:
 
 @pytest.mark.asyncio
 async def test_stale_render_is_not_accepted_when_ffmpeg_writes_nothing(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     source_path = tmp_path / "source.mp4"
@@ -75,7 +79,7 @@ async def test_stale_render_is_not_accepted_when_ffmpeg_writes_nothing(
     source_path.write_bytes(b"source")
     output_path.write_bytes(b"old valid short" * 2048)
 
-    async def empty_success(command, **kwargs):
+    async def empty_success(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(command, 0, "", "")
 
     _configure_render(monkeypatch, empty_success)
@@ -93,7 +97,7 @@ async def test_stale_render_is_not_accepted_when_ffmpeg_writes_nothing(
 
 @pytest.mark.asyncio
 async def test_render_cancellation_removes_partial_output(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     source_path = tmp_path / "source.mp4"
@@ -101,7 +105,7 @@ async def test_render_cancellation_removes_partial_output(
     source_path.write_bytes(b"source")
     output_path.write_bytes(b"old short")
 
-    async def cancelled_owner(command, **kwargs):
+    async def cancelled_owner(command: list[str], **kwargs: object) -> None:
         await asyncio.to_thread(_write_bytes, Path(command[-1]), b"partial short")
         raise asyncio.CancelledError
 
@@ -155,7 +159,7 @@ async def test_filtered_transform_rejects_same_path_without_deleting_input(
 
 @pytest.mark.asyncio
 async def test_transform_cancellation_removes_partial_output(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     input_path = tmp_path / "input.mp4"
@@ -163,7 +167,7 @@ async def test_transform_cancellation_removes_partial_output(
     input_path.write_bytes(b"input")
     output_path.write_bytes(b"old processed")
 
-    async def cancelled_owner(command, **kwargs):
+    async def cancelled_owner(command: list[str], **kwargs: object) -> None:
         await asyncio.to_thread(_write_bytes, Path(command[-1]), b"partial processed")
         raise asyncio.CancelledError
 
@@ -184,7 +188,7 @@ async def test_transform_cancellation_removes_partial_output(
 
 @pytest.mark.asyncio
 async def test_transform_without_ffmpeg_removes_stale_output(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     input_path = tmp_path / "input.mp4"
@@ -208,7 +212,7 @@ async def test_transform_without_ffmpeg_removes_stale_output(
 
 @pytest.mark.asyncio
 async def test_poster_ffmpeg_failure_removes_stale_poster(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     video_path = tmp_path / "video.mp4"
@@ -216,7 +220,7 @@ async def test_poster_ffmpeg_failure_removes_stale_poster(
     video_path.write_bytes(b"video")
     poster_path.write_bytes(b"old poster")
 
-    async def failed_owner(command, **kwargs):
+    async def failed_owner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(command, 1, "", "frame failed")
 
     monkeypatch.setattr(shorts_video._impl, "HAS_PILLOW", True)
@@ -236,7 +240,7 @@ async def test_poster_ffmpeg_failure_removes_stale_poster(
 
 @pytest.mark.asyncio
 async def test_snapshot_failure_removes_stale_snapshot(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     video_path = tmp_path / "video.mp4"
@@ -244,7 +248,7 @@ async def test_snapshot_failure_removes_stale_snapshot(
     video_path.write_bytes(b"video")
     snapshot_path.write_bytes(b"old snapshot")
 
-    async def failed_owner(command, **kwargs):
+    async def failed_owner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(command, 1, "", "snapshot failed")
 
     monkeypatch.setattr(shorts_video._impl.shutil, "which", lambda name: "ffmpeg")

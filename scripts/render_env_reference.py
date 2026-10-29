@@ -21,8 +21,8 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import subprocess
-import sys
+import subprocess as subprocess
+import sys as sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -172,7 +172,10 @@ def _policy_owned() -> dict[str, list[str]]:
             file=sys.stderr,
         )
         return {}
-    return json.loads(result.stdout)
+    snapshot: dict[str, list[str]] = json.loads(result.stdout)
+    if not isinstance(snapshot, dict):
+        raise ValueError("POLICY_OWNED snapshot must be a JSON object")
+    return snapshot
 
 
 def render() -> str:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from tools.voxcpm2 import direct_max_quality_render
 from tools.voxcpm2 import semantic_block_runtime as blocks
@@ -57,7 +58,15 @@ def test_previous_block_is_optional_prompt_context_when_backend_exposes_it(tmp_p
     previous.write_bytes(b"wav")
 
     class FakeModel:
-        def generate(self, *, text, reference_wav_path, prompt_wav_path=None, prompt_text=None, **kwargs):
+        def generate(
+            self,
+            *,
+            text: str,
+            reference_wav_path: str,
+            prompt_wav_path: str | None = None,
+            prompt_text: str | None = None,
+            **kwargs: Any,
+        ) -> dict[str, Any]:
             return {
                 "text": text,
                 "reference": reference_wav_path,

@@ -3,8 +3,12 @@
 import asyncio
 import sqlite3
 from types import SimpleNamespace
+from collections.abc import Callable, Coroutine
+from pathlib import Path
+from typing import Any, TypeVar, cast
 
 import pytest
+from telegram import Update
 from telegram.error import BadRequest
 
 from core import user_modes
@@ -13,27 +17,33 @@ import handlers.mode_command as mode
 
 
 class Message:
-    def __init__(self):
-        self.replies = []
+    def __init__(self) -> None:
+        self.replies: list[tuple[str, dict[str, Any]]] = []
 
-    async def reply_text(self, text, **kwargs):
+    async def reply_text(self, text: str, **kwargs: Any) -> None:
         self.replies.append((text, kwargs))
 
 
 class Query:
-    def __init__(self, data):
+    def __init__(self, data: str | None) -> None:
         self.data = data
         self.answers = 0
-        self.edits = []
+        self.edits: list[tuple[str, dict[str, Any]]] = []
 
-    async def answer(self):
+    async def answer(self) -> None:
         self.answers += 1
 
-    async def edit_message_text(self, text, **kwargs):
+    async def edit_message_text(self, text: str, **kwargs: Any) -> None:
         self.edits.append((text, kwargs))
 
 
-def _update(*, user_id=1, with_user=True, query_data=None, with_query=False):
+def _update(
+    *,
+    user_id: int = 1,
+    with_user: bool = True,
+    query_data: str | None = None,
+    with_query: bool = False,
+) -> tuple[SimpleNamespace, Any]:
     query = Query(query_data) if with_query else None
     update = SimpleNamespace(
         effective_user=SimpleNamespace(id=user_id) if with_user else None,
@@ -43,50 +53,53 @@ def _update(*, user_id=1, with_user=True, query_data=None, with_query=False):
     return update, query
 
 
-def _context():
+def _context() -> SimpleNamespace:
     return SimpleNamespace(user_data={"dub_universal_wizard": {"awaiting": "url"}, "other": "keep"})
 
 
-def _run(callback, *args):
+_T = TypeVar("_T")
+
+
+def _run(callback: Callable[..., Coroutine[Any, Any, _T]], *args: Any) -> _T:
     return asyncio.run(callback(*args))
 
 
-def test_admin_detection_handles_missing_regular_and_admin_users(monkeypatch):
+def test_admin_detection_handles_missing_regular_and_admin_users(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(mode, "ADMIN_IDS", {1})
     update, _ = _update(with_user=False)
-    assert mode._is_admin(update) is False
+    assert mode._is_admin(cast(Update, update)) is False
     update, _ = _update(user_id=2)
-    assert mode._is_admin(update) is False
+    assert mode._is_admin(cast(Update, update)) is False
     update, _ = _update(user_id=1)
-    assert mode._is_admin(update) is True
+    assert mode._is_admin(cast(Update, update)) is True
 
 
-def test_safe_edit_sends_html_and_only_ignores_unmodified_message():
+def test_safe_edit_sends_html_and_only_ignores_unmodified_message() -> None:
     query = Query(None)
     _run(mode._safe_edit, query, "text")
     assert query.edits == [("text", {"reply_markup": None, "parse_mode": "HTML"})]
 
     class UnmodifiedQuery(Query):
-        async def edit_message_text(self, text, **kwargs):
+        async def edit_message_text(self, text: str, **kwargs: Any) -> None:
             raise BadRequest("Message is not modified")
 
     _run(mode._safe_edit, UnmodifiedQuery(None), "same")
 
     class BrokenQuery(Query):
-        async def edit_message_text(self, text, **kwargs):
+        async def edit_message_text(self, text: str, **kwargs: Any) -> None:
             raise BadRequest("Message is too old")
 
     with pytest.raises(BadRequest, match="too old"):
         _run(mode._safe_edit, BrokenQuery(None), "text")
 
 
-def test_async_mode_readers_use_executor_and_fall_back_on_errors(monkeypatch):
+def test_async_mode_readers_use_executor_and_fall_back_on_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(user_modes, "_get_user_mode_raw", lambda user_id: "eng")
     monkeypatch.setattr(user_modes, "_get_shorts_factory_full_video_raw", lambda user_id: True)
     assert _run(mode.get_user_mode, 7) == "eng"
     assert _run(mode.get_shorts_factory_full_video, 7) is True
 
-    def fail_read(_user_id):
+    def fail_read(_user_id: int) -> None:
         raise RuntimeError("database down")
 
     monkeypatch.setattr(user_modes, "_get_user_mode_raw", fail_read)
@@ -95,10 +108,10 @@ def test_async_mode_readers_use_executor_and_fall_back_on_errors(monkeypatch):
     assert _run(mode.get_shorts_factory_full_video, 7) is False
 
 
-def test_mode_command_clears_wizard_and_renders_admin_home(monkeypatch):
+def test_mode_command_clears_wizard_and_renders_admin_home(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(mode, "ADMIN_IDS", {1})
 
-    async def read_mode(user_id):
+    async def read_mode(user_id: int) -> str:
         assert user_id == 1
         return "eng"
 
@@ -117,8 +130,8 @@ def test_mode_command_clears_wizard_and_renders_admin_home(monkeypatch):
     assert "dubwiz|mode|gemini" in callbacks
 
 
-def test_mode_command_without_user_or_storage_is_a_noop(monkeypatch):
-    async def read_must_not_run(_user_id):
+def test_mode_command_without_user_or_storage_is_a_noop(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def read_must_not_run(_user_id: int) -> None:
         raise AssertionError("missing Telegram user must not read settings")
 
     monkeypatch.setattr(mode, "_read_user_mode", read_must_not_run)
@@ -130,12 +143,12 @@ def test_mode_command_without_user_or_storage_is_a_noop(monkeypatch):
     assert update.effective_message.replies == []
 
 
-def test_mode_callback_without_query_is_a_noop():
+def test_mode_callback_without_query_is_a_noop() -> None:
     update, _ = _update()
     _run(mode.handle_mode_callback, update, _context())
 
 
-def test_mode_callback_answers_query_but_stops_without_user():
+def test_mode_callback_answers_query_but_stops_without_user() -> None:
     update, query = _update(with_user=False, with_query=True, query_data="mode_menu:home")
 
     _run(mode.handle_mode_callback, update, _context())
@@ -144,10 +157,10 @@ def test_mode_callback_answers_query_but_stops_without_user():
     assert query.edits == []
 
 
-def test_home_callback_clears_wizard_and_renders_regular_home(monkeypatch):
+def test_home_callback_clears_wizard_and_renders_regular_home(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(mode, "ADMIN_IDS", {1})
 
-    async def read_mode(_user_id):
+    async def read_mode(_user_id: int) -> str:
         return "unknown"
 
     monkeypatch.setattr(mode, "_read_user_mode", read_mode)
@@ -165,11 +178,11 @@ def test_home_callback_clears_wizard_and_renders_regular_home(monkeypatch):
     assert callbacks == ["mode_menu:analysis"]
 
 
-def test_analysis_callback_loads_full_video_setting(monkeypatch):
-    async def read_mode(_user_id):
+def test_analysis_callback_loads_full_video_setting(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def read_mode(_user_id: int) -> str:
         return "shorts_max"
 
-    async def read_full_video(user_id):
+    async def read_full_video(user_id: int) -> bool:
         assert user_id == 1
         return True
 
@@ -185,11 +198,11 @@ def test_analysis_callback_loads_full_video_setting(monkeypatch):
     assert "☑️ Полный видео-перевод + нарезки" in buttons
 
 
-def test_full_video_toggle_outside_factory_only_renders_analysis(monkeypatch):
-    async def read_mode(_user_id):
+def test_full_video_toggle_outside_factory_only_renders_analysis(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def read_mode(_user_id: int) -> str:
         return "rus"
 
-    async def setting_must_not_be_read(_user_id):
+    async def setting_must_not_be_read(_user_id: int) -> None:
         raise AssertionError("non-factory modes cannot toggle the factory setting")
 
     monkeypatch.setattr(mode, "_read_user_mode", read_mode)
@@ -201,14 +214,14 @@ def test_full_video_toggle_outside_factory_only_renders_analysis(monkeypatch):
     assert "Текущий режим:" in query.edits[0][0]
 
 
-def test_full_video_toggle_persists_inverted_setting(monkeypatch):
-    async def read_mode(_user_id):
+def test_full_video_toggle_persists_inverted_setting(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def read_mode(_user_id: int) -> str:
         return "shorts_max"
 
-    async def read_full_video(_user_id):
+    async def read_full_video(_user_id: int) -> bool:
         return False
 
-    writes = []
+    writes: list[tuple[int, bool]] = []
     monkeypatch.setattr(mode, "_read_user_mode", read_mode)
     monkeypatch.setattr(mode, "get_shorts_factory_full_video", read_full_video)
     monkeypatch.setattr(
@@ -224,17 +237,17 @@ def test_full_video_toggle_persists_inverted_setting(monkeypatch):
     assert "☑️ полный русский видео-перевод + нарезки" in query.edits[0][0]
 
 
-def test_full_video_toggle_reports_save_errors(monkeypatch):
-    async def read_mode(_user_id):
+def test_full_video_toggle_reports_save_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def read_mode(_user_id: int) -> str:
         return "shorts_max"
 
-    async def read_full_video(_user_id):
+    async def read_full_video(_user_id: int) -> bool:
         return True
 
-    def fail_write(_user_id, _enabled):
+    def fail_write(_user_id: int, _enabled: bool) -> None:
         raise RuntimeError("write failed")
 
-    errors = []
+    errors: list[tuple[Any, ...]] = []
     monkeypatch.setattr(mode, "_read_user_mode", read_mode)
     monkeypatch.setattr(mode, "get_shorts_factory_full_video", read_full_video)
     monkeypatch.setattr(mode, "_set_shorts_factory_full_video_raw", fail_write)
@@ -247,10 +260,10 @@ def test_full_video_toggle_reports_save_errors(monkeypatch):
     assert len(errors) == 1
 
 
-def test_dubcheck_callback_delegates_to_health_owner(monkeypatch):
-    calls = []
+def test_dubcheck_callback_delegates_to_health_owner(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[Any, Any]] = []
 
-    async def check(update, context):
+    async def check(update: Any, context: Any) -> None:
         calls.append((update, context))
 
     monkeypatch.setattr(dub_health, "dubcheck_command", check)
@@ -264,8 +277,8 @@ def test_dubcheck_callback_delegates_to_health_owner(monkeypatch):
     assert query.edits == []
 
 
-def test_unrelated_and_unknown_mode_callbacks_do_not_write(monkeypatch):
-    def write_must_not_run(*args):
+def test_unrelated_and_unknown_mode_callbacks_do_not_write(monkeypatch: pytest.MonkeyPatch) -> None:
+    def write_must_not_run(*args: Any) -> None:
         raise AssertionError("invalid callbacks must not write settings")
 
     monkeypatch.setattr(mode, "_set_user_mode_raw", write_must_not_run)
@@ -279,11 +292,11 @@ def test_unrelated_and_unknown_mode_callbacks_do_not_write(monkeypatch):
     assert query.edits[0][0] == "❌ Неизвестный режим."
 
 
-def test_mode_selection_reports_save_errors(monkeypatch):
-    def fail_write(_user_id, _mode):
+def test_mode_selection_reports_save_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail_write(_user_id: int, _mode: str) -> None:
         raise RuntimeError("write failed")
 
-    errors = []
+    errors: list[tuple[Any, ...]] = []
     monkeypatch.setattr(mode, "_set_user_mode_raw", fail_write)
     monkeypatch.setattr(mode.logger, "error", lambda *args: errors.append(args))
     update, query = _update(with_query=True, query_data="set_mode:eng")
@@ -294,15 +307,15 @@ def test_mode_selection_reports_save_errors(monkeypatch):
     assert len(errors) == 1
 
 
-def test_mode_selection_persists_and_renders_saved_mode(monkeypatch):
-    writes = []
+def test_mode_selection_persists_and_renders_saved_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    writes: list[tuple[int, str]] = []
     monkeypatch.setattr(
         mode,
         "_set_user_mode_raw",
         lambda user_id, selected: writes.append((user_id, selected)),
     )
 
-    async def read_full_video(_user_id):
+    async def read_full_video(_user_id: int) -> bool:
         return False
 
     monkeypatch.setattr(mode, "get_shorts_factory_full_video", read_full_video)
@@ -319,10 +332,10 @@ def test_mode_selection_persists_and_renders_saved_mode(monkeypatch):
     assert kwargs["reply_markup"].inline_keyboard[-2][0].callback_data == ("mode_menu:factory_full_video_toggle")
 
 
-def test_raw_mode_persistence_validates_values_and_falls_back(monkeypatch, tmp_path):
+def test_raw_mode_persistence_validates_values_and_falls_back(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     db_path = tmp_path / "settings.sqlite3"
 
-    def connect():
+    def connect() -> sqlite3.Connection:
         conn = sqlite3.connect(db_path)
         conn.execute("CREATE TABLE IF NOT EXISTS bot_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
         return conn
@@ -342,7 +355,7 @@ def test_raw_mode_persistence_validates_values_and_falls_back(monkeypatch, tmp_p
     with pytest.raises(ValueError, match="invalid mode"):
         mode._set_user_mode_raw(1, "obsolete")
 
-    def fail_connect():
+    def fail_connect() -> None:
         raise RuntimeError("database down")
 
     monkeypatch.setattr(user_modes, "_db_conn", fail_connect)

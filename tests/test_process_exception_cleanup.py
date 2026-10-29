@@ -7,6 +7,7 @@ import signal
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import Mock
 
 import pytest
@@ -41,13 +42,13 @@ class DirectProcess:
 async def test_direct_process_fallback_preserves_terminate_then_kill(terminate_stops: bool) -> None:
     process = DirectProcess(terminate_stops=terminate_stops)
 
-    await async_process._stop_direct_process_fallback(process, grace_seconds=0.01)
+    await async_process._stop_direct_process_fallback(cast(asyncio.subprocess.Process, process), grace_seconds=0.01)
 
     assert process.terminate_calls == 1
     assert process.kill_calls == (0 if terminate_stops else 1)
 
 
-def test_bgutil_windows_taskkill_failure_falls_back_to_kill(monkeypatch) -> None:
+def test_bgutil_windows_taskkill_failure_falls_back_to_kill(monkeypatch: pytest.MonkeyPatch) -> None:
     process = SimpleNamespace(pid=123, poll=Mock(return_value=None), kill=Mock())
     run = Mock(side_effect=OSError("no taskkill"))
     monkeypatch.setattr(bgutil_http_runtime, "os", SimpleNamespace(name="nt"))
@@ -56,13 +57,13 @@ def test_bgutil_windows_taskkill_failure_falls_back_to_kill(monkeypatch) -> None
     )
     monkeypatch.setattr(bgutil_http_runtime.subprocess, "run", run)
 
-    bgutil_http_runtime._force_stop_tree(process)
+    bgutil_http_runtime._force_stop_tree(cast(subprocess.Popen[Any], process))
 
     assert run.call_args.args[0][0] == r"C:\Windows\System32\taskkill.exe"
     process.kill.assert_called_once_with()
 
 
-def test_execution_windows_taskkill_uses_resolved_executable(monkeypatch) -> None:
+def test_execution_windows_taskkill_uses_resolved_executable(monkeypatch: pytest.MonkeyPatch) -> None:
     run = Mock(return_value=None)
     monkeypatch.setattr(dub_execution, "_pid_is_running", Mock(side_effect=[True, False, False]))
     monkeypatch.setattr(dub_execution, "os", SimpleNamespace(name="nt"))
@@ -84,7 +85,7 @@ def test_execution_windows_taskkill_uses_resolved_executable(monkeypatch) -> Non
     ]
 
 
-def test_bgutil_posix_group_failure_falls_back_to_kill(monkeypatch) -> None:
+def test_bgutil_posix_group_failure_falls_back_to_kill(monkeypatch: pytest.MonkeyPatch) -> None:
     process = SimpleNamespace(pid=123, poll=Mock(return_value=None), kill=Mock())
     monkeypatch.setattr(
         bgutil_http_runtime,
@@ -92,12 +93,12 @@ def test_bgutil_posix_group_failure_falls_back_to_kill(monkeypatch) -> None:
         SimpleNamespace(name="posix", killpg=Mock(side_effect=ProcessLookupError)),
     )
 
-    bgutil_http_runtime._force_stop_tree(process)
+    bgutil_http_runtime._force_stop_tree(cast(subprocess.Popen[Any], process))
 
     process.kill.assert_called_once_with()
 
 
-def test_bgutil_final_wait_timeout_is_ignored_after_force_stop(monkeypatch) -> None:
+def test_bgutil_final_wait_timeout_is_ignored_after_force_stop(monkeypatch: pytest.MonkeyPatch) -> None:
     process = SimpleNamespace(
         pid=123,
         poll=Mock(return_value=None),
@@ -120,7 +121,7 @@ def test_bgutil_final_wait_timeout_is_ignored_after_force_stop(monkeypatch) -> N
     assert bgutil_http_runtime._OWNED_PROCESS is None
 
 
-def test_runner_sigkill_falls_back_to_single_pid(monkeypatch) -> None:
+def test_runner_sigkill_falls_back_to_single_pid(monkeypatch: pytest.MonkeyPatch) -> None:
     running_states = iter([True, False, True])
     monkeypatch.setattr(dub_execution, "_pid_is_running", lambda pid: next(running_states))
     killpg = Mock(side_effect=[None, OSError("process group unavailable")])
@@ -146,7 +147,7 @@ def test_dub_worker_reader_always_closes_pipe() -> None:
     assert [output.get_nowait(), output.get_nowait()] == ["first\n", "second\n"]
 
 
-def test_basic_terminate_uses_kill_for_group_failure_and_timeout(monkeypatch) -> None:
+def test_basic_terminate_uses_kill_for_group_failure_and_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     process = SimpleNamespace(
         pid=123,
         poll=Mock(return_value=None),
@@ -159,12 +160,12 @@ def test_basic_terminate_uses_kill_for_group_failure_and_timeout(monkeypatch) ->
         SimpleNamespace(name="posix", killpg=Mock(side_effect=OSError("no process group"))),
     )
 
-    dub_worker._basic_terminate_process(process)
+    dub_worker._basic_terminate_process(cast(subprocess.Popen[str], process))
 
     assert process.kill.call_count == 2
 
 
-def test_terminate_uses_fallback_for_group_failure_and_timeout(monkeypatch) -> None:
+def test_terminate_uses_fallback_for_group_failure_and_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     process = SimpleNamespace(
         pid=123,
         poll=Mock(return_value=None),
@@ -178,13 +179,13 @@ def test_terminate_uses_fallback_for_group_failure_and_timeout(monkeypatch) -> N
         SimpleNamespace(name="posix", killpg=Mock(side_effect=OSError("no process group"))),
     )
 
-    dub_worker._terminate_process(process)
+    dub_worker._terminate_process(cast(subprocess.Popen[str], process))
 
     process.terminate.assert_called_once_with()
     process.kill.assert_called_once_with()
 
 
-def test_windows_taskkill_failure_falls_back_to_terminate(monkeypatch) -> None:
+def test_windows_taskkill_failure_falls_back_to_terminate(monkeypatch: pytest.MonkeyPatch) -> None:
     process = SimpleNamespace(
         pid=123,
         poll=Mock(return_value=None),
@@ -201,14 +202,14 @@ def test_windows_taskkill_failure_falls_back_to_terminate(monkeypatch) -> None:
     )
     monkeypatch.setattr(dub_worker.subprocess, "run", run)
 
-    dub_worker._terminate_process(process)
+    dub_worker._terminate_process(cast(subprocess.Popen[str], process))
 
     assert run.call_args.args[0][0] == r"C:\Windows\System32\taskkill.exe"
     process.terminate.assert_called_once_with()
     process.kill.assert_not_called()
 
 
-def test_studio_stale_worker_uses_resolved_taskkill(monkeypatch) -> None:
+def test_studio_stale_worker_uses_resolved_taskkill(monkeypatch: pytest.MonkeyPatch) -> None:
     run = Mock(return_value=None)
     monkeypatch.setattr(
         dub_studio_runtime,
@@ -228,7 +229,7 @@ def test_studio_stale_worker_uses_resolved_taskkill(monkeypatch) -> None:
     ]
 
 
-def test_dub_worker_windows_pid_probe_closes_process_handle(monkeypatch) -> None:
+def test_dub_worker_windows_pid_probe_closes_process_handle(monkeypatch: pytest.MonkeyPatch) -> None:
     import ctypes
 
     kernel32 = SimpleNamespace(OpenProcess=Mock(return_value=66), CloseHandle=Mock())
@@ -240,7 +241,7 @@ def test_dub_worker_windows_pid_probe_closes_process_handle(monkeypatch) -> None
     kernel32.CloseHandle.assert_called_once_with(66)
 
 
-def test_studio_windows_pid_probe_closes_process_handle(monkeypatch) -> None:
+def test_studio_windows_pid_probe_closes_process_handle(monkeypatch: pytest.MonkeyPatch) -> None:
     import ctypes
 
     kernel32 = SimpleNamespace(OpenProcess=Mock(return_value=77), CloseHandle=Mock())
@@ -257,7 +258,9 @@ def test_studio_windows_pid_probe_closes_process_handle(monkeypatch) -> None:
     kernel32.CloseHandle.assert_called_once_with(77)
 
 
-def test_studio_stale_worker_preserves_nonfatal_failure(monkeypatch, caplog) -> None:
+def test_studio_stale_worker_preserves_nonfatal_failure(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     monkeypatch.setattr(dub_studio_runtime, "resolve_required_executable", lambda _name: "/resolved/taskkill")
     monkeypatch.setattr(dub_studio_runtime.subprocess, "run", Mock(side_effect=OSError("unavailable")))
     caplog.set_level("WARNING", logger="services.dub_studio_runtime")
@@ -267,9 +270,11 @@ def test_studio_stale_worker_preserves_nonfatal_failure(monkeypatch, caplog) -> 
     assert "Could not replace old Dub Studio worker" in caplog.text
 
 
-def test_studio_worker_replacement_executes_stale_windows_cleanup(monkeypatch, tmp_path: Path) -> None:
+def test_studio_worker_replacement_executes_stale_windows_cleanup(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     class Store:
-        def latest_worker(self):
+        def latest_worker(self) -> dict[str, Any]:
             return {"pid": 123, "status": "idle", "details": {"runtime": "old"}}
 
     stop = Mock()

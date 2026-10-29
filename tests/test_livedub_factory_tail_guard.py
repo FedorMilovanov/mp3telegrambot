@@ -4,7 +4,7 @@ from services.livedub_mix import build_mix_filter
 from services.shorts_factory_execution_guard import _translation_source_error
 
 
-def test_ducking_sidechain_control_survives_full_tail_without_padding_audible_ru():
+def test_ducking_sidechain_control_survives_full_tail_without_padding_audible_ru() -> None:
     graph = build_mix_filter(
         0.45,
         1.3,
@@ -25,7 +25,7 @@ def test_ducking_sidechain_control_survives_full_tail_without_padding_audible_ru
     assert "[ru2]apad" not in graph
 
 
-def test_ducking_without_tail_keeps_original_sidechain_route():
+def test_ducking_without_tail_keeps_original_sidechain_route() -> None:
     graph = build_mix_filter(
         0.45,
         1.3,
@@ -39,7 +39,7 @@ def test_ducking_without_tail_keeps_original_sidechain_route():
     assert "[en0][ru1]sidechaincompress=" in graph
 
 
-def test_local_factory_livedub_quality_failure_is_not_reported_as_provider_unavailable():
+def test_local_factory_livedub_quality_failure_is_not_reported_as_provider_unavailable() -> None:
     message = _translation_source_error(
         RuntimeError(
             "Maximum-quality Factory LiveDub lost the required Russian tail: "
@@ -53,7 +53,7 @@ def test_local_factory_livedub_quality_failure_is_not_reported_as_provider_unava
     assert "недоступен для этого источника" not in message
 
 
-def test_real_provider_unavailable_marker_keeps_provider_error_message():
+def test_real_provider_unavailable_marker_keeps_provider_error_message() -> None:
     message = _translation_source_error(RuntimeError("LIVEDUB_NOT_AVAILABLE: translation is not ready"))
 
     assert "недоступен для этого источника" in message

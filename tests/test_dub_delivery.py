@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from handlers.dub_delivery import available_outputs
 
 
-def _project(root: Path) -> dict:
+def _project(root: Path) -> dict[str, Any]:
     return {
         "id": "test-project",
         "recipe_id": "short_tnliocegylk",

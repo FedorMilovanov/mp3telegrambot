@@ -11,7 +11,7 @@ from core.timestamp_quality import (
 from services.search import _get_rutube_listing_cache, _set_rutube_listing_cache
 
 
-def test_timestamp_coverage_audit_detects_half_covered_long_material():
+def test_timestamp_coverage_audit_detects_half_covered_long_material() -> None:
     timestamps = "0:00 Начало\n10:00 Середина\n20:00 Всё ещё первая половина"
     issue = audit_timestamp_coverage(timestamps, 60 * 60)
     assert issue is not None
@@ -21,7 +21,7 @@ def test_timestamp_coverage_audit_detects_half_covered_long_material():
     assert round(timestamp_coverage_ratio(timestamps, 3600), 2) == 0.33
 
 
-def test_json_parser_marks_timestamp_coverage_warning_without_mutating_timestamps():
+def test_json_parser_marks_timestamp_coverage_warning_without_mutating_timestamps() -> None:
     raw = {
         "real_author": "A",
         "real_title": "T",
@@ -49,18 +49,22 @@ def test_json_parser_marks_timestamp_coverage_warning_without_mutating_timestamp
     assert "timestamp_coverage_warning" in parsed
 
 
-def test_rutube_listing_cache_roundtrip_is_copy():
+def test_rutube_listing_cache_roundtrip_is_copy() -> None:
     # AUDIT R14: кэш теперь возвращает (results, complete)
     _set_rutube_listing_cache("cid-test", [{"id": "1", "title": "A"}], True)
-    first_res, first_complete = _get_rutube_listing_cache("cid-test")
-    second_res, _ = _get_rutube_listing_cache("cid-test")
+    first = _get_rutube_listing_cache("cid-test")
+    assert first is not None
+    first_res, first_complete = first
+    second = _get_rutube_listing_cache("cid-test")
+    assert second is not None
+    second_res, _ = second
     assert first_res == [{"id": "1", "title": "A"}]
     assert first_complete is True
     assert second_res == [{"id": "1", "title": "A"}]
     assert first_res is not second_res
 
 
-def test_search_and_json_parser_are_wired_for_cache_and_timestamp_quality():
+def test_search_and_json_parser_are_wired_for_cache_and_timestamp_quality() -> None:
     search = Path("services/search.py").read_text(encoding="utf-8")
     parser = Path("core/json_parser.py").read_text(encoding="utf-8")
     assert "_RUTUBE_LISTING_CACHE" in search

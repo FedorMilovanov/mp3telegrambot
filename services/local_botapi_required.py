@@ -24,8 +24,11 @@ from urllib.parse import urlparse
 
 import httpx
 
-from services import local_botapi_bootstrap as probe_runtime
-from services import local_botapi_runtime as process_runtime
+from services import local_botapi_bootstrap as local_botapi_bootstrap
+from services import local_botapi_runtime as local_botapi_runtime
+
+probe_runtime = local_botapi_bootstrap
+process_runtime = local_botapi_runtime
 
 _LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
 

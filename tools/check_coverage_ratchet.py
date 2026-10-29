@@ -72,7 +72,9 @@ def _resolve(filename: str, source_roots: list[str], root: Path) -> str:
 def measure(coverage_xml: Path, root: Path = ROOT) -> dict[str, float]:
     """Покрытие по файлам из Cobertura-отчёта, ключ — путь от корня репозитория."""
     document = ET.parse(coverage_xml).getroot()
-    source_roots = [Path(source.text.strip()).name for source in document.iter("source") if (source.text or "").strip()]
+    source_roots = [
+        Path((source.text or "").strip()).name for source in document.iter("source") if (source.text or "").strip()
+    ]
     result: dict[str, float] = {}
     for cls in document.iter("class"):
         filename = cls.get("filename") or ""

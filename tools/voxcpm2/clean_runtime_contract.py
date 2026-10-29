@@ -6,7 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import subprocess
+import subprocess as subprocess
 from pathlib import Path
 from typing import Any
 
@@ -142,7 +142,7 @@ def _setting(request: dict[str, Any], key: str, default: Any) -> Any:
     return default if key not in request or request[key] is None else request[key]
 
 
-def normalize_settings(request: dict[str, Any], *, duration: Any) -> dict[str, Any]:
+def _base_normalize_settings_impl(request: dict[str, Any], *, duration: Any) -> dict[str, Any]:
     if not isinstance(request, dict):
         raise RuntimeError("Dub request должен быть JSON-объектом.")
     duration_value = _finite(duration, field="video_duration")
@@ -310,7 +310,7 @@ if _BACKEND.backend_id != DEFAULT_BACKEND_ID:
 
 # Public model discovery follows the default backend through a normal local binding.
 discover_model = _BACKEND.discover_model
-_base_normalize_settings = normalize_settings
+_base_normalize_settings = _base_normalize_settings_impl
 
 
 def normalize_settings(
@@ -388,7 +388,10 @@ def build_fingerprints(
     try:
         identity_payload = backend.identity(archive).as_dict()
     except RuntimeError:
-        model_path = str((render_payload.get("model") or {}).get("path") or "").strip()
+        model_payload = render_payload.get("model")
+        model_path = ""
+        if isinstance(model_payload, dict):
+            model_path = str(model_payload.get("path") or "").strip()
         if not model_path:
             raise
         identity_payload = BackendIdentity(

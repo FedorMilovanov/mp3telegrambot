@@ -11,7 +11,7 @@ remain outside that closure unless a runtime package actually requires them.
 from __future__ import annotations
 
 from collections import deque
-from importlib import metadata
+from importlib import metadata as metadata
 from pathlib import Path
 from typing import Any, Iterable
 

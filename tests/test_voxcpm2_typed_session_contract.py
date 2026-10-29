@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from collections.abc import Iterator
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -38,7 +39,7 @@ class _TTSModel:
         self.base_lm = _Cache()
         self.residual_lm = _Cache()
 
-    def parameters(self):
+    def parameters(self) -> Iterator[_Parameter]:
         return iter((_Parameter(),))
 
 
@@ -57,7 +58,7 @@ class _VoxCPM:
         return cls.model
 
 
-def test_voxcpm2_backend_accepts_only_typed_session_config(monkeypatch) -> None:
+def test_voxcpm2_backend_accepts_only_typed_session_config(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(sys.modules, "voxcpm", SimpleNamespace(VoxCPM=_VoxCPM))
     backend = default_backend()
     config = BackendSessionConfig(

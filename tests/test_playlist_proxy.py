@@ -3,7 +3,7 @@
 from pathlib import Path
 
 
-def test_playlist_imports_proxy_helper():
+def test_playlist_imports_proxy_helper() -> None:
     """playlist.py must import _proxy_for_ytdlp from services.ffmpeg."""
     src = Path("pipelines/playlist.py").read_text(encoding="utf-8")
     assert "_proxy_for_ytdlp" in src, (
@@ -15,7 +15,7 @@ def test_playlist_imports_proxy_helper():
     )
 
 
-def test_playlist_opts_include_proxy():
+def test_playlist_opts_include_proxy() -> None:
     """playlist_opts must set 'proxy' key when _proxy_for_ytdlp() returns a value."""
     src = Path("pipelines/playlist.py").read_text(encoding="utf-8")
     assert 'playlist_opts["proxy"]' in src or "playlist_opts['proxy']" in src, (
@@ -23,7 +23,7 @@ def test_playlist_opts_include_proxy():
     )
 
 
-def test_playlist_uses_safe_cookie_check():
+def test_playlist_uses_safe_cookie_check() -> None:
     """playlist.py must use _firefox_cookie_source_available, not shutil.which('firefox').
 
     shutil.which only checks if the binary exists. On machines with Firefox

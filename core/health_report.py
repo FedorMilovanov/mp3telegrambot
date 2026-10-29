@@ -19,8 +19,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
-#: Апдейтов не было дольше этого — считаем, что бот не обрабатывает сообщения.
-STALE_UPDATE_SECONDS = 300.0
+#: Successful getUpdates responses are required even when no users write.
+STALE_POLLING_SECONDS = 300.0
 #: Обслуживание не проходило дольше двух часов (оно ежечасное) — сигнал тревоги.
 STALE_MAINTENANCE_SECONDS = 7200.0
 #: Ниже этого порога свободного места бот не сможет рендерить видео.
@@ -111,9 +111,11 @@ def collect_problems(
     """
     problems: list[str] = []
 
-    last_update_age = snapshot.get("last_update_age_seconds")
-    if last_update_age is not None and float(last_update_age) > STALE_UPDATE_SECONDS:
-        problems.append("updates_stale")
+    polling_start_age = snapshot.get("polling_start_age_seconds")
+    last_polling_age = snapshot.get("last_polling_age_seconds")
+    polling_age = last_polling_age if last_polling_age is not None else polling_start_age
+    if polling_age is not None and float(polling_age) > STALE_POLLING_SECONDS:
+        problems.append("polling_stale")
 
     last_maintenance_age = snapshot.get("last_maintenance_age_seconds")
     if last_maintenance_age is not None and float(last_maintenance_age) > STALE_MAINTENANCE_SECONDS:
@@ -142,8 +144,8 @@ def build_health(
 ) -> tuple[dict[str, Any], int]:
     """(payload, HTTP-код).
 
-    ``503`` отдаётся, если бот не обрабатывает апдейты, БД недоступна или не
-    осталось места. Отсутствие ключей Gemini — тоже ``503``: без них анализ не
+    ``503`` отдаётся, если polling не отвечает, БД недоступна или не осталось
+    места. Отсутствие ключей Gemini — тоже ``503``: без них анализ не
     работает, и «здоровым» бот в таком состоянии не является.
     """
     problems = collect_problems(
@@ -154,6 +156,8 @@ def build_health(
         gemini_keys_required=gemini_keys_required,
     )
     last_update_age = snapshot.get("last_update_age_seconds")
+    polling_start_age = snapshot.get("polling_start_age_seconds")
+    last_polling_age = snapshot.get("last_polling_age_seconds")
     last_maintenance_age = snapshot.get("last_maintenance_age_seconds")
 
     payload: dict[str, Any] = {
@@ -165,6 +169,10 @@ def build_health(
             "total": snapshot.get("updates_total", 0),
             "rejected_total": snapshot.get("updates_rejected_total", 0),
             "last_age_seconds": (None if last_update_age is None else round(float(last_update_age), 1)),
+        },
+        "polling": {
+            "start_age_seconds": (None if polling_start_age is None else round(float(polling_start_age), 1)),
+            "last_age_seconds": (None if last_polling_age is None else round(float(last_polling_age), 1)),
         },
         "maintenance": {
             "runs_total": snapshot.get("maintenance_runs_total", 0),
@@ -235,7 +243,15 @@ def render_prometheus(
     lines += _metric(
         "mp3bot_last_update_age_seconds",
         -1 if last_update_age is None else round(float(last_update_age), 1),
-        "Seconds since the last processed update, -1 if none yet",
+        "Seconds since the last processed update, -1 if none yet; informational only",
+    )
+    last_polling_age = snapshot.get("last_polling_age_seconds")
+    polling_start_age = snapshot.get("polling_start_age_seconds")
+    polling_age = last_polling_age if last_polling_age is not None else polling_start_age
+    lines += _metric(
+        "mp3bot_last_polling_age_seconds",
+        -1 if polling_age is None else round(float(polling_age), 1),
+        "Seconds since successful getUpdates, or polling start before its first response",
     )
     lines += _metric(
         "mp3bot_jobs_active",

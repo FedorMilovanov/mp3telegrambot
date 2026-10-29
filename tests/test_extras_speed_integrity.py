@@ -1,5 +1,7 @@
+import asyncio
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -21,7 +23,7 @@ def _probe(duration: float = 90.0) -> MediaProbe:
     )
 
 
-def _candidate() -> dict:
+def _candidate() -> dict[str, Any]:
     return {
         "title": "Монтаж",
         "total_dur": 90.0,
@@ -33,7 +35,7 @@ def _candidate() -> dict:
     }
 
 
-def test_extras_speed_validation_is_finite_positive_and_explicit():
+def test_extras_speed_validation_is_finite_positive_and_explicit() -> None:
     assert montage._validated_extras_speed(1.0) == (1.0, False)
     assert montage._validated_extras_speed(1.5) == (1.5, True)
     assert montage._validated_extras_speed(0.99) == (0.99, True)
@@ -42,7 +44,9 @@ def test_extras_speed_validation_is_finite_positive_and_explicit():
 
 
 @pytest.mark.asyncio
-async def test_required_speed_transform_failure_never_delivers_raw(monkeypatch, tmp_path):
+async def test_required_speed_transform_failure_never_delivers_raw(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setattr(montage, "DOWNLOAD_DIR", tmp_path)
     monkeypatch.setattr(montage, "get_shorts_visual_mode", lambda value: "crop_zoom")
     settings = {
@@ -52,22 +56,28 @@ async def test_required_speed_transform_failure_never_delivers_raw(monkeypatch, 
         "shorts_title_poster": False,
     }
 
-    async def get_setting(key):
+    async def get_setting(key: str) -> bool:
         return settings[key]
 
-    async def get_speed():
+    async def get_speed() -> float:
         return 1.5
 
-    async def render(source_video_path, output_path, fragments, *, visual_mode):
-        output_path.write_bytes(b"raw")
+    async def render(
+        source_video_path: Path,
+        output_path: Path,
+        fragments: list[dict[str, Any]],
+        *,
+        visual_mode: str,
+    ) -> bool:
+        await asyncio.to_thread(output_path.write_bytes, b"raw")
         return True
 
-    async def probe(path):
+    async def probe(path: Path) -> MediaProbe:
         return _probe()
 
-    post_calls = []
+    post_calls: list[tuple[Path, Path, bool, float]] = []
 
-    async def failed_post(input_path, output_path, *, normalize_audio, speed):
+    async def failed_post(input_path: Path, output_path: Path, *, normalize_audio: bool, speed: float) -> bool:
         post_calls.append((Path(input_path), Path(output_path), normalize_audio, speed))
         return False
 
@@ -99,15 +109,15 @@ async def test_required_speed_transform_failure_never_delivers_raw(monkeypatch, 
 
 
 @pytest.mark.asyncio
-async def test_generic_normalize_only_packet_copies_video(monkeypatch, tmp_path):
+async def test_generic_normalize_only_packet_copies_video(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     input_path = tmp_path / "input.mp4"
     output_path = tmp_path / "output.mp4"
     input_path.write_bytes(b"input")
-    commands = []
+    commands: list[tuple[list[str], float, bool]] = []
 
     monkeypatch.setattr(shorts_video._impl.shutil, "which", lambda name: "/usr/bin/ffmpeg")
 
-    async def fake_run(command, *, timeout, text):
+    async def fake_run(command: list[str], *, timeout: float, text: bool) -> SimpleNamespace:
         commands.append((list(command), timeout, text))
         output_path.write_bytes(b"output")
         return SimpleNamespace(returncode=0, stderr="")
@@ -140,7 +150,7 @@ async def test_generic_normalize_only_packet_copies_video(monkeypatch, tmp_path)
     assert "libx264" not in command
 
 
-def test_generic_transform_uses_copy_only_for_audio_only_unity_path():
+def test_generic_transform_uses_copy_only_for_audio_only_unity_path() -> None:
     source = Path("services/shorts_video.py").read_text(encoding="utf-8")
     start = source.index("async def _owned_short_transform")
     end = source.index("async def _owned_optional_output", start)
@@ -153,7 +163,7 @@ def test_generic_transform_uses_copy_only_for_audio_only_unity_path():
     assert "speed=speed_value" in transform
 
 
-def test_montage_encodes_parts_but_packet_copies_final_video_concat():
+def test_montage_encodes_parts_but_packet_copies_final_video_concat() -> None:
     source = Path("services/render_clips_montage.py").read_text(encoding="utf-8")
     render_start = source.index("async def render_montage_short")
     render_end = source.index("def _extras_text_config", render_start)
@@ -175,7 +185,7 @@ def test_montage_encodes_parts_but_packet_copies_final_video_concat():
     assert '"-vsync", "vfr"' not in concat_compact
 
 
-def test_factory_and_verified_highlights_keep_their_existing_quality_owners():
+def test_factory_and_verified_highlights_keep_their_existing_quality_owners() -> None:
     factory = Path("services/shorts_factory_video_quality.py").read_text(encoding="utf-8")
     highlights = Path("services/highlights_quality.py").read_text(encoding="utf-8")
 

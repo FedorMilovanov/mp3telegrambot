@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -20,12 +21,12 @@ from services.translation_editorial_repair_provenance import (
 )
 
 
-def _bound_plan(tmp_path: Path) -> tuple[dict, Path]:
+def _bound_plan(tmp_path: Path) -> tuple[dict[str, Any], Path]:
     clean = tmp_path / "clean.mp4"
     clean.write_bytes(b"clean-media" * 300)
     review = tmp_path / "review.json"
     review.write_text("{}", encoding="utf-8")
-    provenance = {
+    provenance: dict[str, Any] = {
         "schema_name": REPAIR_PROVENANCE_SCHEMA_NAME,
         "schema_version": 1,
         "review_pack_id": "sha256:" + "a" * 64,
@@ -96,7 +97,7 @@ async def test_service_rehashes_repair_sidecar_before_accepting_source(
     plan, sidecar = _bound_plan(tmp_path)
     clean = Path(plan["source"]["local_path"])
 
-    async def fake_probe(path: Path):
+    async def fake_probe(path: Path) -> SimpleNamespace:
         assert Path(path) == clean
         return SimpleNamespace(duration=97.0)
 

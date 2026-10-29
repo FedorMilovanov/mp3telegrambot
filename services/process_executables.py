@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import shutil
+import shutil as shutil
 
 
 def resolve_required_executable(name: str) -> str:

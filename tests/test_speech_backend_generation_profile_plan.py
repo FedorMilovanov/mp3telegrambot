@@ -23,7 +23,7 @@ CLI = ROOT / "tools" / "voxcpm2" / "direct_max_quality_cli.py"
 RENDER = ROOT / "tools" / "voxcpm2" / "direct_max_quality_render.py"
 
 
-def _request(attempt: int, *, cfg: float = 1.9, steps: int = 16):
+def _request(attempt: int, *, cfg: float = 1.9, steps: int = 16) -> BackendGenerationProfileRequest:
     return BackendGenerationProfileRequest(
         attempt=attempt,
         base_backend_options={"cfg": cfg, "steps": steps},

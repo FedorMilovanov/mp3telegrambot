@@ -6,7 +6,7 @@ from core.page_audit import audit_telegraph_page
 from services.search import _best_match
 
 
-def test_page_audit_does_not_flag_translation_forks_as_source_titles():
+def test_page_audit_does_not_flag_translation_forks_as_source_titles() -> None:
     nodes = [
         {"tag": "h3", "children": ["Переводческие развилки"]},
         {
@@ -27,7 +27,7 @@ def test_page_audit_does_not_flag_translation_forks_as_source_titles():
     assert "source_map_original_title" not in {i.code for i in issues}
 
 
-def test_page_audit_still_flags_source_card_in_source_map_context():
+def test_page_audit_still_flags_source_card_in_source_map_context() -> None:
     nodes = [
         {"tag": "h3", "children": ["Карта источников для дальнейшего изучения"]},
         {"tag": "p", "children": ["• Джон МакАртур, Странный огонь (John MacArthur, Strange Fire)."]},
@@ -36,7 +36,7 @@ def test_page_audit_still_flags_source_card_in_source_map_context():
     assert "source_map_original_title" in {i.code for i in issues}
 
 
-def test_search_scoring_does_not_match_by_author_and_duration_only():
+def test_search_scoring_does_not_match_by_author_and_duration_only() -> None:
     title = "Достаточность Писания: Псалом 18 - Джон МакАртур"
     results = [
         {"id": "wrong", "title": "Радостные рабы Христовы (Джон МакАртур)", "duration": 3393},
@@ -47,7 +47,7 @@ def test_search_scoring_does_not_match_by_author_and_duration_only():
     assert score > 0.4
 
 
-def test_caption_trimming_has_compact_timestamp_fallback():
+def test_caption_trimming_has_compact_timestamp_fallback() -> None:
     # Алгоритм обрезки живёт в pipelines/caption_stage.py: раньше он был двумя
     # копиями (обычный путь и кэш-хит). Инвариант тот же — мини-набор таймкодов
     # пробуется до полного удаления, — но проверяется в одном месте.
@@ -60,7 +60,7 @@ def test_caption_trimming_has_compact_timestamp_fallback():
     assert '"timestamps_removed"' in src
 
 
-def test_page_audit_does_not_flag_doctrinal_concept_with_latin_parenthetical_as_source():
+def test_page_audit_does_not_flag_doctrinal_concept_with_latin_parenthetical_as_source() -> None:
     nodes = [
         {"tag": "h3", "children": ["Карта источников"]},
         {
@@ -76,7 +76,7 @@ def test_page_audit_does_not_flag_doctrinal_concept_with_latin_parenthetical_as_
     assert "source_map_original_title" not in {i.code for i in issues}
 
 
-def test_page_audit_allows_registered_official_ru_source_title():
+def test_page_audit_allows_registered_official_ru_source_title() -> None:
     nodes = [
         {"tag": "h3", "children": ["Карта источников"]},
         {

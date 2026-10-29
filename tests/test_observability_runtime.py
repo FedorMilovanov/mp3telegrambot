@@ -9,6 +9,9 @@
 """
 
 from __future__ import annotations
+from collections.abc import Iterator
+from typing import Any
+import pathlib
 
 import json
 import logging
@@ -34,7 +37,7 @@ from services.health_report import (
 
 
 @pytest.fixture(autouse=True)
-def _fresh_state():
+def _fresh_state() -> Iterator[None]:
     runtime_status.reset()
     bind_update(None)
     bind_job(None)
@@ -91,7 +94,7 @@ def test_scheduler_slots_are_counted_as_jobs() -> None:
     assert runtime_status.snapshot()["jobs_total"] == 1
 
 
-def test_scheduler_limits_survive_garbage_env(monkeypatch) -> None:
+def test_scheduler_limits_survive_garbage_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Опечатка в env не должна ронять старт или разрешать 0 слотов."""
     from core import resource_scheduler
 
@@ -165,6 +168,8 @@ def test_uptime_counts_from_import_not_from_first_request() -> None:
     """`uptime_seconds` не должен быть нулём на первой проверке."""
     started = runtime_status.snapshot()["uptime_seconds"]
     later = runtime_status.snapshot(now=time.time() + 120)["uptime_seconds"]
+    assert isinstance(started, (int, float))
+    assert isinstance(later, (int, float))
     assert later - started >= 119
 
 
@@ -185,7 +190,7 @@ def test_health_report_compatibility_exports_core_owner() -> None:
     assert compatibility.render_prometheus is core_owner.render_prometheus
 
 
-def test_database_probe_reads_an_existing_db(tmp_path) -> None:
+def test_database_probe_reads_an_existing_db(tmp_path: pathlib.Path) -> None:
     """Имя с пробелом и «#» обязано открываться: путь попадает в URI."""
     import sqlite3
 
@@ -195,14 +200,14 @@ def test_database_probe_reads_an_existing_db(tmp_path) -> None:
     assert database_ok(db) is True
 
 
-def test_database_probe_does_not_create_missing_db(tmp_path) -> None:
+def test_database_probe_does_not_create_missing_db(tmp_path: pathlib.Path) -> None:
     """health-проба не должна оставлять пустой файл вместо базы."""
     missing = tmp_path / "nope.db"
     assert database_ok(missing) is False
     assert not missing.exists()
 
 
-def test_database_probe_reports_corruption(tmp_path) -> None:
+def test_database_probe_reports_corruption(tmp_path: pathlib.Path) -> None:
     """``SELECT 1`` проходил и на мусоре: файл не читался вовсе.
 
     Проба обязана отличать испорченный файл от рабочего, иначе `/healthz`
@@ -213,7 +218,7 @@ def test_database_probe_reports_corruption(tmp_path) -> None:
     assert database_ok(broken) is False
 
 
-def test_database_probe_accepts_fresh_empty_file(tmp_path) -> None:
+def test_database_probe_accepts_fresh_empty_file(tmp_path: pathlib.Path) -> None:
     """Ноль байт — это свежая установка, а не ошибка."""
     fresh = tmp_path / "fresh.db"
     fresh.write_bytes(b"")
@@ -227,20 +232,20 @@ def test_readonly_uri_is_absolute_on_windows() -> None:
     assert readonly_uri("bot_cache.db").startswith("file:/")
 
 
-def test_disk_free_gb_returns_minus_one_when_path_is_unusable(monkeypatch) -> None:
+def test_disk_free_gb_returns_minus_one_when_path_is_unusable(monkeypatch: pytest.MonkeyPatch) -> None:
     """Недоступный путь — «неизвестно», а не «0 ГБ» (иначе ложный disk_low)."""
     import shutil
 
     from services import health_report
 
-    def boom(_path):
+    def boom(_path: str | pathlib.Path) -> None:
         raise OSError("no such device")
 
     monkeypatch.setattr(shutil, "disk_usage", boom)
     assert health_report.disk_free_gb("/nowhere") == -1.0
 
 
-def test_gemini_key_count_counts_only_non_empty(monkeypatch) -> None:
+def test_gemini_key_count_counts_only_non_empty(monkeypatch: pytest.MonkeyPatch) -> None:
     from services import health_report
 
     for name in ("GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3", "GEMINI_API_KEY_4"):
@@ -254,14 +259,14 @@ def test_gemini_key_count_counts_only_non_empty(monkeypatch) -> None:
 # ── /healthz ────────────────────────────────────────────────────────────────
 
 
-def _snapshot(**overrides):
+def _snapshot(**overrides: Any) -> dict[str, Any]:
     base = runtime_status.snapshot()
     base.update(overrides)
     return base
 
 
-def _health(**overrides):
-    kwargs = {
+def _health(**overrides: Any) -> tuple[dict[str, Any], int]:
+    kwargs: dict[str, Any] = {
         "snapshot": _snapshot(last_update_age_seconds=1.0, last_maintenance_age_seconds=600.0),
         "db_ok": True,
         "free_disk_gb": 50.0,
@@ -285,7 +290,7 @@ def test_healthy_bot_returns_200_and_names_the_version() -> None:
 @pytest.mark.parametrize(
     ("overrides", "problem"),
     [
-        ({"snapshot": _snapshot(last_update_age_seconds=900.0)}, "updates_stale"),
+        ({"snapshot": _snapshot(polling_start_age_seconds=900.0)}, "polling_stale"),
         ({"snapshot": _snapshot(last_maintenance_age_seconds=9000.0)}, "maintenance_stale"),
         ({"snapshot": _snapshot(last_maintenance_ok=False)}, "maintenance_failed"),
         ({"db_ok": False}, "database_unavailable"),
@@ -293,7 +298,7 @@ def test_healthy_bot_returns_200_and_names_the_version() -> None:
         ({"keys_configured": 0}, "gemini_keys_missing"),
     ],
 )
-def test_each_failure_mode_is_named(overrides: dict, problem: str) -> None:
+def test_each_failure_mode_is_named(overrides: dict[str, Any], problem: str) -> None:
     """503 без причины бесполезен: клиент должен видеть, что именно сломалось."""
     payload, status = _health(**overrides)
     assert status == 503
@@ -313,6 +318,44 @@ def test_first_minutes_without_updates_are_not_an_alert() -> None:
     payload, status = _health(snapshot=_snapshot(last_update_age_seconds=None))
     assert status == 200
     assert payload["updates"]["last_age_seconds"] is None
+
+
+def test_long_quiet_traffic_is_healthy_while_polling_answers() -> None:
+    payload, status = _health(
+        snapshot=_snapshot(
+            last_update_age_seconds=900.0,
+            polling_start_age_seconds=900.0,
+            last_polling_age_seconds=1.0,
+        )
+    )
+    assert status == 200
+    assert payload["updates"]["last_age_seconds"] == 900.0
+    assert payload["polling"]["last_age_seconds"] == 1.0
+
+
+def test_stalled_polling_fails_even_with_recent_user_traffic() -> None:
+    payload, status = _health(
+        snapshot=_snapshot(
+            last_update_age_seconds=1.0,
+            polling_start_age_seconds=900.0,
+            last_polling_age_seconds=301.0,
+        )
+    )
+    assert status == 503
+    assert payload["problems"] == ["polling_stale"]
+
+
+def test_no_received_traffic_is_healthy_after_successful_empty_poll() -> None:
+    payload, status = _health(
+        snapshot=_snapshot(
+            last_update_age_seconds=None,
+            polling_start_age_seconds=900.0,
+            last_polling_age_seconds=2.0,
+        )
+    )
+    assert status == 200
+    assert payload["updates"]["last_age_seconds"] is None
+    assert payload["polling"]["last_age_seconds"] == 2.0
 
 
 # ── /metrics ────────────────────────────────────────────────────────────────
@@ -344,7 +387,7 @@ def test_metrics_agree_with_healthz() -> None:
     Иначе мониторинг и health-проба сообщают разное об одном и том же боте — и
     верят тому, который удобнее.
     """
-    snapshot = _snapshot(last_update_age_seconds=900.0)
+    snapshot = _snapshot(polling_start_age_seconds=900.0, last_update_age_seconds=1.0)
     text = render_prometheus(snapshot=snapshot, db_ok=True, free_disk_gb=50.0, keys_configured=1)
     payload, status = build_health(
         snapshot=snapshot,
@@ -355,7 +398,7 @@ def test_metrics_agree_with_healthz() -> None:
     )
     assert status == 503
     assert "mp3bot_up 0" in text
-    assert payload["problems"] == ["updates_stale"]
+    assert payload["problems"] == ["polling_stale"]
 
 
 def test_metrics_without_key_count_still_work() -> None:
@@ -381,7 +424,7 @@ def test_absent_values_are_reported_as_minus_one() -> None:
 # ── логи ────────────────────────────────────────────────────────────────────
 
 
-def _record(message: str, **extra) -> logging.LogRecord:
+def _record(message: str, **extra: Any) -> logging.LogRecord:
     record = logging.LogRecord("svc", logging.INFO, __file__, 1, message, None, None)
     for key, value in extra.items():
         setattr(record, key, value)
@@ -434,11 +477,13 @@ def test_json_logs_include_traceback() -> None:
     assert "ValueError: сервис сломался" in payload["exc"]
 
 
-def test_unwritable_log_file_does_not_stop_the_bot(tmp_path, monkeypatch, caplog) -> None:
+def test_unwritable_log_file_does_not_stop_the_bot(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     """Нет прав на bot.log — это не повод не запускаться."""
     from core import logging_setup
 
-    def boom(*_args, **_kwargs):
+    def boom(*_args: Any, **_kwargs: Any) -> None:
         raise OSError("permission denied")
 
     monkeypatch.setattr(logging_setup, "RotatingFileHandler", boom)
@@ -456,10 +501,10 @@ def test_update_id_reaches_records_of_any_logger() -> None:
     assert current_update_id() == "99"
     record = _record("внутри сервиса")
     assert ContextFilter().filter(record) is True
-    assert record.update_id == "99"
+    assert getattr(record, "update_id") == "99"
 
 
-def test_configure_logging_is_idempotent(tmp_path) -> None:
+def test_configure_logging_is_idempotent(tmp_path: pathlib.Path) -> None:
     """Повторный вызов (reload, тесты) не должен дублировать обработчики."""
     log_file = tmp_path / "bot.log"
     configure_logging(level="WARNING", fmt="text", log_file=log_file)
@@ -470,7 +515,7 @@ def test_configure_logging_is_idempotent(tmp_path) -> None:
     logging.getLogger().info("не должно попасть: уровень WARNING")
 
 
-def test_json_format_is_selected_by_env(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+def test_json_format_is_selected_by_env(monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path) -> None:
     monkeypatch.setenv("LOG_FORMAT", "json")
     monkeypatch.setenv("LOG_LEVEL", "INFO")
     configure_logging(log_file=tmp_path / "bot.log")

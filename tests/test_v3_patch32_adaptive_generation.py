@@ -8,7 +8,7 @@ from core.adaptive_generation import (
 )
 
 
-def test_adaptive_generation_lowers_temperature_on_json_invalid_rate():
+def test_adaptive_generation_lowers_temperature_on_json_invalid_rate() -> None:
     params = adapt_text_generation_params(
         task="telegraph_studyanalysis",
         base_temperature=0.4,
@@ -20,7 +20,7 @@ def test_adaptive_generation_lowers_temperature_on_json_invalid_rate():
     assert "json_invalid_rate=40%" in params.reason
 
 
-def test_adaptive_generation_increases_max_tokens_on_max_token_hits():
+def test_adaptive_generation_increases_max_tokens_on_max_token_hits() -> None:
     params = adapt_text_generation_params(
         task="telegraph_reflectionapplication",
         base_temperature=0.4,
@@ -32,7 +32,7 @@ def test_adaptive_generation_increases_max_tokens_on_max_token_hits():
     assert "max_tokens_hits=1" in params.reason
 
 
-def test_adaptive_generation_combines_signals_and_caps_tokens():
+def test_adaptive_generation_combines_signals_and_caps_tokens() -> None:
     params = adapt_text_generation_params(
         task="telegraph_studyanalysis",
         base_temperature=0.4,
@@ -45,7 +45,7 @@ def test_adaptive_generation_combines_signals_and_caps_tokens():
     assert "max_tokens_hits=2" in params.reason
 
 
-def test_telegraph_pages_uses_adaptive_generation_params():
+def test_telegraph_pages_uses_adaptive_generation_params() -> None:
     src = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
     assert "from core.adaptive_generation import get_adaptive_text_generation_params" in src
     assert "_adaptive = get_adaptive_text_generation_params" in src

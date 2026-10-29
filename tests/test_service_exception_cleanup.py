@@ -19,7 +19,7 @@ from services import (
 )
 
 
-def test_wkhtmltopdf_failure_removes_partial_output(monkeypatch, tmp_path: Path) -> None:
+def test_wkhtmltopdf_failure_removes_partial_output(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     executable = tmp_path / "wkhtmltopdf"
     executable.write_text("", encoding="utf-8")
     output = tmp_path / "partial.pdf"
@@ -35,7 +35,7 @@ def test_wkhtmltopdf_failure_removes_partial_output(monkeypatch, tmp_path: Path)
     assert not output.exists()
 
 
-def test_wkhtmltopdf_timeout_survives_kill_failure(monkeypatch, tmp_path: Path) -> None:
+def test_wkhtmltopdf_timeout_survives_kill_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     executable = tmp_path / "wkhtmltopdf"
     executable.write_text("", encoding="utf-8")
 
@@ -64,7 +64,7 @@ def test_wkhtmltopdf_timeout_survives_kill_failure(monkeypatch, tmp_path: Path) 
     assert process.kill_attempted is True
 
 
-def test_weasyprint_failure_removes_partial_output(monkeypatch, tmp_path: Path) -> None:
+def test_weasyprint_failure_removes_partial_output(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     output = tmp_path / "partial.pdf"
 
     class BrokenHTML:
@@ -90,7 +90,7 @@ async def test_factory_capacity_safe_status_delivers_edit() -> None:
 
 
 @pytest.mark.asyncio
-async def test_factory_full_video_failure_still_reports_error(monkeypatch, tmp_path: Path) -> None:
+async def test_factory_full_video_failure_still_reports_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     video = tmp_path / "translated.mp4"
     video.write_bytes(b"video")
     message = SimpleNamespace(
@@ -118,7 +118,7 @@ async def test_factory_full_video_failure_still_reports_error(monkeypatch, tmp_p
 
 
 @pytest.mark.asyncio
-async def test_retry_cache_tolerates_concurrent_file_creation(monkeypatch, tmp_path: Path) -> None:
+async def test_retry_cache_tolerates_concurrent_file_creation(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     source = tmp_path / "source.mp4"
     source.write_bytes(b"x" * 2048)
     cache_dir = tmp_path / "cache"
@@ -143,7 +143,9 @@ async def test_retry_cache_tolerates_concurrent_file_creation(monkeypatch, tmp_p
 
 
 @pytest.mark.asyncio
-async def test_short_transcription_cleans_wav_after_extraction_failure(monkeypatch, tmp_path: Path) -> None:
+async def test_short_transcription_cleans_wav_after_extraction_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     video = tmp_path / "clip.mp4"
     video.write_bytes(b"video")
     monkeypatch.setattr(shorts_transcription._impl, "HAS_FASTER_WHISPER", True)
@@ -158,7 +160,7 @@ async def test_short_transcription_cleans_wav_after_extraction_failure(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_short_transcription_uses_shared_cuda_cleanup(monkeypatch, tmp_path: Path) -> None:
+async def test_short_transcription_uses_shared_cuda_cleanup(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     video = tmp_path / "clip.mp4"
     video.write_bytes(b"video")
     wav_paths: list[Path] = []
@@ -174,7 +176,7 @@ async def test_short_transcription_uses_shared_cuda_cleanup(monkeypatch, tmp_pat
     model = SimpleNamespace(transcribe=Mock(return_value=([segment], info)))
     clear_cuda = Mock()
 
-    async def fake_ffmpeg(command, timeout: int):
+    async def fake_ffmpeg(command: list[str], timeout: int) -> SimpleNamespace:
         wav_path = Path(command[-1])
         wav_paths.append(wav_path)
         await asyncio.to_thread(wav_path.write_bytes, b"x" * 2048)
@@ -197,7 +199,7 @@ async def test_short_transcription_uses_shared_cuda_cleanup(monkeypatch, tmp_pat
     assert wav_paths and not wav_paths[0].exists()
 
 
-def test_whisper_reset_releases_existing_model(monkeypatch) -> None:
+def test_whisper_reset_releases_existing_model(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_torch = SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: False))
     monkeypatch.setitem(sys.modules, "torch", fake_torch)
     monkeypatch.setattr(shorts_video_impl, "_whisper_model", object())
@@ -209,7 +211,7 @@ def test_whisper_reset_releases_existing_model(monkeypatch) -> None:
     assert shorts_video_impl._whisper_model_name is None
 
 
-def test_whisper_reset_ignores_cuda_cleanup_failure(monkeypatch) -> None:
+def test_whisper_reset_ignores_cuda_cleanup_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     def _broken_cuda() -> bool:
         raise RuntimeError("CUDA is unavailable")
 
@@ -224,7 +226,7 @@ def test_whisper_reset_ignores_cuda_cleanup_failure(monkeypatch) -> None:
     assert shorts_video_impl._whisper_model_name is None
 
 
-def test_cuda_cache_cleanup_releases_and_synchronizes(monkeypatch) -> None:
+def test_cuda_cache_cleanup_releases_and_synchronizes(monkeypatch: pytest.MonkeyPatch) -> None:
     empty_cache = Mock()
     synchronize = Mock()
     fake_torch = SimpleNamespace(
@@ -242,7 +244,7 @@ def test_cuda_cache_cleanup_releases_and_synchronizes(monkeypatch) -> None:
     synchronize.assert_called_once_with()
 
 
-def test_whisper_model_change_releases_previous_instance(monkeypatch) -> None:
+def test_whisper_model_change_releases_previous_instance(monkeypatch: pytest.MonkeyPatch) -> None:
     replacement = object()
     fake_torch = SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: False))
     monkeypatch.setitem(sys.modules, "torch", fake_torch)
@@ -260,7 +262,9 @@ def test_whisper_model_change_releases_previous_instance(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_youtube_transcript_removes_stale_vtt_before_download(monkeypatch, tmp_path: Path) -> None:
+async def test_youtube_transcript_removes_stale_vtt_before_download(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     stale = tmp_path / "yt_transcript_stale.vtt"
     stale.write_text("stale", encoding="utf-8")
     monkeypatch.setenv("SYNOPSIS_YT_TRANSCRIPT", "1")

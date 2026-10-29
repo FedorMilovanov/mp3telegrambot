@@ -1,5 +1,7 @@
 """Regression tests for v3 patch 68/69 runtime quality hotfixes."""
 
+import pathlib
+
 import json
 import sqlite3
 
@@ -15,7 +17,7 @@ from core.generated_pages import (
 from services.search import _best_match
 
 
-def test_search_rejects_one_word_author_only_rutube_false_positive():
+def test_search_rejects_one_word_author_only_rutube_false_positive() -> None:
     results = [{"id": "bad", "title": "Пол Вошер | Покаяние и вера", "duration": 3990}]
     url, score = _best_match(
         results,
@@ -28,7 +30,7 @@ def test_search_rejects_one_word_author_only_rutube_false_positive():
     assert score == 0.0
 
 
-def test_search_caps_long_video_duration_mismatch_for_vk():
+def test_search_caps_long_video_duration_mismatch_for_vk() -> None:
     results = [
         {
             "url": "https://vk.example/bad",
@@ -46,7 +48,7 @@ def test_search_caps_long_video_duration_mismatch_for_vk():
     assert url is None or score < 0.50
 
 
-def test_markdown_separator_normalization_preserves_paragraph_breaks_and_spacing():
+def test_markdown_separator_normalization_preserves_paragraph_breaks_and_spacing() -> None:
     text = (
         "• **2 Коринфянам 5:14:** цитата / / Вторая глава объясняет. "
         "книгеNine Marks Faith Alone.Глубоко\n-Достаточность"
@@ -63,7 +65,7 @@ def test_markdown_separator_normalization_preserves_paragraph_breaks_and_spacing
     assert not any(i.code == "normalized_text" for i in issues)
 
 
-def test_archive_persists_quality_coverage_caption_and_partial_segments(tmp_path):
+def test_archive_persists_quality_coverage_caption_and_partial_segments(tmp_path: pathlib.Path) -> None:
     ai = {
         "timestamp_coverage_warning": "timestamps cover only 50% of material duration",
         "title_topic_warning": "low title overlap",
@@ -92,6 +94,7 @@ def test_archive_persists_quality_coverage_caption_and_partial_segments(tmp_path
     )
     save_generated_page_record(record, base_dir=tmp_path)
     loaded = get_generated_page_record("qhotfix", base_dir=tmp_path)
+    assert loaded is not None
     assert loaded["quality_warnings"][0].startswith("timestamp:")
     assert loaded["segments_status"] == "partial"
     assert loaded["caption_timestamps_total"] == 22
@@ -105,7 +108,7 @@ def test_archive_persists_quality_coverage_caption_and_partial_segments(tmp_path
     assert "timestamp_coverage_ratio" in cols
 
 
-def test_caption_shows_timestamp_coverage_and_trim_notice():
+def test_caption_shows_timestamp_coverage_and_trim_notice() -> None:
     caption = build_caption(
         "A",
         "T",
@@ -124,7 +127,7 @@ def test_caption_shows_timestamp_coverage_and_trim_notice():
     assert "Таймкоды сокращены" in caption
 
 
-def test_segment_export_marks_partial_status(tmp_path):
+def test_segment_export_marks_partial_status(tmp_path: pathlib.Path) -> None:
     save_segment_plan_export(
         video_id="segpartial",
         title="T",

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import services.translation_editorial_composition as composition
 from services.translation_editorial import sha256_file
@@ -18,7 +19,7 @@ from services.translation_editorial_composition import (
 )
 
 
-def _template(tmp_path: Path, duration: float = 600.0, *, target: bool = True) -> dict:
+def _template(tmp_path: Path, duration: float = 600.0, *, target: bool = True) -> dict[str, Any]:
     source = tmp_path / "clean.mp4"
     source.write_bytes(b"x" * 2048)
     return build_composition_template(
@@ -34,11 +35,11 @@ def _template(tmp_path: Path, duration: float = 600.0, *, target: bool = True) -
     )
 
 
-def _refresh(document: dict) -> dict:
+def _refresh(document: dict[str, Any]) -> dict[str, Any]:
     return refresh_composition_id(document)
 
 
-def _rendered_result(tmp_path: Path, document: dict, piece: dict) -> dict:
+def _rendered_result(tmp_path: Path, document: dict[str, Any], piece: dict[str, Any]) -> dict[str, Any]:
     output = tmp_path / f"{piece['piece_id']}.mp4"
     output.write_bytes(b"rendered" * 400)
     sidecar = tmp_path / f"{piece['piece_id']}.provenance.json"

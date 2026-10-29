@@ -1,4 +1,6 @@
 from __future__ import annotations
+from typing import Any
+import pathlib
 
 from types import SimpleNamespace
 
@@ -7,7 +9,7 @@ import pytest
 from tools.voxcpm2.examples.john_piper_z20py4yqhyq import master_constant_mix as master
 
 
-def test_master_probe_rejects_nan_duration(monkeypatch, tmp_path) -> None:
+def test_master_probe_rejects_nan_duration(monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path) -> None:
     monkeypatch.setattr(
         master,
         "run",
@@ -17,7 +19,7 @@ def test_master_probe_rejects_nan_duration(monkeypatch, tmp_path) -> None:
         master.probe_duration(tmp_path / "source.mp4")
 
 
-def test_master_probe_rejects_zero_duration(monkeypatch, tmp_path) -> None:
+def test_master_probe_rejects_zero_duration(monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path) -> None:
     monkeypatch.setattr(
         master,
         "run",
@@ -49,12 +51,12 @@ def test_master_loudnorm_parser_rejects_nonfinite_measurement(value: str) -> Non
 
 
 def test_two_pass_master_rejects_invalid_targets_before_ffmpeg(
-    monkeypatch,
-    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
 ) -> None:
     called = False
 
-    def run_should_not_happen(*_args, **_kwargs):
+    def run_should_not_happen(*_args: Any, **_kwargs: Any) -> None:
         nonlocal called
         called = True
         raise AssertionError("FFmpeg must not run")
@@ -72,12 +74,12 @@ def test_two_pass_master_rejects_invalid_targets_before_ffmpeg(
 
 
 def test_constant_mix_keeps_original_branch_exact_and_has_no_post_mix_gain(
-    monkeypatch,
-    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
 ) -> None:
     calls: list[list[str]] = []
 
-    def capture(command: list[str], **_kwargs):
+    def capture(command: list[str], **_kwargs: object) -> SimpleNamespace:
         calls.append(command)
         return SimpleNamespace(stdout="", stderr="", returncode=0)
 
@@ -100,10 +102,10 @@ def test_constant_mix_keeps_original_branch_exact_and_has_no_post_mix_gain(
     assert "volume=" not in after_sum
 
 
-def test_calibration_changes_only_russian_gain(monkeypatch, tmp_path) -> None:
+def test_calibration_changes_only_russian_gain(monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path) -> None:
     gains: list[tuple[float, float]] = []
 
-    def fake_mix(**kwargs):
+    def fake_mix(**kwargs: Any) -> str:
         gains.append((float(kwargs["original_level"]), float(kwargs["russian_gain"])))
         return "fixed graph"
 

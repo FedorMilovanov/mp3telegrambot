@@ -40,7 +40,7 @@ def _nodes_signature(nodes: Any) -> str:
     return json.dumps(nodes, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
-def _load_urls(args) -> list[str]:
+def _load_urls(args: argparse.Namespace) -> list[str]:
     urls: list[str] = []
     for raw in args.url or []:
         urls.append(raw.strip())

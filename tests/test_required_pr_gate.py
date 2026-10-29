@@ -18,10 +18,12 @@ from scripts.required_pr_gate import (
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_changed_files_requires_and_uses_a_resolved_git(monkeypatch) -> None:
-    commands = []
+def test_changed_files_requires_and_uses_a_resolved_git(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    commands: list[list[str]] = []
 
-    def check_output(command, **kwargs):
+    def check_output(command: list[str], **kwargs: object) -> str:
         commands.append(command)
         return "services/example.py\n"
 
@@ -55,7 +57,7 @@ def test_changed_files_rejects_non_sha_or_option_like_endpoints() -> None:
             required_gate.changed_files(base_sha, head_sha)
 
 
-def test_github_path_match_supports_repository_workflow_patterns():
+def test_github_path_match_supports_repository_workflow_patterns() -> None:
     assert github_path_matches("bot.py", "*.py")
     assert not github_path_matches("services/bot.py", "*.py")
     assert github_path_matches("bot.py", "**/*.py")
@@ -65,7 +67,7 @@ def test_github_path_match_supports_repository_workflow_patterns():
     assert not github_path_matches("README.md", "**/*.py")
 
 
-def test_extract_pull_request_filter_handles_paths_and_paths_ignore():
+def test_extract_pull_request_filter_handles_paths_and_paths_ignore() -> None:
     paths_mode, paths = extract_pull_request_filter(
         """on:\n  pull_request:\n    branches: [\"main\"]\n    paths:\n      - \"**/*.py\"\n      - '.env.example'\n"""
     )
@@ -79,7 +81,7 @@ def test_extract_pull_request_filter_handles_paths_and_paths_ignore():
     assert ignored == ("**/*.md", ".gitignore")
 
 
-def test_workflow_applies_matches_github_trigger_semantics():
+def test_workflow_applies_matches_github_trigger_semantics() -> None:
     assert workflow_applies("paths", ("**/*.py",), ("services/x.py",))
     assert not workflow_applies("paths", ("**/*.py",), ("README.md",))
     assert workflow_applies("paths-ignore", ("**/*.md", ".gitignore"), ("README.md", "bot.py"))
@@ -88,7 +90,7 @@ def test_workflow_applies_matches_github_trigger_semantics():
         workflow_applies("paths-ignore", ("!README.md",), ("README.md",))
 
 
-def test_every_pull_request_workflow_is_gated():
+def test_every_pull_request_workflow_is_gated() -> None:
     """A red PR check must be able to block a merge.
 
     The gate used to hard-code four workflows, so six PR workflows were checked
@@ -108,7 +110,7 @@ def test_every_pull_request_workflow_is_gated():
     assert ".github/workflows/windows-full-suite-regressions.yml" in discovered
 
 
-def test_discovery_picks_up_a_new_workflow_without_registration(tmp_path):
+def test_discovery_picks_up_a_new_workflow_without_registration(tmp_path: Path) -> None:
     workflows = tmp_path / ".github" / "workflows"
     workflows.mkdir(parents=True)
     (workflows / "ci.yml").write_text("on:\n  pull_request:\n", encoding="utf-8")
@@ -129,7 +131,7 @@ def test_discovery_picks_up_a_new_workflow_without_registration(tmp_path):
     )
 
 
-def test_workflow_without_pull_request_trigger_is_not_gated(tmp_path):
+def test_workflow_without_pull_request_trigger_is_not_gated(tmp_path: Path) -> None:
     workflows = tmp_path / ".github" / "workflows"
     workflows.mkdir(parents=True)
     (workflows / "release.yml").write_text("on:\n  workflow_dispatch:\n", encoding="utf-8")
@@ -140,7 +142,7 @@ def test_workflow_without_pull_request_trigger_is_not_gated(tmp_path):
         discover_profile_workflows(tmp_path)
 
 
-def test_required_profile_workflow_filters_are_parseable_and_supported():
+def test_required_profile_workflow_filters_are_parseable_and_supported() -> None:
     for workflow in discover_profile_workflows(ROOT):
         path = ROOT / workflow
         assert path.is_file(), workflow
@@ -152,7 +154,7 @@ def test_required_profile_workflow_filters_are_parseable_and_supported():
             github_path_matches("sentinel/path.py", pattern.lstrip("!"))
 
 
-def test_expected_profile_workflows_use_live_workflow_filters():
+def test_expected_profile_workflows_use_live_workflow_filters() -> None:
     # Документация не запускает профильные workflow, но secret-scan смотрит
     # каждый PR без фильтров: токен чаще всего утекает именно в markdown-примере
     # или в .env-шаблоне, а не в коде.

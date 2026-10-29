@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Any
 
 import json
 from pathlib import Path
@@ -12,16 +13,18 @@ from tools.voxcpm2 import clean_source_download as source_cache
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_verified_source_cache_reuses_only_same_video(monkeypatch, tmp_path) -> None:
+def test_verified_source_cache_reuses_only_same_video(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     source = tmp_path / "source.mp4"
-    current = {"id": "video-one", "byte": b"A"}
+    current: dict[str, Any] = {"id": "video-one", "byte": b"A"}
     metadata_calls = 0
     download_calls = 0
 
     monkeypatch.setattr(source_cache.pipeline, "_ytdlp_base", lambda: ["yt-dlp"])
     monkeypatch.setattr(source_cache.pipeline, "log", lambda _message: None)
 
-    def fake_run(command, *, capture=False, timeout=None, **_kwargs):
+    def fake_run(
+        command: list[str], *, capture: bool = False, timeout: int | None = None, **_kwargs: Any
+    ) -> SimpleNamespace:
         nonlocal metadata_calls, download_calls
         assert timeout in {300, 1800}
         if "--dump-single-json" in command:
@@ -67,14 +70,14 @@ def test_verified_source_cache_reuses_only_same_video(monkeypatch, tmp_path) -> 
     assert len(manifest["sampled_sha256"]) == 64
 
 
-def test_same_size_source_tampering_forces_redownload(monkeypatch, tmp_path) -> None:
+def test_same_size_source_tampering_forces_redownload(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     source = tmp_path / "source.mp4"
     downloads = 0
 
     monkeypatch.setattr(source_cache.pipeline, "_ytdlp_base", lambda: ["yt-dlp"])
     monkeypatch.setattr(source_cache.pipeline, "log", lambda _message: None)
 
-    def fake_run(command, *, capture=False, **_kwargs):
+    def fake_run(command: list[str], *, capture: bool = False, **_kwargs: Any) -> SimpleNamespace:
         nonlocal downloads
         if "--dump-single-json" in command:
             return SimpleNamespace(
@@ -98,7 +101,7 @@ def test_same_size_source_tampering_forces_redownload(monkeypatch, tmp_path) -> 
     assert source.read_bytes()[:8] == b"C" * 8
 
 
-def test_project_request_video_id_must_match_download(monkeypatch, tmp_path) -> None:
+def test_project_request_video_id_must_match_download(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     root = tmp_path / "project"
     source = root / "source" / "source.mp4"
     source.parent.mkdir(parents=True)
@@ -111,7 +114,7 @@ def test_project_request_video_id_must_match_download(monkeypatch, tmp_path) -> 
     monkeypatch.setattr(source_cache.pipeline, "_ytdlp_base", lambda: ["yt-dlp"])
     monkeypatch.setattr(source_cache.pipeline, "log", lambda _message: None)
 
-    def fake_run(command, **_kwargs):
+    def fake_run(command: list[str], **_kwargs: Any) -> SimpleNamespace:
         nonlocal downloads
         if "--dump-single-json" in command:
             return SimpleNamespace(
@@ -154,10 +157,10 @@ def test_canonical_youtube_id_extraction(url: str, expected: str) -> None:
         "not-a-url",
     ],
 )
-def test_non_single_video_urls_fail_before_ytdlp(monkeypatch, url: str) -> None:
+def test_non_single_video_urls_fail_before_ytdlp(monkeypatch: pytest.MonkeyPatch, url: str) -> None:
     calls = 0
 
-    def should_not_run(*_args, **_kwargs):
+    def should_not_run(*_args: Any, **_kwargs: Any) -> None:
         nonlocal calls
         calls += 1
         raise AssertionError("yt-dlp must not run for an unsupported source URL")
@@ -168,7 +171,7 @@ def test_non_single_video_urls_fail_before_ytdlp(monkeypatch, url: str) -> None:
     assert calls == 0
 
 
-def test_redirected_metadata_id_is_rejected(monkeypatch) -> None:
+def test_redirected_metadata_id_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(source_cache.pipeline, "_ytdlp_base", lambda: ["yt-dlp"])
     monkeypatch.setattr(
         source_cache.pipeline,
@@ -182,7 +185,7 @@ def test_redirected_metadata_id_is_rejected(monkeypatch) -> None:
         source_cache._metadata("https://youtu.be/AbCdEf12345")
 
 
-def test_invalid_metadata_video_id_is_rejected(monkeypatch) -> None:
+def test_invalid_metadata_video_id_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(source_cache.pipeline, "_ytdlp_base", lambda: ["yt-dlp"])
     monkeypatch.setattr(
         source_cache.pipeline,

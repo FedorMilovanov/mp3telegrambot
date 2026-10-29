@@ -4,7 +4,7 @@ from core.source_titles import SourceCard, build_source_card, normalize_source_c
 from converters.md_telegraph import _section_to_nodes_v2
 
 
-def _flat(node):
+def _flat(node: object) -> str:
     if isinstance(node, str):
         return node
     if isinstance(node, dict):
@@ -14,7 +14,7 @@ def _flat(node):
     return ""
 
 
-def test_render_source_card_title_first_with_original_parenthetical():
+def test_render_source_card_title_first_with_original_parenthetical() -> None:
     # AUDIT R23 (user report: "• - убери ты это везде, надоедает") —
     # render_source_card() now forces the bullet blank regardless of
     # what's passed in; the "bullet=" kwarg here is deliberately ignored.
@@ -28,7 +28,7 @@ def test_render_source_card_title_first_with_original_parenthetical():
     assert render_source_card(card) == "**Чуждый огонь**, Джон МакАртур (Strange Fire, John MacArthur)."
 
 
-def test_build_source_card_uses_registry_and_does_not_invent_ru_title():
+def test_build_source_card_uses_registry_and_does_not_invent_ru_title() -> None:
     known = build_source_card(author="R.C. Sproul", title_original="The Holiness of God", bullet="• ")
     assert render_source_card(known) == "**Святость Бога**, Р. Ч. Спроул (The Holiness of God, R.C. Sproul)."
 
@@ -38,13 +38,13 @@ def test_build_source_card_uses_registry_and_does_not_invent_ru_title():
     assert render_source_card(unknown) == "**What Is the Mission of the Church?**, Кевин ДеЯнг (Kevin DeYoung)."
 
 
-def test_normalize_source_card_line_uses_typed_renderer():
+def test_normalize_source_card_line_uses_typed_renderer() -> None:
     assert normalize_source_card_line("• John Owen, The Death of Death in the Death of Christ") == (
         "**Смерть смерти в смерти Христа**, Джон Оуэн (The Death of Death in the Death of Christ, John Owen)."
     )
 
 
-def test_source_card_normalizes_weird_model_source_shapes():
+def test_source_card_normalizes_weird_model_source_shapes() -> None:
     assert normalize_source_card_line(
         "• John Bunyan. — Книга использовалась отцом автора для воскресных семейных вечеров, The Pilgrim's Progress."
     ) == (
@@ -62,7 +62,7 @@ def test_source_card_normalizes_weird_model_source_shapes():
     )
 
 
-def test_structured_source_block_renders_same_title_first_policy():
+def test_structured_source_block_renders_same_title_first_policy() -> None:
     section = {
         "title": "Sources",
         "content": "fallback",
@@ -80,7 +80,7 @@ def test_structured_source_block_renders_same_title_first_policy():
     assert "Полезна для темы" in flat
 
 
-def test_source_card_title_author_parenthetical_prefers_original_not_invented_ru_title():
+def test_source_card_title_author_parenthetical_prefers_original_not_invented_ru_title() -> None:
     # AUDIT R34: выдуманный моделью русский титул («Умерщвление греха») НЕ
     # используется — вместо него подставляется ОФИЦИАЛЬНЫЙ из реестра
     # («Об умерщвлении греха в верующих»); оригинал сохранён в скобках.
@@ -103,7 +103,7 @@ def test_source_card_title_author_parenthetical_prefers_original_not_invented_ru
     )
 
 
-def test_source_card_known_calvin_institutes_keeps_official_ru_title():
+def test_source_card_known_calvin_institutes_keeps_official_ru_title() -> None:
     assert (
         normalize_source_card_line(
             "• Наставление в христианской вере, Жан Кальвин (Institutes of the Christian Religion, John Calvin)."
@@ -112,14 +112,14 @@ def test_source_card_known_calvin_institutes_keeps_official_ru_title():
     )
 
 
-def test_source_card_known_religious_affections_keeps_official_ru_title_and_author():
+def test_source_card_known_religious_affections_keeps_official_ru_title_and_author() -> None:
     assert (
         normalize_source_card_line("• Религиозные чувства, Джонатан Эдвардс (Religious Affections, Jonathan Edwards).")
         == "**Религиозные чувства**, Джонатан Эдвардс (Religious Affections, Jonathan Edwards)."
     )
 
 
-def test_source_card_registry_covers_common_reformed_source_pack_authors():
+def test_source_card_registry_covers_common_reformed_source_pack_authors() -> None:
     assert normalize_source_card_line("• John Murray, Redemption Accomplished and Applied") == (
         "**Искупление совершённое и применённое**, Джон Мюррей (Redemption Accomplished and Applied, John Murray)."
     )
@@ -137,7 +137,7 @@ def test_source_card_registry_covers_common_reformed_source_pack_authors():
     )
 
 
-def test_source_pack_author_surnames_have_registry_aliases():
+def test_source_pack_author_surnames_have_registry_aliases() -> None:
     import re
     from core.source_packs import _PACKS
     from core.source_titles import AUTHOR_CANONICAL
@@ -161,7 +161,7 @@ def test_source_pack_author_surnames_have_registry_aliases():
     assert missing == set()
 
 
-def test_source_card_surname_aliases_keep_full_original_author_in_parenthetical():
+def test_source_card_surname_aliases_keep_full_original_author_in_parenthetical() -> None:
     # AUDIT R34: фамилия-алиас «Owen» → «Джон Оуэн», полный оригинальный автор
     # в скобках; известная книга подставлена официальным русским названием.
     assert normalize_source_card_line("• Owen, Mortification of Sin") == (
@@ -173,7 +173,7 @@ def test_source_card_surname_aliases_keep_full_original_author_in_parenthetical(
     )
 
 
-def test_tim_keller_is_silently_dropped_from_source_cards():
+def test_tim_keller_is_silently_dropped_from_source_cards() -> None:
     from core.source_titles import is_disallowed_source_author
 
     assert is_disallowed_source_author("Tim Keller")

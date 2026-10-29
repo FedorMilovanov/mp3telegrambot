@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -22,7 +23,7 @@ RUN_ATTEMPT = 1
 PROFILE = "voxcpm2-production-v1"
 
 
-def _attestation() -> dict:
+def _attestation() -> dict[str, Any]:
     statement = {
         "schema_version": 1,
         "policy": TTS_WEIGHTED_SMOKE_ATTESTATION_POLICY,
@@ -56,7 +57,7 @@ def _attestation() -> dict:
     return {**statement, "digest_sha256": _digest_payload(statement)}
 
 
-def _artifact(tmp_path: Path, payload: dict | None = None) -> Path:
+def _artifact(tmp_path: Path, payload: dict[str, Any] | None = None) -> Path:
     directory = tmp_path / "downloaded-attestation"
     directory.mkdir()
     (directory / "attestation.json").write_text(
@@ -134,11 +135,11 @@ def test_verifier_rejects_digest_tamper(tmp_path: Path) -> None:
 def test_verifier_rejects_expected_identity_mismatch(
     tmp_path: Path,
     keyword: str,
-    value,
+    value: Any,
     match: str,
 ) -> None:
     directory = _artifact(tmp_path)
-    kwargs = {
+    kwargs: dict[str, Any] = {
         "expected_repository": REPOSITORY,
         "expected_commit": COMMIT,
         "expected_run_id": RUN_ID,

@@ -1,6 +1,9 @@
 from __future__ import annotations
+import pytest
 
 import os
+import subprocess
+from typing import cast
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,11 +16,11 @@ from services.runtime_manifest import DEFAULT_RUNTIME_FEATURES, RuntimePhase
 class _RunningProcess:
     returncode = None
 
-    def poll(self):
+    def poll(self) -> None:
         return None
 
 
-def _base_env(monkeypatch):
+def _base_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LOCAL_BOT_API_URL", "http://127.0.0.1:8081")
     monkeypatch.setenv("BOT_TOKEN", "123:test-token")
     monkeypatch.setenv("TELEGRAM_PROXY_URL", "socks5h://127.0.0.1:10808")
@@ -25,7 +28,7 @@ def _base_env(monkeypatch):
     monkeypatch.setenv("LOCAL_BOT_API_SMART_BOOTSTRAP", "1")
 
 
-def test_healthy_local_server_is_not_restarted(monkeypatch):
+def test_healthy_local_server_is_not_restarted(monkeypatch: pytest.MonkeyPatch) -> None:
     _base_env(monkeypatch)
     restarted = []
     monkeypatch.setattr(bootstrap, "_probe_getme", lambda *_: (True, "@healthy"))
@@ -38,7 +41,7 @@ def test_healthy_local_server_is_not_restarted(monkeypatch):
     assert restarted == []
 
 
-def test_negative_route_hint_still_attempts_real_server(monkeypatch):
+def test_negative_route_hint_still_attempts_real_server(monkeypatch: pytest.MonkeyPatch) -> None:
     _base_env(monkeypatch)
     calls = []
     probe_results = iter([(False, "initial timeout")])
@@ -64,7 +67,7 @@ def test_negative_route_hint_still_attempts_real_server(monkeypatch):
     assert os.environ["MP3BOT_EFFECTIVE_BOT_API"] == "local"
 
 
-def test_real_getme_failure_selects_cloud_and_enables_media_fallback(monkeypatch):
+def test_real_getme_failure_selects_cloud_and_enables_media_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     """Legacy helper remains tested, but bot_new.py no longer installs this policy."""
     _base_env(monkeypatch)
     monkeypatch.setenv("LOCAL_BOT_API_PROXY_URL", "socks5://127.0.0.1:1080")
@@ -94,7 +97,7 @@ def test_real_getme_failure_selects_cloud_and_enables_media_fallback(monkeypatch
     assert os.environ["TELEGRAM_PROXY_URL"].startswith("socks5h://")
 
 
-def test_stale_process_is_restarted_once_and_local_mode_is_preserved(monkeypatch):
+def test_stale_process_is_restarted_once_and_local_mode_is_preserved(monkeypatch: pytest.MonkeyPatch) -> None:
     _base_env(monkeypatch)
     calls = []
     monkeypatch.setattr(bootstrap, "_probe_getme", lambda *_: (False, "stale"))
@@ -119,7 +122,7 @@ def test_stale_process_is_restarted_once_and_local_mode_is_preserved(monkeypatch
     assert os.environ["LOCAL_BOT_API_WAIT_LOCAL"] == "1"
 
 
-def test_stale_windows_server_uses_resolved_taskkill(monkeypatch):
+def test_stale_windows_server_uses_resolved_taskkill(monkeypatch: pytest.MonkeyPatch) -> None:
     run = Mock(return_value=None)
     monkeypatch.setattr(bootstrap, "os", SimpleNamespace(name="nt"))
     monkeypatch.setattr(bootstrap, "resolve_required_executable", lambda name: f"/resolved/{name}")
@@ -136,7 +139,7 @@ def test_stale_windows_server_uses_resolved_taskkill(monkeypatch):
     ]
 
 
-def test_stale_posix_server_uses_resolved_pkill(monkeypatch):
+def test_stale_posix_server_uses_resolved_pkill(monkeypatch: pytest.MonkeyPatch) -> None:
     run = Mock(return_value=None)
     monkeypatch.setattr(bootstrap, "os", SimpleNamespace(name="posix"))
     monkeypatch.setattr(bootstrap, "resolve_required_executable", lambda name: f"/resolved/{name}")
@@ -147,7 +150,7 @@ def test_stale_posix_server_uses_resolved_pkill(monkeypatch):
     assert run.call_args.args[0] == ["/resolved/pkill", "-f", "telegram-bot-api"]
 
 
-def test_start_local_server_uses_configured_file_with_argv(monkeypatch, tmp_path):
+def test_start_local_server_uses_configured_file_with_argv(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     executable = tmp_path / "telegram-bot-api.exe"
     executable.write_bytes(b"test-double")
     data_dir = tmp_path / "data"
@@ -175,17 +178,17 @@ def test_start_local_server_uses_configured_file_with_argv(monkeypatch, tmp_path
     assert "shell" not in popen.call_args.kwargs
 
 
-def test_wait_loop_uses_one_real_deadline_and_short_probes():
-    timeouts = []
+def test_wait_loop_uses_one_real_deadline_and_short_probes() -> None:
+    timeouts: list[float] = []
 
-    def failed_probe(_url: str, timeout: float):
+    def failed_probe(_url: str, timeout: float) -> tuple[bool, str]:
         timeouts.append(timeout)
         return False, "timeout"
 
     started = time.monotonic()
     ok, detail, attempts = bootstrap._wait_for_getme(
         "http://127.0.0.1:8081/botTOKEN/getMe",
-        _RunningProcess(),
+        cast(subprocess.Popen[bytes], _RunningProcess()),
         started + 0.35,
         probe=failed_probe,
     )
@@ -198,7 +201,7 @@ def test_wait_loop_uses_one_real_deadline_and_short_probes():
     assert all(0 < timeout <= 1.5 for timeout in timeouts)
 
 
-def test_entrypoint_requires_local_before_main_without_cloud_fallback():
+def test_entrypoint_requires_local_before_main_without_cloud_fallback() -> None:
     feature = next(item for item in DEFAULT_RUNTIME_FEATURES if item.feature_id == "local-bot-api")
     assert feature.module == "services.local_botapi_required"
     assert feature.installer == "require_local_bot_api"

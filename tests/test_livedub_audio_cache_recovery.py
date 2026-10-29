@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from services import livedub_audio_cache_recovery as recovery
 
 
-def _write(path: Path, data) -> None:
+def _write(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
 
@@ -35,14 +36,16 @@ def test_successful_save_keeps_previous_valid_generation_in_backup(tmp_path: Pat
 
 
 @pytest.mark.parametrize("mode", ["corrupt", "wrong", "noop"])
-def test_invalid_new_generation_rolls_back_previous_cache(tmp_path: Path, monkeypatch, mode: str) -> None:
+def test_invalid_new_generation_rolls_back_previous_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
     path = tmp_path / "cache.json"
     backup = path.with_suffix(path.suffix + ".bak")
     old = {"video-old": {"saved_at": 1}}
     wanted = {"video-new": {"saved_at": 2}}
     _write(path, old)
 
-    def broken(target: Path, data):
+    def broken(target: Path, data: dict[str, Any]) -> None:
         if mode == "corrupt":
             target.write_text("not-json", encoding="utf-8")
         elif mode == "wrong":
@@ -57,7 +60,7 @@ def test_invalid_new_generation_rolls_back_previous_cache(tmp_path: Path, monkey
     assert json.loads(backup.read_text(encoding="utf-8")) == old
 
 
-def test_wrong_generation_without_backup_is_discarded(tmp_path: Path, monkeypatch) -> None:
+def test_wrong_generation_without_backup_is_discarded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     path = tmp_path / "cache.json"
     monkeypatch.setattr(recovery, "_atomic_write", lambda target, data: _write(target, {"wrong": {"saved_at": 9}}))
     with pytest.raises(RuntimeError):
@@ -65,7 +68,9 @@ def test_wrong_generation_without_backup_is_discarded(tmp_path: Path, monkeypatc
     assert not path.exists()
 
 
-def test_recovered_cache_is_preserved_when_companion_adds_variant(tmp_path: Path, monkeypatch) -> None:
+def test_recovered_cache_is_preserved_when_companion_adds_variant(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     import services.livedub_audio_companion as companion
 
     path = tmp_path / "cache.json"

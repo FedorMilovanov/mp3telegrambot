@@ -4,7 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from services.speech_backends import BackendCapabilities, register_backend, unregister_backend
+from typing import cast
+
+from services.speech_backends import BackendCapabilities, SpeechBackend, register_backend, unregister_backend
 from tools.voxcpm2 import generic_project_runtime
 
 
@@ -57,7 +59,7 @@ def test_control_plane_rejects_backend_without_production_capabilities() -> None
                 checkpointable_segments=True,
             )
 
-    register_backend(IncompleteBackend())
+    register_backend(cast(SpeechBackend, IncompleteBackend()))
     try:
         with pytest.raises(RuntimeError, match="production capabilities"):
             generic_project_runtime.validate_request_payload(_request(speech_backend="incomplete"))

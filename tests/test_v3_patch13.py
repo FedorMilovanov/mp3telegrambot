@@ -13,13 +13,13 @@ Changes:
 import re
 
 
-def test_verified_context_rule_exists():
+def test_verified_context_rule_exists() -> None:
     from core.prompt_rules import VERIFIED_CONTEXT_RULE
 
     assert "ПРАВИЛО ВЕРИФИЦИРОВАННОГО КОНТЕКСТА" in VERIFIED_CONTEXT_RULE
 
 
-def test_verified_context_rule_has_allowed_categories():
+def test_verified_context_rule_has_allowed_categories() -> None:
     from core.prompt_rules import VERIFIED_CONTEXT_RULE
 
     assert "РАЗРЕШЁННЫЕ КАТЕГОРИИ" in VERIFIED_CONTEXT_RULE, "Must specify what IS allowed"
@@ -27,7 +27,7 @@ def test_verified_context_rule_has_allowed_categories():
     assert "персонажей из Библии" in VERIFIED_CONTEXT_RULE
 
 
-def test_verified_context_rule_has_forbidden_categories():
+def test_verified_context_rule_has_forbidden_categories() -> None:
     from core.prompt_rules import VERIFIED_CONTEXT_RULE
 
     assert "ЗАПРЕЩЁННЫЕ КАТЕГОРИИ" in VERIFIED_CONTEXT_RULE, "Must specify what is NOT allowed"
@@ -35,19 +35,19 @@ def test_verified_context_rule_has_forbidden_categories():
     assert "Прямые цитаты" in VERIFIED_CONTEXT_RULE
 
 
-def test_verified_context_rule_has_self_test():
+def test_verified_context_rule_has_self_test() -> None:
     from core.prompt_rules import VERIFIED_CONTEXT_RULE
 
     assert "ТЕСТ ПЕРЕД ДОБАВЛЕНИЕМ" in VERIFIED_CONTEXT_RULE, "Must provide self-verification test for model"
 
 
-def test_synopsis_v2_has_verified_context_rule():
+def test_synopsis_v2_has_verified_context_rule() -> None:
     from core.prompts import SYNOPSIS_PROMPT_V2
 
     assert "ПРАВИЛО ВЕРИФИЦИРОВАННОГО КОНТЕКСТА" in SYNOPSIS_PROMPT_V2, "SYNOPSIS_V2 must embed VERIFIED_CONTEXT_RULE"
 
 
-def test_synopsis_v2_no_raw_placeholders():
+def test_synopsis_v2_no_raw_placeholders() -> None:
     from core.prompts import SYNOPSIS_PROMPT_V2
 
     shared = re.compile(
@@ -58,7 +58,7 @@ def test_synopsis_v2_no_raw_placeholders():
     assert not found, f"SYNOPSIS_V2 has unresolved: {found}"
 
 
-def test_synopsis_v2_format_works():
+def test_synopsis_v2_format_works() -> None:
     from core.prompts import SYNOPSIS_PROMPT_V2
 
     r = SYNOPSIS_PROMPT_V2.format(
@@ -74,7 +74,7 @@ def test_synopsis_v2_format_works():
     assert "ТЕСТ ПЕРЕД ДОБАВЛЕНИЕМ" in r, "Formatted synopsis must contain the verification test"
 
 
-def test_expand_handles_verified_context():
+def test_expand_handles_verified_context() -> None:
     from core.prompts import _expand_prompt_rules
 
     result = _expand_prompt_rules("Начало {VERIFIED_CONTEXT_RULE} конец")

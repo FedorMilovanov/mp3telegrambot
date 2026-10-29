@@ -42,8 +42,8 @@ import contextlib
 import logging
 import os
 import re
-import shutil
-import subprocess
+import shutil as shutil
+import subprocess as subprocess
 from pathlib import Path
 from typing import Any
 

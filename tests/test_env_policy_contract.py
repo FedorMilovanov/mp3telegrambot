@@ -19,6 +19,7 @@ from __future__ import annotations
 import ast
 import logging
 import os
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -82,7 +83,7 @@ def _apply_both_policies() -> None:
 
 
 @pytest.fixture()
-def clean_policy_env(monkeypatch: pytest.MonkeyPatch):
+def clean_policy_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Снять все управляемые переменные и сбросить реестр подмен."""
     for names in EXPECTED_OWNED.values():
         for name in names:
@@ -94,14 +95,14 @@ def clean_policy_env(monkeypatch: pytest.MonkeyPatch):
     env_policy.reset()
 
 
-def test_policy_still_wins_over_env(clean_policy_env) -> None:
+def test_policy_still_wins_over_env(clean_policy_env: None) -> None:
     os.environ["GEMINI_MODEL"] = "gemini-2.5-pro"
     _apply_both_policies()
     assert os.environ["GEMINI_MODEL"] == MODEL_PRIMARY
     assert os.environ["LIVEDUB_QUICK_QA_MODEL"] == MODEL_PRIMARY
 
 
-def test_operator_override_is_reported_not_swallowed(clean_policy_env, caplog) -> None:
+def test_operator_override_is_reported_not_swallowed(clean_policy_env: None, caplog: pytest.LogCaptureFixture) -> None:
     os.environ["WHISPER_MODEL"] = "tiny"
     os.environ["LIVEDUB_INFO_FALLBACK_MODELS"] = "gemini-2.5-flash"
 
@@ -120,7 +121,7 @@ def test_operator_override_is_reported_not_swallowed(clean_policy_env, caplog) -
     assert env_policy.overridden()["WHISPER_MODEL"] == ("tiny", "large-v3")
 
 
-def test_matching_operator_value_is_silent(clean_policy_env, caplog) -> None:
+def test_matching_operator_value_is_silent(clean_policy_env: None, caplog: pytest.LogCaptureFixture) -> None:
     """Тот же значение, что форсирует политика, — не повод шуметь."""
     os.environ["GEMINI_MODEL"] = MODEL_PRIMARY
     with caplog.at_level(logging.WARNING, logger="services.env_policy"):
@@ -129,21 +130,21 @@ def test_matching_operator_value_is_silent(clean_policy_env, caplog) -> None:
     assert "overridden_env=" not in diagnostic
 
 
-def test_registry_matches_the_documented_list(clean_policy_env) -> None:
+def test_registry_matches_the_documented_list(clean_policy_env: None) -> None:
     _apply_both_policies()
     assert set(env_policy.POLICY_OWNED) == _documented_owned(), (
         "список POLICY-OWNED в .env.example разошёлся с кодом политики"
     )
 
 
-def test_each_policy_owns_exactly_its_documented_variables(clean_policy_env) -> None:
+def test_each_policy_owns_exactly_its_documented_variables(clean_policy_env: None) -> None:
     _apply_both_policies()
     for owner, expected in EXPECTED_OWNED.items():
         actual = {name for name, owners in env_policy.POLICY_OWNED.items() if owner in owners}
         assert actual == expected, f"{owner}: {actual ^ expected}"
 
 
-def test_every_forced_variable_is_actually_read(clean_policy_env) -> None:
+def test_every_forced_variable_is_actually_read(clean_policy_env: None) -> None:
     """Форсировать переменную, которую никто не читает, — это мёртвая ручка.
 
     Аудит нашёл восемь таких: GEMINI_MAX_MODEL, GEMINI_FORCE_THINKING_LEVEL,

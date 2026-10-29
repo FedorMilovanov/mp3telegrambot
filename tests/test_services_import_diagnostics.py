@@ -1,4 +1,5 @@
 from __future__ import annotations
+import pytest
 
 from pathlib import Path
 import subprocess
@@ -38,7 +39,7 @@ original.write(f"SERVICES_IMPORT_OUTPUT={len(out_bytes.getvalue())}:{len(err_byt
     assert process.stderr == ""
 
 
-def test_manifest_events_are_structured_and_emitted_only_on_request(monkeypatch) -> None:
+def test_manifest_events_are_structured_and_emitted_only_on_request(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         runtime_manifest,
         "runtime_manifest_payload",

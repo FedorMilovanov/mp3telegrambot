@@ -6,14 +6,14 @@ from core.candidate_schema import timestamp_repair_response_schema
 from services.gemini_analyze import _format_repaired_timestamps, _format_ts_for_prompt
 
 
-def test_timestamp_repair_schema_contract():
+def test_timestamp_repair_schema_contract() -> None:
     schema = timestamp_repair_response_schema()
     assert schema["required"] == ["timestamps"]
     item = schema["properties"]["timestamps"]["items"]
     assert item["required"] == ["time", "topic"]
 
 
-def test_format_repaired_timestamps_filters_bad_and_formats():
+def test_format_repaired_timestamps_filters_bad_and_formats() -> None:
     data = {
         "timestamps": [
             {"time": "0:00", "topic": "Начало"},
@@ -29,7 +29,7 @@ def test_format_repaired_timestamps_filters_bad_and_formats():
     assert _format_ts_for_prompt(3300 * 0.88) == "48:24"
 
 
-def test_gemini_analyze_wires_timestamp_repair_nonfatally():
+def test_gemini_analyze_wires_timestamp_repair_nonfatally() -> None:
     src = Path("services/gemini_analyze.py").read_text(encoding="utf-8")
     assert "AUDIO_TIMESTAMP_REPAIR" in src
     assert "timestamp_coverage_warning" in src

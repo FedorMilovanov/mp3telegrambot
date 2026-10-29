@@ -1,6 +1,8 @@
 """Executed PDF layout and empty-source contracts for modernized annotations."""
 
 from __future__ import annotations
+import pathlib
+import pytest
 
 import asyncio
 from types import SimpleNamespace
@@ -32,7 +34,7 @@ def test_clean_block_elements_executes_typed_match_callback() -> None:
     assert cleaned == "<p>First<br>second</p>"
 
 
-def test_fetch_telegraph_bs4_executes_optional_parser_boundary(monkeypatch) -> None:
+def test_fetch_telegraph_bs4_executes_optional_parser_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
     assert pdf.BeautifulSoup is not None
     monkeypatch.setattr(
         pdf,
@@ -46,7 +48,9 @@ def test_fetch_telegraph_bs4_executes_optional_parser_boundary(monkeypatch) -> N
     assert "Hidden" not in result
 
 
-def test_sync_pdf_generation_stops_when_every_source_is_empty(monkeypatch, tmp_path) -> None:
+def test_sync_pdf_generation_stops_when_every_source_is_empty(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     monkeypatch.setattr(pdf, "_fetch_telegraph", lambda _url: "")
 
     result = pdf.generate_sermon_pdf(
@@ -60,7 +64,9 @@ def test_sync_pdf_generation_stops_when_every_source_is_empty(monkeypatch, tmp_p
     assert result is None
 
 
-def test_async_pdf_generation_stops_when_every_source_is_empty(monkeypatch, tmp_path) -> None:
+def test_async_pdf_generation_stops_when_every_source_is_empty(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     monkeypatch.setattr(pdf, "_fetch_telegraph", lambda _url: "")
 
     result = asyncio.run(

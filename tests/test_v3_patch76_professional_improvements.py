@@ -1,5 +1,8 @@
 """Regression tests for v3 patch 76 — professional follow-up improvements."""
 
+import pathlib
+import pytest
+
 import sqlite3
 
 from core.content_audit import audit_expanded_sections, has_content_audit_warnings
@@ -13,7 +16,7 @@ from core.synopsis_quality import (
 )
 
 
-def test_person_names_and_source_titles_share_canonical_display_names():
+def test_person_names_and_source_titles_share_canonical_display_names() -> None:
     assert canonical_person_name("Р. Ч. Спрол") == "Р. Ч. Спроул"
     assert canonical_author_name("R.C. Sproul") == "Р. Ч. Спроул"
     assert (
@@ -22,7 +25,7 @@ def test_person_names_and_source_titles_share_canonical_display_names():
     )
 
 
-def test_synopsis_organizational_announcement_filter_removes_only_leading_logistics():
+def test_synopsis_organizational_announcement_filter_removes_only_leading_logistics() -> None:
     announcement = {
         "title": "Анонс конференции",
         "time": "0:00",
@@ -47,7 +50,7 @@ def test_synopsis_organizational_announcement_filter_removes_only_leading_logist
     assert issues2 == []
 
 
-def test_structured_block_required_fields_warn_but_do_not_drop_section():
+def test_structured_block_required_fields_warn_but_do_not_drop_section() -> None:
     sections = [
         {
             "title": "Sources",
@@ -66,7 +69,9 @@ def test_structured_block_required_fields_warn_but_do_not_drop_section():
     assert has_content_audit_warnings(issues) is True
 
 
-def test_generated_pages_archive_persists_prompt_variant(tmp_path, monkeypatch):
+def test_generated_pages_archive_persists_prompt_variant(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("PROMPT_EXPERIMENT_TAG", "study-reflection-v1")
     record = build_generated_page_record(
         video_id="variant",
@@ -78,6 +83,7 @@ def test_generated_pages_archive_persists_prompt_variant(tmp_path, monkeypatch):
     assert record["prompt_variant"] == "study-reflection-v1"
     save_generated_page_record(record, base_dir=tmp_path)
     loaded = get_generated_page_record("variant", base_dir=tmp_path)
+    assert loaded is not None
     assert loaded["prompt_variant"] == "study-reflection-v1"
     latest = (tmp_path / "latest.md").read_text(encoding="utf-8")
     assert "Prompt variant: `study-reflection-v1`" in latest

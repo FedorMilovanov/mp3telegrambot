@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterable
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -12,12 +14,12 @@ import services.livedub_delivery_coordinator as coordinator
 
 
 class FakeBot:
-    def __init__(self, outcomes):
+    def __init__(self, outcomes: Iterable[tuple[int, str] | BaseException]) -> None:
         self.outcomes = list(outcomes)
-        self.sent_audio = []
-        self.deleted = []
+        self.sent_audio: list[dict[str, Any]] = []
+        self.deleted: list[tuple[int, int]] = []
 
-    async def send_audio(self, **kwargs):
+    async def send_audio(self, **kwargs: Any) -> SimpleNamespace:
         self.sent_audio.append(kwargs)
         outcome = self.outcomes.pop(0)
         if isinstance(outcome, BaseException):
@@ -27,12 +29,12 @@ class FakeBot:
             audio=SimpleNamespace(file_id=outcome[1]),
         )
 
-    async def delete_message(self, *, chat_id, message_id):
+    async def delete_message(self, *, chat_id: int, message_id: int) -> bool:
         self.deleted.append((chat_id, message_id))
         return True
 
 
-async def _fields(_card, variant):
+async def _fields(_card: dict[str, Any], variant: str) -> dict[str, str]:
     return {
         "title": "Title",
         "performer": "Author",
@@ -41,12 +43,12 @@ async def _fields(_card, variant):
     }
 
 
-def _reset_singleflight():
+def _reset_singleflight() -> None:
     coordinator._COMPANION_SENT.clear()
     coordinator._COMPANION_INFLIGHT.clear()
 
 
-def _patch_media(monkeypatch, tmp_path: Path):
+def _patch_media(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> tuple[Path, Path, Path]:
     video = tmp_path / "video.mp4"
     clean = tmp_path / "clean.mp3"
     mixed = tmp_path / "video.final-mix.mp3"
@@ -59,16 +61,16 @@ def _patch_media(monkeypatch, tmp_path: Path):
     return video, clean, mixed
 
 
-def test_new_companion_transaction_rolls_back_partial_send(monkeypatch, tmp_path):
+def test_new_companion_transaction_rolls_back_partial_send(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _reset_singleflight()
     video, _clean, _mixed = _patch_media(monkeypatch, tmp_path)
     bot = FakeBot([(101, "clean-id"), RuntimeError("mixed send failed")])
-    puts = []
-    drops = []
+    puts: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+    drops: list[str] = []
     monkeypatch.setattr(companion, "_cache_put_variant", lambda *a, **kw: puts.append((a, kw)))
     monkeypatch.setattr(companion, "_cache_drop", lambda key: drops.append(key))
 
-    async def scenario():
+    async def scenario() -> None:
         with pytest.raises(RuntimeError, match="mixed send failed"):
             await coordinator.deliver_new_companions(
                 bot,
@@ -86,13 +88,84 @@ def test_new_companion_transaction_rolls_back_partial_send(monkeypatch, tmp_path
     assert bot.deleted == [(7, 101)]
 
 
-def test_new_companion_transaction_commits_only_after_all_messages(monkeypatch, tmp_path):
+def test_new_companion_transaction_rolls_back_message_with_empty_file_id(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    _reset_singleflight()
+    video, _clean, _mixed = _patch_media(monkeypatch, tmp_path)
+    bot = FakeBot([(101, "")])
+    drops: list[str] = []
+    monkeypatch.setattr(companion, "_cache_drop", lambda key: drops.append(key))
+    caplog.set_level("INFO")
+
+    async def scenario() -> None:
+        with pytest.raises(RuntimeError, match="Telegram не вернул audio.file_id"):
+            await coordinator.deliver_new_companions(
+                bot,
+                chat_id=7,
+                video_path=video,
+                publication_card={},
+                reply_to=9,
+                thumbnail=None,
+                video_file_id="video-id",
+            )
+
+    asyncio.run(scenario())
+    assert bot.deleted == [(7, 101)]
+    assert drops == ["video-id"]
+    assert "new companion transaction rolled back=1/1" in caplog.text
+
+
+def test_new_companion_transaction_reports_rollback_failure_for_missing_audio(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    _reset_singleflight()
+    video, _clean, _mixed = _patch_media(monkeypatch, tmp_path)
+
+    class MissingAudioBot(FakeBot):
+        async def send_audio(self, **kwargs: Any) -> SimpleNamespace:
+            self.sent_audio.append(kwargs)
+            return SimpleNamespace(message_id=102, audio=None)
+
+        async def delete_message(self, *, chat_id: int, message_id: int) -> bool:
+            self.deleted.append((chat_id, message_id))
+            raise RuntimeError("delete denied")
+
+    bot = MissingAudioBot([])
+    monkeypatch.setattr(companion, "_cache_drop", lambda _key: None)
+    caplog.set_level("INFO")
+
+    async def scenario() -> None:
+        with pytest.raises(RuntimeError, match="Telegram не вернул audio.file_id"):
+            await coordinator.deliver_new_companions(
+                bot,
+                chat_id=7,
+                video_path=video,
+                publication_card={},
+                reply_to=9,
+                thumbnail=None,
+                video_file_id="video-id",
+            )
+
+    asyncio.run(scenario())
+    assert bot.deleted == [(7, 102)]
+    assert "rollback delete failed chat=7 message=102" in caplog.text
+    assert "new companion transaction rolled back=0/1" in caplog.text
+
+
+def test_new_companion_transaction_commits_only_after_all_messages(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     _reset_singleflight()
     video, _clean, _mixed = _patch_media(monkeypatch, tmp_path)
     bot = FakeBot([(101, "clean-id"), (102, "mixed-id")])
-    state = {"variants": {}}
+    state: dict[str, dict[str, dict[str, Any]]] = {"variants": {}}
 
-    def put(key, variant, audio_file_id, **meta):
+    def put(key: str, variant: str, audio_file_id: str, **meta: Any) -> None:
         assert key == "video-id"
         state["variants"][variant] = {"audio_file_id": audio_file_id, **meta}
 
@@ -100,7 +173,7 @@ def test_new_companion_transaction_commits_only_after_all_messages(monkeypatch, 
     monkeypatch.setattr(companion, "_cache_get", lambda key: state if key == "video-id" else None)
     monkeypatch.setattr(companion, "_cache_drop", lambda _key: (_ for _ in ()).throw(AssertionError("unexpected drop")))
 
-    async def scenario():
+    async def scenario() -> None:
         assert await coordinator.deliver_new_companions(
             bot,
             chat_id=7,
@@ -116,10 +189,10 @@ def test_new_companion_transaction_commits_only_after_all_messages(monkeypatch, 
     assert bot.deleted == []
 
 
-def test_cached_duplicate_role_ids_fail_before_send(monkeypatch):
+def test_cached_duplicate_role_ids_fail_before_send(monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_singleflight()
     bot = FakeBot([])
-    dropped = []
+    dropped: list[str] = []
     monkeypatch.setattr(
         companion,
         "_cache_get",
@@ -133,7 +206,7 @@ def test_cached_duplicate_role_ids_fail_before_send(monkeypatch):
     monkeypatch.setattr(companion, "_cache_drop", lambda key: dropped.append(key))
     monkeypatch.setattr(coordinator, "_publication_audio_fields", _fields)
 
-    async def scenario():
+    async def scenario() -> None:
         with pytest.raises(RuntimeError, match="same audio_file_id"):
             await coordinator.deliver_cached_companions(
                 bot,
@@ -148,10 +221,10 @@ def test_cached_duplicate_role_ids_fail_before_send(monkeypatch):
     assert dropped == ["video-id"]
 
 
-def test_cached_partial_send_is_rolled_back(monkeypatch):
+def test_cached_partial_send_is_rolled_back(monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_singleflight()
     bot = FakeBot([(201, "unused"), RuntimeError("stale mixed")])
-    dropped = []
+    dropped: list[str] = []
     monkeypatch.setattr(
         companion,
         "_cache_get",
@@ -165,7 +238,7 @@ def test_cached_partial_send_is_rolled_back(monkeypatch):
     monkeypatch.setattr(companion, "_cache_drop", lambda key: dropped.append(key))
     monkeypatch.setattr(coordinator, "_publication_audio_fields", _fields)
 
-    async def scenario():
+    async def scenario() -> None:
         with pytest.raises(RuntimeError, match="stale mixed"):
             await coordinator.deliver_cached_companions(
                 bot,
@@ -180,32 +253,34 @@ def test_cached_partial_send_is_rolled_back(monkeypatch):
     assert dropped == ["video-id"]
 
 
-def test_source_audio_deferral_is_request_scoped_and_discardable(monkeypatch, tmp_path):
+def test_source_audio_deferral_is_request_scoped_and_discardable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setenv("LIVEDUB_AUDIO_DEDUPE", "1")
     monkeypatch.setenv("LIVEDUB_SEND_AUDIO", "1")
     source = tmp_path / "source.mp3"
     source.write_bytes(b"source audio")
 
     class Message:
-        def __init__(self):
+        def __init__(self) -> None:
             self.calls = 0
 
-        async def reply_audio(self, **_kwargs):
+        async def reply_audio(self, **_kwargs: Any) -> None:
             self.calls += 1
             raise AssertionError("source reply_audio must be deferred")
 
     class Bot:
-        def __init__(self):
-            self.calls = []
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
 
-        async def send_audio(self, **kwargs):
+        async def send_audio(self, **kwargs: Any) -> SimpleNamespace:
             self.calls.append(kwargs)
             return SimpleNamespace(audio=SimpleNamespace(file_id="source-id"))
 
     message = Message()
     bot = Bot()
 
-    async def scenario():
+    async def scenario() -> None:
         delivery = coordinator.create_source_audio_deferral(bot=bot, chat_id=7, reply_to=9, enabled=True)
         placeholder = await delivery.send_or_defer(
             message,
@@ -224,27 +299,27 @@ def test_source_audio_deferral_is_request_scoped_and_discardable(monkeypatch, tm
     assert bot.calls == []
 
 
-def test_source_audio_deferral_flushes_once(monkeypatch, tmp_path):
+def test_source_audio_deferral_flushes_once(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("LIVEDUB_AUDIO_DEDUPE", "1")
     monkeypatch.setenv("LIVEDUB_SEND_AUDIO", "1")
     source = tmp_path / "source.mp3"
     source.write_bytes(b"source audio")
 
     class Message:
-        async def reply_audio(self, **_kwargs):
+        async def reply_audio(self, **_kwargs: Any) -> None:
             raise AssertionError("source reply_audio must be deferred")
 
     class Bot:
-        def __init__(self):
-            self.calls = []
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
 
-        async def send_audio(self, **kwargs):
+        async def send_audio(self, **kwargs: Any) -> SimpleNamespace:
             self.calls.append(kwargs)
             return SimpleNamespace(audio=SimpleNamespace(file_id="source-id"))
 
     bot = Bot()
 
-    async def scenario():
+    async def scenario() -> None:
         delivery = coordinator.create_source_audio_deferral(bot=bot, chat_id=7, reply_to=9, enabled=True)
         await delivery.send_or_defer(
             Message(),

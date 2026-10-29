@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import copy
 import json
+from collections.abc import Callable
+from typing import Any
 from pathlib import Path
 
 import pytest
@@ -30,7 +32,7 @@ MODEL_SHA = "c" * 64
 COMMIT_SHA = "d" * 40
 
 
-def _profile() -> dict:
+def _profile() -> dict[str, Any]:
     return {
         "profile_id": "voxcpm2-production-v1",
         "backend_id": "voxcpm2",
@@ -51,7 +53,7 @@ def _profile() -> dict:
     }
 
 
-def _backend() -> dict:
+def _backend() -> dict[str, Any]:
     return {
         "backend_id": "voxcpm2",
         "family": "voxcpm2",
@@ -62,7 +64,7 @@ def _backend() -> dict:
     }
 
 
-def _doctor_report() -> dict:
+def _doctor_report() -> dict[str, Any]:
     return {
         "schema_version": 1,
         "policy": TTS_WEIGHTED_SMOKE_RUNNER_POLICY,
@@ -121,7 +123,7 @@ def _doctor_report() -> dict:
     }
 
 
-def _smoke_report() -> dict:
+def _smoke_report() -> dict[str, Any]:
     return {
         "schema_version": 1,
         "policy": TTS_WEIGHTED_SMOKE_POLICY,
@@ -277,7 +279,7 @@ def test_attestation_cross_checks_reports_and_writes_only_allowlisted_facts(
     ],
 )
 def test_attestation_rejects_cross_report_or_privacy_invariant_breaks(
-    mutator,
+    mutator: Callable[[dict[str, Any], dict[str, Any]], Any],
     message: str,
 ) -> None:
     doctor = _doctor_report()

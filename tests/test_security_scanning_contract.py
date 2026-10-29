@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -32,14 +33,18 @@ CODEQL = WORKFLOWS / "codeql.yml"
 PRE_COMMIT = ROOT / ".pre-commit-config.yaml"
 
 
-def _load(path: Path) -> dict:
-    return yaml.safe_load(path.read_text(encoding="utf-8"))
+def _load(path: Path) -> dict[Any, Any]:
+    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert isinstance(payload, dict)
+    return payload
 
 
-def _triggers(workflow: dict) -> dict:
+def _triggers(workflow: dict[Any, Any]) -> dict[Any, Any]:
     # PyYAML читает ключ `on:` как布尔 True (YAML 1.1), поэтому обращаемся к нему
     # по обоим вариантам — иначе тест «проходит» на пустом словаре.
-    return workflow.get("on") or workflow.get(True) or {}
+    triggers = workflow.get("on") or workflow.get(True) or {}
+    assert isinstance(triggers, dict)
+    return triggers
 
 
 def test_secret_scan_runs_on_pr_and_full_history() -> None:

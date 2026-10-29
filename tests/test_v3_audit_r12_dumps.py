@@ -11,6 +11,7 @@
    кружки убраны из шаблонов, зачины обязаны различаться.
 """
 
+from collections.abc import Iterable
 from pathlib import Path
 
 from converters.md_telegraph import (
@@ -22,10 +23,10 @@ from converters.md_telegraph import (
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _flat(nodes) -> str:
-    parts = []
+def _flat(nodes: Iterable[object]) -> str:
+    parts: list[str] = []
 
-    def walk(n):
+    def walk(n: object) -> None:
         if isinstance(n, str):
             parts.append(n)
         elif isinstance(n, dict):
@@ -40,7 +41,7 @@ def _flat(nodes) -> str:
 # ── 1. Точка после таймкода — на markdown-стадии ────────────────
 
 
-def test_fix_ts_period_order_unit():
+def test_fix_ts_period_order_unit() -> None:
     f = _fix_ts_period_order
     assert f("менее духовными. ⏱ 0:15.") == "менее духовными ⏱ 0:15."
     assert f("бумаге. ⏱ 0:40") == "бумаге ⏱ 0:40."
@@ -50,7 +51,7 @@ def test_fix_ts_period_order_unit():
     assert f("Духа ⏱ 11:29. Дальше") == "Духа ⏱ 11:29. Дальше"
 
 
-def test_qa_paragraph_period_fixed_before_linkify():
+def test_qa_paragraph_period_fixed_before_linkify() -> None:
     """Сквозной сценарий Q&A: после линкификации точка стоит ПОСЛЕ ссылки,
     а перед таймкодом точки нет."""
     nodes = _section_to_nodes_v2(
@@ -67,7 +68,7 @@ def test_qa_paragraph_period_fixed_before_linkify():
     assert ". ⏱" not in flat, f"точка перед таймкодом уцелела: {flat!r}"
 
 
-def test_section_content_path_calls_shared_helpers():
+def test_section_content_path_calls_shared_helpers() -> None:
     src = (ROOT / "converters/md_telegraph.py").read_text(encoding="utf-8")
     sect = src.split("def _section_to_nodes_v2", 1)[1][:4000]
     assert "_strip_card_bullets(" in sect
@@ -77,7 +78,7 @@ def test_section_content_path_calls_shared_helpers():
 # ── 2. Blocks-путь: зачистки и карточки без «•» ─────────────────
 
 
-def test_blocks_path_lexicon_card_without_bullet():
+def test_blocks_path_lexicon_card_without_bullet() -> None:
     nodes = _structured_blocks_to_nodes_v2(
         [
             {
@@ -92,7 +93,7 @@ def test_blocks_path_lexicon_card_without_bullet():
     assert "•" not in flat, "лексическая карточка не должна иметь кружок"
 
 
-def test_blocks_path_source_card_has_no_bullet():
+def test_blocks_path_source_card_has_no_bullet() -> None:
     """AUDIT R23 (user report: "• - убери ты это везде, надоедает") —
     Source Card lines no longer get a leading "•"."""
     nodes = _structured_blocks_to_nodes_v2(
@@ -110,7 +111,7 @@ def test_blocks_path_source_card_has_no_bullet():
     assert "Джон Оуэн" in flat
 
 
-def test_blocks_path_fixes_ts_period():
+def test_blocks_path_fixes_ts_period() -> None:
     nodes = _structured_blocks_to_nodes_v2(
         [
             {"type": "paragraph", "text": "Служители молятся мало. ⏱ 2:29."},
@@ -124,7 +125,7 @@ def test_blocks_path_fixes_ts_period():
 # ── 3. Литеральный \n\n → настоящий разрыв абзаца ───────────────
 
 
-def test_blocks_literal_backslash_n_becomes_paragraph_break():
+def test_blocks_literal_backslash_n_becomes_paragraph_break() -> None:
     nodes = _structured_blocks_to_nodes_v2(
         [
             {"type": "paragraph", "text": "**Когда ты жертвовал сном ради молитвы?** \\n\\nИисус встал до рассвета."},
@@ -139,7 +140,7 @@ def test_blocks_literal_backslash_n_becomes_paragraph_break():
 # ── 4. Промты: кружки убраны из шаблонов, зачины разнообразны ───
 
 
-def test_reflection_prompt_no_bullet_card_templates():
+def test_reflection_prompt_no_bullet_card_templates() -> None:
     from core.prompts import REFLECTION_APPLICATION_PROMPT as p
 
     assert "• **От" not in p, "промт снова предписывает кружки у карточек"
@@ -147,7 +148,7 @@ def test_reflection_prompt_no_bullet_card_templates():
     assert "РАЗНООБРАЗИЕ ЗАЧИНОВ" in p
 
 
-def test_study_prompt_no_bullet_definition_template():
+def test_study_prompt_no_bullet_definition_template() -> None:
     from core.prompts import STUDY_ANALYSIS_PROMPT as p
 
     assert "• **Термин / понятие**" not in p
@@ -158,7 +159,7 @@ def test_study_prompt_no_bullet_definition_template():
 # ── 5. Дубль автора в скобках у карточек источников ─────────────
 
 
-def test_source_card_author_not_duplicated_in_parens():
+def test_source_card_author_not_duplicated_in_parens() -> None:
     from core.source_titles import build_source_card, render_source_card
     from converters.md_telegraph import _final_telegraph_polish
 

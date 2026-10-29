@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -10,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / "tools" / "voxcpm2" / "remaster_delayed_nvenc.py"
 
 
-def _load_module():
+def _load_module() -> Any:
     spec = importlib.util.spec_from_file_location(
         "voxcpm2_remaster_delayed_nvenc",
         MODULE_PATH,
@@ -24,7 +25,7 @@ def _load_module():
 remaster = _load_module()
 
 
-def _segments():
+def _segments() -> list[dict[str, Any]]:
     return [
         {"id": 1, "start": 0.0, "end": 10.88},
         {"id": 2, "start": 10.88, "end": 24.16},

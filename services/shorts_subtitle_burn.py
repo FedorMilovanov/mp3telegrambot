@@ -5,9 +5,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import shutil
+import shutil as shutil
 import subprocess
-import tempfile
+import tempfile as tempfile
 from pathlib import Path
 from typing import Any
 

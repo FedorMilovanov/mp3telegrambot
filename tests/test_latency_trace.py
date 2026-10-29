@@ -11,7 +11,7 @@ from services.async_process import _latency_stage
 
 
 @pytest.mark.asyncio
-async def test_latency_trace_aggregates_one_compact_summary(caplog) -> None:
+async def test_latency_trace_aggregates_one_compact_summary(caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.INFO, logger="services.latency_trace")
     handle = latency_trace.begin_latency_trace("rus")
     try:
@@ -82,7 +82,7 @@ async def test_latency_trace_does_not_leak_into_child_task() -> None:
 
 
 @pytest.mark.asyncio
-async def test_gemini_capacity_owner_measures_queue_and_roundtrip(monkeypatch) -> None:
+async def test_gemini_capacity_owner_measures_queue_and_roundtrip(monkeypatch: pytest.MonkeyPatch) -> None:
     recorded: list[str] = []
     monkeypatch.setattr(
         capacity_control,

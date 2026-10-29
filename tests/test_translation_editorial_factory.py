@@ -5,6 +5,7 @@ import json
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -55,11 +56,11 @@ def _pack(tmp_path: Path, *, with_candidates: bool = False) -> Path:
     )
 
 
-def test_immutable_review_race_collision_chains_file_exists(monkeypatch, tmp_path: Path) -> None:
+def test_immutable_review_race_collision_chains_file_exists(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(factory, "load_pack_manifest", lambda _path: {"review_pack_id": "sha256:" + "a" * 64})
     real_open = Path.open
 
-    def racing_open(self, mode="r", *args, **kwargs):
+    def racing_open(self: Path, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
         if mode == "x" and self.parent == tmp_path:
             self.write_text("different", encoding="utf-8")
             raise FileExistsError(self)
@@ -159,8 +160,8 @@ async def test_gemini_review_uses_exact_36_high_once_without_sampling_or_local_p
     pack = _pack(tmp_path)
     manifest = load_pack_manifest(pack)
     local_path = manifest["source"]["translated_video"]["local_path"]
-    calls: list[dict] = []
-    configs: list[dict] = []
+    calls: list[dict[str, Any]] = []
+    configs: list[dict[str, Any]] = []
 
     payload = {
         "full_sermon": {
@@ -172,13 +173,13 @@ async def test_gemini_review_uses_exact_36_high_once_without_sampling_or_local_p
     }
 
     class FakeModels:
-        async def generate_content(self, **kwargs):
+        async def generate_content(self, **kwargs: Any) -> SimpleNamespace:
             calls.append(kwargs)
             return SimpleNamespace(text=json.dumps(payload, ensure_ascii=False))
 
     fake_client = SimpleNamespace(aio=SimpleNamespace(models=FakeModels()))
 
-    def fake_config(**kwargs):
+    def fake_config(**kwargs: Any) -> dict[str, bool]:
         configs.append(kwargs)
         return {"cfg": True}
 
@@ -219,14 +220,14 @@ async def test_gemini_review_missing_candidate_is_rejected_without_hidden_retry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pack = _pack(tmp_path, with_candidates=True)
-    calls: list[dict] = []
+    calls: list[dict[str, Any]] = []
     payload = {
         "full_sermon": {"verdict": "keep", "reason": "ok", "issues": []},
         "candidate_reviews": [],
     }
 
     class FakeModels:
-        async def generate_content(self, **kwargs):
+        async def generate_content(self, **kwargs: Any) -> SimpleNamespace:
             calls.append(kwargs)
             return SimpleNamespace(text=json.dumps(payload, ensure_ascii=False))
 
@@ -249,7 +250,7 @@ async def test_original_srt_manual_is_preferred_before_auto(
 ) -> None:
     commands: list[list[str]] = []
 
-    async def fake_run(command, **_kwargs):
+    async def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
         commands.append(list(command))
         output_index = command.index("--output") + 1
         template = Path(command[output_index])

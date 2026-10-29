@@ -1,4 +1,6 @@
 from __future__ import annotations
+from typing import Any
+import pytest
 
 import json
 from pathlib import Path
@@ -51,8 +53,8 @@ def _outputs() -> dict[str, str]:
 
 
 def test_cli_writes_fixed_github_outputs_and_safe_summary(
-    monkeypatch,
-    capsys,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
     github_output = tmp_path / "github-output.txt"
@@ -71,13 +73,13 @@ def test_cli_writes_fixed_github_outputs_and_safe_summary(
 
 
 def test_cli_redacts_artifact_path_from_failure(
-    monkeypatch,
-    capsys,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
     artifact = tmp_path / "private-artifact"
 
-    def fail(*_args, **_kwargs):
+    def fail(*_args: Any, **_kwargs: Any) -> None:
         raise RuntimeError(f"failure at {artifact}")
 
     monkeypatch.setattr(cli, "verify_downloaded_attestation", fail)
@@ -91,8 +93,8 @@ def test_cli_redacts_artifact_path_from_failure(
 
 
 def test_cli_output_contract_contains_no_json_or_path_values(
-    monkeypatch,
-    capsys,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
     monkeypatch.setattr(cli, "verify_downloaded_attestation", lambda *_a, **_k: _outputs())

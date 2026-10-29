@@ -1,8 +1,14 @@
+import asyncio
+import pathlib
 from types import SimpleNamespace
 
 import pytest
 
 import services.shorts_factory_source as source
+
+
+def _glob_paths(root: pathlib.Path, pattern: str) -> list[pathlib.Path]:
+    return list(root.glob(pattern))
 
 
 @pytest.mark.parametrize(
@@ -16,23 +22,23 @@ import services.shorts_factory_source as source
     ],
 )
 def test_factory_livedub_timeout_has_quality_floor_and_safe_cap(
-    monkeypatch,
-    raw,
-    expected,
-):
+    monkeypatch: pytest.MonkeyPatch,
+    raw: str,
+    expected: int,
+) -> None:
     monkeypatch.setenv("SHORTS_FACTORY_LIVEDUB_TIMEOUT_SEC", raw)
     assert source._factory_livedub_timeout_seconds() == expected
 
 
 @pytest.mark.asyncio
 async def test_failed_native_audio_download_cleans_all_factory_artifacts(
-    monkeypatch,
-    tmp_path,
-):
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
     raw_path = tmp_path / "video_factory_audio_source.webm"
     partial_path = tmp_path / "video_factory_audio_source.webm.part"
 
-    async def fake_run(command, **kwargs):
+    async def fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
         raw_path.write_bytes(b"raw")
         partial_path.write_bytes(b"partial")
         return SimpleNamespace(returncode=1, stderr="download failed")
@@ -46,17 +52,17 @@ async def test_failed_native_audio_download_cleans_all_factory_artifacts(
             "video",
         )
 
-    assert not list(tmp_path.glob("video_factory_audio_*"))
+    assert not await asyncio.to_thread(_glob_paths, tmp_path, "video_factory_audio_*")
 
 
 @pytest.mark.asyncio
 async def test_cancelled_native_audio_download_also_cleans_partials(
-    monkeypatch,
-    tmp_path,
-):
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
     partial_path = tmp_path / "video_factory_audio_source.webm.part"
 
-    async def fake_run(command, **kwargs):
+    async def fake_run(command: list[str], **kwargs: object) -> None:
         partial_path.write_bytes(b"partial")
         raise __import__("asyncio").CancelledError
 
@@ -69,18 +75,18 @@ async def test_cancelled_native_audio_download_also_cleans_partials(
             "video",
         )
 
-    assert not list(tmp_path.glob("video_factory_audio_*"))
+    assert not await asyncio.to_thread(_glob_paths, tmp_path, "video_factory_audio_*")
 
 
 @pytest.mark.asyncio
 async def test_failed_video_download_cleans_all_factory_artifacts(
-    monkeypatch,
-    tmp_path,
-):
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
     raw_path = tmp_path / "video_factory_max_source.mkv"
     partial_path = tmp_path / "video_factory_max_source.webm.part"
 
-    async def fake_run(command, **kwargs):
+    async def fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
         raw_path.write_bytes(b"raw")
         partial_path.write_bytes(b"partial")
         return SimpleNamespace(returncode=1, stderr="download failed")
@@ -94,17 +100,17 @@ async def test_failed_video_download_cleans_all_factory_artifacts(
             workdir=tmp_path,
         )
 
-    assert not list(tmp_path.glob("video_factory_max_source.*"))
+    assert not await asyncio.to_thread(_glob_paths, tmp_path, "video_factory_max_source.*")
 
 
 @pytest.mark.asyncio
 async def test_cancelled_video_download_also_cleans_partials(
-    monkeypatch,
-    tmp_path,
-):
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
     partial_path = tmp_path / "video_factory_max_source.webm.part"
 
-    async def fake_run(command, **kwargs):
+    async def fake_run(command: list[str], **kwargs: object) -> None:
         partial_path.write_bytes(b"partial")
         raise __import__("asyncio").CancelledError
 
@@ -117,4 +123,4 @@ async def test_cancelled_video_download_also_cleans_partials(
             workdir=tmp_path,
         )
 
-    assert not list(tmp_path.glob("video_factory_max_source.*"))
+    assert not await asyncio.to_thread(_glob_paths, tmp_path, "video_factory_max_source.*")

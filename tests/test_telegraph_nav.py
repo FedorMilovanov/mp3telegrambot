@@ -7,7 +7,10 @@ HTTP заменён на `PageIO`: проверяются правила, кот
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from collections.abc import Callable
+from typing import Any
 
 import pytest
 
@@ -30,6 +33,8 @@ SYNOPSIS = "https://telegra.ph/konspekt-1"
 STUDY = "https://telegra.ph/razbor-1"
 PART2 = "https://telegra.ph/konspekt-2"
 PAGES = [("Конспект", SYNOPSIS), ("Разбор материала", STUDY)]
+Node = dict[str, Any]
+EditCheck = Callable[[str, list[Node]], bool]
 
 
 class FakeTelegraph:
@@ -37,20 +42,20 @@ class FakeTelegraph:
 
     def __init__(
         self,
-        pages: dict[str, list],
+        pages: dict[str, list[Node]],
         title: str = "Заголовок",
         author: str = "Автор",
-        edit_ok=True,
-        fetch_error=None,
-        edit_error=None,
-    ):
+        edit_ok: bool | EditCheck = True,
+        fetch_error: dict[str, BaseException] | None = None,
+        edit_error: dict[str, BaseException] | None = None,
+    ) -> None:
         self.pages = pages
         self.title = title
         self.author = author
         self.edit_ok = edit_ok
         self.fetch_error = fetch_error or {}
         self.edit_error = edit_error or {}
-        self.edits: list[tuple[str, list]] = []
+        self.edits: list[tuple[str, list[Node]]] = []
         self.fetches: list[str] = []
 
     async def fetch(self, url: str) -> PageContent | None:
@@ -61,7 +66,7 @@ class FakeTelegraph:
             return None
         return PageContent(url=url, title=self.title, author=self.author, nodes=list(self.pages[url]))
 
-    async def edit(self, url: str, title: str, author: str, nodes: list) -> bool:
+    async def edit(self, url: str, title: str, author: str, nodes: list[Node]) -> bool:
         if url in self.edit_error:
             raise self.edit_error[url]
         ok = self.edit_ok(url, nodes) if callable(self.edit_ok) else bool(self.edit_ok)
@@ -254,7 +259,7 @@ async def test_transient_failure_recovers_on_second_attempt(
     attempts = {"n": 0}
 
     class Transient(FakeTelegraph):
-        async def fetch(self, url: str):
+        async def fetch(self, url: str) -> PageContent | None:
             if url == SYNOPSIS:
                 attempts["n"] += 1
                 if attempts["n"] == 1:
@@ -271,7 +276,7 @@ async def test_transient_failure_recovers_on_second_attempt(
 # ── Цепочка «➡ Дальше» ───────────────────────────────────────────────────
 
 
-def next_part_nodes(href: str) -> list:
+def next_part_nodes(href: str) -> list[Node]:
     return [
         {
             "tag": "p",
@@ -360,10 +365,10 @@ def test_production_page_io_is_importable() -> None:
 
 
 class FakeResponse:
-    def __init__(self, payload):
+    def __init__(self, payload: dict[str, Any]) -> None:
         self._payload = payload
 
-    def json(self):
+    def json(self) -> dict[str, Any]:
         return self._payload
 
 
@@ -373,9 +378,9 @@ async def test_production_fetch_builds_getpage_url_and_maps_result(
 ) -> None:
     import requests
 
-    seen = {}
+    seen: dict[str, Any] = {}
 
-    def fake_get(url, timeout):
+    def fake_get(url: str, timeout: int) -> FakeResponse:
         seen["url"] = url
         seen["timeout"] = timeout
         return FakeResponse(
@@ -415,9 +420,9 @@ async def test_production_edit_delegates_to_edit_telegraph_page(
 ) -> None:
     from converters import md_telegraph
 
-    seen = {}
+    seen: dict[str, Any] = {}
 
-    async def fake_edit(url, title, author, nodes, loop):
+    async def fake_edit(url: str, title: str, author: str, nodes: list[Node], loop: asyncio.AbstractEventLoop) -> bool:
         seen.update(url=url, title=title, author=author, nodes=nodes, loop=loop)
         return True
 
@@ -448,7 +453,7 @@ def test_compact_nav_empty_when_only_self() -> None:
         [{"tag": "p", "children": [{"tag": "b", "children": ["Итог"]}]}],
     ],
 )
-def test_strip_trailing_nav_ignores_other_shapes(nodes) -> None:
+def test_strip_trailing_nav_ignores_other_shapes(nodes: list[Any]) -> None:
     assert strip_trailing_nav(nodes) == nodes
 
 

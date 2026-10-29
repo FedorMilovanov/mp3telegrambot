@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import argparse
 import json
+from typing import Any
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -10,7 +11,7 @@ from services.translation_editorial import REVIEW_SCHEMA_NAME, build_review_pack
 from tools import translation_editorial_composition as cli
 
 
-def _pack_and_review(tmp_path: Path) -> tuple[Path, Path, dict]:
+def _pack_and_review(tmp_path: Path) -> tuple[Path, Path, dict[str, Any]]:
     source = tmp_path / "source.mp4"
     source.write_bytes(b"source")
     original = tmp_path / "original.srt"
@@ -43,7 +44,7 @@ def _pack_and_review(tmp_path: Path) -> tuple[Path, Path, dict]:
 
 def test_review_binding_revalidates_exact_pack_and_infers_id(tmp_path: Path) -> None:
     pack, review_path, review = _pack_and_review(tmp_path)
-    args = SimpleNamespace(
+    args = argparse.Namespace(
         review=str(review_path),
         review_pack=str(pack),
         review_pack_id="",
@@ -57,7 +58,7 @@ def test_review_binding_revalidates_exact_pack_and_infers_id(tmp_path: Path) -> 
 
 def test_review_binding_rejects_manual_id_mismatch(tmp_path: Path) -> None:
     pack, review_path, _review = _pack_and_review(tmp_path)
-    args = SimpleNamespace(
+    args = argparse.Namespace(
         review=str(review_path),
         review_pack=str(pack),
         review_pack_id="sha256:" + "f" * 64,
@@ -68,7 +69,7 @@ def test_review_binding_rejects_manual_id_mismatch(tmp_path: Path) -> None:
 
 
 def test_review_pack_without_review_is_rejected() -> None:
-    args = SimpleNamespace(
+    args = argparse.Namespace(
         review=None,
         review_pack="pack.zip",
         review_pack_id="",
@@ -136,7 +137,7 @@ def test_atomic_writer_never_deletes_concurrent_winner(
 ) -> None:
     target = tmp_path / "plan.json"
 
-    def concurrent_winner(_source, destination) -> None:
+    def concurrent_winner(_source: str, destination: str) -> None:
         Path(destination).write_text("winner", encoding="utf-8")
         raise FileExistsError(destination)
 

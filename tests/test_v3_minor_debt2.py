@@ -17,21 +17,21 @@ import sys
 # ---------------------------------------------------------------------------
 
 
-def test_telegraph_pages_no_inner_time_import():
+def test_telegraph_pages_no_inner_time_import() -> None:
     src = pathlib.Path("services/telegraph_pages.py").read_text(encoding="utf-8")
     assert "import time as _time" not in src, (
         "Found 'import time as _time' inside function — should use module-level import"
     )
 
 
-def test_telegraph_pages_no_inner_core_globals_import():
+def test_telegraph_pages_no_inner_core_globals_import() -> None:
     src = pathlib.Path("services/telegraph_pages.py").read_text(encoding="utf-8")
     assert "import core.globals" not in src, (
         "Found 'import core.globals' inside loop — anti-pattern removed in this patch"
     )
 
 
-def test_telegraph_pages_has_module_level_time_import():
+def test_telegraph_pages_has_module_level_time_import() -> None:
     import ast
 
     src = pathlib.Path("services/telegraph_pages.py").read_text(encoding="utf-8")
@@ -47,12 +47,12 @@ def test_telegraph_pages_has_module_level_time_import():
 # ---------------------------------------------------------------------------
 
 
-def test_database_ai_data_json_failure_logs_debug():
+def test_database_ai_data_json_failure_logs_debug() -> None:
     src = pathlib.Path("core/database.py").read_text(encoding="utf-8")
     assert "db_get: ai_data JSON parse failed" in src, "ai_data json.loads failure not logged"
 
 
-def test_database_questions_json_failure_logs_debug():
+def test_database_questions_json_failure_logs_debug() -> None:
     src = pathlib.Path("core/database.py").read_text(encoding="utf-8")
     assert "db_get: questions JSON parse failed" in src, "questions json.loads failure not logged"
 
@@ -62,7 +62,7 @@ def test_database_questions_json_failure_logs_debug():
 # ---------------------------------------------------------------------------
 
 
-def test_pdf_telegraph_cache_size_env_var():
+def test_pdf_telegraph_cache_size_env_var() -> None:
     env = dict(os.environ)
     env["PDF_TELEGRAPH_CACHE_SIZE"] = "7"
     script = (
@@ -86,7 +86,7 @@ def test_pdf_telegraph_cache_size_env_var():
 # ---------------------------------------------------------------------------
 
 
-def test_md_telegraph_partial_sections_logs_on_error():
+def test_md_telegraph_partial_sections_logs_on_error() -> None:
     src = pathlib.Path("converters/md_telegraph.py").read_text(encoding="utf-8")
     assert "_extract_partial_sections: skipped malformed section" in src, (
         "malformed section not logged in _extract_partial_sections"

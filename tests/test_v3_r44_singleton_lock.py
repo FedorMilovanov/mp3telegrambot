@@ -14,13 +14,16 @@ launch fails fast with an honest message instead of colliding at the
 Telegram layer minutes later.
 """
 
+import pathlib
+import pytest
+
 import os
 
 import main
 from services import process_singleton
 
 
-def test_singleton_windows_pid_probe_closes_process_handle(monkeypatch):
+def test_singleton_windows_pid_probe_closes_process_handle(monkeypatch: pytest.MonkeyPatch) -> None:
     import ctypes
     from types import SimpleNamespace
     from unittest.mock import Mock
@@ -39,7 +42,7 @@ def test_singleton_windows_pid_probe_closes_process_handle(monkeypatch):
     kernel32.CloseHandle.assert_called_once_with(88)
 
 
-def test_r44_fresh_lock_acquired(tmp_path, monkeypatch):
+def test_r44_fresh_lock_acquired(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
     lock = tmp_path / "bot.lock"
     monkeypatch.setattr(main, "_SINGLETON_LOCK_PATH", lock)
     assert not lock.exists()
@@ -48,7 +51,7 @@ def test_r44_fresh_lock_acquired(tmp_path, monkeypatch):
     assert lock.read_text(encoding="utf-8").strip() == str(os.getpid())
 
 
-def test_r44_reacquire_same_pid_succeeds(tmp_path, monkeypatch):
+def test_r44_reacquire_same_pid_succeeds(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # crash-restart within the SAME process (run_bot()'s retry loop) must not
     # be blocked by the lock it itself is holding.
     lock = tmp_path / "bot.lock"
@@ -57,7 +60,7 @@ def test_r44_reacquire_same_pid_succeeds(tmp_path, monkeypatch):
     assert main._acquire_singleton_lock() is True
 
 
-def test_r44_stale_dead_pid_is_overwritten(tmp_path, monkeypatch):
+def test_r44_stale_dead_pid_is_overwritten(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
     lock = tmp_path / "bot.lock"
     monkeypatch.setattr(main, "_SINGLETON_LOCK_PATH", lock)
     lock.write_text("999999999", encoding="utf-8")  # implausible/dead pid
@@ -66,7 +69,7 @@ def test_r44_stale_dead_pid_is_overwritten(tmp_path, monkeypatch):
     assert lock.read_text(encoding="utf-8").strip() == str(os.getpid())
 
 
-def test_r44_live_other_pid_blocks_startup(tmp_path, monkeypatch):
+def test_r44_live_other_pid_blocks_startup(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
     lock = tmp_path / "bot.lock"
     monkeypatch.setattr(main, "_SINGLETON_LOCK_PATH", lock)
     real_pid = os.getpid()
@@ -79,14 +82,14 @@ def test_r44_live_other_pid_blocks_startup(tmp_path, monkeypatch):
     assert lock.read_text(encoding="utf-8").strip() == str(real_pid)
 
 
-def test_r44_malformed_lock_file_does_not_crash(tmp_path, monkeypatch):
+def test_r44_malformed_lock_file_does_not_crash(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
     lock = tmp_path / "bot.lock"
     monkeypatch.setattr(main, "_SINGLETON_LOCK_PATH", lock)
     lock.write_text("not-a-pid", encoding="utf-8")
     assert main._acquire_singleton_lock() is True
 
 
-def test_r44_release_removes_only_own_lock(tmp_path, monkeypatch):
+def test_r44_release_removes_only_own_lock(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
     lock = tmp_path / "bot.lock"
     monkeypatch.setattr(main, "_SINGLETON_LOCK_PATH", lock)
     lock.write_text(str(os.getpid()), encoding="utf-8")
@@ -98,7 +101,7 @@ def test_r44_release_removes_only_own_lock(tmp_path, monkeypatch):
     assert lock.exists(), "must never delete a lock that isn't ours"
 
 
-def test_r44_run_bot_async_checks_lock_before_network_work():
+def test_r44_run_bot_async_checks_lock_before_network_work() -> None:
     src = open("main.py", encoding="utf-8").read()
     i_token = src.index('logger.error("❌ BOT_TOKEN не найден!")')
     i_lock = src.index("_acquire_singleton_lock()", i_token)
@@ -106,7 +109,7 @@ def test_r44_run_bot_async_checks_lock_before_network_work():
     assert i_lock < i_video_locks, "lock check must run before any other startup work"
 
 
-def test_r44_run_bot_stops_without_restart_loop_on_conflict():
+def test_r44_run_bot_stops_without_restart_loop_on_conflict() -> None:
     src = open("main.py", encoding="utf-8").read()
     assert 'result == "singleton_conflict"' in src
     block = src[src.index('result == "singleton_conflict"') :][:500]

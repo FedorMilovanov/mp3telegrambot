@@ -6,7 +6,7 @@ from core.candidate_schema import expanded_page_response_schema, structured_json
 from services.telegraph_pages import _parse_expanded_json
 
 
-def test_expanded_page_response_schema_contract():
+def test_expanded_page_response_schema_contract() -> None:
     schema = expanded_page_response_schema()
     assert schema["type"] == "object"
     assert schema["required"] == ["outline", "sections"]
@@ -16,13 +16,13 @@ def test_expanded_page_response_schema_contract():
     assert section_item["required"] == ["title", "time", "content"]
 
 
-def test_expanded_schema_works_with_structured_config_kwargs():
+def test_expanded_schema_works_with_structured_config_kwargs() -> None:
     kwargs = structured_json_config_kwargs(expanded_page_response_schema())
     assert kwargs["response_mime_type"] == "application/json"
     assert kwargs["response_schema"]["properties"]["sections"]["items"]["properties"]["content"]["type"] == "string"
 
 
-def test_parse_expanded_json_accepts_schema_shape():
+def test_parse_expanded_json_accepts_schema_shape() -> None:
     raw = '{"outline":[{"title":"A","time":""}],"sections":[{"title":"A","time":"","content":"Text"}]}'
     parsed = _parse_expanded_json(raw)
     assert parsed is not None
@@ -31,7 +31,7 @@ def test_parse_expanded_json_accepts_schema_shape():
     assert sections[0]["content"] == "Text"
 
 
-def test_telegraph_pages_wires_expanded_structured_output_with_legacy_fallback():
+def test_telegraph_pages_wires_expanded_structured_output_with_legacy_fallback() -> None:
     src = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
     assert "from core.candidate_schema import expanded_page_response_schema" in src
     assert "def _expanded_structured_output_enabled" in src
@@ -43,7 +43,7 @@ def test_telegraph_pages_wires_expanded_structured_output_with_legacy_fallback()
     assert "retry legacy JSON config" in src
 
 
-def test_expanded_structured_output_routes_all_transients_to_shared_transport():
+def test_expanded_structured_output_routes_all_transients_to_shared_transport() -> None:
     src = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
     assert "is_quota_error(_schema_err)" in src
     assert "is_overload_error(_schema_err)" in src

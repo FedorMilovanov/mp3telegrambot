@@ -1,4 +1,6 @@
 import inspect
+from collections.abc import Callable
+from typing import Any
 
 import core.person_names as person_names
 import core.text_utils as text_utils
@@ -16,7 +18,7 @@ def _caption(hook: str, *, kind: str = "") -> str:
     )
 
 
-def _source(value) -> str:
+def _source(value: Callable[..., Any]) -> str:
     try:
         return inspect.getsource(value)
     except Exception as exc:

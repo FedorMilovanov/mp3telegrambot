@@ -1,6 +1,7 @@
 """Fresh caption finalization keeps fit, cache, and archive contracts together."""
 
 from __future__ import annotations
+from typing import Any
 
 import asyncio
 import logging
@@ -8,9 +9,10 @@ import logging
 import pytest
 
 from core.publication_status import PublicationStatus
+from pipelines.archive_stage import ArchiveRequest
 from pipelines.caption_inputs import CaptionInputs, PageLinks
 from pipelines.caption_stage import CaptionFit, CaptionSource
-from pipelines.fresh_caption_stage import finalize_fresh_caption
+from pipelines.fresh_caption_stage import FreshCaption, finalize_fresh_caption
 from pipelines.publication_context_stage import PublicationContext
 from pipelines.publication_plan import PagePlan
 from pipelines.telegraph_render import RenderedPages
@@ -37,7 +39,7 @@ def _source() -> CaptionSource:
     )
 
 
-def _inputs(ai_data, caption_base) -> CaptionInputs:
+def _inputs(ai_data: dict[str, Any] | None, caption_base: dict[str, Any] | None) -> CaptionInputs:
     return CaptionInputs(
         links=PageLinks(
             quotes="priority-quotes",
@@ -84,7 +86,7 @@ def _rendered() -> RenderedPages:
     )
 
 
-def _fit(trim_stage="timestamps_trimmed") -> CaptionFit:
+def _fit(trim_stage: str = "timestamps_trimmed") -> CaptionFit:
     return CaptionFit(
         caption="caption",
         full_caption="full caption",
@@ -95,25 +97,25 @@ def _fit(trim_stage="timestamps_trimmed") -> CaptionFit:
     )
 
 
-def _dependencies(events, *, fitted=None):
+def _dependencies(events: list[tuple[Any, ...]], *, fitted: CaptionFit | None = None) -> dict[str, Any]:
     fitted = fitted or _fit()
 
-    def fit(source, caption_base):
+    def fit(source: CaptionSource, caption_base: dict[str, Any] | None) -> CaptionFit:
         events.append(("fit", source, caption_base))
         return fitted
 
-    def visible_length(caption):
+    def visible_length(caption: str) -> int:
         events.append(("measure", caption))
         return 7
 
-    def prompt_version():
+    def prompt_version() -> str:
         events.append(("prompt",))
         return f"prompt-{sum(event[0] == 'prompt' for event in events)}"
 
-    async def save(**kwargs):
+    async def save(**kwargs: Any) -> None:
         events.append(("save", kwargs))
 
-    async def archive(request, *, repair):
+    async def archive(request: ArchiveRequest, *, repair: RepairReport) -> None:
         events.append(("archive", request, repair))
 
     return {
@@ -125,7 +127,13 @@ def _dependencies(events, *, fitted=None):
     }
 
 
-def _run(inputs, dependencies, *, duration=1200, repair=None):
+def _run(
+    inputs: CaptionInputs,
+    dependencies: dict[str, Any],
+    *,
+    duration: int = 1200,
+    repair: RepairReport | None = None,
+) -> FreshCaption:
     return asyncio.run(
         finalize_fresh_caption(
             source=_source(),
@@ -142,13 +150,15 @@ def _run(inputs, dependencies, *, duration=1200, repair=None):
     )
 
 
-def test_analysis_fit_cache_and_archive_keep_order_and_values(caplog, monkeypatch):
+def test_analysis_fit_cache_and_archive_keep_order_and_values(
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("PROMPT_EXPERIMENT_TAG", "experiment")
     original = {"real_title": "Title", "questions": [{"text": "Q"}]}
     caption_base = {"caption_base": True}
     inputs = _inputs(original, caption_base)
     repair = RepairReport()
-    events = []
+    events: list[tuple[Any, ...]] = []
 
     with caplog.at_level(logging.INFO):
         result = _run(inputs, _dependencies(events), repair=repair)
@@ -167,8 +177,10 @@ def test_analysis_fit_cache_and_archive_keep_order_and_values(caplog, monkeypatc
     assert original == {"real_title": "Title", "questions": [{"text": "Q"}]}
 
     saved = events[3][1]
-    enriched = saved["ai_data"]
-    assert result.ai_data is enriched
+    saved_ai_data = saved["ai_data"]
+    assert result.ai_data is not None
+    enriched = result.ai_data
+    assert enriched is saved_ai_data
     assert enriched["caption_trim_stage"] == "timestamps_trimmed"
     assert enriched["caption_timestamps_total"] == 42
     assert enriched["caption_timestamps_shown"] == 7
@@ -218,9 +230,9 @@ def test_analysis_fit_cache_and_archive_keep_order_and_values(caplog, monkeypatc
     ) in caplog.text
 
 
-def test_missing_analysis_fits_degraded_caption_without_persistence(caplog):
+def test_missing_analysis_fits_degraded_caption_without_persistence(caplog: pytest.LogCaptureFixture) -> None:
     degraded = {"_ai_unavailable_warning": "No AI"}
-    events = []
+    events: list[tuple[Any, ...]] = []
 
     with caplog.at_level(logging.INFO):
         result = _run(
@@ -236,8 +248,8 @@ def test_missing_analysis_fits_degraded_caption_without_persistence(caplog):
     assert "ts_in_cap=7 stage=none" in caplog.text
 
 
-def test_existing_duration_is_not_overwritten():
-    events = []
+def test_existing_duration_is_not_overwritten() -> None:
+    events: list[tuple[Any, ...]] = []
 
     result = _run(_inputs({"duration": 999}, {}), _dependencies(events))
 
@@ -247,11 +259,11 @@ def test_existing_duration_is_not_overwritten():
     assert result.ai_data is saved["ai_data"]
 
 
-def test_cache_save_failure_propagates_and_skips_archive():
-    events = []
+def test_cache_save_failure_propagates_and_skips_archive() -> None:
+    events: list[tuple[Any, ...]] = []
     dependencies = _dependencies(events)
 
-    async def broken_save(**kwargs):
+    async def broken_save(**kwargs: Any) -> None:
         events.append(("save", kwargs))
         raise RuntimeError("cache unavailable")
 

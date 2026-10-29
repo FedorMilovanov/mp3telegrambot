@@ -1,10 +1,12 @@
 """Cache invalidation must track the full persisted generation/render contract."""
 
+import pytest
+
 import os
 from pathlib import Path
 
 
-def test_prompt_fingerprint_hashes_generation_and_renderer_contract_files():
+def test_prompt_fingerprint_hashes_generation_and_renderer_contract_files() -> None:
     src = Path("core/database.py").read_text(encoding="utf-8")
     for rel in (
         "core/prompts.py",
@@ -32,7 +34,7 @@ def test_prompt_fingerprint_hashes_generation_and_renderer_contract_files():
     assert "видимых" in src and "timestamp" in src
 
 
-def test_generation_contract_manifest_is_unique_and_points_to_real_files():
+def test_generation_contract_manifest_is_unique_and_points_to_real_files() -> None:
     from core.database import _GENERATION_CONTRACT_FILES
 
     assert len(_GENERATION_CONTRACT_FILES) == len(set(_GENERATION_CONTRACT_FILES))
@@ -40,7 +42,7 @@ def test_generation_contract_manifest_is_unique_and_points_to_real_files():
         assert Path(rel).is_file(), rel
 
 
-def test_semantic_generation_env_rotates_prompt_fingerprint(monkeypatch):
+def test_semantic_generation_env_rotates_prompt_fingerprint(monkeypatch: pytest.MonkeyPatch) -> None:
     from core.database import get_prompt_fingerprint
 
     before = get_prompt_fingerprint()
@@ -51,7 +53,7 @@ def test_semantic_generation_env_rotates_prompt_fingerprint(monkeypatch):
     assert after != before
 
 
-def test_operational_timeout_does_not_rotate_prompt_fingerprint(monkeypatch):
+def test_operational_timeout_does_not_rotate_prompt_fingerprint(monkeypatch: pytest.MonkeyPatch) -> None:
     from core.database import get_prompt_fingerprint
 
     before = get_prompt_fingerprint()
@@ -60,7 +62,7 @@ def test_operational_timeout_does_not_rotate_prompt_fingerprint(monkeypatch):
     assert after == before
 
 
-def test_get_prompt_fingerprint_returns_stable_short_hash():
+def test_get_prompt_fingerprint_returns_stable_short_hash() -> None:
     from core.database import get_prompt_fingerprint
 
     fp = get_prompt_fingerprint()

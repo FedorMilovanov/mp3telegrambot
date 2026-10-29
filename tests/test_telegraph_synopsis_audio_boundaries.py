@@ -1,49 +1,54 @@
 """Executed Synopsis audio upload/reuse boundaries, including worker-side file I/O."""
 
+import pathlib
+import pytest
+
 import asyncio
 from types import SimpleNamespace
+from collections.abc import Awaitable, Callable, Iterable
+from typing import Any
 
 from services import telegraph
 
 
 class _FakeFiles:
-    def __init__(self):
-        self.uploads = []
+    def __init__(self) -> None:
+        self.uploads: list[dict[str, Any]] = []
 
-    async def upload(self, **kwargs):
+    async def upload(self, **kwargs: Any) -> SimpleNamespace:
         self.uploads.append(kwargs)
         return SimpleNamespace(name="uploaded-audio", state="ACTIVE")
 
 
 class _FakeModels:
-    def __init__(self, responses):
+    def __init__(self, responses: Iterable[str]) -> None:
         self._responses = list(responses)
-        self.calls = []
+        self.calls: list[dict[str, Any]] = []
 
-    async def generate_content(self, **kwargs):
+    async def generate_content(self, **kwargs: Any) -> SimpleNamespace:
         self.calls.append(kwargs)
         text = self._responses.pop(0) if self._responses else ""
         return SimpleNamespace(text=text)
 
 
 class _FakeClient:
-    def __init__(self, responses=("",)):
+    def __init__(self, responses: Iterable[str] = ("",)) -> None:
         self.models = _FakeModels(responses)
         self.files = _FakeFiles()
         self.aio = SimpleNamespace(models=self.models, files=self.files)
 
 
-def _prepare_common(monkeypatch, client):
-    deleted = []
-    sleeps = []
+def _prepare_common(monkeypatch: pytest.MonkeyPatch, client: _FakeClient) -> tuple[list[tuple[Any, str]], list[float]]:
+    deleted: list[tuple[Any, str]] = []
+    sleeps: list[float] = []
 
-    async def sleep(delay):
+    async def sleep(delay: float) -> None:
         sleeps.append(delay)
 
-    async def log_run(**_kwargs):
+    async def log_run(**_kwargs: Any) -> None:
         return None
 
-    async def generate(_clients, callback, model_name):
+    async def generate(_clients: Any, callback: Callable[[Any], Awaitable[Any]], model_name: str) -> Any:
         return await callback(client)
 
     monkeypatch.setattr(telegraph, "GEMINI_CLIENTS", [client])
@@ -55,7 +60,7 @@ def _prepare_common(monkeypatch, client):
     return deleted, sleeps
 
 
-def _create_synopsis(path, **kwargs):
+def _create_synopsis(path: pathlib.Path, **kwargs: Any) -> tuple[str | None, list[Any] | None]:
     return asyncio.run(
         telegraph.create_telegraph_synopsis(
             path,
@@ -68,7 +73,9 @@ def _create_synopsis(path, **kwargs):
     )
 
 
-def test_synopsis_reuses_existing_audio_part_without_upload(monkeypatch, tmp_path):
+def test_synopsis_reuses_existing_audio_part_without_upload(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     path = tmp_path / "audio.mp3"
     path.write_bytes(b"existing-audio")
     client = _FakeClient()
@@ -82,7 +89,9 @@ def test_synopsis_reuses_existing_audio_part_without_upload(monkeypatch, tmp_pat
     assert deleted == []
 
 
-def test_synopsis_small_file_uses_inline_part_without_upload(monkeypatch, tmp_path):
+def test_synopsis_small_file_uses_inline_part_without_upload(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     path = tmp_path / "audio.mp3"
     payload = b"small-mp3-payload"
     path.write_bytes(payload)
@@ -98,7 +107,9 @@ def test_synopsis_small_file_uses_inline_part_without_upload(monkeypatch, tmp_pa
     assert deleted == []
 
 
-def test_synopsis_large_file_uploads_and_cleans_up_owned_remote_file(monkeypatch, tmp_path):
+def test_synopsis_large_file_uploads_and_cleans_up_owned_remote_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     path = tmp_path / "large.mp3"
     with path.open("wb") as stream:
         stream.truncate(21 * 1024 * 1024)
@@ -115,7 +126,9 @@ def test_synopsis_large_file_uploads_and_cleans_up_owned_remote_file(monkeypatch
     assert deleted == [(client, "uploaded-audio")]
 
 
-def test_synopsis_broken_json_retry_reuses_inline_audio_path(monkeypatch, tmp_path):
+def test_synopsis_broken_json_retry_reuses_inline_audio_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     path = tmp_path / "audio.mp3"
     payload = b"retry-audio"
     path.write_bytes(payload)

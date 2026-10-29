@@ -85,7 +85,7 @@ def info_timeout_seconds(raw: str | None = None) -> int:
     return max(60, min(value, 900))
 
 
-def is_live(info: dict[str, Any] | None) -> bool:
+def is_live(info: object) -> bool:
     """Трансляция ещё идёт (или вот-вот начнётся) — скачивать нельзя."""
     if not isinstance(info, dict):
         return False
@@ -94,8 +94,8 @@ def is_live(info: dict[str, Any] | None) -> bool:
     return str(info.get("live_status") or "") in LIVE_STATUSES
 
 
-def live_skip(info: dict[str, Any] | None) -> Skip | None:
-    if not is_live(info):
+def live_skip(info: object) -> Skip | None:
+    if not isinstance(info, dict) or not is_live(info):
         return None
     return Skip(
         reason="live-stream",
@@ -104,7 +104,7 @@ def live_skip(info: dict[str, Any] | None) -> Skip | None:
     )
 
 
-def duration_skip(duration_sec: float | None, max_sec: int) -> Skip | None:
+def duration_skip(duration_sec: float | str | None, max_sec: int) -> Skip | None:
     """Видео длиннее лимита.
 
     Неизвестная длительность (`None`, `0`) не блокирует обработку: yt-dlp не

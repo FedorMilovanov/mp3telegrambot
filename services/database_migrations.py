@@ -11,6 +11,9 @@ from pathlib import Path
 from types import ModuleType
 from typing import Callable, Iterable
 
+from core.sqlite_schema import add_column_if_missing as add_column_if_missing
+from core.sqlite_schema import table_exists as _table_exists
+
 DATABASE_MIGRATION_POLICY = "numbered-transactional-sqlite-migrations-v1"
 
 
@@ -47,54 +50,6 @@ def _connect(path: Path) -> sqlite3.Connection:
     conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
-
-
-def _ident(value: str) -> str:
-    text = str(value or "").strip()
-    if not text or not text.replace("_", "").isalnum() or text[0].isdigit():
-        raise ValueError(f"Unsafe SQLite identifier: {value!r}")
-    return text
-
-
-def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
-    row = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
-        (str(table),),
-    ).fetchone()
-    return row is not None
-
-
-def _row_value(row: sqlite3.Row | tuple[object, ...], key: str, index: int) -> object:
-    if isinstance(row, sqlite3.Row):
-        return row[key]
-    return row[index]
-
-
-def _columns(conn: sqlite3.Connection, table: str) -> set[str]:
-    table = _ident(table)
-    if not _table_exists(conn, table):
-        raise RuntimeError(f"Required SQLite table is missing: {table}")
-    return {str(_row_value(row, "name", 1)) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
-
-
-def add_column_if_missing(
-    conn: sqlite3.Connection,
-    *,
-    table: str,
-    column: str,
-    declaration: str,
-) -> bool:
-    table = _ident(table)
-    column = _ident(column)
-    if column in _columns(conn, table):
-        return False
-    declaration = str(declaration or "").strip()
-    if not declaration or ";" in declaration:
-        raise ValueError(f"Unsafe SQLite column declaration: {declaration!r}")
-    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
-    if column not in _columns(conn, table):
-        raise RuntimeError(f"SQLite did not add expected column {table}.{column}")
-    return True
 
 
 def _ensure_journal(conn: sqlite3.Connection) -> None:

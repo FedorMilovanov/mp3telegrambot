@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -10,10 +12,15 @@ from services.speech_backends import (
     SESSION_CONFIG_POLICY,
     BackendAudioSpec,
     BackendCapabilities,
+    BackendGenerationLengthPlan,
+    BackendGenerationLengthRequest,
+    BackendGenerationProfilePlan,
+    BackendGenerationProfileRequest,
     BackendGenerationRequest,
     BackendIdentity,
     BackendProcessEnvironment,
     BackendRuntimePaths,
+    BackendSynthesisSession,
     BackendSessionConfig,
     default_backend,
     get_backend,
@@ -25,7 +32,7 @@ from services.speech_backends.voxcpm2 import VoxCPM2Session
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _runtime(request: dict[str, str]):
+def _runtime(request: dict[str, str]) -> BackendRuntimePaths:
     return default_backend().runtime_paths(ROOT, request)
 
 
@@ -93,23 +100,23 @@ def test_model_neutral_generation_request_validates_backend_options() -> None:
 def test_voxcpm2_session_maps_neutral_request_to_model_kwargs() -> None:
     class FakeModel:
         def __init__(self) -> None:
-            self.kwargs = None
+            self.kwargs: dict[str, Any] | None = None
 
         def generate(
             self,
-            text,
-            reference_wav_path,
-            cfg_value,
-            inference_timesteps,
-            min_len,
-            max_len,
-            normalize,
-            denoise,
-            retry_badcase=False,
-            retry_badcase_max_times=0,
-            retry_badcase_ratio_threshold=0.0,
-            seed=None,
-        ):
+            text: str,
+            reference_wav_path: str,
+            cfg_value: float,
+            inference_timesteps: int,
+            min_len: int,
+            max_len: int,
+            normalize: bool,
+            denoise: bool,
+            retry_badcase: bool = False,
+            retry_badcase_max_times: int = 0,
+            retry_badcase_ratio_threshold: float = 0.0,
+            seed: int | None = None,
+        ) -> str:
             self.kwargs = locals().copy()
             return "fake-wav"
 
@@ -128,6 +135,7 @@ def test_voxcpm2_session_maps_neutral_request_to_model_kwargs() -> None:
     )
 
     assert result == "fake-wav"
+    assert model.kwargs is not None
     assert model.kwargs["text"].startswith("В 2026")
     assert model.kwargs["reference_wav_path"] == "reference.wav"
     assert model.kwargs["normalize"] is True
@@ -201,25 +209,39 @@ def test_registry_accepts_future_backend_without_voxcpm_session_shape() -> None:
         audio_spec = BackendAudioSpec(None, 24000, None, None)
         supports_continuation_context = False
 
-        def generate(self, request: BackendGenerationRequest):
+        def generate(self, request: BackendGenerationRequest) -> str:
             return request.text
 
     class FutureBackend:
         backend_id = "future-test-engine"
-        aliases = ("future-test",)
+        aliases: tuple[str, ...] = ("future-test",)
         adapter_policy = "future-test-adapter-v1"
 
         def capabilities(self) -> BackendCapabilities:
             return BackendCapabilities(True, True, True, True, False, True, True)
 
-        def process_environment(self, request: dict, *, base_environment=None):
+        def process_environment(
+            self, request: dict[str, Any], *, base_environment: Mapping[str, str] | None = None
+        ) -> BackendProcessEnvironment:
             return BackendProcessEnvironment(
                 backend_id=self.backend_id,
                 set_values=(("FUTURE_THREADS", str(request.get("threads", 1))),),
                 removed_keys=(),
             )
 
-        def open_session(self, config: BackendSessionConfig):
+        def plan_generation_length(
+            self, audio_spec: BackendAudioSpec, request: BackendGenerationLengthRequest
+        ) -> BackendGenerationLengthPlan:
+            return BackendGenerationLengthPlan(
+                backend_id=self.backend_id,
+                duration_budget=request.duration_budget,
+                attempt=request.attempt,
+            )
+
+        def plan_generation_profile(self, request: BackendGenerationProfileRequest) -> BackendGenerationProfilePlan:
+            return BackendGenerationProfilePlan(backend_id=self.backend_id, attempt=request.attempt)
+
+        def open_session(self, config: BackendSessionConfig) -> BackendSynthesisSession:
             assert isinstance(config, BackendSessionConfig)
             return FutureSession()
 
@@ -237,7 +259,7 @@ def test_registry_accepts_future_backend_without_voxcpm_session_shape() -> None:
                 output_contract="wav-v1",
             )
 
-        def runtime_paths(self, repo_root: Path, request: dict):
+        def runtime_paths(self, repo_root: Path, request: dict[str, Any]) -> BackendRuntimePaths:
             return BackendRuntimePaths(
                 backend_id=self.backend_id,
                 repo_root=repo_root,
@@ -251,10 +273,10 @@ def test_registry_accepts_future_backend_without_voxcpm_session_shape() -> None:
                 final_qa_module="tools.voxcpm2.final_media_qa",
             )
 
-        def build_renderer_command(self, runtime, *, values):
+        def build_renderer_command(self, runtime: BackendRuntimePaths, *, values: dict[str, Any]) -> list[str]:
             return [str(runtime.cpu_python), str(runtime.renderer_entrypoint)]
 
-        def build_master_command(self, runtime, *, values):
+        def build_master_command(self, runtime: BackendRuntimePaths, *, values: dict[str, Any]) -> list[str]:
             return [str(runtime.cpu_python), str(runtime.master_entrypoint)]
 
     backend = FutureBackend()
@@ -267,7 +289,7 @@ def test_registry_accepts_future_backend_without_voxcpm_session_shape() -> None:
         unregister_backend("future-test")
 
 
-def test_direct_candidate_ranking_ignores_source_prosody(monkeypatch) -> None:
+def test_direct_candidate_ranking_ignores_source_prosody(monkeypatch: pytest.MonkeyPatch) -> None:
     from tools.voxcpm2 import direct_max_quality_cli as cli
 
     monkeypatch.setattr(
@@ -288,7 +310,7 @@ def test_direct_candidate_ranking_ignores_source_prosody(monkeypatch) -> None:
         lambda *_args: {"variant_index": 0},
     )
 
-    candidate: dict = {"attempt": 1}
+    candidate: dict[str, Any] = {"attempt": 1}
     segment = cli.source_prosody_policy.mark_diagnostic_only({"text": "Текст.", "source_prosody": {"f0_median": 300.0}})
     penalty = cli.source_prosody_penalty(candidate, segment)
 

@@ -26,7 +26,7 @@ from services.shorts_transcription import (
 )
 
 
-def test_shorts_factory_is_exposed_as_persistent_mode():
+def test_shorts_factory_is_exposed_as_persistent_mode() -> None:
     assert "shorts_max" in VALID_MODES
     assert "SHORTS FACTORY MAX" in MODE_LABELS["shorts_max"]
     description = MODE_DESCRIPTIONS["shorts_max"]
@@ -34,7 +34,7 @@ def test_shorts_factory_is_exposed_as_persistent_mode():
     assert "без собственного нейроперевода" in description
 
 
-def test_translation_decision_prefers_spoken_audio_over_title_or_metadata():
+def test_translation_decision_prefers_spoken_audio_over_title_or_metadata() -> None:
     plan = {"metadata": {"language": "en"}}
     info = {"language": "ru", "title": "Русский заголовок"}
     spoken = resolve_factory_spoken_language(plan, info)
@@ -48,7 +48,7 @@ def test_translation_decision_prefers_spoken_audio_over_title_or_metadata():
     assert factory_language_needs_translation(spoken) is False
 
 
-def test_translation_backend_defaults_to_yandex_only(monkeypatch):
+def test_translation_backend_defaults_to_yandex_only(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SHORTS_FACTORY_TRANSLATION_BACKEND", raising=False)
     assert factory_translation_backend() == "yandex_live"
     monkeypatch.setenv("SHORTS_FACTORY_TRANSLATION_BACKEND", "yandex")
@@ -57,7 +57,7 @@ def test_translation_backend_defaults_to_yandex_only(monkeypatch):
     assert factory_translation_backend() == "neural_future"
 
 
-def test_livedub_alignment_snaps_semantic_range_to_proved_ru_speech():
+def test_livedub_alignment_snaps_semantic_range_to_proved_ru_speech() -> None:
     candidates = [
         {
             "start_seconds": 10,
@@ -83,7 +83,7 @@ def test_livedub_alignment_snaps_semantic_range_to_proved_ru_speech():
     assert candidates[0]["start_seconds"] == 10
 
 
-def test_livedub_alignment_uses_proved_ru_speech_near_source_tail():
+def test_livedub_alignment_uses_proved_ru_speech_near_source_tail() -> None:
     candidates = [
         {
             "start_seconds": 860,
@@ -106,7 +106,7 @@ def test_livedub_alignment_uses_proved_ru_speech_near_source_tail():
     assert aligned[0]["livedub_ru_boundary_proof"] == RU_ONLY_BOUNDARY_PROOF
 
 
-def test_livedub_alignment_rejects_unproved_original_timeline_fallback():
+def test_livedub_alignment_rejects_unproved_original_timeline_fallback() -> None:
     candidates = [
         {
             "start_seconds": 10,
@@ -119,7 +119,7 @@ def test_livedub_alignment_rejects_unproved_original_timeline_fallback():
         align_factory_livedub_candidates(candidates, source_duration=300, evidence={})
 
 
-def test_factory_source_is_moved_to_managed_cache(tmp_path, monkeypatch):
+def test_factory_source_is_moved_to_managed_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(factory, "DOWNLOAD_DIR", tmp_path)
     source = tmp_path / "temporary-source.mp4"
     source.write_bytes(b"x" * 2048)
@@ -130,12 +130,12 @@ def test_factory_source_is_moved_to_managed_cache(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_factory_uses_exact_probed_source_duration(monkeypatch, tmp_path):
+async def test_factory_uses_exact_probed_source_duration(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     source = tmp_path / "source.mp4"
     source.write_bytes(b"x" * 2048)
     probe = SimpleNamespace(duration=901.2)
 
-    async def fake_probe(path):
+    async def fake_probe(path: Path) -> SimpleNamespace:
         assert path == source
         return probe
 
@@ -145,12 +145,12 @@ async def test_factory_uses_exact_probed_source_duration(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_factory_rejects_truncated_source(monkeypatch, tmp_path):
+async def test_factory_rejects_truncated_source(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     source = tmp_path / "source.mp4"
     source.write_bytes(b"x" * 2048)
     probe = SimpleNamespace(duration=890.0)
 
-    async def fake_probe(_path):
+    async def fake_probe(_path: Path) -> SimpleNamespace:
         return probe
 
     monkeypatch.setattr(factory_media, "probe_media_async", fake_probe)
@@ -160,11 +160,11 @@ async def test_factory_rejects_truncated_source(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_factory_rejects_source_without_video_and_audio(monkeypatch, tmp_path):
+async def test_factory_rejects_source_without_video_and_audio(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     source = tmp_path / "source.mp4"
     source.write_bytes(b"x" * 2048)
 
-    async def fake_probe(_path):
+    async def fake_probe(_path: Path) -> None:
         return None
 
     monkeypatch.setattr(factory_media, "probe_media_async", fake_probe)
@@ -173,7 +173,7 @@ async def test_factory_rejects_source_without_video_and_audio(monkeypatch, tmp_p
         await validated_factory_source_duration(source, expected_duration=900)
 
 
-def test_factory_subtitles_use_explicit_max_quality_profile(monkeypatch):
+def test_factory_subtitles_use_explicit_max_quality_profile(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SHORTS_FACTORY_WHISPER_MODEL", raising=False)
     assert DEFAULT_FACTORY_WHISPER_MODEL == "large-v3"
     assert factory_subtitle_profile() == {
@@ -185,23 +185,23 @@ def test_factory_subtitles_use_explicit_max_quality_profile(monkeypatch):
     }
 
 
-def test_factory_whisper_model_rejects_quality_downgrade(monkeypatch):
+def test_factory_whisper_model_rejects_quality_downgrade(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SHORTS_FACTORY_WHISPER_MODEL", "large-v3-turbo")
     with pytest.raises(RuntimeError, match="quality downgrade"):
         factory_subtitle_profile()
 
 
-def test_factory_short_ceiling_is_absolute_start_plus_180_and_source_bounded():
+def test_factory_short_ceiling_is_absolute_start_plus_180_and_source_bounded() -> None:
     assert short_delivery.FACTORY_SHORT_PUBLIC_MAX_SEC == 180.0
     assert short_delivery._factory_snap_ceiling(250.0, 1000.0) == 430.0
     assert short_delivery._factory_snap_ceiling(900.0, 1000.0) == 1000.0
 
 
-def test_factory_long_public_cap_is_source_owned():
+def test_factory_long_public_cap_is_source_owned() -> None:
     assert factory.FACTORY_LONG_PUBLIC_MAX_SEC == 900.0
 
 
-def test_factory_short_delivery_has_no_runtime_proxy_or_trim_ui():
+def test_factory_short_delivery_has_no_runtime_proxy_or_trim_ui() -> None:
     source = Path("pipelines/factory_short_delivery.py").read_text(encoding="utf-8")
     assert "shorts_factory_runtime" not in source
     assert "reply_markup=" not in source
@@ -211,7 +211,7 @@ def test_factory_short_delivery_has_no_runtime_proxy_or_trim_ui():
     assert "sent += 1" in source
 
 
-def test_video_dispatch_routes_factory_without_runtime_rebinding():
+def test_video_dispatch_routes_factory_without_runtime_rebinding() -> None:
     source = Path(video_dispatch.__file__).read_text(encoding="utf-8")
     assert 'if mode == "shorts_max":' in source
     assert "from pipelines.shorts_factory import process_shorts_factory" in source

@@ -133,7 +133,7 @@ class _Visitor(ast.NodeVisitor):
         self.parents: list[ast.AST] = []
         self.findings: list[Finding] = []
 
-    def visit(self, node: ast.AST) -> None:  # type: ignore[override]
+    def visit(self, node: ast.AST) -> None:
         self.parents.append(node)
         try:
             super().visit(node)
@@ -203,7 +203,7 @@ def main() -> int:
     args = parser.parse_args()
 
     findings = collect()
-    categories = Counter()
+    categories: Counter[str] = Counter()
     unknown: list[Finding] = []
     direct_counts: Counter[tuple[str, str, str]] = Counter()
 

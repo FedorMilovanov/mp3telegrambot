@@ -6,7 +6,7 @@ from core.content_audit import audit_expanded_sections
 from core.prompts import build_audio_analysis_prompt
 
 
-def test_content_audit_removes_mismatched_first_person_author():
+def test_content_audit_removes_mismatched_first_person_author() -> None:
     sections = [
         {
             "title": "A",
@@ -21,21 +21,21 @@ def test_content_audit_removes_mismatched_first_person_author():
     assert any(i.code == "first_person_author_fixed" for i in issues)
 
 
-def test_content_audit_keeps_matching_first_person_author():
+def test_content_audit_keeps_matching_first_person_author() -> None:
     sections = [{"title": "A", "content": "Я, Алекс Монтойя, убежден в этом."}]
     out, _, issues = audit_expanded_sections(sections, [], label="Synopsis", expected_author="Алекс Монтойя")
     assert "Я, Алекс Монтойя" in out[0]["content"]
     assert not any(i.code == "first_person_author_fixed" for i in issues)
 
 
-def test_audio_prompt_has_concrete_final_timestamp_floor():
+def test_audio_prompt_has_concrete_final_timestamp_floor() -> None:
     prompt = build_audio_analysis_prompt("T", "A", "55:00", 3300, mode="deep")
     assert "примерно не раньше" in prompt
     assert "48:24" in prompt  # 3300 * 0.88
     assert "ОБЯЗАТЕЛЬНО дай отдельный поздний таймкод" in prompt
 
 
-def test_synopsis_passes_expected_author_to_content_audit():
+def test_synopsis_passes_expected_author_to_content_audit() -> None:
     src = Path("services/telegraph.py").read_text(encoding="utf-8")
     assert "expected_author=author" in src
     assert "_ts_raw[:24]" in src

@@ -12,7 +12,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from tools.voxcpm2.direct_russian_cadence import evaluate_candidate_cadence
+from tools.voxcpm2.direct_russian_cadence import evaluate_candidate_cadence as _legacy_evaluate_candidate_cadence
 from tools.voxcpm2.direct_tail_artifact import detect_late_broadband_tail
 
 POLICY = "source-prosody-candidate-ranking-v2"
@@ -67,7 +67,7 @@ def _penalize_unavailable_candidate(
     return MAX_PENALTY
 
 
-def source_prosody_penalty(
+def _legacy_source_prosody_penalty_impl(
     candidate: dict[str, Any],
     segment: dict[str, Any],
 ) -> float:
@@ -130,7 +130,7 @@ def source_prosody_penalty(
     target_p90 = _positive(target.get("f0_p90"), low=60.0, high=420.0)
     target_active = _positive(target.get("active_ratio"), low=0.05, high=1.0)
     target_gap = _positive(target.get("max_internal_gap"), low=0.0, high=6.0)
-    if any(value is None for value in (target_voiced, target_median, target_p90)):
+    if target_voiced is None or target_median is None or target_p90 is None:
         total = min(MAX_PENALTY, float(cadence.get("penalty") or 0.0))
         result.update(
             available=False,
@@ -161,7 +161,7 @@ def source_prosody_penalty(
     candidate_p90 = _positive(pitch.get("f0_p90"), low=50.0, high=500.0)
     candidate_active = _positive(activity.get("active_ratio"), low=0.0, high=1.0)
     candidate_gap = _positive(activity.get("max_internal_gap"), low=0.0, high=10.0)
-    if any(value is None for value in (candidate_voiced, candidate_median, candidate_p90)):
+    if candidate_voiced is None or candidate_median is None or candidate_p90 is None:
         acoustic = _penalize_unavailable_candidate(
             result,
             "невалидные candidate F0/voiced метрики",
@@ -230,9 +230,7 @@ from tools.voxcpm2 import source_prosody_policy  # noqa: E402 -- late compatibil
 
 CANDIDATE_CONTINUATION_POLICY = "defer-short-continuation-to-timeline-v1"
 
-_legacy_evaluate_candidate_cadence = evaluate_candidate_cadence
-
-_legacy_source_prosody_penalty = source_prosody_penalty
+_legacy_source_prosody_penalty = _legacy_source_prosody_penalty_impl
 
 
 def _defer_short_continuation(result: dict[str, Any]) -> dict[str, Any]:

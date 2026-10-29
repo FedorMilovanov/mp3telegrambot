@@ -89,7 +89,9 @@ def test_deprecated_aliases_resolve_to_their_real_target() -> None:
     for alias, (_since, replacement) in catalog.deprecated_aliases().items():
         assert catalog.normalize_model_id(alias) == replacement
         assert catalog.alias_target(alias) == replacement
-        assert catalog.model_spec(replacement).status == "current"
+        spec = catalog.model_spec(replacement)
+        assert spec is not None
+        assert spec.status == "current"
 
 
 def test_normalization_is_idempotent_and_keeps_unknown_models() -> None:
@@ -100,7 +102,7 @@ def test_normalization_is_idempotent_and_keeps_unknown_models() -> None:
     assert catalog.normalize_model_id("") == ""
 
 
-def test_configured_model_normalizes_a_stale_env_override(monkeypatch) -> None:
+def test_configured_model_normalizes_a_stale_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
     alias, (_since, replacement) = next(iter(catalog.deprecated_aliases().items()))
     monkeypatch.setenv("GEMINI_MODEL", alias)
     assert catalog.configured_model(catalog.ROLE_PRIMARY) == replacement
@@ -110,13 +112,13 @@ def test_configured_model_normalizes_a_stale_env_override(monkeypatch) -> None:
     assert catalog.configured_model(catalog.ROLE_PRIMARY) == "gemini-custom-model"
 
 
-def test_configured_model_falls_back_to_the_catalog_default(monkeypatch) -> None:
+def test_configured_model_falls_back_to_the_catalog_default(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in catalog.ROLE_ENV[catalog.ROLE_PRIMARY]:
         monkeypatch.delenv(name, raising=False)
     assert catalog.configured_model(catalog.ROLE_PRIMARY) == catalog.MODEL_PRIMARY
 
 
-def test_fallback_role_is_disabled_by_default(monkeypatch) -> None:
+def test_fallback_role_is_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in catalog.ROLE_ENV[catalog.ROLE_FALLBACK]:
         monkeypatch.delenv(name, raising=False)
     assert catalog.fallback_model() == ""
@@ -139,7 +141,7 @@ def test_fallback_role_is_disabled_by_default(monkeypatch) -> None:
         ("gemini-custom-audio-model", "medium", "medium"),
     ],
 )
-def test_thinking_levels_follow_model_capabilities(model, level, expected) -> None:
+def test_thinking_levels_follow_model_capabilities(model: str, level: str, expected: str) -> None:
     assert catalog.thinking_level_for(model, level) == expected
 
 
@@ -155,7 +157,7 @@ def test_thinking_levels_follow_model_capabilities(model, level, expected) -> No
         ("", False),
     ],
 )
-def test_thinking_config_detection_is_generation_aware(model, expected) -> None:
+def test_thinking_config_detection_is_generation_aware(model: str, expected: bool) -> None:
     assert catalog.uses_thinking_config(model) is expected
 
 
@@ -208,7 +210,7 @@ def test_upgrade_drill_touches_exactly_one_line() -> None:
     assert target in diff[0][1]
 
 
-def test_upgrade_drill_refuses_a_non_semantic_target(capsys) -> None:
+def test_upgrade_drill_refuses_a_non_semantic_target(capsys: pytest.CaptureFixture[str]) -> None:
     """Утилити/tts/live/transcribe не могут заменить semantic-маршрут.
 
     Раньше такой прогон падал глубоко внутри контрактных тестов

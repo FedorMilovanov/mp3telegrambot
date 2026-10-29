@@ -3,11 +3,11 @@
 
 from __future__ import annotations
 
-import asyncio
-import hashlib
+import asyncio as asyncio
+import hashlib as hashlib
 import html
 import json
-import os
+import os as os
 import re
 import time
 from contextlib import contextmanager

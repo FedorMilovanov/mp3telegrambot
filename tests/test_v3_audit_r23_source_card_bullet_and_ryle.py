@@ -25,6 +25,8 @@
    bullet optional in that guard's regex.
 """
 
+from collections.abc import Iterable
+
 from converters.md_telegraph import _structured_blocks_to_nodes_v2
 from core.source_titles import (
     build_source_card,
@@ -36,10 +38,10 @@ from core.source_titles import (
 )
 
 
-def _flat(nodes) -> str:
-    parts = []
+def _flat(nodes: Iterable[object]) -> str:
+    parts: list[str] = []
 
-    def walk(n):
+    def walk(n: object) -> None:
         if isinstance(n, str):
             parts.append(n)
         elif isinstance(n, dict):
@@ -51,7 +53,7 @@ def _flat(nodes) -> str:
     return "".join(parts)
 
 
-def test_source_card_block_path_has_no_bullet():
+def test_source_card_block_path_has_no_bullet() -> None:
     blocks = [
         {
             "type": "source",
@@ -68,14 +70,14 @@ def test_source_card_block_path_has_no_bullet():
     assert "Джон МакАртур)" not in flat
 
 
-def test_render_source_card_ignores_bullet_kwarg_entirely():
+def test_render_source_card_ignores_bullet_kwarg_entirely() -> None:
     card = build_source_card(author="R.C. Sproul", title_original="The Holiness of God", bullet="• ")
     rendered = render_source_card(card)
     assert not rendered.startswith("•")
     assert rendered == "**Святость Бога**, Р. Ч. Спроул (The Holiness of God, R.C. Sproul)."
 
 
-def test_normalize_source_card_line_strips_bullet_from_raw_model_text():
+def test_normalize_source_card_line_strips_bullet_from_raw_model_text() -> None:
     """Raw model text (simulating what Gemini might still emit) legitimately
     starts with "•" — the repair function must strip it, not preserve it."""
     out = normalize_source_card_line("• John Owen, The Death of Death in the Death of Christ")
@@ -83,7 +85,7 @@ def test_normalize_source_card_line_strips_bullet_from_raw_model_text():
     assert out == "**Смерть смерти в смерти Христа**, Джон Оуэн (The Death of Death in the Death of Christ, John Owen)."
 
 
-def test_already_rendered_bulletless_card_is_not_double_processed():
+def test_already_rendered_bulletless_card_is_not_double_processed() -> None:
     """The 'already a finished canonical card' guard must recognize the
     NEW bulletless shape too, or names inside the parenthetical get
     silently re-translated on a second pass (the exact regression found
@@ -92,7 +94,7 @@ def test_already_rendered_bulletless_card_is_not_double_processed():
     assert normalize_source_card_line(already_rendered) == already_rendered
 
 
-def test_ryle_wrong_initial_still_resolves_to_known_translation():
+def test_ryle_wrong_initial_still_resolves_to_known_translation() -> None:
     """Gemini wrote "Дж. К. Райл" (K) instead of the canonical "Дж. Ч. Райл"
     (Ch, for "Charles") — this must not break the known official-title
     lookup for "Holiness" -> "Святость"."""
@@ -104,11 +106,11 @@ def test_ryle_wrong_initial_still_resolves_to_known_translation():
     assert rendered == "**Святость**, Дж. Ч. Райл (Holiness, J.C. Ryle)"
 
 
-def test_ryle_via_normalize_source_card_line():
+def test_ryle_via_normalize_source_card_line() -> None:
     assert normalize_source_card_line("• Дж. К. Райл, Holiness") == ("**Святость**, Дж. Ч. Райл (Holiness, J.C. Ryle).")
     assert normalize_source_card_line("• J.C. Ryle, Holiness") == ("**Святость**, Дж. Ч. Райл (Holiness, J.C. Ryle).")
 
 
-def test_canonical_author_name_ryle_unaffected():
+def test_canonical_author_name_ryle_unaffected() -> None:
     assert canonical_author_name("J.C. Ryle") == "Дж. Ч. Райл"
     assert canonical_author_name("Дж. К. Райл") == "Дж. Ч. Райл"

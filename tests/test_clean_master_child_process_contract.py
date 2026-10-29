@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 import subprocess
 import sys
 
@@ -72,14 +73,14 @@ def test_master_failure_surfaces_exact_stderr_and_releases_to_caller(
     assert "code 1" not in message
 
 
-def test_child_process_preserves_explicit_check_policy(monkeypatch) -> None:
-    observed = []
+def test_child_process_preserves_explicit_check_policy(monkeypatch: pytest.MonkeyPatch) -> None:
+    observed: list[dict[str, Any]] = []
 
-    def fake_run(command, *args, **kwargs):
+    def fake_run(command: list[str], *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
         observed.append(kwargs)
         return subprocess.CompletedProcess(command, 0)
 
-    monkeypatch.setattr(core._stdlib_subprocess, "run", fake_run)
+    monkeypatch.setattr(subprocess, "run", fake_run)
     core._run_child_process(["child"])
     core._run_child_process(["child"], check=True)
     assert [kwargs["check"] for kwargs in observed] == [False, True]
@@ -88,7 +89,7 @@ def test_child_process_preserves_explicit_check_policy(monkeypatch) -> None:
 def test_clean_core_uses_explicit_child_process_owner() -> None:
     source = Path(core.__file__).read_text(encoding="utf-8")
     assert core.subprocess is subprocess
-    assert subprocess.run is core._stdlib_subprocess.run
+    assert subprocess.run is getattr(core, "_stdlib_subprocess").run
     assert "_SubprocessProxy" not in source
     assert "subprocess = _SubprocessProxy()" not in source
     assert core.CHILD_PYTHON_POLICY == "repo-root-pythonpath-master-stderr-and-post-aac-v2"

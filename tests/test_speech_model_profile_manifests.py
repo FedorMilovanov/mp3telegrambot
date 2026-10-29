@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -21,7 +22,7 @@ from services.speech_backends import (
 from tools.check_tts_model_catalog import validate_catalog
 
 
-def _manifest(profile_id: str = "voxcpm2-test-profile") -> dict:
+def _manifest(profile_id: str = "voxcpm2-test-profile") -> dict[str, Any]:
     return {
         "schema_version": 1,
         "profile_id": profile_id,
@@ -84,7 +85,7 @@ def _manifest(profile_id: str = "voxcpm2-test-profile") -> dict:
     }
 
 
-def _write(root: Path, payload: dict, *, filename: str | None = None) -> Path:
+def _write(root: Path, payload: dict[str, Any], *, filename: str | None = None) -> Path:
     root.mkdir(parents=True, exist_ok=True)
     name = filename or f"{payload['profile_id']}.json"
     path = root / name
@@ -110,7 +111,13 @@ def test_builtin_catalog_is_manifest_backed_and_default_is_canonical() -> None:
     assert len(records[0].source_sha256) == 64
     assert snapshot["policy"] == PROFILE_MANIFEST_POLICY
     assert snapshot["profile_count"] == 1
-    assert snapshot["profiles"][0]["profile"]["model_revision"] == ("local-archive-pinned-v1")
+    profiles = snapshot["profiles"]
+    assert isinstance(profiles, list)
+    profile_record = profiles[0]
+    assert isinstance(profile_record, dict)
+    profile_payload = profile_record["profile"]
+    assert isinstance(profile_payload, dict)
+    assert profile_payload["model_revision"] == "local-archive-pinned-v1"
     assert evidence == {
         "schema_version": 1,
         "profile_id": DEFAULT_MODEL_PROFILE_ID,

@@ -5,9 +5,9 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
-import os
+import os as os
 import signal
-import subprocess
+import subprocess as subprocess
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone

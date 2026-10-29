@@ -34,7 +34,9 @@ import os
 import platform as _platform
 import re
 import shutil as _shutil
-import subprocess as _subprocess
+import subprocess as subprocess
+
+_subprocess = subprocess
 import tempfile
 import threading
 import time as _time
@@ -46,7 +48,8 @@ from typing import (
 )
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
-from core.telegraph_cache import _TELEGRAPH_CACHE, clear_telegraph_cache, invalidate_telegraph_url
+from core.telegraph_cache import _TELEGRAPH_CACHE as _TELEGRAPH_CACHE
+from core.telegraph_cache import clear_telegraph_cache, invalidate_telegraph_url
 
 try:
     import requests
@@ -200,7 +203,7 @@ _RE_URL_SCHEME = re.compile(r"https?://", re.IGNORECASE)
 # ══════════════════════════════════════════════════════════════
 
 try:
-    from bs4 import BeautifulSoup
+    from bs4 import BeautifulSoup as BeautifulSoup
 
     _HAS_BS4 = True
 except ImportError:

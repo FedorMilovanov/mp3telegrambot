@@ -8,6 +8,7 @@ import asyncio
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -68,7 +69,7 @@ def test_user_visible_publication_uses_38_high_not_utility() -> None:
     assert "GEMINI_LIGHT_MODEL" not in publication
 
 
-def test_info_owner_refuses_stale_35_semantic_env(monkeypatch) -> None:
+def test_info_owner_refuses_stale_35_semantic_env(monkeypatch: pytest.MonkeyPatch) -> None:
     import services.livedub_info as info
 
     monkeypatch.setenv("LIVEDUB_INFO_MODEL", "gemini-3.5-flash-lite")
@@ -78,16 +79,18 @@ def test_info_owner_refuses_stale_35_semantic_env(monkeypatch) -> None:
 
 
 @pytest.mark.slow
-def test_info_card_uses_shared_bounded_transport_without_mutating_registry(monkeypatch) -> None:
+def test_info_card_uses_shared_bounded_transport_without_mutating_registry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import services.livedub_info as info
 
-    calls = []
+    calls: list[tuple[str, str, Any]] = []
 
     class Models:
-        def __init__(self, name, fail):
+        def __init__(self, name: str, fail: bool) -> None:
             self.name, self.fail = name, fail
 
-        async def generate_content(self, *, model, contents, config):
+        async def generate_content(self, *, model: str, contents: Any, config: dict[str, Any]) -> SimpleNamespace:
             del contents
             calls.append((self.name, model, config["thinking_level"]))
             if self.fail:
@@ -108,7 +111,7 @@ def test_info_card_uses_shared_bounded_transport_without_mutating_registry(monke
             )
 
     class Client:
-        def __init__(self, name, fail):
+        def __init__(self, name: str, fail: bool) -> None:
             self.aio = SimpleNamespace(models=Models(name, fail))
 
     clients = [Client("first", True), Client("second", False)]
@@ -130,15 +133,15 @@ def test_singleflight_failure_releases_retry_key() -> None:
     key = ("new", "failure-test-chat", "failure-test-reply", "failure-test-video")
     attempts = 0
 
-    async def scenario():
+    async def scenario() -> None:
         nonlocal attempts
 
-        async def fail():
+        async def fail() -> bool:
             nonlocal attempts
             attempts += 1
             raise RuntimeError("telegram send failed")
 
-        async def succeed():
+        async def succeed() -> bool:
             nonlocal attempts
             attempts += 1
             return True
@@ -157,7 +160,7 @@ def test_singleflight_false_is_not_cached_and_concurrency_coalesces() -> None:
     delivery.reset_delivery_runtime_state()
     false_key = ("new", "chat", "reply", "false")
 
-    async def false_once():
+    async def false_once() -> bool:
         return False
 
     assert asyncio.run(delivery._singleflight(false_key, false_once)) is False
@@ -166,11 +169,11 @@ def test_singleflight_false_is_not_cached_and_concurrency_coalesces() -> None:
     key = ("new", "chat", "reply", "shared")
     attempts = 0
 
-    async def scenario():
+    async def scenario() -> None:
         nonlocal attempts
         started, release = asyncio.Event(), asyncio.Event()
 
-        async def sender():
+        async def sender() -> bool:
             nonlocal attempts
             attempts += 1
             started.set()
@@ -183,7 +186,7 @@ def test_singleflight_false_is_not_cached_and_concurrency_coalesces() -> None:
         await asyncio.sleep(0)
         assert attempts == 1
         release.set()
-        assert await asyncio.gather(first, second) == [True, True]
+        assert list(await asyncio.gather(first, second)) == [True, True]
 
     asyncio.run(scenario())
     assert attempts == 1

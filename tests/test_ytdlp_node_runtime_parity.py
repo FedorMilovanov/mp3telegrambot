@@ -1,12 +1,15 @@
 from __future__ import annotations
+import pytest
 
 from pathlib import Path
 
 import services.ffmpeg as ffmpeg
 
 
-def test_supported_js_runtimes_ignores_deno_when_node_is_valid(monkeypatch) -> None:
-    def _which(name: str):
+def test_supported_js_runtimes_ignores_deno_when_node_is_valid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _which(name: str) -> str | None:
         return {
             "node": r"C:\\Program Files\\nodejs\\node.exe",
             "deno": r"C:\\Tools\\deno.exe",
@@ -23,7 +26,7 @@ def test_supported_js_runtimes_ignores_deno_when_node_is_valid(monkeypatch) -> N
 
 
 def test_ytdlp_base_args_clear_default_deno_before_enabling_node(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     monkeypatch.chdir(tmp_path)
@@ -59,8 +62,10 @@ def test_ytdlp_parser_sees_only_node_after_runtime_reset() -> None:
     assert opts.js_runtimes == ["node"]
 
 
-def test_invalid_node_does_not_fall_back_to_unvalidated_deno(monkeypatch) -> None:
-    def _which(name: str):
+def test_invalid_node_does_not_fall_back_to_unvalidated_deno(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _which(name: str) -> str | None:
         return {
             "node": r"C:\\Program Files\\nodejs\\node.exe",
             "deno": r"C:\\Tools\\deno.exe",

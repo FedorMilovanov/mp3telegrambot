@@ -6,7 +6,7 @@ from core.analysis_profiles import get_expanded_analysis_profile
 from core.prompts import REFLECTION_APPLICATION_PROMPT, STUDY_ANALYSIS_PROMPT
 
 
-def test_expanded_analysis_profiles_scale_by_duration_and_kind():
+def test_expanded_analysis_profiles_scale_by_duration_and_kind() -> None:
     short_study = get_expanded_analysis_profile(10 * 60, "study")
     medium_study = get_expanded_analysis_profile(40 * 60, "study")
     long_study = get_expanded_analysis_profile(75 * 60, "study")
@@ -24,7 +24,7 @@ def test_expanded_analysis_profiles_scale_by_duration_and_kind():
     assert "Пасторская логика" in long_reflection.prompt_block("reflection")
 
 
-def test_study_and_reflection_prompts_accept_profile_through_synopsis_context():
+def test_study_and_reflection_prompts_accept_profile_through_synopsis_context() -> None:
     profile = get_expanded_analysis_profile(3700, "study").prompt_block("study")
     study = STUDY_ANALYSIS_PROMPT.format(
         title="T",
@@ -65,7 +65,7 @@ def test_study_and_reflection_prompts_accept_profile_through_synopsis_context():
     assert "Профиль: fast" in reflection
 
 
-def test_telegraph_pages_wires_profiles_to_max_tokens_and_context():
+def test_telegraph_pages_wires_profiles_to_max_tokens_and_context() -> None:
     src = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
     assert "from core.analysis_profiles import get_expanded_analysis_profile" in src
     assert "_study_profile = get_expanded_analysis_profile" in src

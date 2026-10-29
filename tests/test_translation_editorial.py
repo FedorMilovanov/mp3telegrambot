@@ -4,6 +4,7 @@ import inspect
 import json
 import zipfile
 from pathlib import Path
+from typing import Any, IO
 
 import pytest
 
@@ -80,14 +81,14 @@ def _pack(tmp_path: Path, *, russian_text: str = "Вера отдельно от
     )
 
 
-def _keep_candidates() -> list[dict]:
+def _keep_candidates() -> list[dict[str, Any]]:
     return [
         {"candidate_id": "short:1", "verdict": "keep", "issues": []},
         {"candidate_id": "long:1", "verdict": "keep", "issues": []},
     ]
 
 
-def test_source_identity_rejects_non_object_json_roundtrip(monkeypatch) -> None:
+def test_source_identity_rejects_non_object_json_roundtrip(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(editorial.json, "loads", lambda _payload: [])
 
     with pytest.raises(ValueError, match="source identity"):
@@ -128,10 +129,10 @@ def test_review_pack_is_small_verified_exchange_without_video_bytes(tmp_path: Pa
     assert manifest["review_pack_id"][7:19] in pack.name
 
 
-def test_review_pack_race_collision_chains_file_exists(monkeypatch, tmp_path: Path) -> None:
+def test_review_pack_race_collision_chains_file_exists(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     real_open = Path.open
 
-    def racing_open(self, mode="r", *args, **kwargs):
+    def racing_open(self: Path, mode: str = "r", *args: Any, **kwargs: Any) -> IO[Any]:
         if mode == "xb" and self.name.startswith("abc123_translation_editorial_v1_"):
             raise FileExistsError(self)
         return real_open(self, mode, *args, **kwargs)

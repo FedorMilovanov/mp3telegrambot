@@ -7,13 +7,14 @@
 формально останется в CI, но перестанет что-либо гарантировать. Здесь это
 падение видно как обычный красный тест, а не как «mypy стал добрым».
 
-Отдельно проверяется, что объявленный срез действительно чист: ``pytest``
-запускается локально до push, и ошибка типа должна ловиться там же, а не
-только в CI.
+Отдельно проверяется, что полный repository-wide срез действительно чист:
+``pytest`` запускается локально до push, и ошибка типа должна ловиться там
+же, а не только в CI.
 """
 
 from __future__ import annotations
 
+import ast
 import re
 import tomllib
 from pathlib import Path
@@ -35,7 +36,11 @@ DOC = ROOT / "docs" / "typechecking.md"
 
 def _mypy_config() -> dict[str, object]:
     with (ROOT / "pyproject.toml").open("rb") as fh:
-        return tomllib.load(fh)["tool"]["mypy"]
+        tool = tomllib.load(fh)["tool"]
+    assert isinstance(tool, dict)
+    config = tool["mypy"]
+    assert isinstance(config, dict)
+    return {str(key): value for key, value in config.items()}
 
 
 def test_strict_mode_is_enabled_in_config_not_only_in_ci() -> None:
@@ -51,7 +56,9 @@ def test_config_keeps_the_flags_the_gate_depends_on() -> None:
     assert config.get("ignore_missing_imports") is True
     # silent — граница среза: ошибки вне среза не шумят, ошибки внутри видны.
     assert config.get("follow_imports") == "silent"
-    assert "ignore-without-code" in config.get("enable_error_code", [])
+    error_codes = config.get("enable_error_code", [])
+    assert isinstance(error_codes, list)
+    assert "ignore-without-code" in error_codes
 
 
 def test_config_targets_the_project_floor() -> None:
@@ -101,6 +108,44 @@ def test_typed_slices_match_the_documentation_table() -> None:
     assert documented == declared, f"docs/typechecking.md перечисляет {documented}, а проверяется {declared}"
 
 
+def test_default_slice_is_the_whole_repository_without_exclusions() -> None:
+    assert TYPED_SLICES == (Slice("."),)
+    assert all(not slice_.exclude for slice_ in TYPED_SLICES)
+
+
+def test_historical_livedub_stub_covers_every_top_level_case() -> None:
+    source = ast.parse((ROOT / "tests" / "livedub_qa_cases.py").read_text(encoding="utf-8"))
+    stub = ast.parse((ROOT / "tests" / "livedub_qa_cases.pyi").read_text(encoding="utf-8"))
+    source_functions = {
+        node.name: node for node in source.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    stub_functions = {
+        node.name: node for node in stub.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    assert stub_functions.keys() == source_functions.keys()
+
+    for name, source_node in source_functions.items():
+        stub_node = stub_functions[name]
+        source_args = [arg.arg for arg in source_node.args.args]
+        stub_args = [arg.arg for arg in stub_node.args.args]
+        assert stub_args == source_args, name
+        annotations = {
+            "monkeypatch": "pytest.MonkeyPatch",
+            "tmp_path": "Path",
+        }
+        expected_return = "None"
+        if name in {"_chain", "_flat"}:
+            annotations["nodes"] = "list[Any]"
+            expected_return = "list[Any]" if name == "_chain" else "str"
+        stub_annotations = []
+        for arg in stub_node.args.args:
+            assert arg.annotation is not None, name
+            stub_annotations.append(ast.unparse(arg.annotation))
+        assert stub_annotations == [annotations[arg] for arg in source_args], name
+        assert stub_node.returns is not None
+        assert ast.unparse(stub_node.returns) == expected_return, name
+
+
 def test_missing_mypy_is_reported_as_environment_problem() -> None:
     """Отсутствие mypy — это сломанное окружение, а не ошибки в коде."""
 
@@ -127,7 +172,7 @@ def test_declared_slice_is_type_clean() -> None:
     if missing_mypy(result):  # pragma: no cover - сломанное окружение
         pytest.fail(
             "mypy не установлен: гейт типизации не может быть проверен. "
-            "Установите dev-зависимости: pip install -r requirements-dev.txt"
+            "Установите точное CI-окружение: pip install -r requirements-lock.txt"
         )
     assert result.returncode == 0, (
         f"срез {[s.path for s in TYPED_SLICES]} не проходит mypy --strict ({error_count(output)} ошибок):\n{output}"

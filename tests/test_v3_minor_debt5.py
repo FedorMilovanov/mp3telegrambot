@@ -5,6 +5,8 @@
 - core/prompts.py: SYNOPSIS_PROMPT_V2 uses shared rules via _expand_prompt_rules
 """
 
+import pytest
+
 import pathlib
 import time
 import os
@@ -13,13 +15,13 @@ import os
 # ─── cleanup_stale_downloads ──────────────────────────────────────────────
 
 
-def test_cleanup_stale_downloads_function_exists():
+def test_cleanup_stale_downloads_function_exists() -> None:
     from core.utils import cleanup_stale_downloads
 
     assert callable(cleanup_stale_downloads), "cleanup_stale_downloads must be callable"
 
 
-def test_cleanup_stale_downloads_removes_old_video(tmp_path, monkeypatch):
+def test_cleanup_stale_downloads_removes_old_video(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Old .mp4 files older than threshold must be deleted."""
     from core import utils as u
 
@@ -43,7 +45,7 @@ def test_cleanup_stale_downloads_removes_old_video(tmp_path, monkeypatch):
     assert new_file.exists(), "Fresh file must survive"
 
 
-def test_cleanup_stale_downloads_keeps_mp3(tmp_path, monkeypatch):
+def test_cleanup_stale_downloads_keeps_mp3(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """MP3 files must never be deleted by stale cleanup."""
     from core import utils as u
 
@@ -59,7 +61,7 @@ def test_cleanup_stale_downloads_keeps_mp3(tmp_path, monkeypatch):
     assert mp3_file.exists(), "MP3 must not be deleted"
 
 
-def test_cleanup_stale_downloads_keeps_jpg(tmp_path, monkeypatch):
+def test_cleanup_stale_downloads_keeps_jpg(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Thumbnail JPGs must never be deleted by stale cleanup."""
     from core import utils as u
 
@@ -78,7 +80,7 @@ def test_cleanup_stale_downloads_keeps_jpg(tmp_path, monkeypatch):
 # ─── main.py periodic_maintenance ────────────────────────────────────────
 
 
-def test_main_periodic_maintenance_calls_stale_cleanup():
+def test_main_periodic_maintenance_calls_stale_cleanup() -> None:
     src = pathlib.Path("main.py").read_text(encoding="utf-8")
     assert "cleanup_stale_downloads" in src, "main.py must import and call cleanup_stale_downloads"
     # 2026-06-10: импорт стал многострочным (добавлены botapi/livedub cleanups) —
@@ -89,7 +91,7 @@ def test_main_periodic_maintenance_calls_stale_cleanup():
 # ─── prompt_rules.py ─────────────────────────────────────────────────────
 
 
-def test_prompt_rules_module_exists():
+def test_prompt_rules_module_exists() -> None:
     from core.prompt_rules import (
         INLINE_TIMESTAMP_RULES,
         STRICT_BANS,
@@ -105,7 +107,7 @@ def test_prompt_rules_module_exists():
     assert SECTION_TITLE_RULE, "SECTION_TITLE_RULE must not be empty"
 
 
-def test_prompt_rules_inline_timestamp_content():
+def test_prompt_rules_inline_timestamp_content() -> None:
     from core.prompt_rules import INLINE_TIMESTAMP_RULES
 
     assert "ПРАВИЛО INLINE-ТАЙМКОДОВ" in INLINE_TIMESTAMP_RULES
@@ -113,7 +115,7 @@ def test_prompt_rules_inline_timestamp_content():
     assert "НИКОГДА не начинай" in INLINE_TIMESTAMP_RULES
 
 
-def test_prompt_rules_strict_bans_content():
+def test_prompt_rules_strict_bans_content() -> None:
     from core.prompt_rules import STRICT_BANS
 
     assert "СТРОГИЕ ЗАПРЕТЫ" in STRICT_BANS
@@ -125,7 +127,7 @@ def test_prompt_rules_strict_bans_content():
 # ─── prompts.py DRY ──────────────────────────────────────────────────────
 
 
-def test_synopsis_v2_no_raw_placeholders():
+def test_synopsis_v2_no_raw_placeholders() -> None:
     from core.prompts import SYNOPSIS_PROMPT_V2
 
     assert "{INLINE_TIMESTAMP_RULES}" not in SYNOPSIS_PROMPT_V2, (
@@ -134,7 +136,7 @@ def test_synopsis_v2_no_raw_placeholders():
     assert "{STRICT_BANS}" not in SYNOPSIS_PROMPT_V2, "SYNOPSIS_PROMPT_V2 must not contain unresolved {STRICT_BANS}"
 
 
-def test_synopsis_v2_contains_shared_rules():
+def test_synopsis_v2_contains_shared_rules() -> None:
     from core.prompts import SYNOPSIS_PROMPT_V2
     from core.prompt_rules import INLINE_TIMESTAMP_RULES, STRICT_BANS
 
@@ -145,7 +147,7 @@ def test_synopsis_v2_contains_shared_rules():
     assert STRICT_BANS in SYNOPSIS_PROMPT_V2
 
 
-def test_synopsis_v2_format_still_works():
+def test_synopsis_v2_format_still_works() -> None:
     from core.prompts import SYNOPSIS_PROMPT_V2
 
     result = SYNOPSIS_PROMPT_V2.format(
@@ -162,7 +164,7 @@ def test_synopsis_v2_format_still_works():
     assert len(result) > 5000, "Formatted prompt must be substantial"
 
 
-def test_expand_prompt_rules_helper():
+def test_expand_prompt_rules_helper() -> None:
     from core.prompts import _expand_prompt_rules
 
     sample = "Начало {INLINE_TIMESTAMP_RULES} конец {STRICT_BANS} ещё."

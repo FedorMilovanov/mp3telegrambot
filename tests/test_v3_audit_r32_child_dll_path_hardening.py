@@ -12,7 +12,7 @@ from pathlib import Path
 SRC = Path("core/globals.py").read_text(encoding="utf-8")
 
 
-def test_hardening_is_windows_only_and_prepend_only():
+def test_hardening_is_windows_only_and_prepend_only() -> None:
     assert 'if os.name == "nt":' in SRC
     assert "os.path.dirname(_sys.executable)" in SRC
     assert '"System32"' in SRC
@@ -20,14 +20,14 @@ def test_hardening_is_windows_only_and_prepend_only():
     assert "os.pathsep.join(_front + _rest)" in SRC
 
 
-def test_no_dir_removed_from_path():
+def test_no_dir_removed_from_path() -> None:
     """Правило: только PREPEND. Все исходные каталоги обязаны остаться в PATH
     (просто после системных). В коде это _rest из текущего PATH."""
     assert "_cur_dirs = [p for p in _cur_path.split(os.pathsep) if p]" in SRC
     assert "_rest = [d for d in _cur_dirs" in SRC
 
 
-def test_import_does_not_break_on_non_windows():
+def test_import_does_not_break_on_non_windows() -> None:
     # На Linux ветка nt пропускается — импорт globals не должен падать.
     import importlib
 

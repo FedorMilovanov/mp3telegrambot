@@ -11,7 +11,7 @@ from core.text_utils import normalize_common_typos, normalize_hashtag, scrub_thi
 from core.title_topic_audit import audit_title_topic_consistency
 
 
-def _flat(node):
+def _flat(node: object) -> str:
     if isinstance(node, str):
         return node
     if isinstance(node, dict):
@@ -21,7 +21,7 @@ def _flat(node):
     return ""
 
 
-def test_person_name_registry_normalizes_live_variants():
+def test_person_name_registry_normalizes_live_variants() -> None:
     text = "Ар Си Спраул, Р. Ч. Спрол, Эс Льюиса Джонсона и Мартина Лойда Джонса"
     out = normalize_person_names(text)
     assert "Р. Ч. Спроул" in out
@@ -34,19 +34,19 @@ def test_person_name_registry_normalizes_live_variants():
     assert "Мартина Лойд-Джонса" in out
 
 
-def test_third_person_scrubber_handles_new_verbs():
+def test_third_person_scrubber_handles_new_verbs() -> None:
     text = "Джон МакАртур подробно разворачивает этот смысл, что ученичество требует верности."
     out = scrub_third_person_phrases(text)
     assert "МакАртур" not in out
     assert "Ученичество требует верности" in out
 
 
-def test_source_card_duplicate_cyrillic_parenthetical_is_removed():
+def test_source_card_duplicate_cyrillic_parenthetical_is_removed() -> None:
     line = "• Джон МакАртур, The Master's Plan for the Church (Джон МакАртур, The Master's Plan for the Church.)"
     assert normalize_source_card_line(line) == "• Джон МакАртур, The Master's Plan for the Church."
 
 
-def test_telegraph_spacing_polish_fixes_glued_source_text():
+def test_telegraph_spacing_polish_fixes_glued_source_text() -> None:
     nodes = [
         {
             "tag": "p",
@@ -63,7 +63,7 @@ def test_telegraph_spacing_polish_fixes_glued_source_text():
     assert "*" not in flat
 
 
-def test_title_topic_audit_flags_low_overlap_and_parser_records_warning():
+def test_title_topic_audit_flags_low_overlap_and_parser_records_warning() -> None:
     issue = audit_title_topic_consistency(
         "Святой Дух Откровения",
         "Пастырская верность, церковная дисциплина и библейская экклезиология",
@@ -89,33 +89,33 @@ def test_title_topic_audit_flags_low_overlap_and_parser_records_warning():
     assert parsed and parsed.get("title_topic_warning")
 
 
-def test_hashtag_canonical_registry():
+def test_hashtag_canonical_registry() -> None:
     assert normalize_hashtag("БиблейскоеСемейство") == "#БиблейскаяСемья"
     assert normalize_hashtag("Богомыслие") == "#Богословие"
 
 
-def test_content_audit_wires_expected_author_and_translation_warning():
+def test_content_audit_wires_expected_author_and_translation_warning() -> None:
     src = Path("core/content_audit.py").read_text(encoding="utf-8")
     assert "first_person_author_fixed" in src
     assert "mismatched first-person author" in src
     assert "translation_semantic_warning" in src or "evil" in src
 
 
-def test_third_person_scrubber_removes_how_wrapper_from_reflection():
+def test_third_person_scrubber_removes_how_wrapper_from_reflection() -> None:
     text = "Лектор показывает, как легко подменить подлинную верность внешними атрибутами."
     out = scrub_third_person_phrases(text)
     assert "Лектор показывает" not in out
     assert "Легко подменить подлинную верность" in out
 
 
-def test_third_person_scrubber_handles_author_surnames_from_live_pages():
+def test_third_person_scrubber_handles_author_surnames_from_live_pages() -> None:
     text = "Данкан подчеркивает этот смысловой пласт, что поклонение должно быть в духе и истине."
     out = scrub_third_person_phrases(text)
     assert "Данкан подчеркивает" not in out
     assert "Поклонение должно быть" in out
 
 
-def test_postprocess_repairs_split_hyphenated_term_and_dannyy_source_wording():
+def test_postprocess_repairs_split_hyphenated_term_and_dannyy_source_wording() -> None:
     nodes = [
         {
             "tag": "p",
@@ -133,5 +133,5 @@ def test_postprocess_repairs_split_hyphenated_term_and_dannyy_source_wording():
     assert "Академический труд" in flat
 
 
-def test_common_typos_repair_mixed_english_day_in_scripture_quote():
+def test_common_typos_repair_mixed_english_day_in_scripture_quote() -> None:
     assert normalize_common_typos("И был вечер, и было утро: day один") == "И был вечер, и было утро: день один"

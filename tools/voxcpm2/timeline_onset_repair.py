@@ -69,8 +69,11 @@ def repairable_segment_ids(report: dict[str, Any]) -> list[int]:
     for item in report.get("segments", []):
         if not isinstance(item, dict) or not repairable_timing_failure(item):
             continue
+        raw_id = item.get("id")
+        if raw_id is None:
+            continue
         try:
-            segment_id = int(item.get("id"))
+            segment_id = int(raw_id)
         except (TypeError, ValueError, OverflowError):
             continue
         if segment_id > 0:
@@ -83,8 +86,11 @@ def _segment_map(segments: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
     for item in segments:
         if not isinstance(item, dict):
             continue
+        raw_id = item.get("id")
+        if raw_id is None:
+            continue
         try:
-            segment_id = int(item.get("id"))
+            segment_id = int(raw_id)
         except (TypeError, ValueError, OverflowError):
             continue
         if segment_id > 0:
@@ -97,8 +103,11 @@ def _check_map(report: dict[str, Any]) -> dict[int, dict[str, Any]]:
     for item in report.get("segments", []):
         if not isinstance(item, dict):
             continue
+        raw_id = item.get("id")
+        if raw_id is None:
+            continue
         try:
-            segment_id = int(item.get("id"))
+            segment_id = int(raw_id)
         except (TypeError, ValueError, OverflowError):
             continue
         if segment_id > 0:

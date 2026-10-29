@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import json
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -19,7 +20,7 @@ def _media(
     audio_duration: float = 59.04,
     container_duration: float = 59.04,
     av_start_delta: float = 0.0,
-):
+) -> dict[str, Any]:
     return {
         "audio_codec_name": "aac",
         "audio_sample_rate": 48_000,
@@ -35,7 +36,7 @@ def _media(
     }
 
 
-def _loudness(*, true_peak: float = -1.2, integrated: float = -15.8):
+def _loudness(*, true_peak: float = -1.2, integrated: float = -15.8) -> dict[str, float]:
     return {
         "integrated_lufs": integrated,
         "true_peak_dbtp": true_peak,
@@ -44,7 +45,7 @@ def _loudness(*, true_peak: float = -1.2, integrated: float = -15.8):
     }
 
 
-def _synthetic_branches(*, seconds: int = 12, sample_rate: int = 8_000):
+def _synthetic_branches(*, seconds: int = 12, sample_rate: int = 8_000) -> tuple[np.ndarray, np.ndarray]:
     rng = np.random.default_rng(20260729)
     length = seconds * sample_rate
     source = rng.normal(0.0, 0.11, length)
@@ -147,7 +148,7 @@ def test_project_original_contract_reads_expected_level(tmp_path: Path) -> None:
     assert contract["expected_original_level"] == 0.18
 
 
-def test_final_media_qa_accepts_only_delivery_contract(monkeypatch, tmp_path: Path) -> None:
+def test_final_media_qa_accepts_only_delivery_contract(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     output = tmp_path / "result.mp4"
     output.write_bytes(b"not-empty")
     monkeypatch.setattr(final_media_qa, "probe_media", lambda _path: _media())
@@ -165,7 +166,7 @@ def test_final_media_qa_accepts_only_delivery_contract(monkeypatch, tmp_path: Pa
     assert report["av_start_delta_seconds"] == 0.0
 
 
-def test_final_media_qa_reports_aac_true_peak_overshoot(monkeypatch, tmp_path: Path) -> None:
+def test_final_media_qa_reports_aac_true_peak_overshoot(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     output = tmp_path / "result.mp4"
     output.write_bytes(b"not-empty")
     monkeypatch.setattr(final_media_qa, "probe_media", lambda _path: _media())
@@ -185,7 +186,7 @@ def test_final_media_qa_reports_aac_true_peak_overshoot(monkeypatch, tmp_path: P
     assert any("true peak" in item for item in report["failures"])
 
 
-def test_final_media_qa_checks_audio_and_container_duration(monkeypatch, tmp_path: Path) -> None:
+def test_final_media_qa_checks_audio_and_container_duration(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     output = tmp_path / "result.mp4"
     output.write_bytes(b"not-empty")
     monkeypatch.setattr(
@@ -210,7 +211,7 @@ def test_final_media_qa_checks_audio_and_container_duration(monkeypatch, tmp_pat
     assert any("container duration delta" in item for item in report["failures"])
 
 
-def test_final_media_qa_rejects_audio_video_start_desync(monkeypatch, tmp_path: Path) -> None:
+def test_final_media_qa_rejects_audio_video_start_desync(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     output = tmp_path / "result.mp4"
     output.write_bytes(b"not-empty")
     monkeypatch.setattr(
@@ -246,7 +247,7 @@ def test_final_media_qa_rejects_audio_video_start_desync(monkeypatch, tmp_path: 
     ],
 )
 def test_nonfinite_release_contract_fails_before_media_probe(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     field: str,
     value: float,
@@ -255,7 +256,7 @@ def test_nonfinite_release_contract_fails_before_media_probe(
     output.write_bytes(b"not-empty")
     called = False
 
-    def probe(_path: Path):
+    def probe(_path: Path) -> dict[str, Any]:
         nonlocal called
         called = True
         return _media()
@@ -305,7 +306,7 @@ def test_out_of_range_release_contract_is_rejected(
     assert any("contract:" in item for item in report["failures"])
 
 
-def test_invalid_contract_report_is_strict_json(monkeypatch, tmp_path: Path) -> None:
+def test_invalid_contract_report_is_strict_json(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     mixed = tmp_path / "mixed.mp4"
     russian = tmp_path / "russian.mp4"
     mixed.write_bytes(b"not-empty")
@@ -339,7 +340,7 @@ def test_loudnorm_parser_ignores_noise_and_uses_last_object() -> None:
     assert payload["input_i"] == "-16.1"
 
 
-def test_failed_final_outputs_write_report_before_raising(monkeypatch, tmp_path: Path) -> None:
+def test_failed_final_outputs_write_report_before_raising(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     mixed = tmp_path / "mixed.mp4"
     russian = tmp_path / "russian.mp4"
     mixed.write_bytes(b"not-empty")
@@ -347,7 +348,7 @@ def test_failed_final_outputs_write_report_before_raising(monkeypatch, tmp_path:
     report_path = tmp_path / "final_media_verification.json"
     monkeypatch.setattr(final_media_qa, "probe_media", lambda _path: _media())
 
-    def measured(path: Path, **_kwargs):
+    def measured(path: Path, **_kwargs: object) -> dict[str, float]:
         return _loudness(
             true_peak=-0.6 if Path(path).name == "mixed.mp4" else -1.3,
             integrated=-16.0,
@@ -371,7 +372,7 @@ def test_failed_final_outputs_write_report_before_raising(monkeypatch, tmp_path:
     assert any("true peak" in item for item in payload["mixed"]["failures"])
 
 
-def test_failed_original_bed_writes_report_before_raising(monkeypatch, tmp_path: Path) -> None:
+def test_failed_original_bed_writes_report_before_raising(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     root = tmp_path / "project"
     output = root / "output"
     output.mkdir(parents=True)

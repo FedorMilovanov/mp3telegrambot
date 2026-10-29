@@ -8,9 +8,17 @@ import re
 import sys
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Protocol, cast
 
 from tools.voxcpm2 import direct_timing_guard
+
+
+class _StructuredRetryableFailure(Protocol):
+    advance_retry: bool
+    segment: Mapping[str, Any]
+    evidence: Mapping[str, Any]
+    failure_kind: str
+
 
 POLICY = "universal-early-stop-retry-recovery-v2"
 _MAX_SEGMENTS_BYTES = 8 * 1024 * 1024
@@ -44,8 +52,11 @@ def _segment_from_json(path: Path, segment_id: int) -> dict[str, Any] | None:
     for item in payload:
         if not isinstance(item, dict):
             continue
+        raw_id = item.get("id")
+        if raw_id is None:
+            continue
         try:
-            current = int(item.get("id"))
+            current = int(raw_id)
         except (TypeError, ValueError, OverflowError):
             continue
         if current == segment_id:
@@ -74,14 +85,16 @@ def run_with_failure_recovery(
         message = str(exc)
         failure_type = getattr(direct_timing_guard, "RetryableSynthesisFailure", None)
         structured = bool(isinstance(failure_type, type) and isinstance(exc, failure_type))
+        segment: dict[str, Any] | None
         if structured:
-            if not bool(exc.advance_retry):
+            structured_exc = cast(_StructuredRetryableFailure, exc)
+            if not bool(structured_exc.advance_retry):
                 raise
-            segment = dict(exc.segment)
+            segment = dict(structured_exc.segment)
             evidence = {
-                **dict(exc.evidence),
+                **dict(structured_exc.evidence),
                 "policy": POLICY,
-                "early_stop_kind": exc.failure_kind,
+                "early_stop_kind": structured_exc.failure_kind,
                 "early_stop_message": message[:1000],
             }
         else:

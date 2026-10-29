@@ -20,10 +20,11 @@ This bot is used continuously to generate, inspect, repair, and archive theologi
 
 ## Required verification before handoff
 
-Install dev dependencies if needed:
+Install the exact CI-locked dependencies if needed (the floor files alone do not
+reproduce the verifier's cross-platform metadata environment):
 
 ```bash
-python -m pip install -r requirements-dev.txt
+python -m pip install -r requirements-lock.txt
 ```
 
 Run the repository verifier:

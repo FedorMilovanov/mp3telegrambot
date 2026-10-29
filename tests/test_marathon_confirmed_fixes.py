@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -51,9 +52,9 @@ def test_process_timeout_defaults_and_clamps(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_run_passes_finite_timeout(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    observed = {}
+    observed: dict[str, Any] = {}
 
-    def fake_run(command, **kwargs):
+    def fake_run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         observed["command"] = command
         observed.update(kwargs)
         return subprocess.CompletedProcess(command, 0)
@@ -76,7 +77,7 @@ def test_run_converts_timeout_to_operator_error(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    def fake_run(command, **kwargs):
+    def fake_run(command: list[str], **kwargs: Any) -> None:
         raise subprocess.TimeoutExpired(command, timeout=kwargs["timeout"])
 
     monkeypatch.setattr(dub_rendering.subprocess, "run", fake_run)

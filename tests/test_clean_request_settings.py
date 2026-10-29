@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Any
 import json
 from pathlib import Path
 import pytest
@@ -31,7 +32,7 @@ def test_explicit_zero_settings_are_preserved() -> None:
         {"russian_delay_ms": settings.MAX_RUSSIAN_DELAY_MS + 1},
     ],
 )
-def test_invalid_mix_settings_fail_closed(request_payload) -> None:
+def test_invalid_mix_settings_fail_closed(request_payload: dict[str, Any]) -> None:
     with pytest.raises(RuntimeError):
         settings.values(request_payload)
 
@@ -61,7 +62,7 @@ def test_manifest_is_repaired_to_actual_zero_settings(tmp_path: Path) -> None:
     assert stored == result
 
 
-def test_audio_repair_manifest_uses_delay_proven_by_segments(monkeypatch, tmp_path: Path) -> None:
+def test_audio_repair_manifest_uses_delay_proven_by_segments(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     root = tmp_path / "project"
     output = root / "output"
     output.mkdir(parents=True)
@@ -79,7 +80,7 @@ def test_audio_repair_manifest_uses_delay_proven_by_segments(monkeypatch, tmp_pa
         json.dumps([{"id": 1, "start_delay_ms": 0}, {"id": 2, "start_delay_ms": 0}]), encoding="utf-8"
     )
 
-    def fake_legacy_update(path: Path, payload: dict, **_kwargs) -> None:
+    def fake_legacy_update(path: Path, payload: dict[str, Any], **_kwargs: Any) -> None:
         path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
     monkeypatch.setattr(repair, "_legacy_update_manifest", fake_legacy_update)
@@ -103,7 +104,7 @@ def test_audio_repair_manifest_uses_delay_proven_by_segments(monkeypatch, tmp_pa
     ]
 
 
-def test_full_repair_normalizer_preserves_zero_delay(monkeypatch, tmp_path: Path) -> None:
+def test_full_repair_normalizer_preserves_zero_delay(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     root = tmp_path / "project"
     (root / "input").mkdir(parents=True)
     (root / "output").mkdir(parents=True)

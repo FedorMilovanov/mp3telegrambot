@@ -140,7 +140,7 @@ def _config(tmp_path: Path) -> WeightedTTSSmokeRunnerConfig:
 
 
 def test_runner_doctor_passes_without_opening_model_session(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     import services.tts_weighted_smoke_runner as doctor
@@ -195,7 +195,7 @@ def test_runner_doctor_passes_without_opening_model_session(
 
 
 def test_runner_doctor_fails_closed_on_missing_runtime_import(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     import services.tts_weighted_smoke_runner as doctor
@@ -216,7 +216,7 @@ def test_runner_doctor_fails_closed_on_missing_runtime_import(
 
 
 def test_runner_doctor_rejects_bad_reference_before_storage(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     import services.tts_weighted_smoke_runner as doctor
@@ -238,7 +238,7 @@ def test_runner_doctor_rejects_bad_reference_before_storage(
 
 
 def test_runner_doctor_rejects_missing_ffprobe_before_storage(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     import services.tts_weighted_smoke_runner as doctor
@@ -258,7 +258,7 @@ def test_runner_doctor_rejects_missing_ffprobe_before_storage(
 
 
 def test_runner_doctor_storage_failure_cleans_probe_files(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     import services.tts_weighted_smoke_runner as doctor
@@ -306,7 +306,7 @@ def test_expected_python_mismatch_stops_before_backend_discovery(tmp_path: Path)
     assert not config.work_dir.exists()
 
 
-def test_import_probe_reports_available_cuda_device_count(monkeypatch) -> None:
+def test_import_probe_reports_available_cuda_device_count(monkeypatch: pytest.MonkeyPatch) -> None:
     import services.tts_weighted_smoke_runner as doctor
 
     torch = SimpleNamespace(
@@ -337,7 +337,7 @@ def test_import_probe_reports_available_cuda_device_count(monkeypatch) -> None:
     }
 
 
-def test_ffprobe_probe_requires_binary(monkeypatch) -> None:
+def test_ffprobe_probe_requires_binary(monkeypatch: pytest.MonkeyPatch) -> None:
     import services.tts_weighted_smoke_runner as doctor
 
     monkeypatch.setattr(doctor.shutil, "which", lambda _name: None)
@@ -345,7 +345,7 @@ def test_ffprobe_probe_requires_binary(monkeypatch) -> None:
         _probe_ffprobe()
 
 
-def test_runner_doctor_report_is_valid_json(monkeypatch, tmp_path: Path) -> None:
+def test_runner_doctor_report_is_valid_json(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     import services.tts_weighted_smoke_runner as doctor
 
     monkeypatch.setattr(

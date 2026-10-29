@@ -17,7 +17,7 @@ from tools.voxcpm2.direct_max_quality_io import (
 )
 from tools.voxcpm2.direct_timbre_analysis import (
     BAND_EDGES_HZ,
-    spectral_envelope,
+    spectral_envelope as spectral_envelope,
     spectral_similarity,
     timbre_hard_ok,
     timbre_penalty,
@@ -491,7 +491,7 @@ def _finite_voice_metric(voice: dict[str, Any], key: str) -> float | None:
     return value if math.isfinite(value) else None
 
 
-def candidate_hard_ok(
+def _legacy_candidate_hard_ok_impl(
     candidate: dict[str, Any],
     speech_slot: float,
 ) -> bool:
@@ -540,12 +540,15 @@ from tools.voxcpm2.direct_max_quality_io import MAX_TEMPO  # noqa: E402 -- late 
 
 FIT_TEMPO_POLICY = "candidate-fit-tempo-hard-gate-v2"
 
-_legacy_candidate_hard_ok = candidate_hard_ok
+_legacy_candidate_hard_ok = _legacy_candidate_hard_ok_impl
 
 
 def _effective_slot(candidate: dict[str, Any], speech_slot: float) -> float:
+    value = candidate.get("actual_speech_slot", speech_slot)
+    if value is None:
+        return math.nan
     try:
-        return float(candidate.get("actual_speech_slot", speech_slot))
+        return float(value)
     except (TypeError, ValueError, OverflowError):
         return math.nan
 
@@ -557,8 +560,11 @@ def required_tempo(candidate: dict[str, Any], speech_slot: float) -> float:
     Prefer that value over a legacy caller's provisional slot so short SRT cues
     can never pass against a fabricated one-second window.
     """
+    raw_duration = candidate.get("duration")
+    if raw_duration is None:
+        return math.inf
     try:
-        duration = float(candidate.get("duration"))
+        duration = float(raw_duration)
         slot = _effective_slot(candidate, speech_slot)
     except (TypeError, ValueError, OverflowError):
         return math.inf

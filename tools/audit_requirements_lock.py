@@ -32,11 +32,12 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
-import shutil
-import subprocess
+import shutil as shutil
+import subprocess as subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypedDict
 
 from packaging.utils import canonicalize_name
 
@@ -50,6 +51,16 @@ class AllowedAdvisory:
     package: str
     reason: str
     review_by: dt.date
+
+
+class AuditReport(TypedDict):
+    policy: str
+    lock: str
+    checked_on: str
+    locked_distributions: int
+    blocking: list[dict[str, str]]
+    allowed: list[dict[str, str]]
+    stale_allow_list_entries: list[str]
 
 
 # Reviewed exceptions. Keep this list short, dated and honest.
@@ -138,7 +149,7 @@ def _pip_audit_executable() -> str:
     return executable
 
 
-def audit(lock_path: Path = DEFAULT_LOCK, *, today: dt.date | None = None) -> dict[str, object]:
+def audit(lock_path: Path = DEFAULT_LOCK, *, today: dt.date | None = None) -> AuditReport:
     """Return a report dict; ``blocking`` is empty when the policy passes."""
     current_day = today or dt.date.today()
     process = subprocess.run(  # noqa: S603 -- resolved pip-audit and fixed lock-audit argv
@@ -230,23 +241,26 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
     else:
-        for entry in report["allowed"]:  # type: ignore[union-attr]
-            print(f"ALLOWED {entry['id']} {entry['package']}=={entry['version']} (fix: {entry['fix']})")
-        for entry in report["stale_allow_list_entries"]:  # type: ignore[union-attr]
-            print(f"STALE allow-list entry, delete it: {entry}")
-        for entry in report["blocking"]:  # type: ignore[union-attr]
-            if entry["id"].startswith("REPORT_"):
-                print(f"{entry['id']} {entry['package']} {entry.get('reason', '')}".rstrip())
+        for allowed_entry in report["allowed"]:
+            print(
+                f"ALLOWED {allowed_entry['id']} {allowed_entry['package']}=={allowed_entry['version']} "
+                f"(fix: {allowed_entry['fix']})"
+            )
+        for stale_entry in report["stale_allow_list_entries"]:
+            print(f"STALE allow-list entry, delete it: {stale_entry}")
+        for blocking_entry in report["blocking"]:
+            if blocking_entry["id"].startswith("REPORT_"):
+                print(f"{blocking_entry['id']} {blocking_entry['package']} {blocking_entry.get('reason', '')}".rstrip())
                 continue
             print(
-                f"VULNERABLE {entry['id']} {entry['package']}=={entry['version']} "
-                f"(fix: {entry['fix']}) {entry.get('reason', '')}".rstrip()
+                f"VULNERABLE {blocking_entry['id']} {blocking_entry['package']}=={blocking_entry['version']} "
+                f"(fix: {blocking_entry['fix']}) {blocking_entry.get('reason', '')}".rstrip()
             )
 
     if report["stale_allow_list_entries"]:
         print(
             "DEPENDENCY_AUDIT_FAILED: stale allow-list entries must be removed: "
-            + ", ".join(report["stale_allow_list_entries"]),  # type: ignore[arg-type]
+            + ", ".join(report["stale_allow_list_entries"]),
             file=sys.stderr,
         )
         return 1

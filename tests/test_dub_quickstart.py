@@ -1,20 +1,28 @@
 """Behavior contracts for one-command Dub Studio production startup."""
 
+import pytest
+
 import asyncio
 from types import SimpleNamespace
+from typing import Any, cast
+
+from telegram import Update
+from telegram.ext import CallbackContext
 
 import handlers.dub_quickstart as quickstart
 
 
 class Message:
-    def __init__(self):
-        self.replies = []
+    def __init__(self) -> None:
+        self.replies: list[tuple[str, dict[str, Any]]] = []
 
-    async def reply_text(self, text, **kwargs):
+    async def reply_text(self, text: str, **kwargs: Any) -> None:
         self.replies.append((text, kwargs))
 
 
-def _update(user_id=1, *, with_message=True, with_user=True):
+def _update(
+    user_id: int = 1, *, with_message: bool = True, with_user: bool = True
+) -> tuple[SimpleNamespace, Message | None]:
     message = Message() if with_message else None
     update = SimpleNamespace(
         effective_user=SimpleNamespace(id=user_id) if with_user else None,
@@ -24,12 +32,12 @@ def _update(user_id=1, *, with_message=True, with_user=True):
     return update, message
 
 
-def _run(update, *, args=None):
+def _run(update: SimpleNamespace, *, args: list[str] | None = None) -> None:
     context = SimpleNamespace(args=args)
-    asyncio.run(quickstart.dubstart_command(update, context))
+    asyncio.run(quickstart.dubstart_command(cast(Update, update), cast(CallbackContext[Any, Any, Any, Any], context)))
 
 
-def test_recipe_help_handles_empty_and_escapes_bounded_titles(monkeypatch):
+def test_recipe_help_handles_empty_and_escapes_bounded_titles(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(quickstart, "list_recipes", lambda: [])
     assert quickstart._recipe_help() == "Рецепты пока не зарегистрированы."
 
@@ -42,9 +50,10 @@ def test_recipe_help_handles_empty_and_escapes_bounded_titles(monkeypatch):
     assert "x" * 151 not in result
 
 
-def test_unauthorized_and_missing_users_are_rejected_safely(monkeypatch):
+def test_unauthorized_and_missing_users_are_rejected_safely(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(quickstart, "ADMIN_IDS", {1})
     update, message = _update(user_id=2)
+    assert message is not None
     _run(update)
     assert message.replies == [("⛔ Dub Studio доступна только администратору.", {})]
 
@@ -52,22 +61,24 @@ def test_unauthorized_and_missing_users_are_rejected_safely(monkeypatch):
     _run(update)
 
 
-def test_admin_without_message_or_chat_returns_without_store_work(monkeypatch):
+def test_admin_without_message_or_chat_returns_without_store_work(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(quickstart, "ADMIN_IDS", {1})
     update, message = _update(with_message=False)
     _run(update, args=[])
     assert message is None
 
     update, message = _update()
+    assert message is not None
     update.effective_chat = None
     _run(update, args=["recipe"])
     assert message.replies == []
 
 
-def test_missing_recipe_prints_usage_and_recipe_help(monkeypatch):
+def test_missing_recipe_prints_usage_and_recipe_help(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(quickstart, "ADMIN_IDS", {1})
     monkeypatch.setattr(quickstart, "list_recipes", lambda: [])
     update, message = _update()
+    assert message is not None
 
     _run(update, args=[])
 
@@ -77,21 +88,22 @@ def test_missing_recipe_prints_usage_and_recipe_help(monkeypatch):
     assert kwargs == {"parse_mode": "HTML"}
 
 
-def test_admin_starts_render_job_and_returns_status_commands(monkeypatch):
+def test_admin_starts_render_job_and_returns_status_commands(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(quickstart, "ADMIN_IDS", {1})
-    calls = []
+    calls: list[tuple[Any, ...]] = []
 
     class Store:
-        def create_project(self, recipe_id, **kwargs):
+        def create_project(self, recipe_id: str, **kwargs: Any) -> dict[str, Any]:
             calls.append(("create", recipe_id, kwargs))
             return {"id": "project<&>"}
 
-        def enqueue_job(self, project_id, kind):
+        def enqueue_job(self, project_id: str, kind: str) -> dict[str, int]:
             calls.append(("enqueue", project_id, kind))
             return {"id": 42}
 
     monkeypatch.setattr(quickstart, "DubStore", Store)
     update, message = _update(user_id=1)
+    assert message is not None
 
     _run(update, args=[" <RECIPE> "])
 
@@ -112,15 +124,16 @@ def test_admin_starts_render_job_and_returns_status_commands(monkeypatch):
     assert kwargs == {"parse_mode": "HTML"}
 
 
-def test_startup_error_is_escaped_and_bounded(monkeypatch):
+def test_startup_error_is_escaped_and_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(quickstart, "ADMIN_IDS", {1})
 
     class Store:
-        def __init__(self):
+        def __init__(self) -> None:
             raise RuntimeError("<" + "x" * 1000)
 
     monkeypatch.setattr(quickstart, "DubStore", Store)
     update, message = _update()
+    assert message is not None
 
     _run(update, args=["recipe"])
 
@@ -130,13 +143,13 @@ def test_startup_error_is_escaped_and_bounded(monkeypatch):
     assert kwargs == {"parse_mode": "HTML"}
 
 
-def test_registration_is_idempotent():
+def test_registration_is_idempotent() -> None:
     class Application:
-        def __init__(self):
-            self.bot_data = {}
-            self.handlers = []
+        def __init__(self) -> None:
+            self.bot_data: dict[str, Any] = {}
+            self.handlers: list[Any] = []
 
-        def add_handler(self, handler):
+        def add_handler(self, handler: Any) -> None:
             self.handlers.append(handler)
 
     application = Application()

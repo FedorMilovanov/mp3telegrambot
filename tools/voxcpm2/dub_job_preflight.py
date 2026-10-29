@@ -11,12 +11,12 @@ from __future__ import annotations
 from contextlib import contextmanager, suppress
 import hashlib
 import json
-import os
+import os as os
 from pathlib import Path
 import shutil
-import subprocess
+import subprocess as subprocess
 import threading
-import time
+import time as time
 from typing import Any, Iterator
 import uuid
 
@@ -261,7 +261,7 @@ def _implementation_identity(repo: Path) -> dict[str, Any]:
     return {"files": files, "sha256": _payload_sha256(files)}
 
 
-def _signature(paths: dict[str, Path], *, action: str) -> dict[str, Any]:
+def _signature(paths: dict[str, Any], *, action: str) -> dict[str, Any]:
     repo = Path(paths["repo"]).resolve()
     cpu_python = Path(paths["cpu_python"]).resolve()
     if not cpu_python.is_file():

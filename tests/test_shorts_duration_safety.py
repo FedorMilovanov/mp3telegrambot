@@ -1,10 +1,12 @@
 from pathlib import Path
 from types import SimpleNamespace
 
+from typing import Any
+
 import services.shorts_duration_safety as safety
 
 
-def _candidate(start: float, end: float) -> dict:
+def _candidate(start: float, end: float) -> dict[str, Any]:
     return {
         "start_seconds": start,
         "end_seconds": end,
@@ -12,7 +14,7 @@ def _candidate(start: float, end: float) -> dict:
     }
 
 
-def test_speed_scaled_candidate_is_not_compensated_twice():
+def test_speed_scaled_candidate_is_not_compensated_twice() -> None:
     plan = safety.plan_short_source_window(
         _candidate(100.0, 370.0),
         speed=1.5,
@@ -29,7 +31,7 @@ def test_speed_scaled_candidate_is_not_compensated_twice():
     assert (end - start) / 1.5 == 180.0
 
 
-def test_padding_is_reclaimed_inside_same_speed_source_budget():
+def test_padding_is_reclaimed_inside_same_speed_source_budget() -> None:
     plan = safety.plan_short_source_window(
         _candidate(100.0, 368.0),
         speed=1.5,
@@ -47,7 +49,7 @@ def test_padding_is_reclaimed_inside_same_speed_source_budget():
     assert snap_end - start <= 270.0 + 1e-6
 
 
-def test_full_budget_candidate_never_grows_for_optional_padding():
+def test_full_budget_candidate_never_grows_for_optional_padding() -> None:
     plan = safety.plan_short_source_window(
         _candidate(100.0, 370.0),
         speed=1.5,
@@ -60,7 +62,7 @@ def test_full_budget_candidate_never_grows_for_optional_padding():
     assert plan == (100.0, 370.0, 370.0)
 
 
-def test_candidate_over_public_speed_budget_fails_closed():
+def test_candidate_over_public_speed_budget_fails_closed() -> None:
     assert (
         safety.plan_short_source_window(
             _candidate(100.0, 370.1),
@@ -79,7 +81,7 @@ def test_candidate_over_public_speed_budget_fails_closed():
     )
 
 
-def test_source_duration_clamps_optional_tail_without_cutting_valid_semantics():
+def test_source_duration_clamps_optional_tail_without_cutting_valid_semantics() -> None:
     plan = safety.plan_short_source_window(
         _candidate(850.0, 899.0),
         speed=1.0,
@@ -96,7 +98,7 @@ def test_source_duration_clamps_optional_tail_without_cutting_valid_semantics():
     assert snap_end <= 900.0
 
 
-def test_public_duration_and_required_speed_contracts_are_fail_closed():
+def test_public_duration_and_required_speed_contracts_are_fail_closed() -> None:
     assert safety.public_short_duration_ok(180.0)
     assert safety.public_short_duration_ok(180.04)
     assert not safety.public_short_duration_ok(180.051)
@@ -109,7 +111,7 @@ def test_public_duration_and_required_speed_contracts_are_fail_closed():
     assert safety.short_speed_transform_required(1.5)
 
 
-def test_final_public_short_gate_checks_probe_duration_and_upload_cap():
+def test_final_public_short_gate_checks_probe_duration_and_upload_cap() -> None:
     safe = SimpleNamespace(
         duration=179.9,
         width=720,
@@ -128,7 +130,7 @@ def test_final_public_short_gate_checks_probe_duration_and_upload_cap():
     assert not safety.final_public_short_is_safe(too_large, max_file_size_mb=50.0)
 
 
-def test_pipeline_owns_duration_safety_without_installation_or_ambient_state():
+def test_pipeline_owns_duration_safety_without_installation_or_ambient_state() -> None:
     safety_source = Path("services/shorts_duration_safety.py").read_text(encoding="utf-8")
     pipeline_source = Path("pipelines/shorts.py").read_text(encoding="utf-8")
     renderer_source = Path("services/shorts_video.py").read_text(encoding="utf-8")

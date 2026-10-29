@@ -1,5 +1,7 @@
 """Regression tests for explicit core fallback diagnostics."""
 
+import pathlib
+
 import sqlite3
 from typing import Any, cast
 
@@ -100,7 +102,7 @@ def test_black_bar_crop_failure_returns_original_image() -> None:
 
 def test_thumbnail_cleanup_failure_is_nonfatal(
     monkeypatch: pytest.MonkeyPatch,
-    tmp_path,
+    tmp_path: pathlib.Path,
 ) -> None:
     class _BrokenThumbsDir:
         def iterdir(self) -> object:

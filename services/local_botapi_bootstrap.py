@@ -12,7 +12,7 @@ import contextlib
 import json
 import os
 import socket
-import subprocess
+import subprocess as subprocess
 import time
 import urllib.error
 import urllib.request

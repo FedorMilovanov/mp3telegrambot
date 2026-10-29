@@ -1,6 +1,8 @@
 from __future__ import annotations
+import pathlib
 
 import asyncio
+from typing import Any
 from types import SimpleNamespace
 
 import pytest
@@ -16,7 +18,7 @@ class _Files:
         upload_error: BaseException | None = None,
         poll_error: BaseException | None = None,
         delete_error: BaseException | None = None,
-    ):
+    ) -> None:
         self.upload_error = upload_error
         self.poll_error = poll_error
         self.delete_error = delete_error
@@ -24,27 +26,27 @@ class _Files:
         self.get_calls = 0
         self.delete_calls: list[str] = []
 
-    async def upload(self, **_kwargs):
+    async def upload(self, **_kwargs: Any) -> SimpleNamespace:
         self.upload_calls += 1
         if self.upload_error is not None:
             raise self.upload_error
         return SimpleNamespace(name="files/qa", state="PROCESSING")
 
-    async def get(self, **_kwargs):
+    async def get(self, **_kwargs: Any) -> SimpleNamespace:
         self.get_calls += 1
         if self.poll_error is not None:
             raise self.poll_error
         return SimpleNamespace(name="files/qa", state="ACTIVE")
 
-    async def delete(self, *, name):
+    async def delete(self, *, name: str) -> None:
         self.delete_calls.append(name)
         if self.delete_error is not None:
             raise self.delete_error
 
 
-def _client(name: str, model_calls: list[str], *, error: BaseException | None = None):
+def _client(name: str, model_calls: list[str], *, error: BaseException | None = None) -> SimpleNamespace:
     class _Models:
-        async def generate_content(self, **_kwargs):
+        async def generate_content(self, **_kwargs: Any) -> SimpleNamespace:
             model_calls.append(name)
             if error is not None:
                 raise error
@@ -56,14 +58,14 @@ def _client(name: str, model_calls: list[str], *, error: BaseException | None = 
     )
 
 
-def _write_srt(path):
+def _write_srt(path: pathlib.Path) -> None:
     path.write_text(
         "1\n00:00:00,000 --> 00:00:04,000\nТочный русский текст.\n\n",
         encoding="utf-8",
     )
 
 
-def _install_common(monkeypatch, clients):
+def _install_common(monkeypatch: pytest.MonkeyPatch, clients: list[Any]) -> None:
     monkeypatch.setattr(qa, "HAS_GEMINI", True)
     monkeypatch.setattr(qa, "GEMINI_CLIENTS", clients)
     monkeypatch.setattr(
@@ -79,7 +81,7 @@ def _install_common(monkeypatch, clients):
     monkeypatch.setattr(core_globals, "make_audio_config", lambda **_kwargs: object())
 
 
-def test_remote_qa_file_delete_failure_is_nonfatal():
+def test_remote_qa_file_delete_failure_is_nonfatal() -> None:
     files = _Files(delete_error=RuntimeError("Files API unavailable"))
     client = SimpleNamespace(aio=SimpleNamespace(files=files))
 
@@ -93,11 +95,13 @@ def test_remote_qa_file_delete_failure_is_nonfatal():
     assert files.delete_calls == ["files/qa"]
 
 
-def test_malformed_qa_response_logging_failure_is_nonfatal(monkeypatch, tmp_path):
-    calls = []
+def test_malformed_qa_response_logging_failure_is_nonfatal(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    calls: list[str] = []
 
     class _Models:
-        async def generate_content(self, **_kwargs):
+        async def generate_content(self, **_kwargs: Any) -> SimpleNamespace:
             calls.append("only")
             return SimpleNamespace(text="not-json", candidates=[], usage_metadata=None)
 
@@ -111,7 +115,7 @@ def test_malformed_qa_response_logging_failure_is_nonfatal(monkeypatch, tmp_path
     video.write_bytes(b"video")
     _install_common(monkeypatch, [client])
 
-    def fragile_warning(message, *_args):
+    def fragile_warning(message: object, *_args: Any) -> None:
         if str(message).startswith("[LiveDubQA] не распарсился"):
             raise RuntimeError("logging unavailable")
 
@@ -132,7 +136,7 @@ def test_malformed_qa_response_logging_failure_is_nonfatal(monkeypatch, tmp_path
     assert calls == ["only"]
 
 
-def test_livedub_qa_503_does_not_expand_by_four_keys(monkeypatch, tmp_path):
+def test_livedub_qa_503_does_not_expand_by_four_keys(monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path) -> None:
     calls: list[str] = []
     clients = [_client(f"c{i}", calls, error=RuntimeError("503 UNAVAILABLE: high demand")) for i in range(1, 5)]
     srt = tmp_path / "dub.srt"
@@ -156,7 +160,9 @@ def test_livedub_qa_503_does_not_expand_by_four_keys(monkeypatch, tmp_path):
     assert calls == ["c1", "c2", "c3"]
 
 
-def test_livedub_qa_503_never_triggers_schema_text_fallback(monkeypatch, tmp_path):
+def test_livedub_qa_503_never_triggers_schema_text_fallback(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     calls: list[str] = []
     client = _client(
         "only",
@@ -184,7 +190,9 @@ def test_livedub_qa_503_never_triggers_schema_text_fallback(monkeypatch, tmp_pat
     assert calls == ["only"]
 
 
-def test_key_bound_original_retries_owner_instead_of_dropping_evidence(monkeypatch, tmp_path):
+def test_key_bound_original_retries_owner_instead_of_dropping_evidence(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     calls: list[str] = []
     owner = _client(
         "owner",
@@ -221,7 +229,9 @@ def test_key_bound_original_retries_owner_instead_of_dropping_evidence(monkeypat
     assert other.aio.files.upload_calls == 0
 
 
-def test_clean_dub_preflight_skips_extraction_and_missing_original(monkeypatch, tmp_path):
+def test_clean_dub_preflight_skips_extraction_and_missing_original(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     calls: list[str] = []
     _install_common(monkeypatch, [_client("unused", calls)])
     video = tmp_path / "dub.mp4"
@@ -249,7 +259,9 @@ def test_clean_dub_preflight_skips_extraction_and_missing_original(monkeypatch, 
     assert calls == []
 
 
-def test_livedub_files_poll_failure_cleans_remote_handle(monkeypatch, tmp_path):
+def test_livedub_files_poll_failure_cleans_remote_handle(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     path = tmp_path / "audio.mp3"
     path.write_bytes(b"audio")
     files = _Files(poll_error=RuntimeError("503 Files API overloaded"))
@@ -262,7 +274,7 @@ def test_livedub_files_poll_failure_cleans_remote_handle(monkeypatch, tmp_path):
         SimpleNamespace(UploadFileConfig=lambda **kwargs: SimpleNamespace(**kwargs)),
     )
 
-    async def no_sleep(_delay):
+    async def no_sleep(_delay: float) -> None:
         return None
 
     monkeypatch.setattr(qa.asyncio, "sleep", no_sleep)

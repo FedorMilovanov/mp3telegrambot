@@ -6,7 +6,7 @@ from core.segment_planner import build_segments_from_timestamps
 from handlers.commands import _build_segments_keyboard, _format_segments_page_text
 
 
-def test_segments_keyboard_paginates_after_eight_items():
+def test_segments_keyboard_paginates_after_eight_items() -> None:
     timestamps = "\n".join(f"{i}:00 Segment {i}" for i in range(20))
     segments = build_segments_from_timestamps(
         timestamps, duration=25 * 60, format_name="qa", end_padding=0, min_segment=10
@@ -23,7 +23,7 @@ def test_segments_keyboard_paginates_after_eight_items():
     assert "segpage:vid:0" in flat2
 
 
-def test_segments_page_text_mentions_page_and_navigation():
+def test_segments_page_text_mentions_page_and_navigation() -> None:
     timestamps = "\n".join(f"{i}:00 Segment {i}" for i in range(20))
     segments = build_segments_from_timestamps(
         timestamps, duration=25 * 60, format_name="qa", end_padding=0, min_segment=10
@@ -35,7 +35,7 @@ def test_segments_page_text_mentions_page_and_navigation():
     assert "9." in text
 
 
-def test_segpage_callback_is_wired():
+def test_segpage_callback_is_wired() -> None:
     callbacks = Path("handlers/callbacks.py").read_text(encoding="utf-8")
     assert 'data.startswith("segpage:")' in callbacks
     assert "_build_segments_keyboard" in callbacks

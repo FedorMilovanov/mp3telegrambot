@@ -33,7 +33,7 @@ EXPECTED = {
 }
 
 
-def test_fonts_dir_exists_and_has_expected_faces():
+def test_fonts_dir_exists_and_has_expected_faces() -> None:
     assert FONTS_DIR.is_dir(), "services/fonts отсутствует — PDF снова упадёт на системные шрифты"
     for name in EXPECTED:
         p = FONTS_DIR / name
@@ -41,20 +41,20 @@ def test_fonts_dir_exists_and_has_expected_faces():
         assert p.stat().st_size > 20_000, f"{name} подозрительно мал — битый файл?"
 
 
-def test_filenames_parse_to_expected_family_and_weight():
+def test_filenames_parse_to_expected_family_and_weight() -> None:
     for name, (family, weight) in EXPECTED.items():
         fam, w, style = _parse_font_filename(name)
         assert fam == family and w == weight and style == "normal", f"{name} -> {(fam, w, style)}"
 
 
-def test_configured_pdf_fonts_are_present():
+def test_configured_pdf_fonts_are_present() -> None:
     # PDF ссылается на эти имена в CSS — они обязаны быть в бандле.
     fams = {_parse_font_filename(p.name)[0] for p in FONTS_DIR.glob("*.ttf")}
     assert PDF_BODY_FONT in fams, f"{PDF_BODY_FONT} не забандлен"
     assert PDF_SANS_FONT in fams, f"{PDF_SANS_FONT} не забандлен"
 
 
-def test_font_face_css_picks_up_bundle():
+def test_font_face_css_picks_up_bundle() -> None:
     css = _build_font_face_css()
     assert css.count("@font-face") == len(EXPECTED)
     fams = set(re.findall(r'font-family: "([^"]+)"', css))
@@ -63,7 +63,7 @@ def test_font_face_css_picks_up_bundle():
     assert "font-weight: 400" in css and "font-weight: 700" in css
 
 
-def test_bundled_fonts_carry_their_license():
+def test_bundled_fonts_carry_their_license() -> None:
     """OFL требует распространять текст лицензии вместе со шрифтами.
 
     Аудит отметил, что шрифты вкоммичены без лицензий: для SIL OFL это прямое

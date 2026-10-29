@@ -1,5 +1,6 @@
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
@@ -8,7 +9,7 @@ from tools import run_factory_media_benchmark as benchmark
 from tools.verify_factory_media_quality import _assert_quality, _timestamp
 
 
-def _passing_report():
+def _passing_report() -> dict[str, Any]:
     return {
         "short": {
             "old_ssim": 0.91,
@@ -29,13 +30,13 @@ def _passing_report():
     }
 
 
-def test_factory_media_evidence_timestamp_is_stable():
+def test_factory_media_evidence_timestamp_is_stable() -> None:
     assert _timestamp(0) == "00:00:00"
     assert _timestamp(2309) == "00:38:29"
     assert _timestamp(3661) == "01:01:01"
 
 
-def test_factory_media_evidence_gate_requires_real_quality_gain_and_stream_copy():
+def test_factory_media_evidence_gate_requires_real_quality_gain_and_stream_copy() -> None:
     report = _passing_report()
     _assert_quality(report)
 
@@ -55,7 +56,7 @@ def test_factory_media_evidence_gate_requires_real_quality_gain_and_stream_copy(
         _assert_quality(broken)
 
 
-def test_factory_media_evidence_gate_requires_h264_and_1080_ceiling():
+def test_factory_media_evidence_gate_requires_h264_and_1080_ceiling() -> None:
     broken = _passing_report()
     broken["long"]["new"]["height"] = 1440
     with pytest.raises(RuntimeError, match="1080p"):
@@ -67,16 +68,16 @@ def test_factory_media_evidence_gate_requires_h264_and_1080_ceiling():
         _assert_quality(broken)
 
 
-def test_factory_language_prompt_typo_does_not_regress():
+def test_factory_language_prompt_typo_does_not_regress() -> None:
     source = Path("services/shorts_factory_source.py").read_text(encoding="utf-8")
     assert "доминирующий фактически услышанный язык речи" in source
     assert "услышаннный" not in source
 
 
-def test_factory_benchmark_uses_resolved_ffmpeg(monkeypatch, tmp_path):
+def test_factory_benchmark_uses_resolved_ffmpeg(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     output = tmp_path / "source.mp4"
 
-    def complete(command, **_kwargs):
+    def complete(command: list[str], **_kwargs: object) -> SimpleNamespace:
         output.write_bytes(b"x" * 2048)
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
@@ -90,7 +91,7 @@ def test_factory_benchmark_uses_resolved_ffmpeg(monkeypatch, tmp_path):
     assert run.call_args.args[0][-1] == str(output)
 
 
-def test_durable_factory_benchmark_is_provider_independent():
+def test_durable_factory_benchmark_is_provider_independent() -> None:
     source = Path("tools/run_factory_media_benchmark.py").read_text(encoding="utf-8")
 
     assert "testsrc2=size=1920x1080:rate=30:duration=8" in source

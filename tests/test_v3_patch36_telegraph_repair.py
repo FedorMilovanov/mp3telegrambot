@@ -2,6 +2,9 @@
 
 import asyncio
 from pathlib import Path
+from typing import Any
+
+import pytest
 
 from core.generated_pages import build_generated_page_record, get_generated_page_record, save_generated_page_record
 from services.telegraph_repair import (
@@ -14,7 +17,7 @@ from services.telegraph_repair import (
 )
 
 
-def test_telegraph_repair_url_path_and_record_url_collection():
+def test_telegraph_repair_url_path_and_record_url_collection() -> None:
     assert telegraph_path_from_url("https://telegra.ph/Page-05-27") == "Page-05-27"
     assert telegraph_path_from_url("https://example.com/Page") == ""
     record = {
@@ -26,7 +29,7 @@ def test_telegraph_repair_url_path_and_record_url_collection():
     assert collect_record_page_urls(record) == ["https://telegra.ph/syn", "https://telegra.ph/study"]
 
 
-def test_repair_result_formatter_reports_ok_changed_and_errors():
+def test_repair_result_formatter_reports_ok_changed_and_errors() -> None:
     text = format_repair_results(
         [
             TelegraphRepairResult(url="https://telegra.ph/a", ok=True, changed=True, audit_summary="warn"),
@@ -39,7 +42,7 @@ def test_repair_result_formatter_reports_ok_changed_and_errors():
     assert "audit: warn" in text
 
 
-def test_generated_page_exact_lookup_supports_repair_target(tmp_path):
+def test_generated_page_exact_lookup_supports_repair_target(tmp_path: Path) -> None:
     record = build_generated_page_record(
         video_id="vid-repair",
         source_url="https://youtu.be/x",
@@ -55,7 +58,7 @@ def test_generated_page_exact_lookup_supports_repair_target(tmp_path):
     assert collect_record_page_urls(loaded) == ["https://telegra.ph/syn", "https://telegra.ph/study"]
 
 
-def test_batch_repair_formatter_summarizes_records():
+def test_batch_repair_formatter_summarizes_records() -> None:
     batch = [
         TelegraphRepairBatchItem(
             video_id="v1",
@@ -70,7 +73,7 @@ def test_batch_repair_formatter_summarizes_records():
     assert "T [v1]" in text
 
 
-def test_repair_command_is_registered_and_documented():
+def test_repair_command_is_registered_and_documented() -> None:
     commands = Path("handlers/commands.py").read_text(encoding="utf-8")
     main = Path("main.py").read_text(encoding="utf-8")
     assert "async def repairpage_command" in commands
@@ -83,7 +86,7 @@ def test_repair_command_is_registered_and_documented():
     assert 'CommandHandler("repairrecent"' in main
 
 
-def test_archive_repair_status_updates_markdown_exports(tmp_path):
+def test_archive_repair_status_updates_markdown_exports(tmp_path: Path) -> None:
     from core.generated_pages import update_generated_page_repair_status
 
     record = build_generated_page_record(
@@ -103,6 +106,7 @@ def test_archive_repair_status_updates_markdown_exports(tmp_path):
         base_dir=tmp_path,
     )
     loaded = get_generated_page_record("repair-meta", base_dir=tmp_path)
+    assert loaded is not None
     assert loaded["repair_count"] == 1
     assert loaded["last_repair_changed_pages"] == 2
     assert "editPage_failed" in loaded["last_repair_errors"]
@@ -112,13 +116,13 @@ def test_archive_repair_status_updates_markdown_exports(tmp_path):
     assert "Repair errors: editPage_failed" in latest
 
 
-def test_repair_commands_persist_repair_status():
+def test_repair_commands_persist_repair_status() -> None:
     commands = Path("handlers/commands.py").read_text(encoding="utf-8")
     assert "aupdate_generated_page_repair_status" in commands
     assert "last_repair" not in commands  # persistence is via helper, not manual SQL
 
 
-def test_repair_service_skips_edit_when_postprocess_makes_no_changes():
+def test_repair_service_skips_edit_when_postprocess_makes_no_changes() -> None:
     src = Path("services/telegraph_repair.py").read_text(encoding="utf-8")
     assert "if not changed:" in src
     assert "no deterministic changes" in src
@@ -126,7 +130,7 @@ def test_repair_service_skips_edit_when_postprocess_makes_no_changes():
     assert src.find("if not changed:") < src.find("ok = await _edit_telegraph_page")
 
 
-def test_repair_extracts_chained_telegraph_next_part_urls():
+def test_repair_extracts_chained_telegraph_next_part_urls() -> None:
     from services.telegraph_repair import _extract_next_part_urls
 
     nodes = [
@@ -142,7 +146,7 @@ def test_repair_extracts_chained_telegraph_next_part_urls():
     assert _extract_next_part_urls(nodes) == ["https://telegra.ph/Part-2"]
 
 
-def test_repair_record_expands_chained_multipart_pages():
+def test_repair_record_expands_chained_multipart_pages() -> None:
     src = Path("services/telegraph_repair.py").read_text(encoding="utf-8")
     assert "expand_telegraph_page_chain" in src
     assert "chain = await expand_telegraph_page_chain(url)" in src
@@ -150,22 +154,24 @@ def test_repair_record_expands_chained_multipart_pages():
     assert "chain or [url]" in src
 
 
-def test_repair_chain_default_does_not_truncate_after_twelve_pages(monkeypatch):
+def test_repair_chain_default_does_not_truncate_after_twelve_pages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from services import telegraph_repair
 
     total = 15
 
     class Response:
-        def __init__(self, payload):
+        def __init__(self, payload: dict[str, Any]) -> None:
             self._payload = payload
 
-        def json(self):
+        def json(self) -> dict[str, Any]:
             return self._payload
 
-    def fake_get(url, **_kwargs):
+    def fake_get(url: str, **_kwargs: Any) -> Response:
         path = url.split("/getPage/", 1)[1].split("?", 1)[0]
         index = int(path.rsplit("-", 1)[1])
-        children = []
+        children: list[dict[str, Any]] = []
         if index < total:
             children = [
                 {
@@ -183,14 +189,14 @@ def test_repair_chain_default_does_not_truncate_after_twelve_pages(monkeypatch):
     assert chain[-1] == "https://telegra.ph/Chain-15"
 
 
-def test_repair_chain_explicit_limit_remains_available(monkeypatch):
+def test_repair_chain_explicit_limit_remains_available(monkeypatch: pytest.MonkeyPatch) -> None:
     from services import telegraph_repair
 
     class Response:
-        def __init__(self, path):
+        def __init__(self, path: str) -> None:
             self.path = path
 
-        def json(self):
+        def json(self) -> dict[str, Any]:
             index = int(self.path.rsplit("-", 1)[1])
             return {
                 "ok": True,
@@ -206,7 +212,7 @@ def test_repair_chain_explicit_limit_remains_available(monkeypatch):
                 },
             }
 
-    def fake_get(url, **_kwargs):
+    def fake_get(url: str, **_kwargs: Any) -> Response:
         return Response(url.split("/getPage/", 1)[1].split("?", 1)[0])
 
     monkeypatch.setattr(telegraph_repair.requests, "get", fake_get)
@@ -218,7 +224,7 @@ def test_repair_chain_explicit_limit_remains_available(monkeypatch):
     ]
 
 
-def test_repair_chain_has_suffix_probe_for_outdated_first_part():
+def test_repair_chain_has_suffix_probe_for_outdated_first_part() -> None:
     from services.telegraph_repair import guess_telegraph_part_url
 
     assert guess_telegraph_part_url("https://telegra.ph/Page-06-17", 2) == "https://telegra.ph/Page-06-17-2"
@@ -227,16 +233,16 @@ def test_repair_chain_has_suffix_probe_for_outdated_first_part():
     assert "guess_telegraph_part_url(start, 2)" in src
 
 
-def test_repair_chain_survives_suffix_probe_failure(monkeypatch):
+def test_repair_chain_survives_suffix_probe_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     from services import telegraph_repair
 
-    calls = []
+    calls: list[str] = []
 
     class Response:
-        def json(self):
+        def json(self) -> dict[str, Any]:
             return {"ok": True, "result": {"content": []}}
 
-    def fake_get(url, **_kwargs):
+    def fake_get(url: str, **_kwargs: Any) -> Response:
         calls.append(url)
         if "return_content=false" in url:
             raise RuntimeError("suffix probe unavailable")

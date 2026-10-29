@@ -5,11 +5,11 @@ from __future__ import annotations
 
 import re
 import shlex
-import shutil
-import subprocess
-import sys
+import shutil as shutil
+import subprocess as subprocess
+import sys as sys
 from dataclasses import dataclass
-from importlib import metadata
+from importlib import metadata as metadata
 from pathlib import Path
 
 from core.bgutil_pin import (

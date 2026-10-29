@@ -22,8 +22,8 @@ import json
 import os
 import signal
 import socket
-import subprocess
-import time
+import subprocess as subprocess
+import time as time
 from pathlib import Path
 from typing import Any, IO
 from urllib.error import HTTPError, URLError

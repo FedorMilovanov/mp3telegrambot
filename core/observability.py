@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from core.database import _db_conn
 import asyncio
-import contextlib
 import html
 import json
 import logging
@@ -18,6 +17,7 @@ import time
 from typing import Any
 
 from core.globals import DB_PATH
+from core.sqlite_schema import add_column_if_missing, require_columns
 from core.candidate_schema import parse_validation_summary
 
 logger = logging.getLogger(__name__)
@@ -100,6 +100,8 @@ def extract_finish_reason(response: Any) -> str:
 
 def _ensure_gemini_runs_table(conn: sqlite3.Connection) -> None:
     conn.execute("PRAGMA busy_timeout=5000")
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS gemini_runs (
             id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -128,8 +130,13 @@ def _ensure_gemini_runs_table(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_gemini_runs_ts ON gemini_runs(ts)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_gemini_runs_task_ts ON gemini_runs(task, ts)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_gemini_runs_video_id ON gemini_runs(video_id)")
-    with contextlib.suppress(sqlite3.OperationalError):
-        conn.execute("ALTER TABLE gemini_runs ADD COLUMN validation_summary TEXT DEFAULT ''")
+    add_column_if_missing(
+        conn,
+        table="gemini_runs",
+        column="validation_summary",
+        declaration="TEXT DEFAULT ''",
+    )
+    require_columns(conn, table="gemini_runs", expected=("validation_summary",))
 
 
 def log_gemini_run(

@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-def test_readme_matches_current_startup_and_dual_audio_contract():
+def test_readme_matches_current_startup_and_dual_audio_contract() -> None:
     readme = Path("README.md").read_text(encoding="utf-8")
 
     assert "TELEGRAM_API_ID" in readme

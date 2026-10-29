@@ -11,7 +11,9 @@ shared cancellation-safe subprocess lifecycle.
 import asyncio
 from pathlib import Path
 import sys
-from types import SimpleNamespace
+from collections.abc import Awaitable
+from types import SimpleNamespace, TracebackType
+from typing import Any, Literal
 
 import pytest
 
@@ -21,13 +23,13 @@ from services import ffmpeg
 SRC = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
 
 
-def test_inprocess_info_helper_exists():
+def test_inprocess_info_helper_exists() -> None:
     assert "async def _ytdlp_info_inprocess(" in SRC
     assert "yt_dlp.YoutubeDL(opts)" in SRC
     assert "extract_info(url, download=False)" in SRC
 
 
-def test_inprocess_tried_before_owned_subprocess_fallback():
+def test_inprocess_tried_before_owned_subprocess_fallback() -> None:
     inproc = SRC.find("info_dict = await _ytdlp_info_inprocess(url, _info_timeout)")
     condition = SRC.find("if info_dict is None:", inproc)
     fallback = SRC.find("info_proc = await run_cancellable_process(", condition)
@@ -38,7 +40,7 @@ def test_inprocess_tried_before_owned_subprocess_fallback():
     assert "subprocess.run(info_cmd" not in SRC
 
 
-def test_inprocess_carries_cookies_and_proxy():
+def test_inprocess_carries_cookies_and_proxy() -> None:
     """The in-process attempt must retain cookie/proxy/js-runtime parity."""
     seg = SRC.split("async def _ytdlp_info_inprocess(", 1)[1][:3000]
     assert "YTDLP_BASE_ARGS" in seg
@@ -47,31 +49,36 @@ def test_inprocess_carries_cookies_and_proxy():
     assert "player_client" not in seg
 
 
-def test_inprocess_returns_none_on_finished_failure_for_fallback():
+def test_inprocess_returns_none_on_finished_failure_for_fallback() -> None:
     seg = SRC.split("async def _ytdlp_info_inprocess(", 1)[1][:3000]
     assert "return None" in seg
     assert "except asyncio.CancelledError:" in seg
     assert "raise" in seg
 
 
-def _run_info(url="https://youtu.be/video", timeout=7):
+def _run_info(url: str = "https://youtu.be/video", timeout: int = 7) -> dict[str, Any] | None:
     return asyncio.run(main_pipeline._ytdlp_info_inprocess(url, timeout))
 
 
-def _install_ydl(monkeypatch, info, captured):
+def _install_ydl(monkeypatch: pytest.MonkeyPatch, info: dict[str, Any], captured: dict[str, Any]) -> None:
     import yt_dlp
 
     class _YoutubeDL:
-        def __init__(self, opts):
+        def __init__(self, opts: dict[str, Any]) -> None:
             captured["opts"] = opts
 
-        def __enter__(self):
+        def __enter__(self) -> "_YoutubeDL":
             return self
 
-        def __exit__(self, exc_type, exc, tb):
+        def __exit__(
+            self,
+            exc_type: type[BaseException] | None,
+            exc: BaseException | None,
+            tb: TracebackType | None,
+        ) -> Literal[False]:
             return False
 
-        def extract_info(self, url, download=False):
+        def extract_info(self, url: str, download: bool = False) -> dict[str, Any]:
             captured["url"] = url
             captured["download"] = download
             return info
@@ -79,24 +86,24 @@ def _install_ydl(monkeypatch, info, captured):
     monkeypatch.setattr(yt_dlp, "YoutubeDL", _YoutubeDL)
 
 
-def test_inprocess_import_failure_allows_subprocess_fallback(monkeypatch):
+def test_inprocess_import_failure_allows_subprocess_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(sys.modules, "yt_dlp", None)
     assert _run_info() is None
 
 
-def test_inprocess_parse_failure_allows_subprocess_fallback(monkeypatch):
+def test_inprocess_parse_failure_allows_subprocess_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     import yt_dlp
 
     monkeypatch.setattr(ffmpeg, "YTDLP_BASE_ARGS", ["yt-dlp", "--quiet"])
 
-    def fail_parse(_flags):
+    def fail_parse(_flags: list[str]) -> None:
         raise RuntimeError("bad options")
 
     monkeypatch.setattr(yt_dlp, "parse_options", fail_parse)
     assert _run_info() is None
 
 
-def test_inprocess_rejects_missing_or_non_dict_options(monkeypatch):
+def test_inprocess_rejects_missing_or_non_dict_options(monkeypatch: pytest.MonkeyPatch) -> None:
     import yt_dlp
 
     # No yt-dlp token: the argument-normalization loop runs to exhaustion.
@@ -109,10 +116,12 @@ def test_inprocess_rejects_missing_or_non_dict_options(monkeypatch):
     assert _run_info() is None
 
 
-def test_inprocess_success_preserves_options_and_reduces_playlist(monkeypatch):
+def test_inprocess_success_preserves_options_and_reduces_playlist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import yt_dlp
 
-    captured = {}
+    captured: dict[str, Any] = {}
     monkeypatch.setattr(ffmpeg, "YTDLP_BASE_ARGS", ["yt-dlp", "--quiet"])
     monkeypatch.setattr(
         yt_dlp,
@@ -121,7 +130,7 @@ def test_inprocess_success_preserves_options_and_reduces_playlist(monkeypatch):
     )
     _install_ydl(monkeypatch, {"entries": [{}, {"id": "first"}]}, captured)
 
-    async def owned(awaitable, timeout):
+    async def owned(awaitable: Awaitable[Any], timeout: float) -> tuple[Any, bool]:
         captured["timeout"] = timeout
         return await awaitable, False
 
@@ -134,10 +143,12 @@ def test_inprocess_success_preserves_options_and_reduces_playlist(monkeypatch):
     assert captured["timeout"] == 7
 
 
-def test_inprocess_tuple_options_and_late_result_are_preserved(monkeypatch):
+def test_inprocess_tuple_options_and_late_result_are_preserved(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import yt_dlp
 
-    captured = {}
+    captured: dict[str, Any] = {}
     monkeypatch.setattr(ffmpeg, "YTDLP_BASE_ARGS", ["yt-dlp"])
     monkeypatch.setattr(
         yt_dlp,
@@ -146,7 +157,7 @@ def test_inprocess_tuple_options_and_late_result_are_preserved(monkeypatch):
     )
     _install_ydl(monkeypatch, {"id": "late"}, captured)
 
-    async def owned(awaitable, timeout):
+    async def owned(awaitable: Awaitable[Any], timeout: float) -> tuple[Any, bool]:
         return await awaitable, True
 
     monkeypatch.setattr(main_pipeline, "await_owned_with_soft_timeout", owned)
@@ -154,10 +165,10 @@ def test_inprocess_tuple_options_and_late_result_are_preserved(monkeypatch):
     assert captured["opts"]["socket_timeout"] == 12
 
 
-def test_inprocess_finished_failure_returns_none_after_owned_await(monkeypatch):
+def test_inprocess_finished_failure_returns_none_after_owned_await(monkeypatch: pytest.MonkeyPatch) -> None:
     import yt_dlp
 
-    captured = {}
+    captured: dict[str, Any] = {}
     monkeypatch.setattr(ffmpeg, "YTDLP_BASE_ARGS", ["yt-dlp"])
     monkeypatch.setattr(
         yt_dlp,
@@ -166,7 +177,7 @@ def test_inprocess_finished_failure_returns_none_after_owned_await(monkeypatch):
     )
     _install_ydl(monkeypatch, {"id": "unused"}, captured)
 
-    async def owned(awaitable, timeout):
+    async def owned(awaitable: Awaitable[Any], timeout: float) -> tuple[Any, bool]:
         await awaitable
         raise RuntimeError("extract failed")
 
@@ -174,10 +185,10 @@ def test_inprocess_finished_failure_returns_none_after_owned_await(monkeypatch):
     assert _run_info() is None
 
 
-def test_inprocess_cancellation_is_not_converted_to_fallback(monkeypatch):
+def test_inprocess_cancellation_is_not_converted_to_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     import yt_dlp
 
-    captured = {}
+    captured: dict[str, Any] = {}
     monkeypatch.setattr(ffmpeg, "YTDLP_BASE_ARGS", ["yt-dlp"])
     monkeypatch.setattr(
         yt_dlp,
@@ -186,7 +197,7 @@ def test_inprocess_cancellation_is_not_converted_to_fallback(monkeypatch):
     )
     _install_ydl(monkeypatch, {"id": "unused"}, captured)
 
-    async def owned(awaitable, timeout):
+    async def owned(awaitable: Awaitable[Any], timeout: float) -> tuple[Any, bool]:
         await awaitable
         raise asyncio.CancelledError
 

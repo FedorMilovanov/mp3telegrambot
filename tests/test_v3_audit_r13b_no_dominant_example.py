@@ -26,7 +26,7 @@ _NOT_A_TERM = {"Original Title", "Original Author"}
 _MECHANICAL_EXAMPLE_ALLOWLIST = {"Total Depravity"}
 
 
-def test_no_theological_term_dominates_study_prompt():
+def test_no_theological_term_dominates_study_prompt() -> None:
     counts = Counter(m for m in _TITLE_CASE_PHRASE_RE.findall(STUDY_ANALYSIS_PROMPT) if m not in _NOT_A_TERM)
     offenders = {term: n for term, n in counts.items() if n > 5 and term not in _MECHANICAL_EXAMPLE_ALLOWLIST}
     assert not offenders, (
@@ -35,13 +35,13 @@ def test_no_theological_term_dominates_study_prompt():
     )
 
 
-def test_no_theological_term_dominates_reflection_prompt():
+def test_no_theological_term_dominates_reflection_prompt() -> None:
     counts = Counter(m for m in _TITLE_CASE_PHRASE_RE.findall(REFLECTION_APPLICATION_PROMPT) if m not in _NOT_A_TERM)
     offenders = {term: n for term, n in counts.items() if n > 5}
     assert not offenders, f"термин(ы) повторяются как доминирующий пример: {offenders}"
 
 
-def test_agents_md_documents_the_anchoring_rule():
+def test_agents_md_documents_the_anchoring_rule() -> None:
     from pathlib import Path
 
     agents = Path(__file__).resolve().parents[1].joinpath("AGENTS.md").read_text(encoding="utf-8")

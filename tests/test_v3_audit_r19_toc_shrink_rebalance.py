@@ -41,7 +41,9 @@ def _telegraph_src() -> str:
 # ── 1. Алгоритм сдвига секций (симуляция, тот же порядок операций) ──
 
 
-def _simulate_shrink(part_secs, next_secs, *, fits_when_len_lte):
+def _simulate_shrink(
+    part_secs: list[str], next_secs: list[str], *, fits_when_len_lte: int
+) -> tuple[list[str], list[str], int, bool]:
     """Тот же цикл, что в create_telegraph_synopsis: пока не влезло и
     секций больше одной — переносим последнюю секцию part_secs в начало
     next_secs. `fits_when_len_lte` — оракул вместо реального editPage."""
@@ -56,7 +58,7 @@ def _simulate_shrink(part_secs, next_secs, *, fits_when_len_lte):
     return part_secs, next_secs, attempts, len(part_secs) <= fits_when_len_lte
 
 
-def test_shrink_loop_moves_trailing_sections_preserving_order():
+def test_shrink_loop_moves_trailing_sections_preserving_order() -> None:
     part_secs = ["A", "B", "C", "D", "E"]
     next_secs = ["F", "G", "H"]
     shrunk, grown, attempts, fit = _simulate_shrink(part_secs, next_secs, fits_when_len_lte=2)
@@ -65,7 +67,7 @@ def test_shrink_loop_moves_trailing_sections_preserving_order():
     assert grown == ["C", "D", "E", "F", "G", "H"], f"перенесённые секции должны сохранить исходный порядок: {grown}"
 
 
-def test_shrink_loop_stops_at_single_section_if_still_too_big():
+def test_shrink_loop_stops_at_single_section_if_still_too_big() -> None:
     """Если не влезает даже с 1 секцией — цикл останавливается (дальше
     в реальном коде идёт последний резерв: выбросить оглавление)."""
     part_secs = ["A", "B", "C"]
@@ -76,7 +78,7 @@ def test_shrink_loop_stops_at_single_section_if_still_too_big():
     assert grown == ["B", "C", "D"]
 
 
-def test_global_numbering_correct_after_shrink():
+def test_global_numbering_correct_after_shrink() -> None:
     """После переноса 3 секций из части 1 в часть 2 (5→2 в part[0]),
     смещение для сквозной нумерации части 2 должно считаться от НОВОЙ
     (сжатой) длины part[0], а не от старой."""
@@ -92,7 +94,7 @@ def test_global_numbering_correct_after_shrink():
 # ── 2. Структурные проверки источника ────────────────────────────
 
 
-def test_shrink_before_drop_helper_present():
+def test_shrink_before_drop_helper_present() -> None:
     src = _telegraph_src()
     assert "async def _build_part_nodes_edit(" in src
     assert src.count("_build_part_nodes_edit(i") >= 2 or src.count("_build_part_nodes_edit(") >= 3, (
@@ -101,7 +103,7 @@ def test_shrink_before_drop_helper_present():
     )
 
 
-def test_shrink_attempted_before_dropping_outline():
+def test_shrink_attempted_before_dropping_outline() -> None:
     """AUDIT R39: перенос секций между частями (shrink) УБРАН — он терял секцию,
     если принимающая часть тоже не влезала (двойной overflow), а пайплайн при
     этом рапортовал успех. Осталась безопасная замена: пере-издать часть БЕЗ
@@ -112,14 +114,14 @@ def test_shrink_attempted_before_dropping_outline():
     assert "include_outline=False" in src  # безопасный drop-TOC fallback
 
 
-def test_shrink_guarded_by_next_part_existing():
+def test_shrink_guarded_by_next_part_existing() -> None:
     """AUDIT R39: раз переноса нет — нет и его мутаций между частями."""
     src = _telegraph_src()
     assert "_next_secs = [_moved_sec] + _next_secs" not in src
     assert "published_parts[i + 1] = (_next_secs, _next_url)" not in src
 
 
-def test_old_unconditional_drop_toc_fallback_removed():
+def test_old_unconditional_drop_toc_fallback_removed() -> None:
     """Старый код безусловно выбрасывал TOC/mini-outline при первой же
     неудаче editPage — эта строка не должна остаться в источнике."""
     src = _telegraph_src()
@@ -127,7 +129,7 @@ def test_old_unconditional_drop_toc_fallback_removed():
     assert "упала с mini-outline — повтор без него" not in src
 
 
-def test_related_materials_still_attached_in_no_outline_fallback():
+def test_related_materials_still_attached_in_no_outline_fallback() -> None:
     """Раньше финальный fallback (drop outline) собирал ноды вручную и
     терял блок «Читать также» для последней части. Через общий хелпер
     include_outline=False блок related-materials сохраняется."""

@@ -3,10 +3,10 @@
 
 from __future__ import annotations
 
-import asyncio
+import asyncio as asyncio
 import contextlib
 import math
-import os
+import os as os
 import signal
 import subprocess
 import time

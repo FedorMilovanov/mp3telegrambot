@@ -1,3 +1,4 @@
+import pytest
 from types import SimpleNamespace
 
 from services.quiz_generator import (
@@ -9,7 +10,7 @@ from services.quiz_generator import (
 )
 
 
-def test_parse_quiz_json_requires_four_unique_options_and_valid_correct():
+def test_parse_quiz_json_requires_four_unique_options_and_valid_correct() -> None:
     raw = """
     [
       {
@@ -44,7 +45,7 @@ def test_parse_quiz_json_requires_four_unique_options_and_valid_correct():
     ]
 
 
-def test_parse_quiz_json_dedupes_questions_and_trims_lengths():
+def test_parse_quiz_json_dedupes_questions_and_trims_lengths() -> None:
     long_q = "Как " + ("В" * 400)
     raw = str(
         [
@@ -79,7 +80,7 @@ def test_parse_quiz_json_dedupes_questions_and_trims_lengths():
     assert len(parsed[0]["explanation"]) <= 200
 
 
-def test_quiz_candidate_text_skips_thoughts_and_survives_malformed_response():
+def test_quiz_candidate_text_skips_thoughts_and_survives_malformed_response() -> None:
     response = SimpleNamespace(
         candidates=[
             SimpleNamespace(
@@ -97,13 +98,13 @@ def test_quiz_candidate_text_skips_thoughts_and_survives_malformed_response():
 
     class BrokenResponse:
         @property
-        def candidates(self):
+        def candidates(self) -> None:
             raise RuntimeError("malformed response")
 
     assert _extract_quiz_candidate_text(BrokenResponse()) == ""
 
 
-def test_quiz_context_includes_argument_terms_and_timestamps():
+def test_quiz_context_includes_argument_terms_and_timestamps() -> None:
     ctx = _format_ai_context(
         {
             "main_topic": "Главная тема",
@@ -119,14 +120,14 @@ def test_quiz_context_includes_argument_terms_and_timestamps():
         assert needle in ctx
 
 
-def test_quiz_schema_requires_expected_fields():
+def test_quiz_schema_requires_expected_fields() -> None:
     schema = quiz_response_schema()
     item = schema["items"]
     assert set(item["required"]) == {"question", "options", "correct", "explanation"}
     assert item["properties"]["options"]["type"] == "array"
 
 
-def test_quiz_env_int_is_robust(monkeypatch):
+def test_quiz_env_int_is_robust(monkeypatch: pytest.MonkeyPatch) -> None:
     from services.quiz_generator import _env_int
 
     monkeypatch.setenv("QUIZ_QUESTION_COUNT", "not-an-int")
@@ -137,7 +138,7 @@ def test_quiz_env_int_is_robust(monkeypatch):
     assert _env_int("QUIZ_QUESTION_COUNT", 10) == 1
 
 
-def test_quiz_prompt_avoids_literal_bad_third_person_example():
+def test_quiz_prompt_avoids_literal_bad_third_person_example() -> None:
     from services.quiz_generator import QUIZ_PROMPT
 
     assert "автор показывает" not in QUIZ_PROMPT
@@ -146,7 +147,7 @@ def test_quiz_prompt_avoids_literal_bad_third_person_example():
     assert "карикатуры" in QUIZ_PROMPT
 
 
-def test_parse_quiz_json_accepts_wrapped_questions_and_letter_or_text_answer():
+def test_parse_quiz_json_accepts_wrapped_questions_and_letter_or_text_answer() -> None:
     raw = """
     {"questions": [
       {
@@ -177,7 +178,7 @@ def test_parse_quiz_json_accepts_wrapped_questions_and_letter_or_text_answer():
     assert parsed and [q["correct"] for q in parsed] == [0, 0]
 
 
-def test_parse_quiz_json_rejects_all_or_none_style_options():
+def test_parse_quiz_json_rejects_all_or_none_style_options() -> None:
     raw = """
     [
       {
@@ -207,7 +208,7 @@ def test_parse_quiz_json_rejects_all_or_none_style_options():
     assert _parse_quiz_json(raw) is None
 
 
-def test_parse_quiz_json_accepts_one_based_and_cyrillic_letter_answers():
+def test_parse_quiz_json_accepts_one_based_and_cyrillic_letter_answers() -> None:
     raw = """
     [
       {
@@ -249,7 +250,7 @@ def test_parse_quiz_json_accepts_one_based_and_cyrillic_letter_answers():
     assert parsed and [q["correct"] for q in parsed] == [0, 2, 3]
 
 
-def test_parse_quiz_json_rejects_meta_questions_and_placeholder_options():
+def test_parse_quiz_json_rejects_meta_questions_and_placeholder_options() -> None:
     raw = """
     [
       {
@@ -279,7 +280,7 @@ def test_parse_quiz_json_rejects_meta_questions_and_placeholder_options():
     assert _parse_quiz_json(raw) is None
 
 
-def test_parse_quiz_json_rejects_obvious_and_category_mismatched_distractors():
+def test_parse_quiz_json_rejects_obvious_and_category_mismatched_distractors() -> None:
     raw = """
     [
       {
@@ -313,7 +314,7 @@ def test_parse_quiz_json_rejects_obvious_and_category_mismatched_distractors():
     assert result is None or len(result) < 2
 
 
-def test_sanitize_poll_payload_enforces_telegram_limits_and_quality():
+def test_sanitize_poll_payload_enforces_telegram_limits_and_quality() -> None:
     payload = _sanitize_poll_payload(
         {
             "question": "Почему буквальное чтение дней творения связано с авторитетом Писания" + " очень" * 80,
@@ -364,7 +365,7 @@ def test_sanitize_poll_payload_enforces_telegram_limits_and_quality():
     )
 
 
-def test_reflection_question_normalizer_repairs_markers_dedupes_and_filters():
+def test_reflection_question_normalizer_repairs_markers_dedupes_and_filters() -> None:
     from services.telegraph_pages import _normalize_question_items
 
     out = _normalize_question_items(

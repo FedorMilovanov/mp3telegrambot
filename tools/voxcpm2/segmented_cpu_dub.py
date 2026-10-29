@@ -15,7 +15,7 @@ import json
 import math
 import os
 import shutil
-import subprocess
+import subprocess as subprocess
 import sys
 import time
 from pathlib import Path

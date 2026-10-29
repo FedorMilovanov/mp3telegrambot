@@ -3,7 +3,7 @@
 from core.text_utils import find_mixed_greek_cyrillic_tokens, normalize_common_typos
 
 
-def test_hemera_mixed_cyrillic_letters_are_fixed():
+def test_hemera_mixed_cyrillic_letters_are_fixed() -> None:
     bad = "• **κυριακὴ ἡμέра** (kyriake hemera) — день Господень. Saturdays-night служения."
     fixed = normalize_common_typos(bad)
     assert "ἡμέρα" in fixed

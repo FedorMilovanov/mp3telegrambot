@@ -25,7 +25,7 @@ from services.shorts_video import _merge_orphan_punctuation, _wrap_chunk_to_line
 
 
 # ── 1. Orphan punctuation merge ──────────────────────────────────────────────
-def test_r47_merges_trailing_punctuation_only_token():
+def test_r47_merges_trailing_punctuation_only_token() -> None:
     words = [
         {"word": "«Тебе", "start": 0.0, "end": 0.3},
         {"word": "нужен", "start": 0.3, "end": 0.6},
@@ -46,7 +46,7 @@ def test_r47_merges_trailing_punctuation_only_token():
     assert merged[2]["end"] == 1.2
 
 
-def test_r47_line_wrap_no_longer_orphans_punctuation():
+def test_r47_line_wrap_no_longer_orphans_punctuation() -> None:
     words = [
         {"word": "«Тебе", "start": 0.0, "end": 0.3},
         {"word": "нужен", "start": 0.3, "end": 0.6},
@@ -64,12 +64,12 @@ def test_r47_line_wrap_no_longer_orphans_punctuation():
         assert not (first_word and first_word[0] in '?!.,»"'), f"line starts with orphaned punctuation: {line!r}"
 
 
-def test_r47_ordinary_words_unaffected_by_merge():
+def test_r47_ordinary_words_unaffected_by_merge() -> None:
     words = [{"word": "Привет", "start": 0, "end": 0.3}, {"word": "мир", "start": 0.3, "end": 0.6}]
     assert [w["word"] for w in _merge_orphan_punctuation(words)] == ["Привет", "мир"]
 
 
-def test_r47_multiple_trailing_punctuation_tokens_all_merge():
+def test_r47_multiple_trailing_punctuation_tokens_all_merge() -> None:
     words = [
         {"word": "слово", "start": 0, "end": 0.3},
         {"word": ".", "start": 0.3, "end": 0.35},
@@ -79,7 +79,7 @@ def test_r47_multiple_trailing_punctuation_tokens_all_merge():
     assert [w["word"] for w in out] == ["слово..."]
 
 
-def test_r47_leading_punctuation_with_no_prior_word_does_not_crash():
+def test_r47_leading_punctuation_with_no_prior_word_does_not_crash() -> None:
     # edge case: punctuation-only token as the very first element (nothing to
     # merge into) — must not raise, and stays as its own token.
     words = [{"word": "—", "start": 0, "end": 0.1}, {"word": "начало", "start": 0.1, "end": 0.4}]
@@ -87,7 +87,7 @@ def test_r47_leading_punctuation_with_no_prior_word_does_not_crash():
     assert [w["word"] for w in out] == ["—", "начало"]
 
 
-def test_r47_merge_wired_into_both_karaoke_and_plain_pipelines():
+def test_r47_merge_wired_into_both_karaoke_and_plain_pipelines() -> None:
     src = Path("services/shorts_video_impl.py").read_text(encoding="utf-8")
     assert src.count("_merge_orphan_punctuation(all_words)") == 2
     # must run after the existing hyphenated-particle merge in both call sites
@@ -96,7 +96,7 @@ def test_r47_merge_wired_into_both_karaoke_and_plain_pipelines():
 
 
 # ── 2. Static-slide cropdetect override ──────────────────────────────────────
-def test_r47_static_slide_ignores_black_bars_cropdetect():
+def test_r47_static_slide_ignores_black_bars_cropdetect() -> None:
     """R47: cropdetect не годится для дизайн-графики — статичная заставка
     показывается ЦЕЛИКОМ, без обрезки по «чёрным полосам»."""
     src = Path("services/shorts_video_impl.py").read_text(encoding="utf-8")
@@ -106,7 +106,7 @@ def test_r47_static_slide_ignores_black_bars_cropdetect():
     assert 'black_bars = ""' in window
 
 
-def test_r47_black_bars_still_detected_for_real_video_crop_zoom():
+def test_r47_black_bars_still_detected_for_real_video_crop_zoom() -> None:
     # the crop_zoom (real video) path must still use black_bars detection —
     # only the static-slide auto-switch clears it.
     src = Path("services/shorts_video_impl.py").read_text(encoding="utf-8")

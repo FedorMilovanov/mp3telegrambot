@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 import sys
 
 import pytest
@@ -10,11 +11,11 @@ from tools.voxcpm2 import direct_failure_recovery as recovery
 from tools.voxcpm2 import direct_timing_guard as guard
 
 
-def test_structured_failure_advances_exactly_once(tmp_path: Path, monkeypatch) -> None:
-    calls = []
+def test_structured_failure_advances_exactly_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[Path, dict[str, Any], dict[str, Any]]] = []
     item = {"id": 3, "text": "Текст", "start": 0.0, "end": 4.0, "tail_guard": 0.18}
 
-    def original():
+    def original() -> None:
         raise guard.RetryableSynthesisFailure(
             "Сегмент #3: measured failure",
             segment=item,
@@ -23,7 +24,7 @@ def test_structured_failure_advances_exactly_once(tmp_path: Path, monkeypatch) -
             failure_kind="measured_timing_failure",
         )
 
-    def invalidate(work_dir, segment, **kwargs):
+    def invalidate(work_dir: str | Path, segment: dict[str, Any], **kwargs: Any) -> dict[str, int]:
         calls.append((Path(work_dir), segment, kwargs))
         return {"last_scope_epoch": 2}
 
@@ -34,11 +35,11 @@ def test_structured_failure_advances_exactly_once(tmp_path: Path, monkeypatch) -
     assert calls[0][2]["evidence"]["early_stop_kind"] == "measured_timing_failure"
 
 
-def test_blocked_identical_repeat_never_advances(tmp_path: Path, monkeypatch) -> None:
-    calls = []
+def test_blocked_identical_repeat_never_advances(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[object] = []
     item = {"id": 3, "text": "Текст", "start": 0.0, "end": 4.0, "tail_guard": 0.18}
 
-    def original():
+    def original() -> None:
         raise guard.RetryableSynthesisFailure(
             "Сегмент #3: unchanged marker",
             segment=item,
@@ -53,15 +54,15 @@ def test_blocked_identical_repeat_never_advances(tmp_path: Path, monkeypatch) ->
     assert calls == []
 
 
-def test_legacy_message_fallback_supports_equals_flags(tmp_path: Path, monkeypatch) -> None:
+def test_legacy_message_fallback_supports_equals_flags(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     segments = tmp_path / "segments.json"
     segments.write_text(json.dumps([{"id": 3, "text": "Текст"}]), encoding="utf-8")
-    calls = []
+    calls: list[tuple[Path, dict[str, Any], dict[str, Any]]] = []
 
-    def original():
+    def original() -> None:
         raise RuntimeError("Сегмент #3: адаптивный бюджет 3 кандидатов исчерпан")
 
-    def invalidate(work_dir, segment, **kwargs):
+    def invalidate(work_dir: str | Path, segment: dict[str, Any], **kwargs: Any) -> dict[str, int]:
         calls.append((Path(work_dir), segment, kwargs))
         return {"retry_epoch": 1}
 
@@ -72,7 +73,7 @@ def test_legacy_message_fallback_supports_equals_flags(tmp_path: Path, monkeypat
 
 
 def test_unrelated_runtime_error_is_not_intercepted() -> None:
-    def original():
+    def original() -> None:
         raise RuntimeError("ffmpeg missing")
 
     with pytest.raises(RuntimeError, match="ffmpeg missing"):

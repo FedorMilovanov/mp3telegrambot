@@ -13,6 +13,7 @@ import subprocess
 import sys
 import re
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -74,10 +75,10 @@ def reviewed_exception(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
 
 
 @pytest.fixture()
-def fake_pip_audit(monkeypatch: pytest.MonkeyPatch):
-    state: dict[str, object] = {"stdout": _report([]), "returncode": 1}
+def fake_pip_audit(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    state: dict[str, Any] = {"stdout": _report([]), "returncode": 1}
 
-    def fake_run(args, **_kwargs):
+    def fake_run(args: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
         state["args"] = args
         return subprocess.CompletedProcess(args=[], returncode=state["returncode"], stdout=state["stdout"], stderr="")
 
@@ -86,21 +87,25 @@ def fake_pip_audit(monkeypatch: pytest.MonkeyPatch):
     return state
 
 
-def test_clean_lock_has_no_blockers_but_flags_an_unused_exception(fake_pip_audit, reviewed_exception) -> None:
+def test_clean_lock_has_no_blockers_but_flags_an_unused_exception(
+    fake_pip_audit: dict[str, Any], reviewed_exception: dict[str, object]
+) -> None:
     """A real clean report also means every exception is obsolete."""
     report = audit_tool.audit(LOCK)
     assert report["blocking"] == []
     assert report["stale_allow_list_entries"] == [ADVISORY_ID]
 
 
-def test_unknown_vulnerability_is_blocking(fake_pip_audit) -> None:
+def test_unknown_vulnerability_is_blocking(fake_pip_audit: dict[str, Any]) -> None:
     fake_pip_audit["stdout"] = _report([{"id": "CVE-2099-0001", "fix_versions": ["1.0.1"]}], package="requests")
     report = audit_tool.audit(LOCK)
     assert [entry["id"] for entry in report["blocking"]] == ["CVE-2099-0001"]
     assert audit_tool.main([]) == 1
 
 
-def test_the_same_advisory_reported_twice_is_counted_once(fake_pip_audit, reviewed_exception) -> None:
+def test_the_same_advisory_reported_twice_is_counted_once(
+    fake_pip_audit: dict[str, Any], reviewed_exception: dict[str, object]
+) -> None:
     """pip-audit emits one record per alias; a duplicate must not inflate counts."""
     fake_pip_audit["stdout"] = _report(
         [
@@ -114,7 +119,9 @@ def test_the_same_advisory_reported_twice_is_counted_once(fake_pip_audit, review
     assert report["blocking"] == []
 
 
-def test_reviewed_exception_is_allowed_until_its_review_date(fake_pip_audit, reviewed_exception) -> None:
+def test_reviewed_exception_is_allowed_until_its_review_date(
+    fake_pip_audit: dict[str, Any], reviewed_exception: dict[str, object]
+) -> None:
     fake_pip_audit["stdout"] = _report([{"id": ADVISORY_ID, "fix_versions": []}], package=FAKE_PACKAGE)
 
     fresh = audit_tool.audit(LOCK, today=dt.date(2026, 10, 23))
@@ -126,7 +133,9 @@ def test_reviewed_exception_is_allowed_until_its_review_date(fake_pip_audit, rev
     assert "review expired" in expired["blocking"][0]["reason"]
 
 
-def test_exception_does_not_cover_a_different_package(fake_pip_audit, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_exception_does_not_cover_a_different_package(
+    fake_pip_audit: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(
         audit_tool,
         "ALLOWED_ADVISORIES",
@@ -143,13 +152,15 @@ def test_exception_does_not_cover_a_different_package(fake_pip_audit, monkeypatc
     assert report["blocking"]
 
 
-def test_exception_for_an_absent_advisory_is_stale(fake_pip_audit, reviewed_exception) -> None:
+def test_exception_for_an_absent_advisory_is_stale(
+    fake_pip_audit: dict[str, Any], reviewed_exception: dict[str, object]
+) -> None:
     report = audit_tool.audit(LOCK)
     assert report["stale_allow_list_entries"] == [ADVISORY_ID]
     assert audit_tool.main([]) == 1
 
 
-def test_empty_report_fails_closed(fake_pip_audit) -> None:
+def test_empty_report_fails_closed(fake_pip_audit: dict[str, Any]) -> None:
     """An empty report and a clean report must not look the same."""
     for payload in ("{}", '{"dependencies": []}', ""):
         fake_pip_audit["stdout"] = payload
@@ -157,7 +168,7 @@ def test_empty_report_fails_closed(fake_pip_audit) -> None:
         assert [entry["id"] for entry in report["blocking"]] == ["REPORT_EMPTY"], payload
 
 
-def test_report_missing_a_locked_package_fails_closed(fake_pip_audit) -> None:
+def test_report_missing_a_locked_package_fails_closed(fake_pip_audit: dict[str, Any]) -> None:
     payload = json.loads(_report([]))
     payload["dependencies"] = [item for item in payload["dependencies"] if item["name"] != "requests"]
     fake_pip_audit["stdout"] = json.dumps(payload)
@@ -167,7 +178,7 @@ def test_report_missing_a_locked_package_fails_closed(fake_pip_audit) -> None:
     assert report["blocking"][0]["package"] == "requests"
 
 
-def test_exact_lock_is_audited_without_environment_dependent_resolution(fake_pip_audit) -> None:
+def test_exact_lock_is_audited_without_environment_dependent_resolution(fake_pip_audit: dict[str, Any]) -> None:
     """Уже resolved lock не должен терять пины из-за окружения самого pip-audit."""
     audit_tool.audit(LOCK)
 
@@ -176,7 +187,7 @@ def test_exact_lock_is_audited_without_environment_dependent_resolution(fake_pip
     assert "--disable-pip" in args
 
 
-def test_report_auditing_a_different_version_fails_closed(fake_pip_audit) -> None:
+def test_report_auditing_a_different_version_fails_closed(fake_pip_audit: dict[str, Any]) -> None:
     payload = json.loads(_report([]))
     for item in payload["dependencies"]:
         if item["name"] == "pillow":
@@ -188,19 +199,19 @@ def test_report_auditing_a_different_version_fails_closed(fake_pip_audit) -> Non
     assert "11.3.0" in report["blocking"][0]["reason"]
 
 
-def test_unreadable_report_is_not_treated_as_clean(fake_pip_audit) -> None:
+def test_unreadable_report_is_not_treated_as_clean(fake_pip_audit: dict[str, Any]) -> None:
     fake_pip_audit["stdout"] = "WARNING: something went wrong"
     with pytest.raises(SystemExit, match="did not return JSON"):
         audit_tool.audit(LOCK)
 
 
-def test_renamed_report_key_fails_closed(fake_pip_audit) -> None:
+def test_renamed_report_key_fails_closed(fake_pip_audit: dict[str, Any]) -> None:
     fake_pip_audit["stdout"] = json.dumps({"deps": [{"name": "requests", "version": "1"}]})
     report = audit_tool.audit(LOCK)
     assert [entry["id"] for entry in report["blocking"]] == ["REPORT_EMPTY"]
 
 
-def test_coverage_survives_a_name_normalisation_difference(fake_pip_audit) -> None:
+def test_coverage_survives_a_name_normalisation_difference(fake_pip_audit: dict[str, Any]) -> None:
     payload = json.loads(_report([]))
     for item in payload["dependencies"]:
         if item["name"] == "python-dotenv":

@@ -1,26 +1,30 @@
 from __future__ import annotations
+from typing import Any
 
 import asyncio
+from collections.abc import Awaitable, Callable
+
+import pytest
 from types import SimpleNamespace
 
 from services import gemini_capacity_control as control
 from services import livedub_publication_core as publication
 
 
-def test_publication_respects_open_inference_circuit(monkeypatch):
+def test_publication_respects_open_inference_circuit(monkeypatch: pytest.MonkeyPatch) -> None:
     import core.globals as core_globals
 
     calls: list[str] = []
 
     class Models:
-        async def generate_content(self, **_kwargs):
+        async def generate_content(self, **_kwargs: Any) -> SimpleNamespace:
             calls.append("network")
             return SimpleNamespace(text='{"title":"Тема","author":"","description":"Описание"}')
 
     client = SimpleNamespace(aio=SimpleNamespace(models=Models()))
     monkeypatch.setattr(core_globals, "GEMINI_CLIENTS", [client])
 
-    def circuit_open(_domain="inference"):
+    def circuit_open(_domain: str = "inference") -> None:
         raise control.GeminiCapacityCircuitOpen("open")
 
     monkeypatch.setattr(control, "require_domain_available", circuit_open)
@@ -29,7 +33,9 @@ def test_publication_respects_open_inference_circuit(monkeypatch):
     assert calls == []
 
 
-def test_publication_attempts_are_capped_at_three_even_if_env_is_higher(monkeypatch):
+def test_publication_attempts_are_capped_at_three_even_if_env_is_higher(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import core.globals as core_globals
 
     calls: list[str] = []
@@ -38,7 +44,7 @@ def test_publication_attempts_are_capped_at_three_even_if_env_is_higher(monkeypa
         def __init__(self, name: str) -> None:
             self.name = name
 
-        async def generate_content(self, **_kwargs):
+        async def generate_content(self, **_kwargs: Any) -> None:
             calls.append(self.name)
             raise RuntimeError("503 UNAVAILABLE: high demand")
 
@@ -50,7 +56,7 @@ def test_publication_attempts_are_capped_at_three_even_if_env_is_higher(monkeypa
     monkeypatch.setattr(control, "transient_retry_delay", lambda _attempt: 0.0)
     monkeypatch.setattr(control, "note_overload", lambda *_args, **_kwargs: None)
 
-    async def direct(call, *, domain="inference"):
+    async def direct(call: Callable[[], Awaitable[Any]], *, domain: str = "inference") -> Any:
         assert domain == "inference"
         return await call()
 

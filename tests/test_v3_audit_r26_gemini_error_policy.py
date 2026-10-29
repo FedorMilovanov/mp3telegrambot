@@ -14,46 +14,46 @@ from services.gemini_error_policy import (
 )
 
 
-def _err(msg):
+def _err(msg: str) -> Exception:
     return Exception(msg)
 
 
-def test_quota_does_not_trigger_legacy_fallback():
+def test_quota_does_not_trigger_legacy_fallback() -> None:
     d = classify_gemini_error(_err("429 RESOURCE_EXHAUSTED: quota exceeded"))
     assert d.kind == GeminiFailure.QUOTA
     assert d.use_legacy_json_fallback is False
     assert d.defer_stage is True
 
 
-def test_overload_does_not_trigger_legacy_fallback():
+def test_overload_does_not_trigger_legacy_fallback() -> None:
     d = classify_gemini_error(_err("503 UNAVAILABLE: model is overloaded, high demand"))
     assert d.kind == GeminiFailure.OVERLOADED
     assert d.use_legacy_json_fallback is False
 
 
-def test_timeout_does_not_trigger_legacy_fallback():
+def test_timeout_does_not_trigger_legacy_fallback() -> None:
     d = classify_gemini_error(_err("Request timed out"))
     assert d.kind == GeminiFailure.TIMEOUT
     assert d.use_legacy_json_fallback is False
 
 
-def test_schema_error_DOES_trigger_legacy_fallback():
+def test_schema_error_DOES_trigger_legacy_fallback() -> None:
     d = classify_gemini_error(_err("Invalid JSON schema: response_schema not supported"))
     assert d.kind == GeminiFailure.SCHEMA
     assert d.use_legacy_json_fallback is True
 
 
-def test_auth_and_permanent_do_not_retry():
+def test_auth_and_permanent_do_not_retry() -> None:
     assert classify_gemini_error(_err("403 PERMISSION_DENIED")).kind == GeminiFailure.AUTH
     assert classify_gemini_error(_err("weird unknown error")).kind == GeminiFailure.PERMANENT
 
 
-def test_retry_after_seconds_parsed():
+def test_retry_after_seconds_parsed() -> None:
     d = classify_gemini_error(_err("429 quota, retryDelay: 41s please retry in 41s"))
     assert d.retry_after_seconds == 41
 
 
-def test_candidate_generators_gate_legacy_retry_on_classifier():
+def test_candidate_generators_gate_legacy_retry_on_classifier() -> None:
     """Оба генератора кандидатов обязаны спрашивать classify_gemini_error
     перед legacy-JSON retry (а не слепо `if not schema: raise`)."""
     for path in ("services/shorts_candidates.py", "services/render_clips_montage.py"):

@@ -1,10 +1,11 @@
+import pytest
 import logging
 
 from converters.md_telegraph import visible_length
 from pipelines.shorts import _finalize_short_caption_for_delivery
 
 
-def test_final_public_caption_is_logged_after_trim(caplog) -> None:
+def test_final_public_caption_is_logged_after_trim(caplog: pytest.LogCaptureFixture) -> None:
     raw = "Заголовок - Пол Вошер\n\n" + ("Очень длинный текст. " * 90)
 
     with caplog.at_level(logging.INFO, logger="pipelines.shorts"):
@@ -24,7 +25,7 @@ def test_final_public_caption_is_logged_after_trim(caplog) -> None:
     assert f"caption={final!r}" in caplog.text
 
 
-def test_untrimmed_public_caption_is_logged_exactly(caplog) -> None:
+def test_untrimmed_public_caption_is_logged_exactly(caplog: pytest.LogCaptureFixture) -> None:
     raw = "Сомнение — Это Прямое Оскорбление Характера Бога - Пол Вошер"
 
     with caplog.at_level(logging.INFO, logger="pipelines.shorts"):

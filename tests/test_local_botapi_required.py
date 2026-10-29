@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -10,20 +11,20 @@ from services.runtime_manifest import DEFAULT_RUNTIME_FEATURES, RuntimePhase
 
 
 class _RunningProcess:
-    returncode = None
+    returncode: int | None = None
 
-    def poll(self):
+    def poll(self) -> int | None:
         return None
 
 
 class _ExitedProcess:
     returncode = 7
 
-    def poll(self):
+    def poll(self) -> int:
         return self.returncode
 
 
-def _base_env(monkeypatch):
+def _base_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LOCAL_BOT_API_URL", "http://127.0.0.1:8081")
     monkeypatch.setenv("BOT_TOKEN", "123456:test-token")
     monkeypatch.setenv("TELEGRAM_API_ID", "10001")
@@ -34,7 +35,7 @@ def _base_env(monkeypatch):
     monkeypatch.setenv("LOCAL_BOT_API_REQUIRED_TIMEOUT_SEC", "60")
 
 
-def test_healthy_local_server_starts_without_logout_or_restart(monkeypatch):
+def test_healthy_local_server_starts_without_logout_or_restart(monkeypatch: pytest.MonkeyPatch) -> None:
     _base_env(monkeypatch)
     monkeypatch.setattr(required.probe_runtime, "_probe_getme", lambda *_: (True, "@ready"))
     monkeypatch.setattr(
@@ -57,7 +58,7 @@ def test_healthy_local_server_starts_without_logout_or_restart(monkeypatch):
     assert os.environ["TELEGRAM_PROXY_URL"] == ""
 
 
-def test_warming_server_is_reused_without_logout_or_restart(monkeypatch):
+def test_warming_server_is_reused_without_logout_or_restart(monkeypatch: pytest.MonkeyPatch) -> None:
     _base_env(monkeypatch)
     monkeypatch.setattr(required.probe_runtime, "_probe_getme", lambda *_: (False, "warming"))
     monkeypatch.setattr(required.probe_runtime, "_tcp_open", lambda *_args, **_kwargs: True)
@@ -78,23 +79,25 @@ def test_warming_server_is_reused_without_logout_or_restart(monkeypatch):
     assert os.environ["MP3BOT_EFFECTIVE_BOT_API"] == "local"
 
 
-def test_cold_local_uses_one_logout_restart_and_real_getme(monkeypatch):
+def test_cold_local_uses_one_logout_restart_and_real_getme(monkeypatch: pytest.MonkeyPatch) -> None:
     _base_env(monkeypatch)
-    calls = []
+    calls: list[str] = []
     monkeypatch.setattr(required.probe_runtime, "_probe_getme", lambda *_: (False, "offline"))
     monkeypatch.setattr(required.probe_runtime, "_tcp_open", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(required, "_cloud_logout", lambda *_: calls.append("logout"))
-    monkeypatch.setattr(
-        required.process_runtime,
-        "_terminate_managed_server",
-        lambda: calls.append("stop") or [],
-    )
+
+    def stop() -> list[int]:
+        calls.append("stop")
+        return []
+
+    monkeypatch.setattr(required.process_runtime, "_terminate_managed_server", stop)
     monkeypatch.setattr(required.probe_runtime, "_wait_until_port_closes", lambda *_: None)
-    monkeypatch.setattr(
-        required.process_runtime,
-        "_start_server",
-        lambda *_, **__: (calls.append("start") or _RunningProcess(), "botapi-server.log"),
-    )
+
+    def start(*_args: Any, **_kwargs: Any) -> tuple[_RunningProcess, str]:
+        calls.append("start")
+        return _RunningProcess(), "botapi-server.log"
+
+    monkeypatch.setattr(required.process_runtime, "_start_server", start)
     monkeypatch.setattr(required, "_wait_for_ready", lambda *_: (True, "@recovered"))
 
     required.require_local_bot_api()
@@ -105,18 +108,19 @@ def test_cold_local_uses_one_logout_restart_and_real_getme(monkeypatch):
     assert os.environ["CLOUD_MEDIA_AUTO_COMPRESS"] == "0"
 
 
-def test_timeout_leaves_running_server_alive(monkeypatch):
+def test_timeout_leaves_running_server_alive(monkeypatch: pytest.MonkeyPatch) -> None:
     _base_env(monkeypatch)
-    stops = []
+    stops: list[bool] = []
     running = _RunningProcess()
     monkeypatch.setattr(required.probe_runtime, "_probe_getme", lambda *_: (False, "offline"))
     monkeypatch.setattr(required.probe_runtime, "_tcp_open", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(required, "_cloud_logout", lambda *_: None)
-    monkeypatch.setattr(
-        required.process_runtime,
-        "_terminate_managed_server",
-        lambda: stops.append(True) or [],
-    )
+
+    def stop() -> list[int]:
+        stops.append(True)
+        return []
+
+    monkeypatch.setattr(required.process_runtime, "_terminate_managed_server", stop)
     monkeypatch.setattr(required.probe_runtime, "_wait_until_port_closes", lambda *_: None)
     monkeypatch.setattr(
         required.process_runtime,
@@ -139,7 +143,7 @@ def test_timeout_leaves_running_server_alive(monkeypatch):
     assert os.environ.get("MP3BOT_EFFECTIVE_BOT_API") != "cloud"
 
 
-def test_exited_server_reports_exit_without_cloud_fallback(monkeypatch):
+def test_exited_server_reports_exit_without_cloud_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     _base_env(monkeypatch)
     monkeypatch.setattr(required.probe_runtime, "_probe_getme", lambda *_: (False, "offline"))
     monkeypatch.setattr(required.probe_runtime, "_tcp_open", lambda *_args, **_kwargs: False)
@@ -162,17 +166,17 @@ def test_exited_server_reports_exit_without_cloud_fallback(monkeypatch):
         required.require_local_bot_api()
 
 
-def test_timeout_defaults_to_five_minutes(monkeypatch):
+def test_timeout_defaults_to_five_minutes(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("LOCAL_BOT_API_REQUIRED_TIMEOUT_SEC", raising=False)
     assert required._timeout_seconds() == 300
 
 
-def test_socks5h_proxy_is_normalized_for_httpx():
+def test_socks5h_proxy_is_normalized_for_httpx() -> None:
     assert required._normalise_proxy("socks5h://127.0.0.1:10808") == "socks5://127.0.0.1:10808"
     assert required._normalise_proxy("http://127.0.0.1:8080") == "http://127.0.0.1:8080"
 
 
-def test_entrypoint_requires_local_before_importing_main_and_has_no_cloud_adapter():
+def test_entrypoint_requires_local_before_importing_main_and_has_no_cloud_adapter() -> None:
     feature = next(item for item in DEFAULT_RUNTIME_FEATURES if item.feature_id == "local-bot-api")
     assert feature.module == "services.local_botapi_required"
     assert feature.installer == "require_local_bot_api"
@@ -185,7 +189,7 @@ def test_entrypoint_requires_local_before_importing_main_and_has_no_cloud_adapte
     assert "sys.exit(2)" in source
 
 
-def test_env_example_matches_mandatory_local_transport_contract():
+def test_env_example_matches_mandatory_local_transport_contract() -> None:
     env = Path(".env.example").read_text(encoding="utf-8")
     assert "Локальный Telegram Bot API обязателен" in env
     assert "LOCAL_BOT_API_CLOUD_FALLBACK=0" in env

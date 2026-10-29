@@ -5,13 +5,13 @@ from pathlib import Path
 from core.database import SETTINGS_DEFAULTS, SETTINGS_GROUPS, SETTINGS_LABELS
 
 
-def test_segment_subtitle_setting_declared_and_grouped():
+def test_segment_subtitle_setting_declared_and_grouped() -> None:
     assert SETTINGS_DEFAULTS["segments_subtitles"] is True
     assert SETTINGS_LABELS["segments_subtitles"] == "💬 Субтитры сегментов"
     assert "segments_subtitles" in dict(SETTINGS_GROUPS)["🧩 Сегменты"]
 
 
-def test_cutseg_wires_subtitle_pipeline_with_fallback():
+def test_cutseg_wires_subtitle_pipeline_with_fallback() -> None:
     # Subtitle logic is now in services/segment_render.py
     src = Path("services/segment_render.py").read_text(encoding="utf-8")
     assert "transcribe_short_clip" in src
@@ -24,7 +24,7 @@ def test_cutseg_wires_subtitle_pipeline_with_fallback():
     assert "render_and_send_segment" in cmd_src
 
 
-def test_segments_subtitles_do_not_block_segment_render_setting():
+def test_segments_subtitles_do_not_block_segment_render_setting() -> None:
     src = Path("handlers/commands.py").read_text(encoding="utf-8")
     cutseg = src[src.find("async def cutseg_command") :]
     assert 'await asettings_get("segments_render")' in cutseg

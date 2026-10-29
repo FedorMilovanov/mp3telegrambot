@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Any
 
 import json
 import math
@@ -79,10 +80,10 @@ def _calm_pair(root: Path) -> tuple[Path, Path, bytes, str]:
     return output, report, output.read_bytes(), report.read_text(encoding="utf-8")
 
 
-def test_short_expressive_wav_restores_calm_pair(monkeypatch, tmp_path: Path) -> None:
+def test_short_expressive_wav_restores_calm_pair(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     output, report, calm_wav, calm_report = _calm_pair(tmp_path)
 
-    def build(**kwargs):
+    def build(**kwargs: Any) -> bool:
         _write_wav(kwargs["output"], seconds=3.8, value=0.15)
         _write_report(
             kwargs["output"].with_suffix(".selection.json"),
@@ -107,10 +108,10 @@ def test_short_expressive_wav_restores_calm_pair(monkeypatch, tmp_path: Path) ->
     assert report.read_text(encoding="utf-8") == calm_report
 
 
-def test_false_builder_result_restores_even_partial_write(monkeypatch, tmp_path: Path) -> None:
+def test_false_builder_result_restores_even_partial_write(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     output, report, calm_wav, calm_report = _calm_pair(tmp_path)
 
-    def build(**kwargs):
+    def build(**kwargs: Any) -> bool:
         kwargs["output"].write_bytes(b"partial")
         kwargs["output"].with_suffix(".selection.json").write_text(
             "partial",
@@ -133,10 +134,10 @@ def test_false_builder_result_restores_even_partial_write(monkeypatch, tmp_path:
     assert report.read_text(encoding="utf-8") == calm_report
 
 
-def test_valid_expressive_pair_commits(monkeypatch, tmp_path: Path) -> None:
+def test_valid_expressive_pair_commits(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     output, report, calm_wav, _calm_report = _calm_pair(tmp_path)
 
-    def build(**kwargs):
+    def build(**kwargs: Any) -> bool:
         _write_wav(kwargs["output"], seconds=6.0, value=0.15)
         _write_report(
             kwargs["output"].with_suffix(".selection.json"),
@@ -162,12 +163,12 @@ def test_valid_expressive_pair_commits(monkeypatch, tmp_path: Path) -> None:
     assert payload["profile"] == "controlled_expressive"
 
 
-def test_similar_expressive_identity_is_committed_and_reported(monkeypatch, tmp_path: Path) -> None:
+def test_similar_expressive_identity_is_committed_and_reported(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     output, report, _calm_wav, _calm_report = _calm_pair(tmp_path)
     identity = tmp_path / "extended_reference.wav"
     _write_voice_tone(identity, seconds=8.0, fundamental=110.0)
 
-    def build(**kwargs):
+    def build(**kwargs: Any) -> bool:
         _write_voice_tone(kwargs["output"], seconds=6.0, fundamental=112.0)
         _write_report(
             kwargs["output"].with_suffix(".selection.json"),
@@ -194,12 +195,12 @@ def test_similar_expressive_identity_is_committed_and_reported(monkeypatch, tmp_
     assert payload["identity_reference"] == str(identity)
 
 
-def test_gross_identity_mismatch_restores_calm(monkeypatch, tmp_path: Path) -> None:
+def test_gross_identity_mismatch_restores_calm(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     output, report, calm_wav, calm_report = _calm_pair(tmp_path)
     identity = tmp_path / "extended_reference.wav"
     _write_voice_tone(identity, seconds=8.0, fundamental=110.0)
 
-    def build(**kwargs):
+    def build(**kwargs: Any) -> bool:
         _write_voice_tone(kwargs["output"], seconds=6.0, fundamental=2400.0)
         _write_report(
             kwargs["output"].with_suffix(".selection.json"),
@@ -226,10 +227,10 @@ def test_gross_identity_mismatch_restores_calm(monkeypatch, tmp_path: Path) -> N
     assert restored_payload["identity_policy"] == controlled_reference_gate.IDENTITY_POLICY
 
 
-def test_builder_exception_restores_then_reraises(monkeypatch, tmp_path: Path) -> None:
+def test_builder_exception_restores_then_reraises(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     output, report, calm_wav, calm_report = _calm_pair(tmp_path)
 
-    def build(**kwargs):
+    def build(**kwargs: Any) -> None:
         kwargs["output"].write_bytes(b"partial")
         raise RuntimeError("builder failed")
 

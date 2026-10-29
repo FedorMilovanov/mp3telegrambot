@@ -1,7 +1,9 @@
+from typing import Any
+
 from services.highlights_quality import refine_fragment_from_transcript
 
 
-def _segment(start: float, end: float, text: str) -> dict:
+def _segment(start: float, end: float, text: str) -> dict[str, Any]:
     return {
         "start": start,
         "end": end,

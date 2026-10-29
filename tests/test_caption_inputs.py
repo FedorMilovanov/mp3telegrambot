@@ -62,28 +62,33 @@ def test_no_analysis_stays_none() -> None:
 def test_short_recording_is_always_complete() -> None:
     """До 10 минут частичное покрытие не считается дефектом."""
     data = with_timestamp_coverage({"timestamps": "00:00 вступление"}, 300)
+    assert data is not None
     assert data["segments_status"] == "complete"
     assert data["timestamp_coverage_ratio"] == pytest.approx(0.0)
 
 
 def test_long_recording_with_low_coverage_is_partial() -> None:
     data = with_timestamp_coverage({"timestamps": "00:00 вступление\n05:00 тема"}, 1200)
+    assert data is not None
     assert data["segments_status"] == "partial"
     assert data["timestamp_coverage_ratio"] == pytest.approx(0.25)
 
 
 def test_long_recording_with_good_coverage_is_complete() -> None:
     data = with_timestamp_coverage({"timestamps": "00:00 a\n25:00 b"}, 1200)
+    assert data is not None
     assert data["segments_status"] == "complete"
 
 
 def test_warning_marks_partial_for_long_recording() -> None:
     data = with_timestamp_coverage({"timestamps": "29:00 конец", "timestamp_coverage_warning": True}, 1200)
+    assert data is not None
     assert data["segments_status"] == "partial"
 
 
 def test_warning_ignored_for_short_recording() -> None:
     data = with_timestamp_coverage({"timestamps": "04:00", "timestamp_coverage_warning": True}, 300)
+    assert data is not None
     assert data["segments_status"] == "complete"
 
 
@@ -108,6 +113,7 @@ def test_trims_timestamp_preview_when_over_limit() -> None:
         timestamp_limit=limit,
         publication=OK_STATUS,
     )
+    assert base is not None
     assert base["_caption_timestamps_trimmed"] is True
     assert base["_caption_timestamps_total"] == 42
     assert base["_caption_timestamps_shown"] == 30
@@ -122,6 +128,7 @@ def test_no_preview_when_within_limit() -> None:
         timestamp_limit=limit,
         publication=OK_STATUS,
     )
+    assert base is not None
     assert "_caption_timestamps_trimmed" not in base
 
 
@@ -134,6 +141,7 @@ def test_partial_publication_warning_requires_analysis() -> None:
         timestamp_limit=limit,
         publication=PARTIAL_STATUS,
     )
+    assert base is not None
     assert base["_partial_publication_warning"] == PARTIAL_STATUS.warning
 
 
@@ -146,6 +154,7 @@ def test_degraded_base_receives_preview_but_not_publication_warning() -> None:
         timestamp_limit=limit,
         publication=PARTIAL_STATUS,
     )
+    assert base is not None
     assert base["_caption_timestamps_shown"] == 20
     assert "_partial_publication_warning" not in base
 
@@ -192,6 +201,7 @@ def test_inputs_combine_links_status_and_base() -> None:
     assert inputs.links.questions == REFL
     assert inputs.rutube_url == "https://rt/1"
     assert inputs.vk_url == ""
+    assert inputs.ai_data is not None
     assert inputs.ai_data["segments_status"] == "complete"
     assert inputs.publication.status == "complete"
     assert inputs.caption_base is not None
@@ -228,6 +238,7 @@ def test_missing_expected_page_is_reported_and_flagged_in_caption() -> None:
     )
     assert inputs.publication.status == "partial"
     assert "reflection" in inputs.publication.missing
+    assert inputs.caption_base is not None
     assert inputs.caption_base["_partial_publication_warning"] == inputs.publication.warning
 
 
@@ -246,4 +257,5 @@ def test_degraded_inputs_have_no_expectations() -> None:
     assert inputs.publication.status == "unknown"
     assert inputs.publication.missing == ()
     assert inputs.publication.warning == ""
+    assert inputs.caption_base is not None
     assert inputs.caption_base["_ai_unavailable_warning"] == "нет Gemini"

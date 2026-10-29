@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Статическая проверка типов для типизированного среза репозитория.
+"""Строгая статическая проверка типов всего репозитория.
 
-Зачем отдельный инструмент, а не строка ``mypy`` в CI: у проверки типов в
-этом репозитории есть **срез**. Полный ``mypy --strict .`` даёт тысячи ошибок
-в легаси ``services/`` и в тестах; включить его целиком — значит получить
-гейт, который всегда красный, и через неделю его отключат. Поэтому
-проверяется ровно то, что уже приведено к нулю, и срез растёт только вперёд.
+Зачем отдельный инструмент, а не строка ``mypy`` в CI: гейт хранит единый
+обязательный срез и понятно различает ошибки типов со сломанным окружением.
+После закрытия repository-wide backlog срез — вся рабочая копия, без
+исключений по умолчанию; возврат к production-only срезу запрещён.
 
 Жёсткость настройки живёт в ``[tool.mypy]`` (``pyproject.toml``), а не здесь:
 один источник правды. Этот модуль отвечает только за то, *что* проверять, и
@@ -41,149 +40,10 @@ class Slice:
     exclude: tuple[str, ...] = field(default=())
 
 
-#: Единственный список того, что проверяется строго. Расширяется по одному
-#: пути за PR и только когда ошибок в нём ноль: «зелёный срез» — контракт,
-#: «почти зелёный» — нет. Тест ``tests/test_typecheck_gate.py`` сверяет этот
-#: список с таблицей в ``docs/typechecking.md``.
-TYPED_SLICES: tuple[Slice, ...] = (
-    Slice("core"),
-    Slice("pipelines"),
-    Slice("converters/__init__.py"),
-    Slice("converters/caption.py"),
-    Slice("converters/md_telegraph.py"),
-    Slice("converters/telegraph_nodes.py"),
-    Slice("handlers/__init__.py"),
-    Slice("handlers/callbacks.py"),
-    Slice("handlers/commands.py"),
-    Slice("handlers/dub_audio_repair.py"),
-    Slice("handlers/dub_commands.py"),
-    Slice("handlers/dub_delivery.py"),
-    Slice("handlers/dub_health.py"),
-    Slice("handlers/dub_multicommand.py"),
-    Slice("handlers/dub_quickstart.py"),
-    Slice("handlers/mode_command.py"),
-    Slice("handlers/dub_studio_registration.py"),
-    Slice("handlers/dub_wizard.py"),
-    Slice("services/__init__.py"),
-    Slice("services/async_process.py"),
-    Slice("services/async_worker.py"),
-    Slice("services/audio_cache_maintenance.py"),
-    Slice("services/bgutil_http_runtime.py"),
-    Slice("services/bgutil_orphan_recovery.py"),
-    Slice("services/bot_lifecycle.py"),
-    Slice("services/clip_renderer.py"),
-    Slice("services/conspect_audit_runtime.py"),
-    Slice("services/conspect_quality_contract.py"),
-    Slice("services/database_migrations.py"),
-    Slice("services/dub_delivery.py"),
-    Slice("services/dub_execution.py"),
-    Slice("services/dub_preflight.py"),
-    Slice("services/dub_reference_strategies.py"),
-    Slice("services/dub_release_health_v64.py"),
-    Slice("services/dub_rendering.py"),
-    Slice("services/dub_studio.py"),
-    Slice("services/dub_studio_runtime.py"),
-    Slice("services/dub_worker.py"),
-    Slice("services/dub_worker_release.py"),
-    Slice("services/eng_subtitles.py"),
-    Slice("services/env_policy.py"),
-    Slice("services/ffmpeg.py"),
-    Slice("services/gemini_analyze.py"),
-    Slice("services/gemini_capacity_control.py"),
-    Slice("services/gemini_error_policy.py"),
-    Slice("services/gemini_max_quality.py"),
-    Slice("services/gemini_model_status.py"),
-    Slice("services/gemini_qa_policy.py"),
-    Slice("services/gemini_quota_domains.py"),
-    Slice("services/gemini_router.py"),
-    Slice("services/health_report.py"),
-    Slice("services/highlights_candidate_gate.py"),
-    Slice("services/highlights_quality.py"),
-    Slice("services/latency_trace.py"),
-    Slice("services/livedub_audio_cache_recovery.py"),
-    Slice("services/livedub_audio_companion.py"),
-    Slice("services/livedub_audio_quality_guard.py"),
-    Slice("services/livedub_delivery_coordinator.py"),
-    Slice("services/livedub_info.py"),
-    Slice("services/livedub_info_evidence.py"),
-    Slice("services/livedub_info_presentation_policy.py"),
-    Slice("services/livedub_long_qa.py"),
-    Slice("services/livedub_mix.py"),
-    Slice("services/livedub_output_policy.py"),
-    Slice("services/livedub_publication.py"),
-    Slice("services/livedub_publication_core.py"),
-    Slice("services/livedub_qa.py"),
-    Slice("services/livedub_qa_hardening.py"),
-    Slice("services/livedub_qa_trust.py"),
-    Slice("services/livedub_quality_runtime.py"),
-    Slice("services/livedub_ru_provenance.py"),
-    Slice("services/local_botapi_bootstrap.py"),
-    Slice("services/local_botapi_diagnostics.py"),
-    Slice("services/local_botapi_required.py"),
-    Slice("services/local_botapi_runtime.py"),
-    Slice("services/media_delivery_probe.py"),
-    Slice("services/media_masters.py"),
-    Slice("services/mp3_chapters.py"),
-    Slice("services/mp3_conversion.py"),
-    Slice("services/operator_runtime_status.py"),
-    Slice("services/pdf_generator.py"),
-    Slice("services/polling_reliability_runtime.py"),
-    Slice("services/pre_main_policy.py"),
-    Slice("services/process_executables.py"),
-    Slice("services/process_singleton.py"),
-    Slice("services/quiz_generator.py"),
-    Slice("services/quiz_sessions.py"),
-    Slice("services/render_clips_montage.py"),
-    Slice("services/restart_state_runtime.py"),
-    Slice("services/runtime_build_identity.py"),
-    Slice("services/runtime_dependency_lock.py"),
-    Slice("services/runtime_manifest.py"),
-    Slice("services/search.py"),
-    Slice("services/segment_render.py"),
-    Slice("services/shorts_duration_safety.py"),
-    Slice("services/shorts_candidates.py"),
-    Slice("services/shorts_factory_candidates.py"),
-    Slice("services/shorts_factory_capacity.py"),
-    Slice("services/shorts_factory_capacity_runtime.py"),
-    Slice("services/shorts_factory_disk_guard.py"),
-    Slice("services/shorts_factory_execution_guard.py"),
-    Slice("services/shorts_factory_full_video.py"),
-    Slice("services/shorts_factory_long_fit.py"),
-    Slice("services/shorts_factory_media.py"),
-    Slice("services/shorts_factory_publication.py"),
-    Slice("services/shorts_factory_quality_gate.py"),
-    Slice("services/shorts_factory_retry_cache.py"),
-    Slice("services/shorts_factory_source.py"),
-    Slice("services/shorts_factory_timing.py"),
-    Slice("services/shorts_factory_video_quality.py"),
-    Slice("services/shorts_static_policy.py"),
-    Slice("services/shorts_subtitle_burn.py"),
-    Slice("services/shorts_subtitle_integrity.py"),
-    Slice("services/shorts_transcription.py"),
-    Slice("services/shorts_video.py"),
-    Slice("services/shorts_video_impl.py"),
-    Slice("services/speech_backends"),
-    Slice("services/study_synthesis_policy.py"),
-    Slice("services/study_synthesis_runtime.py"),
-    Slice("services/telegraph.py"),
-    Slice("services/telegraph_edit.py"),
-    Slice("services/telegraph_pages.py"),
-    Slice("services/telegraph_repair.py"),
-    Slice("services/translation_editorial.py"),
-    Slice("services/translation_editorial_composition.py"),
-    Slice("services/translation_editorial_factory.py"),
-    Slice("services/translation_editorial_pack_contract.py"),
-    Slice("services/translation_editorial_pack_v2.py"),
-    Slice("services/translation_editorial_repair_provenance.py"),
-    Slice("services/tts_profile_selection.py"),
-    Slice("services/tts_weighted_runner_provisioning.py"),
-    Slice("services/tts_weighted_smoke.py"),
-    Slice("services/tts_weighted_smoke_attestation.py"),
-    Slice("services/tts_weighted_smoke_runner.py"),
-    Slice("services/yandex_live_dub.py"),
-    Slice("services/youtube_po_token_runtime.py"),
-    Slice("services/youtube_transcript.py"),
-)
+#: Весь репозиторий — единый необратимо расширенный strict-срез.
+#: Точка использует обычное module resolution mypy, включая .pyi для
+#: byte-stable historical LiveDub QA cases. Исключений по умолчанию нет.
+TYPED_SLICES: tuple[Slice, ...] = (Slice("."),)
 
 #: mypy возвращает 2 на фатальных ошибках (нет модуля, битый конфиг).
 EXIT_USAGE = 2
@@ -240,7 +100,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "paths",
         nargs="*",
-        help="каталоги/файлы для проверки (по умолчанию — объявленный срез)",
+        help="каталоги/файлы для проверки (по умолчанию — весь репозиторий)",
     )
     parser.add_argument("--verbose", action="store_true", help="печатать команду и полный вывод mypy")
     args = parser.parse_args(argv)
@@ -251,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
     if missing_mypy(result):
         print(
             "TYPECHECK_FAILED: mypy не установлен. "
-            "Установите dev-зависимости: python -m pip install -r requirements-dev.txt",
+            "Установите точное CI-окружение: python -m pip install -r requirements-lock.txt",
             file=sys.stderr,
         )
         return EXIT_USAGE

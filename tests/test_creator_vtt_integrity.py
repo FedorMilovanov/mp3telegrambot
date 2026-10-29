@@ -1,9 +1,10 @@
 from __future__ import annotations
+import pathlib
 
 from tools.voxcpm2 import generic_gemini_runtime as creator_vtt
 
 
-def test_creator_vtt_collapses_rolling_states_but_keeps_repetition(tmp_path) -> None:
+def test_creator_vtt_collapses_rolling_states_but_keeps_repetition(tmp_path: pathlib.Path) -> None:
     path = tmp_path / "creator.en.vtt"
     path.write_text(
         """WEBVTT

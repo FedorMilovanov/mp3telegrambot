@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import pytest
+from typing import cast
 
 from services.speech_backends import (
     DEFAULT_BACKEND_ID,
     BackendCapabilities,
     BackendCapabilityError,
+    SpeechBackend,
     UnknownSpeechBackendError,
     normalize_production_backend,
     register_backend,
@@ -64,7 +66,7 @@ def test_control_plane_fails_closed_on_missing_capabilities() -> None:
             )
 
     backend = IncompleteBackend()
-    register_backend(backend)
+    register_backend(cast(SpeechBackend, backend))
     try:
         with pytest.raises(BackendCapabilityError, match="production capabilities"):
             select_production_backend(

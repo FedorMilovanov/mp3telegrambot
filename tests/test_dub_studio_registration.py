@@ -1,5 +1,7 @@
 """Executed Dub Studio handler-composition contracts."""
 
+import pytest
+
 from types import SimpleNamespace
 
 from handlers import (
@@ -14,7 +16,7 @@ from handlers import (
 )
 
 
-def test_registration_is_disabled_without_side_effects(monkeypatch) -> None:
+def test_registration_is_disabled_without_side_effects(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(dub_studio_registration, "enabled", lambda: False)
     monkeypatch.setattr(
         dub_studio_registration,
@@ -25,7 +27,7 @@ def test_registration_is_disabled_without_side_effects(monkeypatch) -> None:
     assert dub_studio_registration.register_dub_studio(SimpleNamespace()) is False
 
 
-def test_registration_preserves_handler_order_and_worker_startup(monkeypatch) -> None:
+def test_registration_preserves_handler_order_and_worker_startup(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[str] = []
     monkeypatch.setattr(dub_studio_registration, "enabled", lambda: True)
     monkeypatch.setattr(dub_studio_registration, "ensure_worker_running", lambda: calls.append("worker"))

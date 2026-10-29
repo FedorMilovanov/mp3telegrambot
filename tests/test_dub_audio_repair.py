@@ -1,9 +1,11 @@
 from __future__ import annotations
 import json
 from pathlib import Path
+from typing import Any, cast
 import pytest
 from handlers.dub_audio_repair import _ensure_repair_slot, parse_segment_selector
 from services import dub_worker
+from services.dub_studio import DubStore
 from tools.voxcpm2.generic_audio_repair_runtime import _source_cues, prepare_repair_checkpoints
 from tools.voxcpm2.semantic_tts_guard_v4 import _GUARD_VERSION
 
@@ -21,23 +23,23 @@ def test_active_job_blocks_a_second_repair_request() -> None:
 
     class Store:
         @staticmethod
-        def recent_jobs(project_id: str, limit: int = 8):
+        def recent_jobs(project_id: str, limit: int = 8) -> list[dict[str, Any]]:
             assert project_id == "dub-test"
             assert limit == 8
             return [{"id": 17, "status": "running"}]
 
     with pytest.raises(RuntimeError, match="задание #17"):
-        _ensure_repair_slot(Store(), "dub-test")
+        _ensure_repair_slot(cast(DubStore, Store()), "dub-test")
 
 
 def test_finished_job_does_not_block_repair() -> None:
 
     class Store:
         @staticmethod
-        def recent_jobs(project_id: str, limit: int = 8):
+        def recent_jobs(project_id: str, limit: int = 8) -> list[dict[str, Any]]:
             return [{"id": 16, "status": "succeeded"}]
 
-    _ensure_repair_slot(Store(), "dub-test")
+    _ensure_repair_slot(cast(DubStore, Store()), "dub-test")
 
 
 def test_ready_srt_full_repair_recovers_source_cues_from_segments(tmp_path: Path) -> None:

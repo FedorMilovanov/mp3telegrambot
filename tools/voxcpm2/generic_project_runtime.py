@@ -17,14 +17,16 @@ import json
 import os
 import re
 import shutil
-import subprocess
+import subprocess as subprocess
 from pathlib import Path
 from typing import Any, Iterable
 
 from core.model_catalog import MODEL_PRIMARY, MODEL_UTILITY
 from services.dub_studio import DubStore, studio_root, utc_now
 from services.speech_backends import DEFAULT_BACKEND_ID, get_backend
-from tools.voxcpm2 import generic_short_production as pipeline
+from tools.voxcpm2 import generic_short_production as generic_short_production
+
+pipeline = generic_short_production
 
 _PROJECT_RE = re.compile(r"^dub-[a-f0-9]{10}$")
 _VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{6,32}$")
@@ -668,7 +670,7 @@ def _run_voxcpm_and_master(
     return russian_timeline
 
 
-def _run_speech_and_master(**kwargs: Any) -> Path:
+def _legacy_run_speech_and_master(**kwargs: Any) -> Path:
     """Generic engine hook; clean routes replace this before main()."""
     return _run_voxcpm_and_master(**kwargs)
 

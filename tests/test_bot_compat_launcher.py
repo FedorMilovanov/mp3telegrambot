@@ -7,7 +7,7 @@ import bot
 from services import runtime_dependency_lock as runtime_lock
 
 
-def test_compat_launcher_executes_bot_new_as_main(monkeypatch):
+def test_compat_launcher_executes_bot_new_as_main(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[str, str | None]] = []
 
     monkeypatch.setattr(bot, "_print_banner", lambda: None)
@@ -22,7 +22,7 @@ def test_compat_launcher_executes_bot_new_as_main(monkeypatch):
     assert calls == [("bot_new", "__main__")]
 
 
-def test_windows_launcher_requires_repository_lock_fail_closed():
+def test_windows_launcher_requires_repository_lock_fail_closed() -> None:
     source = Path("Start Bot.bat").read_text(encoding="utf-8")
     checker_call = '"%VENV_PYTHON%" tools\\check_requirements_lock.py requirements.txt'
     marker_gate = 'if /I not "!CURRENT_REQ_HASH!"=="!SAVED_REQ_HASH!" ('
@@ -52,7 +52,12 @@ def _write_runtime_contract(tmp_path: Path, direct: str, lock: str) -> None:
     (tmp_path / "requirements-lock.txt").write_text(lock, encoding="utf-8")
 
 
-def _mock_installed_metadata(monkeypatch, *, versions: dict[str, str], requires=None):
+def _mock_installed_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    versions: dict[str, str],
+    requires: dict[str, list[str]] | None = None,
+) -> None:
     requires = requires or {}
 
     def installed_version(name: str) -> str:
@@ -68,7 +73,7 @@ def _mock_installed_metadata(monkeypatch, *, versions: dict[str, str], requires=
     )
 
 
-def test_direct_runtime_lock_accepts_exact_installed_pins(tmp_path, monkeypatch):
+def test_direct_runtime_lock_accepts_exact_installed_pins(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _write_runtime_contract(
         tmp_path,
         "requests>=2,<3\npython-telegram-bot[socks]>=22,<23\n",
@@ -91,7 +96,7 @@ def test_direct_runtime_lock_accepts_exact_installed_pins(tmp_path, monkeypatch)
     assert result["runtime_closure"] == 2
 
 
-def test_direct_runtime_lock_rejects_stale_lock_range(tmp_path, monkeypatch):
+def test_direct_runtime_lock_rejects_stale_lock_range(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _write_runtime_contract(
         tmp_path,
         "requests>=3\n",
@@ -106,7 +111,7 @@ def test_direct_runtime_lock_rejects_stale_lock_range(tmp_path, monkeypatch):
         runtime_lock.validate_runtime_dependency_lock(tmp_path)
 
 
-def test_direct_runtime_lock_rejects_installed_version_drift(tmp_path, monkeypatch):
+def test_direct_runtime_lock_rejects_installed_version_drift(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _write_runtime_contract(
         tmp_path,
         "requests>=2,<3\n",
@@ -121,7 +126,7 @@ def test_direct_runtime_lock_rejects_installed_version_drift(tmp_path, monkeypat
         runtime_lock.validate_runtime_dependency_lock(tmp_path)
 
 
-def test_direct_runtime_lock_allows_optional_gemini_skip(tmp_path, monkeypatch):
+def test_direct_runtime_lock_allows_optional_gemini_skip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _write_runtime_contract(
         tmp_path,
         "requests>=2,<3\ngoogle-genai>=2,<3\n",
@@ -139,7 +144,7 @@ def test_direct_runtime_lock_allows_optional_gemini_skip(tmp_path, monkeypatch):
     assert result["runtime_closure"] == 1
 
 
-def test_runtime_lock_honors_inactive_direct_platform_marker(tmp_path, monkeypatch):
+def test_runtime_lock_honors_inactive_direct_platform_marker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _write_runtime_contract(
         tmp_path,
         'never>=1; python_version < "0"\n',
@@ -154,7 +159,7 @@ def test_runtime_lock_honors_inactive_direct_platform_marker(tmp_path, monkeypat
     assert result["runtime_closure"] == 0
 
 
-def test_runtime_lock_follows_activated_extra_dependency(tmp_path, monkeypatch):
+def test_runtime_lock_follows_activated_extra_dependency(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _write_runtime_contract(
         tmp_path,
         "parent[feature]>=1\n",
@@ -175,7 +180,9 @@ def test_runtime_lock_follows_activated_extra_dependency(tmp_path, monkeypatch):
     assert result["runtime_closure"] == 2
 
 
-def test_runtime_lock_rejects_missing_activated_extra_dependency(tmp_path, monkeypatch):
+def test_runtime_lock_rejects_missing_activated_extra_dependency(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _write_runtime_contract(
         tmp_path,
         "parent[feature]>=1\n",
@@ -194,7 +201,7 @@ def test_runtime_lock_rejects_missing_activated_extra_dependency(tmp_path, monke
         runtime_lock.validate_runtime_dependency_lock(tmp_path)
 
 
-def test_runtime_lock_ignores_inactive_extra_dependency(tmp_path, monkeypatch):
+def test_runtime_lock_ignores_inactive_extra_dependency(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _write_runtime_contract(
         tmp_path,
         "parent>=1\n",
@@ -212,7 +219,9 @@ def test_runtime_lock_ignores_inactive_extra_dependency(tmp_path, monkeypatch):
     assert result["runtime_closure"] == 1
 
 
-def test_runtime_lock_rejects_transitive_lock_constraint_mismatch(tmp_path, monkeypatch):
+def test_runtime_lock_rejects_transitive_lock_constraint_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _write_runtime_contract(
         tmp_path,
         "parent>=1\n",
@@ -231,7 +240,7 @@ def test_runtime_lock_rejects_transitive_lock_constraint_mismatch(tmp_path, monk
         runtime_lock.validate_runtime_dependency_lock(tmp_path)
 
 
-def test_runtime_verifier_dependency_is_declared_directly():
+def test_runtime_verifier_dependency_is_declared_directly() -> None:
     """`packaging` объявлен напрямую, и lock-пин лежит внутри объявленного диапазона.
 
     Раньше здесь стояли литералы `packaging>=26.2,<27.0` и `packaging==26.2`:
@@ -257,7 +266,7 @@ def test_runtime_verifier_dependency_is_declared_directly():
         )
 
 
-def test_direct_entrypoint_checks_lock_before_runtime_ownership():
+def test_direct_entrypoint_checks_lock_before_runtime_ownership() -> None:
     source = Path("bot_new.py").read_text(encoding="utf-8")
     core_source = Path("core/globals.py").read_text(encoding="utf-8")
     dependency_check = "validate_runtime_dependency_lock("

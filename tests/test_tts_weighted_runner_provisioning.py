@@ -50,7 +50,7 @@ def _write_runner(
     )
 
 
-def _config(tmp_path: Path, monkeypatch) -> WeightedTTSRunnerProvisioningConfig:
+def _config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> WeightedTTSRunnerProvisioningConfig:
     runner = tmp_path / "private-runner"
     runner.mkdir()
     _write_runner(runner)
@@ -137,7 +137,7 @@ def _run(
 
 def test_provisioning_accepts_repository_runner_and_retains_only_safe_report(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _config(tmp_path, monkeypatch)
 
@@ -177,7 +177,7 @@ def test_provisioning_accepts_repository_runner_and_retains_only_safe_report(
 
 def test_provisioning_accepts_owner_organization_runner(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _config(tmp_path, monkeypatch)
     _write_runner(
@@ -193,7 +193,7 @@ def test_provisioning_accepts_owner_organization_runner(
 
 def test_provisioning_rejects_runner_registered_elsewhere(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _config(tmp_path, monkeypatch)
     _write_runner(
@@ -207,7 +207,7 @@ def test_provisioning_rejects_runner_registered_elsewhere(
 
 def test_provisioning_rejects_ephemeral_or_stopped_service(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _config(tmp_path, monkeypatch)
     _write_runner(config.runner_directory, ephemeral=True)
@@ -221,7 +221,7 @@ def test_provisioning_rejects_ephemeral_or_stopped_service(
 
 def test_provisioning_rejects_duplicate_runner_json_keys(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _config(tmp_path, monkeypatch)
     (config.runner_directory / ".runner").write_text(
@@ -235,7 +235,7 @@ def test_provisioning_rejects_duplicate_runner_json_keys(
 
 def test_provisioning_rejects_environment_mismatch(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _config(tmp_path, monkeypatch)
     monkeypatch.setenv("TTS_SMOKE_MODEL_ROOT", str(tmp_path / "another-model"))
@@ -246,7 +246,7 @@ def test_provisioning_rejects_environment_mismatch(
 
 def test_provisioning_rejects_doctor_that_loaded_weights(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _config(tmp_path, monkeypatch)
 
@@ -258,7 +258,7 @@ def test_provisioning_rejects_doctor_that_loaded_weights(
 
 def test_provisioning_rejects_nonempty_work_directory(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _config(tmp_path, monkeypatch)
     config.work_directory.mkdir()
@@ -284,7 +284,7 @@ def test_repository_normalization_rejects_unsafe_values(tmp_path: Path) -> None:
 
 def test_service_descriptor_does_not_allow_command_text(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _config(tmp_path, monkeypatch)
     (config.runner_directory / ".service").write_text(
@@ -308,7 +308,7 @@ def test_service_descriptor_does_not_allow_command_text(
     assert called is False
 
 
-def test_environment_is_restored_by_pytest_fixture(monkeypatch) -> None:
+def test_environment_is_restored_by_pytest_fixture(monkeypatch: pytest.MonkeyPatch) -> None:
     for key in REQUIRED_ENVIRONMENT_KEYS:
         monkeypatch.delenv(key, raising=False)
     assert all(os.environ.get(key) is None for key in REQUIRED_ENVIRONMENT_KEYS)

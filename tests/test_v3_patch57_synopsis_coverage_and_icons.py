@@ -6,7 +6,7 @@ from converters.md_telegraph import _postprocess_telegraph_nodes
 from core.prompts import build_audio_analysis_prompt, STUDY_ANALYSIS_PROMPT
 
 
-def _flat(node):
+def _flat(node: object) -> str:
     if isinstance(node, str):
         return node
     if isinstance(node, dict):
@@ -14,13 +14,13 @@ def _flat(node):
     return ""
 
 
-def test_audio_prompt_requires_timestamp_coverage_to_final_part():
+def test_audio_prompt_requires_timestamp_coverage_to_final_part() -> None:
     prompt = build_audio_analysis_prompt("T", "A", "55:00", 3300, mode="deep")
     assert "последний смысловой таймкод" in prompt
     assert "последние 10–15%" in prompt
 
 
-def test_synopsis_uses_more_timestamp_anchors_and_larger_long_targets():
+def test_synopsis_uses_more_timestamp_anchors_and_larger_long_targets() -> None:
     src = Path("services/telegraph.py").read_text(encoding="utf-8")
     assert "_ts_raw[:24]" in src
     assert "Покрой ход материала до последнего опорного таймкода" in src
@@ -31,12 +31,12 @@ def test_synopsis_uses_more_timestamp_anchors_and_larger_long_targets():
     assert get_synopsis_density_profile(3600).total_chars == "9000"
 
 
-def test_study_prompt_prefers_cross_mark_for_false_views():
+def test_study_prompt_prefers_cross_mark_for_false_views() -> None:
     assert "используй ❌, не ⚠️" in STUDY_ANALYSIS_PROMPT
     assert "ортодоксального ответа используй ✅" in STUDY_ANALYSIS_PROMPT
 
 
-def test_telegraph_postprocess_replaces_warning_icon_for_false_view_context():
+def test_telegraph_postprocess_replaces_warning_icon_for_false_view_context() -> None:
     nodes = [{"tag": "p", "children": ["⚠️ **Ложное мессианское ожидание** — заблуждение о политическом царе."]}]
     out = _postprocess_telegraph_nodes(nodes)
     flat = _flat(out[0])
@@ -44,7 +44,7 @@ def test_telegraph_postprocess_replaces_warning_icon_for_false_view_context():
     assert "❌" in flat
 
 
-def test_synopsis_editpage_shrinks_before_dropping_toc_on_content_too_big():
+def test_synopsis_editpage_shrinks_before_dropping_toc_on_content_too_big() -> None:
     """AUDIT R19: раньше при CONTENT_TOO_BIG для части 1 TOC выбрасывался
     сразу и безусловно. Теперь сначала пробуем сжать часть (перенести
     последнюю секцию в следующую часть) и сохранить TOC; выбрасываем его

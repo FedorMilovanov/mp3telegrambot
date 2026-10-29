@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -29,7 +30,7 @@ def test_require_youtube_po_token_runtime_reports_exact_source_bgutil(
     monkeypatch.setattr(po, "_require_node", lambda: "22.14.0")
     monkeypatch.setattr(po.shutil, "which", lambda name: "node" if name == "node" else None)
 
-    def ensure_http(**kwargs) -> str:
+    def ensure_http(**kwargs: Any) -> str:
         assert kwargs["node_executable"] == "node"
         assert kwargs["server_home"] == provider_home
         assert kwargs["expected_version"] == po.BGUTIL_EXPECTED_VERSION
@@ -205,10 +206,10 @@ def test_bgutil_probe_uses_exact_source_plugin_path(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    captured: dict[str, object] = {}
+    captured: dict[str, Any] = {}
     plugin_root = tmp_path / "plugin"
 
-    def fake_run(command, **kwargs):
+    def fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
         captured["command"] = command
         captured["kwargs"] = kwargs
         return SimpleNamespace(
@@ -252,7 +253,7 @@ def test_bgutil_source_module_version_mismatch_fails_closed(
         po._require_bgutil_module(tmp_path / "plugin", po.BGUTIL_EXPECTED_VERSION)
 
 
-def test_bgutil_probe_rejects_site_packages_shadow(monkeypatch, tmp_path):
+def test_bgutil_probe_rejects_site_packages_shadow(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
         po.subprocess,
         "run",
@@ -267,7 +268,7 @@ def test_bgutil_probe_rejects_site_packages_shadow(monkeypatch, tmp_path):
         po._require_bgutil_module(tmp_path / "plugin", po.BGUTIL_EXPECTED_VERSION)
 
 
-def test_bgutil_import_failure_fails_closed(monkeypatch, tmp_path):
+def test_bgutil_import_failure_fails_closed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
         po.subprocess,
         "run",
@@ -282,7 +283,7 @@ def test_bgutil_import_failure_fails_closed(monkeypatch, tmp_path):
         po._require_bgutil_module(tmp_path / "plugin", po.BGUTIL_EXPECTED_VERSION)
 
 
-def test_bgutil_runtime_marker_must_match_exact_commit(monkeypatch, tmp_path):
+def test_bgutil_runtime_marker_must_match_exact_commit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     server = _write_provider_tree(
         tmp_path / "provider",
         marker="1.3.1@wrong-commit\n",
@@ -293,10 +294,12 @@ def test_bgutil_runtime_marker_must_match_exact_commit(monkeypatch, tmp_path):
         po._require_provider_build()
 
 
-def test_runtime_rejects_reintroduced_wpc_provider_with_exact_recovery(monkeypatch):
+def test_runtime_rejects_reintroduced_wpc_provider_with_exact_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     real_version = po.metadata.version
 
-    def fake_version(name: str):
+    def fake_version(name: str) -> str:
         if name == po.LEGACY_WPC_DISTRIBUTION:
             return "1.1.2"
         return real_version(name)

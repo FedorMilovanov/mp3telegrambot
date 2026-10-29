@@ -1,5 +1,7 @@
 """Regression tests for v3 patch 23 — publication status + audit mode."""
 
+import pytest
+
 from pathlib import Path
 
 from converters.caption import build_caption
@@ -11,7 +13,7 @@ from core.content_audit import (
 from core.publication_status import build_publication_status, missing_to_json
 
 
-def test_publication_status_complete_partial_failed():
+def test_publication_status_complete_partial_failed() -> None:
     complete = build_publication_status(
         synopsis_url="s",
         study_url="st",
@@ -47,7 +49,7 @@ def test_publication_status_complete_partial_failed():
     assert "не созданы конспект, разбор материала, размышление" in failed.warning
 
 
-def test_partial_status_warning_is_rendered_by_caption():
+def test_partial_status_warning_is_rendered_by_caption() -> None:
     status = build_publication_status(
         synopsis_url="",
         study_url="https://telegra.ph/study",
@@ -73,7 +75,7 @@ def test_partial_status_warning_is_rendered_by_caption():
     assert "размышление" in cap
 
 
-def test_content_audit_mode_defaults_warn_and_strict_aborts(monkeypatch):
+def test_content_audit_mode_defaults_warn_and_strict_aborts(monkeypatch: pytest.MonkeyPatch) -> None:
     issues = [
         ContentAuditIssue(
             code="mixed_greek_cyrillic_warning",
@@ -97,7 +99,7 @@ def test_content_audit_mode_defaults_warn_and_strict_aborts(monkeypatch):
     assert should_abort_for_content_audit(issues) is False
 
 
-def test_database_schema_and_pipeline_wire_publication_status():
+def test_database_schema_and_pipeline_wire_publication_status() -> None:
     db = Path("core/database.py").read_text(encoding="utf-8")
     pipe = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
 
@@ -117,7 +119,7 @@ def test_database_schema_and_pipeline_wire_publication_status():
     assert "publication_missing=missing_to_json(inputs.publication.missing)" in fresh
 
 
-def test_content_audit_strict_codes_do_not_block_without_explicit_flag(monkeypatch):
+def test_content_audit_strict_codes_do_not_block_without_explicit_flag(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CONTENT_AUDIT_MODE", "strict")
     monkeypatch.setenv("CONTENT_AUDIT_STRICT_CODES", "all")
     monkeypatch.delenv("CONTENT_AUDIT_BLOCK_PUBLICATION", raising=False)
@@ -125,7 +127,7 @@ def test_content_audit_strict_codes_do_not_block_without_explicit_flag(monkeypat
     assert should_abort_for_content_audit(issues) is False
 
 
-def test_content_audit_block_publication_is_explicit_and_selective(monkeypatch):
+def test_content_audit_block_publication_is_explicit_and_selective(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CONTENT_AUDIT_MODE", "strict")
     monkeypatch.setenv("CONTENT_AUDIT_BLOCK_PUBLICATION", "1")
     monkeypatch.setenv("CONTENT_AUDIT_STRICT_CODES", "third_person_warning")

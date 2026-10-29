@@ -1,9 +1,14 @@
+from typing import Any
+
+import pytest
 from pathlib import Path
 
 from services import shorts_factory_quality_gate as gate
 
 
-def _candidate(title, score, *, hook="Сильный хук", reason="Самостоятельная мысль"):
+def _candidate(
+    title: str, score: int | float, *, hook: str = "Сильный хук", reason: str = "Самостоятельная мысль"
+) -> dict[str, Any]:
     return {
         "title": title,
         "hook": hook,
@@ -15,7 +20,7 @@ def _candidate(title, score, *, hook="Сильный хук", reason="Самос
     }
 
 
-def test_factory_quality_gate_prefers_quality_over_quantity(monkeypatch):
+def test_factory_quality_gate_prefers_quality_over_quantity(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SHORTS_FACTORY_MIN_SHORT_SCORE", raising=False)
     monkeypatch.delenv("SHORTS_FACTORY_MIN_LONG_SCORE", raising=False)
     plan = {
@@ -43,7 +48,7 @@ def test_factory_quality_gate_prefers_quality_over_quantity(monkeypatch):
     }
 
 
-def test_factory_quality_gate_requires_verified_boundaries_and_reason():
+def test_factory_quality_gate_requires_verified_boundaries_and_reason() -> None:
     unverified = _candidate("Без проверки", 100)
     unverified["boundary_verified"] = False
     no_reason = _candidate("Без причины", 100, reason="")
@@ -51,7 +56,7 @@ def test_factory_quality_gate_requires_verified_boundaries_and_reason():
     assert gated["shorts_candidates"] == []
 
 
-def test_factory_quality_gate_rejects_malformed_or_nonfinite_candidate_numbers():
+def test_factory_quality_gate_rejects_malformed_or_nonfinite_candidate_numbers() -> None:
     bad_start = _candidate("Плохой start", 99)
     bad_start["start_seconds"] = "not-a-number"
     infinite_end = _candidate("Бесконечный end", 99)
@@ -77,7 +82,7 @@ def test_factory_quality_gate_rejects_malformed_or_nonfinite_candidate_numbers()
     assert [item["title"] for item in gated["long_candidates"]] == ["Валидный"]
 
 
-def test_factory_quality_thresholds_have_explicit_override(monkeypatch):
+def test_factory_quality_thresholds_have_explicit_override(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SHORTS_FACTORY_MIN_SHORT_SCORE", "95")
     monkeypatch.setenv("SHORTS_FACTORY_MIN_LONG_SCORE", "93")
     gated = gate.apply_factory_quality_gate(
@@ -93,7 +98,7 @@ def test_factory_quality_thresholds_have_explicit_override(monkeypatch):
     assert [item["title"] for item in gated["long_candidates"]] == ["94"]
 
 
-def test_factory_quality_thresholds_reject_nonfinite_environment_values(monkeypatch):
+def test_factory_quality_thresholds_reject_nonfinite_environment_values(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SHORTS_FACTORY_MIN_SHORT_SCORE", "nan")
     monkeypatch.setenv("SHORTS_FACTORY_MIN_LONG_SCORE", "inf")
     gated = gate.apply_factory_quality_gate(
@@ -111,14 +116,14 @@ def test_factory_quality_thresholds_reject_nonfinite_environment_values(monkeypa
     assert [item["title"] for item in gated["long_candidates"]] == ["86"]
 
 
-def test_factory_plan_language_is_normalized_and_nonsense_rejected():
+def test_factory_plan_language_is_normalized_and_nonsense_rejected() -> None:
     assert gate.validated_factory_plan_language({"metadata": {"language": "English"}}) == "en"
     for value in ("", "unknown", "mixed", "foo"):
         with __import__("pytest").raises(RuntimeError, match="доминирующий язык речи"):
             gate.validated_factory_plan_language({"metadata": {"language": value}})
 
 
-def test_factory_quality_gate_is_a_pure_policy_not_an_installer():
+def test_factory_quality_gate_is_a_pure_policy_not_an_installer() -> None:
     source = Path("services/shorts_factory_quality_gate.py").read_text(encoding="utf-8")
     assert "install_factory_plan_quality_gate" not in source
     assert "install_shorts_factory_execution_guard" not in source

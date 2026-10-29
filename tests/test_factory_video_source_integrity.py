@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -8,7 +9,7 @@ import pytest
 from services import shorts_factory_source as source
 
 
-def _deliverable_probe(duration: float):
+def _deliverable_probe(duration: float) -> SimpleNamespace:
     return SimpleNamespace(
         duration=duration,
         width=1920,
@@ -20,15 +21,17 @@ def _deliverable_probe(duration: float):
     )
 
 
-def test_factory_video_rejects_incomplete_source_and_aborts_missing_fragments(monkeypatch, tmp_path):
+def test_factory_video_rejects_incomplete_source_and_aborts_missing_fragments(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     seen: list[str] = []
 
-    async def fake_run(command, **_kwargs):
+    async def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
         seen.extend(map(str, command))
         (tmp_path / "abc_factory_max_source.mkv").write_bytes(b"x" * 4096)
         return SimpleNamespace(returncode=0, stderr="")
 
-    async def fake_probe(_path):
+    async def fake_probe(_path: Path) -> SimpleNamespace:
         return _deliverable_probe(80.0)
 
     monkeypatch.setattr(source, "run_cancellable_process", fake_run)
@@ -50,13 +53,13 @@ def test_factory_video_rejects_incomplete_source_and_aborts_missing_fragments(mo
     assert "bestvideo+bestaudio/best" in seen
 
 
-def test_factory_video_accepts_duration_verified_source(monkeypatch, tmp_path):
-    async def fake_run(command, **_kwargs):
+def test_factory_video_accepts_duration_verified_source(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    async def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
         path = tmp_path / "abc_factory_max_source.mkv"
         path.write_bytes(b"x" * 4096)
         return SimpleNamespace(returncode=0, stderr="")
 
-    async def fake_probe(_path):
+    async def fake_probe(_path: Path) -> SimpleNamespace:
         return _deliverable_probe(119.9)
 
     monkeypatch.setattr(source, "run_cancellable_process", fake_run)

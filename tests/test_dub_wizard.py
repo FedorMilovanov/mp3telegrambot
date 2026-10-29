@@ -35,7 +35,7 @@ def test_rejects_non_youtube_url() -> None:
         _extract_youtube_video_id("https://example.com/video")
 
 
-def test_request_payload_pins_and_normalizes_selected_profile(monkeypatch) -> None:
+def test_request_payload_pins_and_normalizes_selected_profile(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in (
         "DUB_TTS_OPTIONS_JSON",
         "DUB_TTS_BACKEND_CONFIG_JSON",
@@ -66,7 +66,7 @@ def test_request_payload_pins_and_normalizes_selected_profile(monkeypatch) -> No
     assert payload["translation_mode"] == "gemini"
 
 
-def test_request_payload_merges_generic_and_legacy_overrides(monkeypatch) -> None:
+def test_request_payload_merges_generic_and_legacy_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DUB_TTS_OPTIONS_JSON", '{"threads":8,"steps":20}')
     monkeypatch.setenv("DUB_TTS_BACKEND_CONFIG_JSON", '{"vox_archive":"D:/vox"}')
     monkeypatch.setenv("DUB_VOX_CFG", "2.1")
@@ -88,7 +88,7 @@ def test_request_payload_merges_generic_and_legacy_overrides(monkeypatch) -> Non
     }
 
 
-def test_request_payload_rejects_conflicting_override_sources(monkeypatch) -> None:
+def test_request_payload_rejects_conflicting_override_sources(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DUB_TTS_OPTIONS_JSON", '{"threads":8}')
     monkeypatch.setenv("DUB_VOX_THREADS", "10")
 
@@ -101,7 +101,7 @@ def test_request_payload_rejects_conflicting_override_sources(monkeypatch) -> No
         )
 
 
-def test_env_json_is_fail_closed(monkeypatch) -> None:
+def test_env_json_is_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DUB_TTS_OPTIONS_JSON", '{"threads":8,"threads":9}')
     with pytest.raises(ValueError, match="дублирующийся ключ"):
         _env_json_object("DUB_TTS_OPTIONS_JSON")
@@ -118,12 +118,12 @@ def test_env_json_is_fail_closed(monkeypatch) -> None:
 def test_profile_callbacks_are_short_opaque_and_session_bound() -> None:
     state = _selection_state("gemini")
     markup = _selection_keyboard(state, 0)
-    callbacks = [
-        button.callback_data
-        for row in markup.inline_keyboard
-        for button in row
-        if button.callback_data and "|profile|" in button.callback_data
-    ]
+    callbacks: list[str] = []
+    for row in markup.inline_keyboard:
+        for button in row:
+            value = button.callback_data
+            if isinstance(value, str) and value and "|profile|" in value:
+                callbacks.append(value)
 
     assert callbacks
     assert all(len(value.encode("utf-8")) <= 64 for value in callbacks)
@@ -149,6 +149,6 @@ def test_catalog_exposes_identity_not_backend_paths() -> None:
     assert str(profile.backend_defaults["cpu_venv"]) not in text
 
 
-def test_generic_env_json_stays_json_serializable(monkeypatch) -> None:
+def test_generic_env_json_stays_json_serializable(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DUB_TTS_OPTIONS_JSON", json.dumps({"threads": 7}))
     assert _env_json_object("DUB_TTS_OPTIONS_JSON") == {"threads": 7}

@@ -1,5 +1,7 @@
+import asyncio
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -7,7 +9,7 @@ import pipelines.clips as clips
 from services.media_delivery_probe import MediaProbe
 
 
-def _candidate() -> dict:
+def _candidate() -> dict[str, Any]:
     return {
         "start": "1:00",
         "end": "3:00",
@@ -33,40 +35,40 @@ def _deliverable_probe(duration: float) -> MediaProbe:
 
 
 class _Message:
-    def __init__(self):
-        self.videos: list[dict] = []
+    def __init__(self) -> None:
+        self.videos: list[dict[str, Any]] = []
         self.texts: list[str] = []
 
-    async def reply_video(self, **kwargs):
+    async def reply_video(self, **kwargs: Any) -> SimpleNamespace:
         self.videos.append(kwargs)
         return SimpleNamespace()
 
-    async def reply_text(self, text, **kwargs):
+    async def reply_text(self, text: object, **kwargs: Any) -> SimpleNamespace:
         self.texts.append(str(text))
         return SimpleNamespace()
 
 
-async def _configure_pipeline(monkeypatch, tmp_path: Path, *, probe):
+async def _configure_pipeline(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, probe: MediaProbe | None) -> None:
     monkeypatch.setattr(clips, "DOWNLOAD_DIR", tmp_path)
 
-    async def candidates(**kwargs):
+    async def candidates(**kwargs: Any) -> list[dict[str, Any]]:
         return [_candidate()]
 
-    async def setting(key):
+    async def setting(key: str) -> bool:
         assert key == "clips_snapshot"
         return False
 
-    async def render(source, target, start, end, **kwargs):
-        assert source.exists()
-        target.write_bytes(b"rendered")
+    async def render(source: Path, target: Path, start: float, end: float, **kwargs: Any) -> bool:
+        assert await asyncio.to_thread(source.exists)
+        await asyncio.to_thread(target.write_bytes, b"rendered")
         return True
 
-    async def probe_media(path):
-        assert path.exists()
+    async def probe_media(path: Path) -> MediaProbe | None:
+        assert await asyncio.to_thread(path.exists)
         return probe
 
-    async def probe_livedub(source_path, *, fallback_duration=0.0):
-        assert source_path.exists()
+    async def probe_livedub(source_path: Path, *, fallback_duration: float = 0.0) -> float:
+        assert await asyncio.to_thread(source_path.exists)
         return 600.0
 
     monkeypatch.setattr(clips, "create_clips_candidates", candidates)
@@ -80,7 +82,9 @@ async def _configure_pipeline(monkeypatch, tmp_path: Path, *, probe):
 
 
 @pytest.mark.asyncio
-async def test_clips_use_probed_duration_and_preserve_borrowed_livedub(monkeypatch, tmp_path):
+async def test_clips_use_probed_duration_and_preserve_borrowed_livedub(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     probe = _deliverable_probe(125.6)
     await _configure_pipeline(monkeypatch, tmp_path, probe=probe)
 
@@ -107,7 +111,9 @@ async def test_clips_use_probed_duration_and_preserve_borrowed_livedub(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_clips_reject_nonempty_render_without_delivery_probe(monkeypatch, tmp_path):
+async def test_clips_reject_nonempty_render_without_delivery_probe(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     await _configure_pipeline(monkeypatch, tmp_path, probe=None)
 
     livedub = tmp_path / "translated.mp4"
@@ -130,7 +136,7 @@ async def test_clips_reject_nonempty_render_without_delivery_probe(monkeypatch, 
     assert livedub.exists()
 
 
-def test_clips_delivery_boundary_uses_media_probe_and_borrowed_ownership():
+def test_clips_delivery_boundary_uses_media_probe_and_borrowed_ownership() -> None:
     source = Path("pipelines/clips.py").read_text(encoding="utf-8")
 
     assert "probe_livedub_source_duration(" in source

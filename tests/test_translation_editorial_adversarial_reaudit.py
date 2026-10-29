@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 from pathlib import Path
+from typing import Any, TypedDict
 
 import services.translation_editorial as editorial
 import services.translation_editorial_composition as composition
@@ -12,6 +13,15 @@ from services.translation_editorial_composition import (
     build_composition_template,
     refresh_composition_id,
 )
+
+
+class _ReviewPackKwargs(TypedDict):
+    media_id: str
+    source_url: str
+    title: str
+    performer: str
+    duration: float
+    timeline_metadata: dict[str, Any]
 
 
 def _srt(path: Path, text: str) -> Path:
@@ -33,15 +43,15 @@ def test_review_pack_identity_is_path_stable_for_timeline_aware_v1(tmp_path: Pat
     source_b = b / "translated.mp4"
     source_a.write_bytes(b"same-source" * 400)
     source_b.write_bytes(source_a.read_bytes())
-    timeline = {"original_srt": "source", "russian_whisper": "translated"}
-    kwargs = dict(
-        media_id="video",
-        source_url="https://example.invalid/video",
-        title="Title",
-        performer="Speaker",
-        duration=10.0,
-        timeline_metadata=timeline,
-    )
+    timeline: dict[str, Any] = {"original_srt": "source", "russian_whisper": "translated"}
+    kwargs: _ReviewPackKwargs = {
+        "media_id": "video",
+        "source_url": "https://example.invalid/video",
+        "title": "Title",
+        "performer": "Speaker",
+        "duration": 10.0,
+        "timeline_metadata": timeline,
+    }
     pack_a = build_review_pack(
         output_dir=oa,
         source_video_path=source_a,

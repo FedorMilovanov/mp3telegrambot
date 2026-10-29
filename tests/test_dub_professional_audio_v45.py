@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from typing import Any
 
 from services.dub_studio import load_recipe
 from tools.voxcpm2 import legacy_segment_migration_v45
@@ -31,7 +32,7 @@ def test_global_delay_does_not_remove_time_from_every_segment() -> None:
 def test_legacy_repair_migration_preserves_every_word(tmp_path: Path) -> None:
     (tmp_path / "input").mkdir()
     (tmp_path / "output").mkdir()
-    old = [
+    old: list[dict[str, Any]] = [
         {
             "id": 1,
             "start": 3.0,

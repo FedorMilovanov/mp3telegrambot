@@ -3,7 +3,7 @@
 from core.content_audit import audit_expanded_sections
 
 
-def test_audit_does_not_mangle_biblical_i_the_lord_phrase():
+def test_audit_does_not_mangle_biblical_i_the_lord_phrase() -> None:
     sections = [
         {
             "title": "Цитата пророка",
@@ -15,7 +15,7 @@ def test_audit_does_not_mangle_biblical_i_the_lord_phrase():
     assert not any(i.code == "first_person_author_fixed" for i in issues)
 
 
-def test_audit_still_removes_mismatched_human_first_person_author():
+def test_audit_still_removes_mismatched_human_first_person_author() -> None:
     sections = [{"title": "x", "content": "Я, Пётр Иванов, считаю это важным."}]
     out, _, issues = audit_expanded_sections(sections, label="Synopsis", expected_author="Джон МакАртур")
     assert "Пётр Иванов" not in out[0]["content"]

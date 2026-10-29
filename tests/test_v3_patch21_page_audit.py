@@ -1,5 +1,7 @@
 """Regression tests for v3 patch 21 — deterministic page audit/polish."""
 
+import pytest
+
 from converters.caption import build_caption
 from converters.md_telegraph import _postprocess_telegraph_nodes
 from core.page_audit import audit_telegraph_page
@@ -12,7 +14,7 @@ from core.text_utils import (
 )
 
 
-def _flat(node):
+def _flat(node: object) -> str:
     if isinstance(node, str):
         return node
     if isinstance(node, dict):
@@ -22,20 +24,20 @@ def _flat(node):
     return ""
 
 
-def test_patch21_common_live_typos_and_strange_fire_title():
+def test_patch21_common_live_typos_and_strange_fire_title() -> None:
     text = "Стину Лоусону, душевпопечение, авторитет Слово Божьего, МакАртора, епифанита, Странный огонь"
     assert normalize_common_typos(text) == (
         "Стиву Лоусону, душепопечение, авторитет Слова Божьего, МакАртура, Епафродита, Чуждый огонь"
     )
 
 
-def test_patch21_mixed_greek_cyrillic_detector_is_token_based():
+def test_patch21_mixed_greek_cyrillic_detector_is_token_based() -> None:
     assert has_mixed_greek_cyrillic("μεлеτάω и ὑπόκрисις")
     assert find_mixed_greek_cyrillic_tokens("Русский текст и μελετάω рядом") == []
     assert normalize_common_typos("μεлеτάω; ὑπόκрисις") == "μελετάω; ὑπόκρισις"
 
 
-def test_patch21_caption_normalizes_title_author_main_topic_and_partial_warning():
+def test_patch21_caption_normalizes_title_author_main_topic_and_partial_warning() -> None:
     cap = build_caption(
         "Джон МакАртора",
         "Странный огонь и авторитет Слово Божьего",
@@ -57,7 +59,7 @@ def test_patch21_caption_normalizes_title_author_main_topic_and_partial_warning(
     assert "⚠️ Частичный разбор" in cap
 
 
-def test_patch21_third_person_scrubber_for_study_leaks():
+def test_patch21_third_person_scrubber_for_study_leaks() -> None:
     text = (
         "Привычное понимание упускает функцию. "
         "Джон МакАртур подчеркивает этот аспект, говоря о том, что верность пастора "
@@ -68,7 +70,7 @@ def test_patch21_third_person_scrubber_for_study_leaks():
     assert "Верность пастора должна подтверждаться жизнью" in out
 
 
-def test_patch21_telegraph_postprocess_applies_third_person_and_source_safety():
+def test_patch21_telegraph_postprocess_applies_third_person_and_source_safety() -> None:
     nodes = [
         {"tag": "p", "children": ["Джон МакАртур подчеркивает этот аспект, говоря о том, что верность важна."]},
         {"tag": "p", "children": ["• Джон МакАртур, Странный огонь (John MacArthur, Strange Fire)."]},
@@ -86,7 +88,7 @@ def test_patch21_telegraph_postprocess_applies_third_person_and_source_safety():
     assert "Кевин ДеЯнг и Грег Гилберт" in flat
 
 
-def test_patch21_source_map_normalizer_prefers_original_titles():
+def test_patch21_source_map_normalizer_prefers_original_titles() -> None:
     assert (
         normalize_source_map_text("• Джон МакАртур, Чуждый огонь (John MacArthur, Strange Fire).")
         == "**Чуждый огонь**, Джон МакАртур (Strange Fire, John MacArthur)."
@@ -96,7 +98,7 @@ def test_patch21_source_map_normalizer_prefers_original_titles():
     ).startswith("**What Is the Mission")
 
 
-def test_patch21_page_audit_reports_unfixed_classes():
+def test_patch21_page_audit_reports_unfixed_classes() -> None:
     issues = audit_telegraph_page(
         "T",
         [{"tag": "p", "children": ["μεлеτάω. Джон МакАртур подчеркивает этот аспект."]}],
@@ -107,7 +109,7 @@ def test_patch21_page_audit_reports_unfixed_classes():
     assert "third_person" in codes
 
 
-def test_page_audit_strict_controls(monkeypatch):
+def test_page_audit_strict_controls(monkeypatch: pytest.MonkeyPatch) -> None:
     from core.page_audit import get_page_audit_mode, should_abort_for_page_audit
 
     issues = audit_telegraph_page(
@@ -135,7 +137,7 @@ def test_page_audit_strict_controls(monkeypatch):
     assert should_abort_for_page_audit(issues) is False
 
 
-def test_telegraph_create_edit_wire_page_audit_strict_abort():
+def test_telegraph_create_edit_wire_page_audit_strict_abort() -> None:
     src = __import__("pathlib").Path("converters/md_telegraph.py").read_text(encoding="utf-8")
     assert "should_abort_for_page_audit" in src
     assert "page_audit_strict" in src

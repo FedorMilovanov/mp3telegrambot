@@ -11,7 +11,7 @@ Changes:
 """
 
 
-def test_telegraph_synopsis_has_sleep_before_editpage():
+def test_telegraph_synopsis_has_sleep_before_editpage() -> None:
     src = open("services/telegraph.py", encoding="utf-8").read()
     # Sleep must be between "опубликовано" and the editPage for loop
     pub_pos = src.find("опубликовано")
@@ -21,12 +21,12 @@ def test_telegraph_synopsis_has_sleep_before_editpage():
     assert "asyncio.sleep(2)" in between, "telegraph.py must have sleep(2) between publish and editPage loop"
 
 
-def test_telegraph_synopsis_sleep_has_comment():
+def test_telegraph_synopsis_sleep_has_comment() -> None:
     src = open("services/telegraph.py", encoding="utf-8").read()
     assert "V3-P16" in src, "telegraph.py must have V3-P16 comment explaining the sleep"
 
 
-def test_telegraph_pages_has_sleep_before_editpage():
+def test_telegraph_pages_has_sleep_before_editpage() -> None:
     src = open("services/telegraph_pages.py", encoding="utf-8").read()
     # Find sleep before editPage in _publish_expanded_page
     assert "if i == 0:  # пауза только перед первым editPage" in src or "V3-P16: пауза перед editPage" in src, (
@@ -34,7 +34,7 @@ def test_telegraph_pages_has_sleep_before_editpage():
     )
 
 
-def test_audio_prompt_keycategories_has_theological_hint():
+def test_audio_prompt_keycategories_has_theological_hint() -> None:
     from core.prompts import build_audio_analysis_prompt
 
     p = build_audio_analysis_prompt("Test", "Chan", "50:00", 3000)
@@ -43,14 +43,14 @@ def test_audio_prompt_keycategories_has_theological_hint():
     )
 
 
-def test_audio_prompt_keycategories_explains_source_pack():
+def test_audio_prompt_keycategories_explains_source_pack() -> None:
     from core.prompts import build_audio_analysis_prompt
 
     p = build_audio_analysis_prompt("Test", "Chan", "50:00", 3000)
     assert "тематический пакет источников" in p, "Audio prompt must explain that key_categories build source pack"
 
 
-def test_all_prompts_still_valid():
+def test_all_prompts_still_valid() -> None:
     """Ensure all main prompts compile and have no unresolved shared placeholders."""
     import re
     from core.prompts import (
