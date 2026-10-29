@@ -27,6 +27,7 @@ from core.candidate_schema import extras_response_schema, structured_json_config
 from core.prompts import EXTRAS_PROMPT  # FIX render
 
 import asyncio
+import html
 import json  # FIX render
 import logging
 import re
@@ -277,13 +278,15 @@ def build_clip_caption(
     range_label = f"{clip_emoji} [{_fmt(start_s)} — {_fmt(end_s)}]"
 
     title_tc = title_case_fragment(title) if title else ""
-    if title_tc and author_label:
+    title_safe = html.escape(title_tc, quote=False)
+    author_safe = html.escape(author_label, quote=False)
+    if title_safe and author_safe:
         if title_tc[-1] in ("?", "!"):
-            first_line = f"{title_tc} {author_label} {range_label}"
+            first_line = f"<b>{title_safe}</b> {author_safe} {range_label}"
         else:
-            first_line = f"{title_tc} — {author_label} {range_label}"
-    elif title_tc:
-        first_line = f"{title_tc} {range_label}"
+            first_line = f"<b>{title_safe}</b> — {author_safe} {range_label}"
+    elif title_safe:
+        first_line = f"<b>{title_safe}</b> {range_label}"
     else:
         first_line = range_label
 
