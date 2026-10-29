@@ -8,6 +8,7 @@ contracts, and the retired Deno-first yt-dlp runtime policy.
 """
 
 from __future__ import annotations
+import pytest
 
 from pathlib import Path
 import runpy
@@ -159,7 +160,7 @@ def test_livedub_light_model_env_documented() -> None:
         assert removed not in readme, f"{removed} вернулся в README"
 
 
-def test_livedub_info_semantic_route_has_no_35_model_fallbacks(monkeypatch) -> None:
+def test_livedub_info_semantic_route_has_no_35_model_fallbacks(monkeypatch: pytest.MonkeyPatch) -> None:
     from core.model_catalog import MODEL_PRIMARY
     from services.livedub_info import get_light_model, get_light_model_fallbacks
 
@@ -483,7 +484,7 @@ def test_send_video_passes_metadata() -> None:
     assert "video_path = fixed" in stage
 
 
-def test_livedub_autofix_mutes_major_errors_by_default(monkeypatch) -> None:
+def test_livedub_autofix_mutes_major_errors_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     import services.livedub_mix as mix
 
     monkeypatch.delenv("LIVEDUB_AUTOFIX_RU_VOLUME", raising=False)

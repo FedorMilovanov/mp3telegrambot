@@ -4,11 +4,12 @@ import json
 from pathlib import Path
 
 import pytest
+from typing import Any
 
 from tools.voxcpm2 import direct_timing_guard as guard
 
 
-def segment(segment_id: int, text: str, start: float, end: float, tail: float = 0.18):
+def segment(segment_id: int, text: str, start: float, end: float, tail: float = 0.18) -> dict[str, Any]:
     return {
         "id": segment_id,
         "text": text,
@@ -18,7 +19,7 @@ def segment(segment_id: int, text: str, start: float, end: float, tail: float = 
     }
 
 
-def candidate(attempt: int, seed: int, duration: float, slot: float):
+def candidate(attempt: int, seed: int, duration: float, slot: float) -> dict[str, Any]:
     return {
         "attempt": attempt,
         "seed": seed,

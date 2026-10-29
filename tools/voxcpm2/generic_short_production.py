@@ -17,10 +17,10 @@ import json
 import os
 import re
 import shutil
-import subprocess
-import sys
+import subprocess as subprocess
+import sys as sys
 import tempfile
-import time
+import time as time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -317,8 +317,11 @@ def validate_translation(payload: Any, source_groups: list[dict[str, Any]]) -> l
     for item in payload:
         if not isinstance(item, dict):
             continue
+        raw_id = item.get("id")
+        if raw_id is None:
+            continue
         try:
-            item_id = int(item.get("id"))
+            item_id = int(raw_id)
         except (TypeError, ValueError):
             continue
         text = re.sub(r"\s+", " ", str(item.get("russian") or item.get("text") or "")).strip()
@@ -503,9 +506,9 @@ def reference_intervals(
         bucket = min(2, int(midpoint / max(duration, 0.1) * 3))
         thirds[bucket].append(interval)
     composite: list[tuple[float, float]] = []
-    for bucket in thirds:
-        if bucket:
-            composite.extend(sorted(bucket, key=lambda pair: pair[1] - pair[0], reverse=True)[:2])
+    for bucket_intervals in thirds:
+        if bucket_intervals:
+            composite.extend(sorted(bucket_intervals, key=lambda pair: pair[1] - pair[0], reverse=True)[:2])
     return extended, sorted(composite or candidates, key=lambda pair: pair[0])
 
 
@@ -702,7 +705,7 @@ def _generation_config(model_name: str) -> Any:
             response_mime_type="application/json",
             max_output_tokens=16000,
             thinking_config=types.ThinkingConfig(
-                thinking_level="high",
+                thinking_level=types.ThinkingLevel.HIGH,
             ),
         )
     except Exception as exc:
@@ -724,6 +727,8 @@ def download_source(url: str, source: Path) -> dict[str, Any]:
         timeout=300,
     )
     metadata = json.loads(metadata_proc.stdout or "{}")
+    if not isinstance(metadata, dict):
+        raise RuntimeError("yt-dlp вернул некорректный JSON метаданных source.")
     if not source.is_file() or source.stat().st_size < 100_000:
         run_checked(
             [

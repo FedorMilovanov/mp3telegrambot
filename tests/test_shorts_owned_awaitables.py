@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import asyncio
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -69,10 +70,10 @@ def test_legacy_burn_delegates_to_transactional_owner() -> None:
 
 
 @pytest.mark.asyncio
-async def test_transcribe_wrapper_forwards_arguments(monkeypatch, tmp_path: Path) -> None:
-    observed = {}
+async def test_transcribe_wrapper_forwards_arguments(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    observed: dict[str, Any] = {}
 
-    async def fake(video_path: Path, ai_data=None):
+    async def fake(video_path: Path, ai_data: dict[str, Any] | None = None) -> list[dict[str, str]]:
         observed["video_path"] = video_path
         observed["ai_data"] = ai_data
         return [{"text": "готово"}]
@@ -91,14 +92,14 @@ async def test_transcribe_wrapper_forwards_arguments(monkeypatch, tmp_path: Path
 
 @pytest.mark.asyncio
 async def test_render_wrapper_survives_repeated_outer_cancellation(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     started = asyncio.Event()
     release = asyncio.Event()
     inner_cancelled = False
 
-    async def fake(*args, **kwargs):
+    async def fake(*args: Any, **kwargs: Any) -> bool:
         nonlocal inner_cancelled
         started.set()
         try:

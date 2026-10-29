@@ -8,7 +8,7 @@ pipeline/coordinator and media probing is source-owned by ``livedub_mix``.
 
 from __future__ import annotations
 
-import os
+import os as os
 import socket
 from urllib.parse import urlsplit, urlunsplit
 

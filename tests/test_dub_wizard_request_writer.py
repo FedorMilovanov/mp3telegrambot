@@ -4,7 +4,10 @@ import asyncio
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from collections.abc import Callable
+from typing import Any, cast
+
+from telegram.ext import CallbackContext
 
 import pytest
 
@@ -14,7 +17,7 @@ from services.tts_profile_selection import write_durable_request
 from tools.voxcpm2 import generic_project_runtime
 
 
-def _payload(**overrides):
+def _payload(**overrides: Any) -> dict[str, Any]:
     profile = default_model_profile()
     return {
         "schema_version": 1,
@@ -68,7 +71,7 @@ def test_source_owned_writer_persists_validated_request(tmp_path: Path) -> None:
 )
 def test_invalid_request_is_rejected_before_durable_write(
     tmp_path: Path,
-    payload: dict,
+    payload: dict[str, Any],
 ) -> None:
     request_path = tmp_path / "projects" / "dub-0123456789" / "request.json"
     with pytest.raises((RuntimeError, ValueError)):
@@ -78,15 +81,16 @@ def test_invalid_request_is_rejected_before_durable_write(
 
 
 def test_request_payload_requires_explicit_production_profile() -> None:
+    request_payload = cast(Callable[..., Any], dub_wizard._request_payload)
     with pytest.raises(TypeError):
-        dub_wizard._request_payload(
+        request_payload(
             "AbCdEf12345",
             "https://youtube.com/watch?v=AbCdEf12345",
             "gemini",
         )
 
 
-def test_wizard_builds_generic_json_options_and_legacy_overrides(monkeypatch) -> None:
+def test_wizard_builds_generic_json_options_and_legacy_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DUB_TTS_OPTIONS_JSON", '{"steps":22,"cfg":1.92}')
     monkeypatch.setenv("DUB_VOX_THREADS", "7")
     monkeypatch.setenv(
@@ -114,7 +118,7 @@ def test_wizard_builds_generic_json_options_and_legacy_overrides(monkeypatch) ->
     assert payload["threads"] == 7
 
 
-def test_wizard_rejects_non_object_tts_env(monkeypatch) -> None:
+def test_wizard_rejects_non_object_tts_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DUB_TTS_OPTIONS_JSON", "[1, 2, 3]")
     with pytest.raises(ValueError, match="JSON-объект"):
         dub_wizard._request_payload(
@@ -155,7 +159,7 @@ def _update(order: list[str]) -> Any:
 
 
 def test_gemini_job_is_enqueued_only_after_normalize_and_durable_request(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     order: list[str] = []
     store = _FakeStore(order)
@@ -167,7 +171,7 @@ def test_gemini_job_is_enqueued_only_after_normalize_and_durable_request(
         lambda _url: ("AbCdEf12345", "https://youtube.com/watch?v=AbCdEf12345"),
     )
 
-    def build_request(video_id: str, source_url: str, mode: str, profile_id: str):
+    def build_request(video_id: str, source_url: str, mode: str, profile_id: str) -> dict[str, Any]:
         order.append("normalize")
         assert profile_id == DEFAULT_MODEL_PROFILE_ID
         return _payload(
@@ -205,7 +209,7 @@ def test_gemini_job_is_enqueued_only_after_normalize_and_durable_request(
     asyncio.run(
         dub_wizard._create_generic_project(
             _update(order),
-            context,
+            cast(CallbackContext[Any, Any, Any, Any], context),
             "https://youtu.be/AbCdEf12345",
             dub_wizard._GEMINI_MODE,
             DEFAULT_MODEL_PROFILE_ID,
@@ -222,7 +226,7 @@ def test_gemini_job_is_enqueued_only_after_normalize_and_durable_request(
     assert context.user_data == {}
 
 
-def test_failed_normalization_creates_no_project_or_job(monkeypatch) -> None:
+def test_failed_normalization_creates_no_project_or_job(monkeypatch: pytest.MonkeyPatch) -> None:
     order: list[str] = []
     store = _FakeStore(order)
     monkeypatch.setattr(dub_wizard, "DubStore", lambda: store)
@@ -242,7 +246,7 @@ def test_failed_normalization_creates_no_project_or_job(monkeypatch) -> None:
         asyncio.run(
             dub_wizard._create_generic_project(
                 _update(order),
-                SimpleNamespace(user_data={}),
+                cast(CallbackContext[Any, Any, Any, Any], SimpleNamespace(user_data={})),
                 "https://youtu.be/AbCdEf12345",
                 dub_wizard._GEMINI_MODE,
                 DEFAULT_MODEL_PROFILE_ID,
@@ -252,7 +256,7 @@ def test_failed_normalization_creates_no_project_or_job(monkeypatch) -> None:
     assert order == ["normalize-failed"]
 
 
-def test_failed_request_write_never_enqueues_job(monkeypatch) -> None:
+def test_failed_request_write_never_enqueues_job(monkeypatch: pytest.MonkeyPatch) -> None:
     order: list[str] = []
     store = _FakeStore(order)
     profile = default_model_profile()
@@ -294,7 +298,7 @@ def test_failed_request_write_never_enqueues_job(monkeypatch) -> None:
         asyncio.run(
             dub_wizard._create_generic_project(
                 _update(order),
-                SimpleNamespace(user_data={}),
+                cast(CallbackContext[Any, Any, Any, Any], SimpleNamespace(user_data={})),
                 "https://youtu.be/AbCdEf12345",
                 dub_wizard._GEMINI_MODE,
                 DEFAULT_MODEL_PROFILE_ID,

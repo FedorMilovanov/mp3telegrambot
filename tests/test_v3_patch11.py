@@ -8,7 +8,7 @@ Changes:
 # ─── prompts.py ───────────────────────────────────────────────────────────────
 
 
-def test_study_prompt_has_source_pack_placeholder():
+def test_study_prompt_has_source_pack_placeholder() -> None:
     from core.prompts import STUDY_ANALYSIS_PROMPT
 
     assert "{source_pack}" in STUDY_ANALYSIS_PROMPT, (
@@ -16,7 +16,7 @@ def test_study_prompt_has_source_pack_placeholder():
     )
 
 
-def test_study_prompt_source_pack_in_level2():
+def test_study_prompt_source_pack_in_level2() -> None:
     from core.prompts import STUDY_ANALYSIS_PROMPT
 
     idx = STUDY_ANALYSIS_PROMPT.find("{source_pack}")
@@ -26,7 +26,7 @@ def test_study_prompt_source_pack_in_level2():
     assert "УРОВЕНЬ 2" in context, "{source_pack} must be inside УРОВЕНЬ 2 block"
 
 
-def test_study_prompt_formats_with_source_pack():
+def test_study_prompt_formats_with_source_pack() -> None:
     from core.prompts import STUDY_ANALYSIS_PROMPT
     from core.source_packs import get_source_pack
 
@@ -54,7 +54,7 @@ def test_study_prompt_formats_with_source_pack():
     )
 
 
-def test_study_prompt_no_raw_source_pack_placeholder():
+def test_study_prompt_no_raw_source_pack_placeholder() -> None:
     """After format(), {source_pack} must be gone."""
     from core.prompts import STUDY_ANALYSIS_PROMPT
     from core.source_packs import get_source_pack
@@ -84,21 +84,21 @@ def test_study_prompt_no_raw_source_pack_placeholder():
 # ─── telegraph_pages.py ───────────────────────────────────────────────────────
 
 
-def test_telegraph_pages_imports_source_packs():
+def test_telegraph_pages_imports_source_packs() -> None:
     src = open("services/telegraph_pages.py", encoding="utf-8").read()
     assert "from core.source_packs import get_source_pack_for_ai_data" in src, (
         "telegraph_pages must import get_source_pack_for_ai_data"
     )
 
 
-def test_telegraph_pages_passes_source_pack_to_format():
+def test_telegraph_pages_passes_source_pack_to_format() -> None:
     src = open("services/telegraph_pages.py", encoding="utf-8").read()
     assert "source_pack=_source_pack," in src, (
         "telegraph_pages must pass source_pack= to STUDY_ANALYSIS_PROMPT.format()"
     )
 
 
-def test_telegraph_pages_computes_source_pack():
+def test_telegraph_pages_computes_source_pack() -> None:
     src = open("services/telegraph_pages.py", encoding="utf-8").read()
     assert "_source_pack = get_source_pack_for_ai_data(_ai)" in src, (
         "telegraph_pages must call get_source_pack_for_ai_data before format()"
@@ -108,7 +108,7 @@ def test_telegraph_pages_computes_source_pack():
 # ─── source_packs.py full coverage ───────────────────────────────────────────
 
 
-def test_source_packs_all_packs_non_empty():
+def test_source_packs_all_packs_non_empty() -> None:
     from core.source_packs import _PACKS
 
     for topic, sources in _PACKS.items():
@@ -117,7 +117,7 @@ def test_source_packs_all_packs_non_empty():
             assert isinstance(s, str) and len(s) > 3, f"Source '{s}' in pack '{topic}' is invalid"
 
 
-def test_source_packs_keyword_mapping_coverage():
+def test_source_packs_keyword_mapping_coverage() -> None:
     """Every keyword must map to a valid pack."""
     from core.source_packs import _KEYWORD_TO_TOPIC, _PACKS
 

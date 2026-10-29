@@ -24,7 +24,7 @@ def _voiced_sine(sample_rate: int, seconds: float, frequency: float = 108.0) -> 
     return (0.14 * np.sin(2.0 * np.pi * frequency * timeline)).astype(np.float32)
 
 
-def test_continuous_window_is_preferred_over_montage(monkeypatch, tmp_path: Path) -> None:
+def test_continuous_window_is_preferred_over_montage(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     sample_rate = 16_000
     audio = _voiced_sine(sample_rate, 10.0)
 
@@ -53,7 +53,7 @@ def test_continuous_window_is_preferred_over_montage(monkeypatch, tmp_path: Path
     assert saved["spectral_filter"] is False
 
 
-def test_short_runs_validate_the_actual_multi_window_fallback(monkeypatch, tmp_path: Path) -> None:
+def test_short_runs_validate_the_actual_multi_window_fallback(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     sample_rate = 16_000
     source_audio = np.zeros(sample_rate * 8, dtype=np.float32)
     assembled = _voiced_sine(sample_rate, 6.0)
@@ -63,7 +63,13 @@ def test_short_runs_validate_the_actual_multi_window_fallback(monkeypatch, tmp_p
         lambda _source, _output: (source_audio, sample_rate),
     )
 
-    def fallback(_source, _intervals, output, *, target_seconds):
+    def fallback(
+        _source: Path,
+        _intervals: list[tuple[float, float]],
+        output: Path,
+        *,
+        target_seconds: float,
+    ) -> None:
         del target_seconds
         sf.write(output, assembled, sample_rate)
         # Individual-window diagnostics may be absent or miss the stricter
@@ -95,7 +101,7 @@ def test_short_runs_validate_the_actual_multi_window_fallback(monkeypatch, tmp_p
     assert validation["assembled_reference"]["voiced_ratio"] >= 0.12
 
 
-def test_silent_fallback_still_fails_closed_with_diagnostics(monkeypatch, tmp_path: Path) -> None:
+def test_silent_fallback_still_fails_closed_with_diagnostics(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     sample_rate = 16_000
     silence = np.zeros(sample_rate * 8, dtype=np.float32)
     monkeypatch.setattr(
@@ -104,7 +110,13 @@ def test_silent_fallback_still_fails_closed_with_diagnostics(monkeypatch, tmp_pa
         lambda _source, _output: (silence, sample_rate),
     )
 
-    def fallback(_source, _intervals, output, *, target_seconds):
+    def fallback(
+        _source: Path,
+        _intervals: list[tuple[float, float]],
+        output: Path,
+        *,
+        target_seconds: float,
+    ) -> None:
         del target_seconds
         sf.write(output, np.zeros(sample_rate * 6, dtype=np.float32), sample_rate)
         output.with_suffix(".selection.json").write_text(

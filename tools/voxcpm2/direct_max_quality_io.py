@@ -13,7 +13,7 @@ import hashlib
 import json
 import math
 import random
-import subprocess
+import subprocess as subprocess
 import sys
 from pathlib import Path
 from typing import Any

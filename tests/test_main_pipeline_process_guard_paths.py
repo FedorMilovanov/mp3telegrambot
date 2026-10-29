@@ -12,6 +12,9 @@ from __future__ import annotations
 import asyncio
 import subprocess
 from types import SimpleNamespace
+from collections.abc import Coroutine
+from pathlib import Path
+from typing import Any, Literal, cast
 
 import pytest
 
@@ -27,10 +30,12 @@ class _FakeStatus:
 
 
 class _FakeMessage:
+    message_id: int
+
     def __init__(self) -> None:
         self.replies: list[str] = []
 
-    async def reply_text(self, text, **_kwargs):
+    async def reply_text(self, text: str, **_kwargs: Any) -> _FakeStatus:
         self.replies.append(text)
         return _FakeStatus()
 
@@ -40,35 +45,40 @@ class _FakeUser:
 
 
 class _FakeUpdate:
+    effective_chat: Any
+
     def __init__(self) -> None:
         self.message = _FakeMessage()
         self.effective_user = _FakeUser()
 
 
 @pytest.fixture(autouse=True)
-def _no_progress(monkeypatch: pytest.MonkeyPatch):
+def _no_progress(monkeypatch: pytest.MonkeyPatch) -> None:
     """`set_progress` трогает Telegram — в этих тестах он не нужен."""
 
-    async def noop(*_args, **_kwargs):
+    async def noop(*_args: Any, **_kwargs: Any) -> None:
         return None
 
     monkeypatch.setattr(main_pipeline, "set_progress", noop)
 
 
-def _run(update: _FakeUpdate, *, silent_errors: bool = False, context=None) -> bool:
-    return asyncio.run(
-        main_pipeline.process_single_video(
-            VIDEO_URL,
-            update,
-            status_msg=_FakeStatus(),
-            context=context,
-            silent_errors=silent_errors,
-        )
+def _run(update: _FakeUpdate, *, silent_errors: bool = False, context: Any = None) -> bool:
+    return cast(
+        bool,
+        asyncio.run(
+            main_pipeline.process_single_video(
+                VIDEO_URL,
+                update,
+                status_msg=_FakeStatus(),
+                context=context,
+                silent_errors=silent_errors,
+            )
+        ),
     )
 
 
 def test_live_stream_is_refused_with_explanation(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def live_info(_url, _timeout):
+    async def live_info(_url: str, _timeout: float) -> dict[str, Any]:
         return {"id": "x", "title": "Прямой эфир", "is_live": True}
 
     monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", live_info)
@@ -82,7 +92,7 @@ def test_live_stream_is_refused_with_explanation(monkeypatch: pytest.MonkeyPatch
 def test_silent_mode_does_not_reply(monkeypatch: pytest.MonkeyPatch) -> None:
     """Тихий режим нужен плейлистам: сообщение на каждое видео — спам."""
 
-    async def live_info(_url, _timeout):
+    async def live_info(_url: str, _timeout: float) -> dict[str, Any]:
         return {"id": "x", "is_live": True}
 
     monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", live_info)
@@ -93,7 +103,7 @@ def test_silent_mode_does_not_reply(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_too_long_video_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def long_info(_url, _timeout):
+    async def long_info(_url: str, _timeout: float) -> dict[str, Any]:
         return {"id": "x", "title": "Длинная проповедь", "duration": 7200}
 
     monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", long_info)
@@ -107,7 +117,7 @@ def test_too_long_video_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_video_within_limit_is_not_refused_by_duration(monkeypatch: pytest.MonkeyPatch) -> None:
     """Граница: ровно лимит — ещё можно."""
 
-    async def info(_url, _timeout):
+    async def info(_url: str, _timeout: float) -> dict[str, Any]:
         return {"id": "x", "title": "Ровно час", "duration": 3600}
 
     monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", info)
@@ -121,7 +131,7 @@ def test_video_within_limit_is_not_refused_by_duration(monkeypatch: pytest.Monke
 
 
 def test_low_disk_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def info(_url, _timeout):
+    async def info(_url: str, _timeout: float) -> dict[str, Any]:
         return {"id": "x", "title": "Видео", "duration": 600}
 
     monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", info)
@@ -142,10 +152,10 @@ def test_temp_dir_is_checked_too(monkeypatch: pytest.MonkeyPatch) -> None:
 
     usage = namedtuple("usage", "total used free")
 
-    async def info(_url, _timeout):
+    async def info(_url: str, _timeout: float) -> dict[str, Any]:
         return {"id": "x", "title": "Видео", "duration": 600}
 
-    def fake_disk_usage(path):
+    def fake_disk_usage(path: Any) -> Any:
         # В каталоге загрузок места много, во временном — почти нет.
         free = 50 * 1024**3 if path == main_pipeline.DOWNLOAD_DIR else 0.2 * 1024**3
         return usage(total=free, used=0, free=free)
@@ -159,7 +169,7 @@ def test_temp_dir_is_checked_too(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_unknown_disk_space_does_not_block(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def info(_url, _timeout):
+    async def info(_url: str, _timeout: float) -> dict[str, Any]:
         return {"id": "x", "title": "Видео", "duration": 600}
 
     monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", info)
@@ -171,7 +181,7 @@ def test_unknown_disk_space_does_not_block(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_missing_metadata_fails_loudly(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def no_info(_url, _timeout):
+    async def no_info(_url: str, _timeout: float) -> None:
         return None
 
     class _Proc:
@@ -179,7 +189,7 @@ def test_missing_metadata_fails_loudly(monkeypatch: pytest.MonkeyPatch) -> None:
         stdout = ""
         stderr = ""
 
-    async def fake_process(*_args, **_kwargs):
+    async def fake_process(*_args: Any, **_kwargs: Any) -> Any:
         return _Proc()
 
     monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", no_info)
@@ -194,7 +204,7 @@ def test_missing_metadata_fails_loudly(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_subprocess_error_shows_stderr_tail(monkeypatch: pytest.MonkeyPatch) -> None:
     """Пользователь/лог должны увидеть причину от yt-dlp, а не «info error»."""
 
-    async def no_info(_url, _timeout):
+    async def no_info(_url: str, _timeout: float) -> None:
         return None
 
     class _Proc:
@@ -202,7 +212,7 @@ def test_subprocess_error_shows_stderr_tail(monkeypatch: pytest.MonkeyPatch) -> 
         stdout = ""
         stderr = "ERROR: Video unavailable"
 
-    async def fake_process(*_args, **_kwargs):
+    async def fake_process(*_args: Any, **_kwargs: Any) -> Any:
         return _Proc()
 
     monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", no_info)
@@ -216,10 +226,10 @@ def test_subprocess_error_shows_stderr_tail(monkeypatch: pytest.MonkeyPatch) -> 
 def test_metadata_timeout_hints_at_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
     """Таймаут метаданных почти всегда про proxy — подсказка должна быть в тексте."""
 
-    async def no_info(_url, _timeout):
+    async def no_info(_url: str, _timeout: float) -> None:
         return None
 
-    async def slow_process(*_args, **_kwargs):
+    async def slow_process(*_args: Any, **_kwargs: Any) -> None:
         raise subprocess.TimeoutExpired(cmd="yt-dlp", timeout=180)
 
     monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", no_info)
@@ -237,7 +247,7 @@ def test_error_reply_masks_gemini_key(monkeypatch: pytest.MonkeyPatch) -> None:
     """Ключ из текста ошибки Google не должен уйти пользователю в чат."""
     secret = "AIza" + "B" * 35
 
-    async def broken_info(_url, _timeout):
+    async def broken_info(_url: str, _timeout: float) -> None:
         raise RuntimeError(f"403 API key not valid: {secret}")
 
     monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", broken_info)
@@ -252,7 +262,7 @@ def test_error_reply_masks_gemini_key(monkeypatch: pytest.MonkeyPatch) -> None:
 # ── ENG-режимы: отказ до скачивания ────────────────────────────────────────
 
 
-class _FakeRow(tuple):
+class _FakeRow(tuple[Any, ...]):
     """Строка sqlite: `row[0]` — значение настройки."""
 
 
@@ -260,17 +270,17 @@ class _FakeConn:
     def __init__(self, mode: str) -> None:
         self._mode = mode
 
-    def execute(self, _sql, params):
+    def execute(self, _sql: str, params: tuple[str, ...]) -> _FakeConn:
         assert params == (f"user_mode_{_FakeUser.id}",)
         return self
 
-    def fetchone(self):
+    def fetchone(self) -> _FakeRow:
         return _FakeRow((self._mode,))
 
-    def __enter__(self):
+    def __enter__(self) -> _FakeConn:
         return self
 
-    def __exit__(self, *_exc):
+    def __exit__(self, *_exc: Any) -> Literal[False]:
         return False
 
 
@@ -278,10 +288,10 @@ def _eng_environment(monkeypatch: pytest.MonkeyPatch, mode: str) -> list[str]:
     """Подготовить ENG-режим без сети: БД отдаёт режим, VOT-клиента нет."""
     cleaned: list[str] = []
 
-    async def info(_url, _timeout):
+    async def info(_url: str, _timeout: float) -> dict[str, Any]:
         return {"id": "media1", "title": "Sermon", "duration": 600}
 
-    async def no_cache(_media_id):
+    async def no_cache(_media_id: str) -> None:
         return None
 
     monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", info)
@@ -295,7 +305,7 @@ def _eng_environment(monkeypatch: pytest.MonkeyPatch, mode: str) -> list[str]:
 
     monkeypatch.setattr(live_dub, "_ensure_vot_helper", lambda: False)
 
-    def no_client():
+    def no_client() -> None:
         raise RuntimeError("нет vot-cli")
 
     monkeypatch.setattr(live_dub, "_check_vot_cli", no_client)
@@ -327,7 +337,7 @@ def test_eng_quick_cached_path_executes_extracted_finalization(
     """Cached file_id reaches the new stage without VOT, network, or Telegram."""
     cleaned = _eng_environment(monkeypatch, "eng_fast")
 
-    async def cached_livedub(_media_id):
+    async def cached_livedub(_media_id: str) -> dict[str, str]:
         return {"livedub_file_id_version": "v1", "livedub_file_id": "cached-video"}
 
     monkeypatch.setattr(main_pipeline, "adb_get", cached_livedub)
@@ -350,14 +360,14 @@ def test_eng_quick_empty_background_result_is_an_honest_failure(
 
     import services.yandex_live_dub as live_dub
 
-    async def no_optional_setting(_name):
+    async def no_optional_setting(_name: str) -> bool:
         return False
 
-    async def prepared(**_kwargs):
+    async def prepared(**_kwargs: Any) -> tuple[dict[str, Any], str, str]:
         return {}, "", ""
 
-    def empty_livedub_task(coroutine):
-        assert coroutine.cr_code.co_name == "_run_livedub_bg"
+    def empty_livedub_task(coroutine: Coroutine[Any, Any, Any]) -> asyncio.Future[Any]:
+        assert cast(Any, coroutine).cr_code.co_name == "_run_livedub_bg"
         coroutine.close()
         task = asyncio.get_running_loop().create_future()
         task.set_result((None, False, False))
@@ -366,7 +376,7 @@ def test_eng_quick_empty_background_result_is_an_honest_failure(
     monkeypatch.setattr(live_dub, "_ensure_vot_helper", lambda: True)
     monkeypatch.setattr(main_pipeline, "asettings_get", no_optional_setting)
     monkeypatch.setattr(main_pipeline, "prepare_livedub_publication", prepared)
-    monkeypatch.setattr(main_pipeline.asyncio, "create_task", empty_livedub_task)
+    monkeypatch.setattr(asyncio, "create_task", empty_livedub_task)
     update = _FakeUpdate()
     update.effective_chat = SimpleNamespace(id=31337)
     update.message.message_id = 777
@@ -377,7 +387,7 @@ def test_eng_quick_empty_background_result_is_an_honest_failure(
     assert "Перевод «Живые голоса» не получился" in update.message.replies[0]
 
 
-def test_eng_quick_qa_executes_stage_before_video_send_failure(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+def test_eng_quick_qa_executes_stage_before_video_send_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """The main wrapper executes real Quick QA before the existing send guard."""
     cleaned = _eng_environment(monkeypatch, "eng_fast_qa")
 
@@ -386,7 +396,7 @@ def test_eng_quick_qa_executes_stage_before_video_send_failure(monkeypatch: pyte
     import services.livedub_qa as qa
     import services.yandex_live_dub as live_dub
 
-    events = []
+    events: list[tuple[str, Any]] = []
     video = tmp_path / "quick.mp4"
     video.write_bytes(b"video")
     workdir = tmp_path / "livedub_media1"
@@ -394,41 +404,41 @@ def test_eng_quick_qa_executes_stage_before_video_send_failure(monkeypatch: pyte
     original = workdir / "original_video.mp3"
     original.write_bytes(b"original")
 
-    async def no_optional_setting(_name):
+    async def no_optional_setting(_name: str) -> bool:
         return False
 
-    async def prepared(**_kwargs):
+    async def prepared(**_kwargs: Any) -> tuple[dict[str, Any], str, str]:
         return {}, "", ""
 
-    def completed_livedub_task(coroutine):
-        assert coroutine.cr_code.co_name == "_run_livedub_bg"
+    def completed_livedub_task(coroutine: Coroutine[Any, Any, Any]) -> asyncio.Future[Any]:
+        assert cast(Any, coroutine).cr_code.co_name == "_run_livedub_bg"
         coroutine.close()
         task = asyncio.get_running_loop().create_future()
         task.set_result((video, False, False))
         return task
 
-    async def run_qa(**kwargs):
+    async def run_qa(**kwargs: Any) -> dict[str, Any]:
         events.append(("qa", kwargs))
         return {"issues": []}
 
-    def format_report(_result, *, video_url):
+    def format_report(_result: Any, *, video_url: str) -> str:
         events.append(("format", video_url))
         return "quick QA report"
 
     class Bot:
-        def __init__(self):
-            self.messages = []
-            self.videos = []
+        def __init__(self) -> None:
+            self.messages: list[dict[str, Any]] = []
+            self.videos: list[dict[str, Any]] = []
 
-        async def send_chat_action(self, **_kwargs):
+        async def send_chat_action(self, **_kwargs: Any) -> None:
             return None
 
-        async def send_video(self, **kwargs):
+        async def send_video(self, **kwargs: Any) -> None:
             self.videos.append(kwargs)
             events.append(("video", kwargs))
             raise RuntimeError("quick send failed")
 
-        async def send_message(self, **kwargs):
+        async def send_message(self, **kwargs: Any) -> SimpleNamespace:
             self.messages.append(kwargs)
             events.append(("notice", kwargs))
             return SimpleNamespace(message_id=999)
@@ -437,7 +447,7 @@ def test_eng_quick_qa_executes_stage_before_video_send_failure(monkeypatch: pyte
     monkeypatch.setattr(main_pipeline, "asettings_get", no_optional_setting)
     monkeypatch.setattr(main_pipeline, "prepare_livedub_publication", prepared)
     monkeypatch.setattr(main_pipeline, "get_max_file_size_mb", lambda: 50)
-    monkeypatch.setattr(main_pipeline.asyncio, "create_task", completed_livedub_task)
+    monkeypatch.setattr(asyncio, "create_task", completed_livedub_task)
     monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
     monkeypatch.setattr(qa, "run_translation_qa", run_qa)
     monkeypatch.setattr(qa, "format_qa_report", format_report)
@@ -484,36 +494,36 @@ def test_eng_quick_cached_file_id_delivers_publication_and_companions(
     companion_calls = []
 
     class Status:
-        def __init__(self):
-            self.edits = []
+        def __init__(self) -> None:
+            self.edits: list[str] = []
             self.deleted = False
 
-        async def edit_text(self, text):
+        async def edit_text(self, text: str) -> None:
             self.edits.append(text)
 
-        async def delete(self):
+        async def delete(self) -> None:
             self.deleted = True
 
     class Bot:
-        def __init__(self):
-            self.videos = []
+        def __init__(self) -> None:
+            self.videos: list[dict[str, Any]] = []
 
-        async def send_video(self, **kwargs):
+        async def send_video(self, **kwargs: Any) -> SimpleNamespace:
             self.videos.append(kwargs)
             return SimpleNamespace(message_id=999)
 
-    async def cached_livedub(_media_id):
+    async def cached_livedub(_media_id: str) -> dict[str, str]:
         return {"livedub_file_id_version": "v1", "livedub_file_id": "cached-video"}
 
-    async def build_card(source_line, source_url):
+    async def build_card(source_line: str, source_url: str) -> dict[str, str]:
         card_calls.append((source_line, source_url))
         return card
 
-    def format_caption(got_card, internal_caption):
+    def format_caption(got_card: dict[str, str], internal_caption: str) -> str:
         caption_calls.append((got_card, internal_caption))
         return "formatted caption"
 
-    async def companions(bot, **kwargs):
+    async def companions(bot: Any, **kwargs: Any) -> bool:
         companion_calls.append((bot, kwargs))
         return True
 
@@ -523,10 +533,10 @@ def test_eng_quick_cached_file_id_delivers_publication_and_companions(
     monkeypatch.setattr(coordinator, "deliver_cached_companions", companions)
     real_finish = main_pipeline.finish_livedub_quick
 
-    async def finish_with_idempotent_send(**kwargs):
+    async def finish_with_idempotent_send(**kwargs: Any) -> Any:
         send_result = kwargs["send_result"]
 
-        async def send_twice():
+        async def send_twice() -> bool:
             assert await send_result() is True
             assert await send_result() is True
             return True
@@ -601,42 +611,42 @@ def test_cached_file_id_pair_failure_invalidates_and_notifies(
     discard_calls = []
 
     class Bot:
-        def __init__(self):
-            self.videos = []
-            self.messages = []
+        def __init__(self) -> None:
+            self.videos: list[dict[str, Any]] = []
+            self.messages: list[dict[str, Any]] = []
 
-        async def send_video(self, **kwargs):
+        async def send_video(self, **kwargs: Any) -> SimpleNamespace:
             self.videos.append(kwargs)
             return video_message
 
-        async def send_message(self, **kwargs):
+        async def send_message(self, **kwargs: Any) -> None:
             self.messages.append(kwargs)
 
     class Deferral:
         has_pending = False
 
-        async def flush(self, reason):
+        async def flush(self, reason: str) -> None:
             flush_calls.append(reason)
 
-        def discard(self, reason):
+        def discard(self, reason: str) -> None:
             discard_calls.append(reason)
 
-    async def cached_livedub(_media_id):
+    async def cached_livedub(_media_id: str) -> dict[str, str]:
         return {"livedub_file_id_version": "v1", "livedub_file_id": "cached-video"}
 
-    async def prepared(**_kwargs):
+    async def prepared(**_kwargs: Any) -> tuple[dict[str, Any], str, str]:
         return card, "Cached title - Author", "Cached title - Author"
 
-    async def companions(*_args, **_kwargs):
+    async def companions(*_args: Any, **_kwargs: Any) -> bool:
         return False
 
-    async def delete_message(*args):
+    async def delete_message(*args: Any) -> None:
         delete_calls.append(args)
 
-    async def invalidate(*args):
+    async def invalidate(*args: Any) -> None:
         invalidation_calls.append(args)
 
-    async def quick(**kwargs):
+    async def quick(**kwargs: Any) -> Any:
         delivered = await kwargs["send_result"]()
         kwargs["cleanup"](kwargs["media_id"])
         return delivered
@@ -681,7 +691,7 @@ def test_cached_file_id_pair_failure_invalidates_and_notifies(
 def _stop_at_delivery_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
     import services.livedub_delivery_coordinator as coordinator
 
-    def stop(**_kwargs):
+    def stop(**_kwargs: Any) -> None:
         raise RuntimeError("stop at delivery boundary")
 
     monkeypatch.setattr(coordinator, "create_source_audio_deferral", stop)
@@ -690,7 +700,7 @@ def _stop_at_delivery_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_missing_status_message_is_created_before_live_refusal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def live_info(_url, _timeout):
+    async def live_info(_url: str, _timeout: float) -> dict[str, Any]:
         return {"id": "x", "is_live": True}
 
     monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", live_info)
@@ -705,13 +715,13 @@ def test_missing_status_message_is_created_before_live_refusal(
 def test_mode_database_and_error_cleanup_failures_stay_contained(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def info(_url, _timeout):
+    async def info(_url: str, _timeout: float) -> dict[str, Any]:
         return {"id": "media1", "title": "Sermon", "duration": 600}
 
-    def broken_db():
+    def broken_db() -> None:
         raise RuntimeError("mode database unavailable")
 
-    def broken_cleanup(_media_id):
+    def broken_cleanup(_media_id: str) -> None:
         raise OSError("cleanup unavailable")
 
     monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", info)
@@ -730,7 +740,7 @@ def test_current_livedub_file_id_skips_vot_probe(
 ) -> None:
     _eng_environment(monkeypatch, "eng")
 
-    async def cached(_media_id):
+    async def cached(_media_id: str) -> dict[str, str]:
         return {"livedub_file_id_version": "v1", "livedub_file_id": "file-id"}
 
     monkeypatch.setattr(main_pipeline, "adb_get", cached)
@@ -738,7 +748,7 @@ def test_current_livedub_file_id_skips_vot_probe(
 
     helper_calls = []
 
-    def unexpected_helper():
+    def unexpected_helper() -> bool:
         helper_calls.append(True)
         return True
 
@@ -756,7 +766,7 @@ def test_stale_livedub_file_id_is_not_reused(
 ) -> None:
     _eng_environment(monkeypatch, "eng_fast")
 
-    async def stale(_media_id):
+    async def stale(_media_id: str) -> dict[str, str]:
         return {"livedub_file_id_version": "old", "livedub_file_id": "stale-id"}
 
     monkeypatch.setattr(main_pipeline, "adb_get", stale)
@@ -771,7 +781,7 @@ def test_livedub_cache_read_failure_uses_normal_vot_probe(
 ) -> None:
     _eng_environment(monkeypatch, "eng_fast")
 
-    async def broken_cache(_media_id):
+    async def broken_cache(_media_id: str) -> None:
         raise RuntimeError("cache unavailable")
 
     monkeypatch.setattr(main_pipeline, "adb_get", broken_cache)
@@ -787,10 +797,10 @@ def test_eng_full_helper_and_notice_failures_degrade_to_rus(
     _eng_environment(monkeypatch, "eng")
     import services.yandex_live_dub as live_dub
 
-    def broken_helper():
+    def broken_helper() -> None:
         raise RuntimeError("helper unavailable")
 
-    async def broken_reply(_text, **_kwargs):
+    async def broken_reply(_text: str, **_kwargs: Any) -> None:
         raise RuntimeError("Telegram unavailable")
 
     monkeypatch.setattr(live_dub, "_ensure_vot_helper", broken_helper)
@@ -809,14 +819,14 @@ def test_eng_quick_workdir_is_removed_when_settings_fail(
     _eng_environment(monkeypatch, "eng_fast")
     import services.yandex_live_dub as live_dub
 
-    async def info(_url, _timeout):
+    async def info(_url: str, _timeout: float) -> dict[str, Any]:
         return {"id": "media-cleanup", "title": "Sermon", "duration": 600}
 
     monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", info)
     monkeypatch.setattr(live_dub, "_ensure_vot_helper", lambda: True)
     settings_calls = []
 
-    async def broken_setting(name):
+    async def broken_setting(name: str) -> None:
         settings_calls.append(name)
         raise RuntimeError("stop after workdir")
 
@@ -846,7 +856,7 @@ def test_eng_quick_background_executes_extracted_dub_stage(
     started = asyncio.Event()
     calls = []
 
-    async def info(_url, _timeout):
+    async def info(_url: str, _timeout: float) -> dict[str, Any]:
         return {
             "id": "media1",
             "title": "Sermon",
@@ -854,18 +864,18 @@ def test_eng_quick_background_executes_extracted_dub_stage(
             "language": "ru",
         }
 
-    async def pro(video_url, workdir, *, duration, lang):
+    async def pro(video_url: str, workdir: Path, *, duration: int, lang: str) -> Path:
         calls.append((video_url, workdir.name, duration, lang))
         output = workdir / "pro.mp4"
         output.write_bytes(b"video")
         started.set()
         return output
 
-    async def stop_after_dub(**_kwargs):
+    async def stop_after_dub(**_kwargs: Any) -> None:
         await asyncio.wait_for(started.wait(), timeout=2)
         raise RuntimeError("stop after extracted dub stage")
 
-    async def setting(name):
+    async def setting(name: str) -> bool:
         return name == "livedub_pro_mix"
 
     monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", info)
@@ -897,21 +907,21 @@ def test_eng_quick_background_records_auth_failure_via_extracted_stage(
     writes = []
     real_write_text = Path.write_text
 
-    def observed_write(path, content, *args, **kwargs):
+    def observed_write(path: Path, content: str, *args: Any, **kwargs: Any) -> int:
         result = real_write_text(path, content, *args, **kwargs)
         if path.name == ".auth_required":
             writes.append((path.name, content))
             marker_written.set()
         return result
 
-    async def pro(*_args, **_kwargs):
+    async def pro(*_args: Any, **_kwargs: Any) -> None:
         raise RuntimeError("LIVEDUB_AUTH_REQUIRED")
 
-    async def stop_after_marker(**_kwargs):
+    async def stop_after_marker(**_kwargs: Any) -> None:
         await asyncio.wait_for(marker_written.wait(), timeout=2)
         raise RuntimeError("stop after auth marker")
 
-    async def setting(name):
+    async def setting(name: str) -> bool:
         return name == "livedub_pro_mix"
 
     monkeypatch.setattr(main_pipeline, "asettings_get", setting)
@@ -931,20 +941,20 @@ def _audio_too_large_environment(monkeypatch: pytest.MonkeyPatch, *, cache_hit: 
     """Reach fresh/cache audio preparation without network, files, or Telegram."""
     cleaned: list[str] = []
 
-    async def info(_url, _timeout):
+    async def info(_url: str, _timeout: float) -> dict[str, Any]:
         return {"id": "media1", "title": "Sermon", "duration": 600}
 
-    async def no_thumbnail(**_kwargs):
+    async def no_thumbnail(**_kwargs: Any) -> None:
         return None
 
-    async def cache_decision(_media_id):
+    async def cache_decision(_media_id: str) -> SimpleNamespace:
         return SimpleNamespace(
             hit=cache_hit,
             cached={"telegraph_url": ""} if cache_hit else None,
             ai_data={} if cache_hit else None,
         )
 
-    async def too_large(**_kwargs):
+    async def too_large(**_kwargs: Any) -> None:
         raise main_pipeline.AudioTooLarge(60.0, 50)
 
     monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", info)
@@ -979,7 +989,9 @@ def test_cache_audio_too_large_executes_shared_early_return(
     assert update.message.replies == ["⚠️ Файл слишком большой (60.0 МБ) даже после сжатия."]
 
 
-def test_cache_hit_delivery_reaches_real_stage_and_returns_success(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+def test_cache_hit_delivery_reaches_real_stage_and_returns_success(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """Main wiring executes the extracted stage with the original cached values."""
     from io import BytesIO
 
@@ -1002,7 +1014,7 @@ def test_cache_hit_delivery_reaches_real_stage_and_returns_success(monkeypatch: 
         "audio_file_id": "cached-file-id",
     }
 
-    async def info(_url, _timeout):
+    async def info(_url: str, _timeout: float) -> dict[str, Any]:
         return {
             "id": "media1",
             "title": "Cached sermon",
@@ -1010,20 +1022,20 @@ def test_cache_hit_delivery_reaches_real_stage_and_returns_success(monkeypatch: 
             "duration": 600,
         }
 
-    async def cache_hit(_media_id):
+    async def cache_hit(_media_id: str) -> SimpleNamespace:
         return SimpleNamespace(hit=True, cached=cached, ai_data=cached_ai)
 
-    async def load_thumbnail(**_kwargs):
+    async def load_thumbnail(**_kwargs: Any) -> Any:
         return thumbnail
 
-    async def audio_ready(**_kwargs):
+    async def audio_ready(**_kwargs: Any) -> SimpleNamespace:
         return SimpleNamespace(path=audio_path, size_mb=1.0, bitrate="128k")
 
-    async def present(request):
+    async def present(request: Any) -> Any:
         events.append(("presentation", request))
         return CachedCaption(caption="cached caption", full_caption="full cached caption")
 
-    async def deliver(request):
+    async def deliver(request: Any) -> Any:
         events.append(("delivery", request))
         return DeliveryOutcome(
             chapters_embedded=False,
@@ -1033,7 +1045,7 @@ def test_cache_hit_delivery_reaches_real_stage_and_returns_success(monkeypatch: 
             quiz_sent=0,
         )
 
-    def cleanup(media_id):
+    def cleanup(media_id: str) -> None:
         events.append(("cleanup", media_id))
 
     monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", info)
@@ -1098,7 +1110,7 @@ def test_cache_hit_delivery_reaches_real_stage_and_returns_success(monkeypatch: 
     ],
 )
 def test_fresh_caption_finalization_reaches_delivery_boundary(
-    monkeypatch: pytest.MonkeyPatch, tmp_path, mode: str
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mode: str
 ) -> None:
     """Fresh wiring reaches delivery; ENG variants execute exception notices."""
     cleaned: list[str] = []
@@ -1137,7 +1149,7 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
     }
     settings_calls = []
 
-    async def info(_url, _timeout):
+    async def info(_url: str, _timeout: float) -> dict[str, Any]:
         return {
             "id": "media1",
             "title": "Original fallback title",
@@ -1145,16 +1157,16 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
             "duration": 600,
         }
 
-    async def no_thumbnail(**_kwargs):
+    async def no_thumbnail(**_kwargs: Any) -> None:
         return None
 
-    async def cache_miss(_media_id):
+    async def cache_miss(_media_id: str) -> SimpleNamespace:
         return SimpleNamespace(hit=False, cached=None, ai_data=None)
 
-    async def audio_ready(**_kwargs):
+    async def audio_ready(**_kwargs: Any) -> SimpleNamespace:
         return SimpleNamespace(path=audio_path, size_mb=1.0, bitrate="128k")
 
-    async def analysis_ready(request, *, enabled):
+    async def analysis_ready(request: Any, *, enabled: bool) -> SimpleNamespace:
         analysis_requests.append((request, enabled))
         return SimpleNamespace(
             ai_data=ai_data,
@@ -1168,13 +1180,13 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
             vk_url="",
         )
 
-    async def batch_settings():
+    async def batch_settings() -> dict[str, bool]:
         settings_calls.append(True)
         return settings
 
     real_prepare = main_pipeline.prepare_publication_context
 
-    async def capture_publication(**kwargs):
+    async def capture_publication(**kwargs: Any) -> Any:
         context = await real_prepare(**kwargs)
         publication_calls.append((kwargs, context))
         return context
@@ -1185,7 +1197,7 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
 
     repair_report = RepairReport()
 
-    async def render_ready(request):
+    async def render_ready(request: Any) -> Any:
         render_requests.append(request)
         return RenderedPages(
             questions_url="questions",
@@ -1194,14 +1206,14 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
             alt_links={"rutube": "alt-rutube", "vk": "alt-vk"},
         )
 
-    async def navigation_ready(pages):
+    async def navigation_ready(pages: Any) -> None:
         navigation_calls.append(pages)
 
-    async def repair_ready(urls, *, enabled):
+    async def repair_ready(urls: Any, *, enabled: bool) -> Any:
         repair_calls.append((urls, enabled))
         return repair_report
 
-    def fit_ready(source, caption_base):
+    def fit_ready(source: Any, caption_base: Any) -> Any:
         fit_calls.append((source, caption_base))
         return CaptionFit(
             caption="fitted caption",
@@ -1212,17 +1224,17 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
             data={"fitted": True},
         )
 
-    async def save_ready(**kwargs):
+    async def save_ready(**kwargs: Any) -> None:
         save_calls.append(kwargs)
 
-    async def archive_ready(request, *, repair):
+    async def archive_ready(request: Any, *, repair: Any) -> None:
         archive_calls.append((request, repair))
 
-    def prompt_ready():
+    def prompt_ready() -> str:
         prompt_calls.append(True)
         return "prompt-test"
 
-    async def stop_at_delivery(request):
+    async def stop_at_delivery(request: Any) -> None:
         delivery_requests.append(request)
         raise RuntimeError("stop at delivery boundary")
 
@@ -1233,20 +1245,20 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
     if mode.startswith("eng"):
         import services.yandex_live_dub as live_dub
 
-        real_create_task = main_pipeline.asyncio.create_task
+        real_create_task = asyncio.create_task
 
-        async def no_cache(_media_id):
+        async def no_cache(_media_id: str) -> None:
             return None
 
-        async def no_optional_setting(name):
+        async def no_optional_setting(name: str) -> bool:
             return mode == "eng_video_send_failure" and name == "livedub_qa"
 
-        def completed_livedub_task(coroutine):
+        def completed_livedub_task(coroutine: Coroutine[Any, Any, Any]) -> asyncio.Future[Any]:
             if mode == "eng_video_send_failure":
                 # Execute the real main wrapper and background stage. The same
                 # original factory is used for its inner make-video task.
                 return real_create_task(coroutine)
-            assert coroutine.cr_code.co_name == "_run_livedub_bg"
+            assert cast(Any, coroutine).cr_code.co_name == "_run_livedub_bg"
             coroutine.close()
             task = asyncio.get_running_loop().create_future()
             if mode == "eng_timeout":
@@ -1265,18 +1277,18 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
             return task
 
         class NoticeBot:
-            def __init__(self):
-                self.messages = []
-                self.video_calls = []
-                self.actions = []
+            def __init__(self) -> None:
+                self.messages: list[dict[str, Any]] = []
+                self.video_calls: list[dict[str, Any]] = []
+                self.actions: list[dict[str, Any]] = []
 
-            async def send_message(self, **kwargs):
+            async def send_message(self, **kwargs: Any) -> None:
                 self.messages.append(kwargs)
 
-            async def send_chat_action(self, **kwargs):
+            async def send_chat_action(self, **kwargs: Any) -> None:
                 self.actions.append(kwargs)
 
-            async def send_video(self, **kwargs):
+            async def send_video(self, **kwargs: Any) -> None:
                 self.video_calls.append(kwargs)
                 if mode == "eng_video_cover_retry_failure":
                     if "cover" in kwargs:
@@ -1286,7 +1298,7 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
 
         monkeypatch.setattr(main_pipeline, "adb_get", no_cache)
         monkeypatch.setattr(main_pipeline, "asettings_get", no_optional_setting)
-        monkeypatch.setattr(main_pipeline.asyncio, "create_task", completed_livedub_task)
+        monkeypatch.setattr(asyncio, "create_task", completed_livedub_task)
         monkeypatch.setattr(live_dub, "_ensure_vot_helper", lambda: True)
         if mode in (
             "eng_send_failure",
@@ -1298,13 +1310,13 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
             monkeypatch.setattr(main_pipeline, "get_max_file_size_mb", lambda: 0)
         if mode == "eng_video_send_failure":
 
-            async def background_video(*args, **kwargs):
+            async def background_video(*args: Any, **kwargs: Any) -> Path:
                 livedub_background_calls.append((args, kwargs))
                 translated = tmp_path / "background-translated.mp4"
                 translated.write_bytes(b"video")
                 return translated
 
-            async def translation_subtitles(*_args):
+            async def translation_subtitles(*_args: Any) -> None:
                 return None
 
             monkeypatch.setattr(main_pipeline, "make_livedub_video", background_video)
@@ -1319,7 +1331,7 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
             monkeypatch.setattr(qa, "technical_check", lambda *_args: ["tech warning"])
         if mode == "eng_video_send_failure":
 
-            async def full_qa(**kwargs):
+            async def full_qa(**kwargs: Any) -> dict[str, Any]:
                 full_qa_calls.append(kwargs)
                 return {"issues": []}
 

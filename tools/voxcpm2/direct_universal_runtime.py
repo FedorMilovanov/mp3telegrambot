@@ -20,8 +20,11 @@ def _segments_by_id(segments: list[dict[str, Any]]) -> dict[int, dict[str, Any]]
     for item in segments:
         if not isinstance(item, dict):
             continue
+        raw_id = item.get("id")
+        if raw_id is None:
+            continue
         try:
-            segment_id = int(item.get("id"))
+            segment_id = int(raw_id)
         except (TypeError, ValueError, OverflowError):
             continue
         result[segment_id] = item

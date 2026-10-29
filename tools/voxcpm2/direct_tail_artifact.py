@@ -98,7 +98,7 @@ def _sustained_voice_runs(
     return [(left, right) for left, right in _runs(voice_like) if right - left >= 4]
 
 
-def _last_sustained_voice(
+def _legacy_last_sustained_voice(
     active: np.ndarray,
     zcr: np.ndarray,
     high_ratio: np.ndarray,
@@ -142,7 +142,7 @@ def _after_decay(
     return quiet_fraction, active_after_seconds, followed_by_decay
 
 
-def detect_late_broadband_tail(samples: Any, sample_rate: int) -> dict[str, Any]:
+def _legacy_detect_late_broadband_tail_impl(samples: Any, sample_rate: int) -> dict[str, Any]:
     audio = _mono(samples)
     rate = max(1, int(sample_rate))
     duration = len(audio) / rate
@@ -369,7 +369,7 @@ BRACKETING_POLICY = "analysis-window-overlap-aware-voice-brackets-v1"
 
 FRAME_OVERLAP_TOLERANCE = 2
 
-_legacy_detect = detect_late_broadband_tail
+_legacy_detect = _legacy_detect_late_broadband_tail_impl
 
 
 def _voice_runs(

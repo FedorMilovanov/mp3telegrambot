@@ -3,7 +3,7 @@
 from pathlib import Path
 
 
-def test_segment_callback_uses_shared_render_module():
+def test_segment_callback_uses_shared_render_module() -> None:
     """segcut callback delegates to render_and_send_segment instead of inline code."""
     src = Path("handlers/callbacks.py").read_text(encoding="utf-8")
     block = src[
@@ -15,7 +15,7 @@ def test_segment_callback_uses_shared_render_module():
     assert "release_render_lock" in block
 
 
-def test_segment_render_module_has_subtitle_pipeline():
+def test_segment_render_module_has_subtitle_pipeline() -> None:
     """services/segment_render.py contains full subtitle pipeline."""
     src = Path("services/segment_render.py").read_text(encoding="utf-8")
     assert "segments_subtitles" in src

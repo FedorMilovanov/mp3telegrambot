@@ -12,7 +12,9 @@ from typing import Any
 from tools.voxcpm2 import clean_production_core as strict_core
 from tools.voxcpm2 import clean_request_settings
 from tools.voxcpm2 import generic_short_production as pipeline
-from tools.voxcpm2 import professional_audio_v45 as policy
+from tools.voxcpm2 import professional_audio_v45
+
+policy = professional_audio_v45
 
 
 def _sha(path: Path) -> str:

@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
+
+import pytest
 
 import services.shorts_factory_capacity as capacity
 
@@ -12,28 +15,28 @@ class _HttpError(RuntimeError):
         self.code = code
 
 
-def test_factory_overload_classifier_is_source_owned():
+def test_factory_overload_classifier_is_source_owned() -> None:
     error = _HttpError(503, "503 UNAVAILABLE: high demand")
     assert capacity.factory_retryable_service_error(error) is True
     assert capacity.factory_overload_error(error) is True
     assert capacity.factory_retryable_service_error(ValueError("bad json")) is False
 
 
-def test_factory_clients_disable_hidden_sdk_retries(monkeypatch):
+def test_factory_clients_disable_hidden_sdk_retries(monkeypatch: pytest.MonkeyPatch) -> None:
     from core import globals as core_globals
 
-    created = []
+    created: list[dict[str, Any]] = []
 
     class Retry:
-        def __init__(self, *, attempts):
+        def __init__(self, *, attempts: int) -> None:
             self.attempts = attempts
 
     class Http:
-        def __init__(self, *, timeout, retry_options):
+        def __init__(self, *, timeout: float, retry_options: object) -> None:
             self.timeout = timeout
             self.retry_options = retry_options
 
-    def client(**kwargs):
+    def client(**kwargs: Any) -> dict[str, Any]:
         created.append(kwargs)
         return kwargs
 
@@ -56,7 +59,7 @@ def test_factory_clients_disable_hidden_sdk_retries(monkeypatch):
     assert all(item["http_options"].retry_options.attempts == 1 for item in created)
 
 
-def test_editorial_workflow_has_one_source_runner_without_context_bridge():
+def test_editorial_workflow_has_one_source_runner_without_context_bridge() -> None:
     runner = Path("pipelines/translation_editorial_runner.py").read_text(encoding="utf-8")
     dispatcher = Path("pipelines/video_dispatch.py").read_text(encoding="utf-8")
     factory_pipeline = Path("pipelines/shorts_factory.py").read_text(encoding="utf-8")

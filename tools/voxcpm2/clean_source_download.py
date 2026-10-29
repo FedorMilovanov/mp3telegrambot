@@ -10,7 +10,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from tools.voxcpm2 import generic_short_production as pipeline
+from tools.voxcpm2 import generic_short_production as generic_short_production
+
+pipeline = generic_short_production
 
 POLICY = "clean-source-download-manifest-v1"
 MIN_SOURCE_BYTES = 100_000
@@ -184,7 +186,7 @@ def _write_manifest(
     temporary.replace(path)
 
 
-def download_source(url: str, source: Path) -> dict[str, Any]:
+def _legacy_download_source_impl(url: str, source: Path) -> dict[str, Any]:
     """Reuse source.mp4 only when URL, request and cache prove one video."""
     source = Path(source)
     source.parent.mkdir(parents=True, exist_ok=True)
@@ -241,7 +243,7 @@ __all__ = [
 _BASE_ALL = tuple(globals().get("__all__", ()))
 
 
-_legacy_download_source = download_source
+_legacy_download_source = _legacy_download_source_impl
 
 
 def download_source(url: str, source: Path) -> dict[str, Any]:

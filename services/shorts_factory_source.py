@@ -7,7 +7,7 @@ import asyncio
 import contextlib
 import logging
 import os
-import shutil
+import shutil as shutil
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any

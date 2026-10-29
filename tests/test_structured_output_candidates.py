@@ -10,7 +10,7 @@ from core.candidate_schema import (
 from core.globals import make_audio_config, make_text_config_smart
 
 
-def test_candidate_response_schemas_have_required_top_level_keys():
+def test_candidate_response_schemas_have_required_top_level_keys() -> None:
     shorts = shorts_response_schema()
     clips = clips_response_schema()
     extras = extras_response_schema()
@@ -20,7 +20,7 @@ def test_candidate_response_schemas_have_required_top_level_keys():
     assert "highlights" in extras["properties"]
 
 
-def test_structured_json_config_kwargs_contract():
+def test_structured_json_config_kwargs_contract() -> None:
     schema = shorts_response_schema()
     kwargs = structured_json_config_kwargs(schema)
     assert kwargs["response_mime_type"] == "application/json"
@@ -28,7 +28,7 @@ def test_structured_json_config_kwargs_contract():
     assert structured_json_config_kwargs(None) == {}
 
 
-def test_gemini_config_builders_accept_structured_output_kwargs():
+def test_gemini_config_builders_accept_structured_output_kwargs() -> None:
     audio_sig = inspect.signature(make_audio_config)
     text_sig = inspect.signature(make_text_config_smart)
     for sig in (audio_sig, text_sig):
@@ -36,7 +36,7 @@ def test_gemini_config_builders_accept_structured_output_kwargs():
         assert "response_schema" in sig.parameters
 
 
-def test_candidate_generators_try_structured_output_then_legacy_fallback():
+def test_candidate_generators_try_structured_output_then_legacy_fallback() -> None:
     shorts_source = Path("services/shorts_candidates.py").read_text(encoding="utf-8")
     extras_source = Path("services/render_clips_montage.py").read_text(encoding="utf-8")
     assert "shorts_response_schema()" in shorts_source

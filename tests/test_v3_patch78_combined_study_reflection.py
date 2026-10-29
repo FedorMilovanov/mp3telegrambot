@@ -1,5 +1,7 @@
 """Regression tests for v3 patch 78 — optional combined Study+Reflection path."""
 
+import pytest
+
 import ast
 import inspect
 from pathlib import Path
@@ -12,7 +14,7 @@ from services.telegraph_pages import (
 )
 
 
-def test_combined_expanded_pages_schema_keeps_two_independent_pages():
+def test_combined_expanded_pages_schema_keeps_two_independent_pages() -> None:
     schema = combined_expanded_pages_response_schema()
     assert schema["required"] == ["study", "reflection"]
     for key in ("study", "reflection"):
@@ -24,7 +26,7 @@ def test_combined_expanded_pages_schema_keeps_two_independent_pages():
         assert "blocks" in section_props
 
 
-def test_parse_combined_expanded_json_extracts_both_pages():
+def test_parse_combined_expanded_json_extracts_both_pages() -> None:
     raw = """
     ```json
     {
@@ -49,14 +51,14 @@ def test_parse_combined_expanded_json_extracts_both_pages():
     assert reflection_sections[0]["content"] == "reflection body"
 
 
-def test_combined_study_reflection_is_opt_in(monkeypatch):
+def test_combined_study_reflection_is_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("COMBINE_STUDY_REFLECTION", raising=False)
     assert combined_study_reflection_enabled() is False
     monkeypatch.setenv("COMBINE_STUDY_REFLECTION", "1")
     assert combined_study_reflection_enabled() is True
 
 
-def test_render_stage_combined_path_is_feature_flagged_and_fallbacks_to_separate():
+def test_render_stage_combined_path_is_feature_flagged_and_fallbacks_to_separate() -> None:
     """Объединённый режим — opt-in, и он откатывается на раздельные вызовы.
 
     После выноса стадии рендера (P0-3) решение живёт в
@@ -73,7 +75,7 @@ def test_render_stage_combined_path_is_feature_flagged_and_fallbacks_to_separate
     assert "if not reflection" in stage
 
 
-def test_combined_and_separate_semantic_paths_forbid_model_downgrade():
+def test_combined_and_separate_semantic_paths_forbid_model_downgrade() -> None:
     parameter = inspect.signature(_gemini_text_request).parameters["allow_model_fallback"]
     assert parameter.default is False
 
@@ -95,7 +97,7 @@ def test_combined_and_separate_semantic_paths_forbid_model_downgrade():
     assert "allow_model_fallback=False" in src
 
 
-def test_combined_result_is_typed_dataclass_not_bare_tuple():
+def test_combined_result_is_typed_dataclass_not_bare_tuple() -> None:
     src = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
     assert "@dataclass(frozen=True)" in src
     assert "class CombinedStudyReflectionResult" in src
@@ -107,7 +109,7 @@ def test_combined_result_is_typed_dataclass_not_bare_tuple():
     assert "result.reflection_url" in stage
 
 
-def test_structured_block_schema_uses_canonical_type_enum():
+def test_structured_block_schema_uses_canonical_type_enum() -> None:
     schema = combined_expanded_pages_response_schema()
     block_type = schema["properties"]["study"]["properties"]["sections"]["items"]["properties"]["blocks"]["items"][
         "properties"

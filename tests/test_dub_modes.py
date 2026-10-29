@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from typing import Any
+
 from handlers.dub_commands import _default_render_action
 from handlers.dub_wizard import _decode_text_file, _request_payload
 from services.speech_backends import DEFAULT_MODEL_PROFILE_ID
 
 
-def _project(mode: str) -> dict:
+def _project(mode: str) -> dict[str, Any]:
     return {
         "id": "dub-1234567890",
         "recipe_id": "generic_short_v1",

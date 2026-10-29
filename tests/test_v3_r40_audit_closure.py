@@ -12,6 +12,7 @@ Covers the deterministic, pure-function fixes shipped in R40:
 """
 
 import logging
+from typing import Any
 
 import pytest
 
@@ -27,13 +28,13 @@ from pipelines.playlist import _build_media_url
 
 
 # ── text_utils: T2 typo-list scoping ─────────────────────────────────────────
-def test_r40_strange_fire_correction_retained():
+def test_r40_strange_fire_correction_retained() -> None:
     # Intentional, tested, theologically-correct title/term correction.
     assert normalize_common_typos("Странный огонь") == "Чуждый огонь"
     assert normalize_common_typos("странный огонь") == "чуждый огонь"
 
 
-def test_r40_slovo_bozhego_anchored_kept_bare_dropped():
+def test_r40_slovo_bozhego_anchored_kept_bare_dropped() -> None:
     # Anchored form is unambiguous (genitive required after "авторитет").
     assert normalize_common_typos("авторитет Слово Божьего") == "авторитет Слова Божьего"
     # Bare form was context-blind and corrupted a legitimate nominative subject.
@@ -44,7 +45,7 @@ def test_r40_slovo_bozhego_anchored_kept_bare_dropped():
 
 
 # ── text_utils: T5 month-date must not delete a whole field ───────────────────
-def test_r40_month_date_is_not_meta_garbage():
+def test_r40_month_date_is_not_meta_garbage() -> None:
     # A legitimate event date inside a real field must survive (whole-line drop).
     assert not is_meta_garbage("Конференция May 5, 2024 в Москве была важной")
     # Publication timestamps ("… at H:MM") are still stripped.
@@ -52,7 +53,7 @@ def test_r40_month_date_is_not_meta_garbage():
 
 
 # ── text_utils: T1 mixed Greek/Cyrillic pre-gate ──────────────────────────────
-def test_r40_mixed_script_detector_pregate():
+def test_r40_mixed_script_detector_pregate() -> None:
     assert find_mixed_greek_cyrillic_tokens("μεлеτάω и ὑπόκрисис") == ["μεлеτάω", "ὑπόκрисис"]
     # Single-script inputs exit before the per-char scan and find nothing.
     assert find_mixed_greek_cyrillic_tokens("обычный русский текст без греческого") == []
@@ -62,7 +63,7 @@ def test_r40_mixed_script_detector_pregate():
 
 
 # ── text_utils: T6 hashtag emoji-only rejection ───────────────────────────────
-def test_r40_hashtag_emoji_or_punct_only_rejected():
+def test_r40_hashtag_emoji_or_punct_only_rejected() -> None:
     assert normalize_hashtag("  #  🎯 ") == ""
     assert normalize_hashtag("🔥") == ""
     assert normalize_hashtag("###") == ""
@@ -72,32 +73,32 @@ def test_r40_hashtag_emoji_or_punct_only_rejected():
 
 
 # ── source_packs: word-boundary keyword matching ──────────────────────────────
-def test_r40_evangelism_does_not_trigger_angelology():
+def test_r40_evangelism_does_not_trigger_angelology() -> None:
     topics = dict(select_source_pack_topics([], "евангелие евангелизм благовестие"))
     # "ангел" no longer substring-matches "евАНГЕЛие"/"евангелизм".
     assert "angelology" not in topics
     assert "evangelism_gospel" in topics
 
 
-def test_r40_real_angel_topic_still_matches():
+def test_r40_real_angel_topic_still_matches() -> None:
     topics = dict(select_source_pack_topics([], "ангелы и небесное воинство"))
     assert "angelology" in topics
 
 
-def test_r40_generic_children_no_infant_death_pack():
+def test_r40_generic_children_no_infant_death_pack() -> None:
     # The pack is about the eternal fate of *deceased infants*; a sermon merely
     # mentioning children (Луки 18) must not pull it in.
     topics = dict(select_source_pack_topics([], "Иисус и дети в Царстве Небесном"))
     assert "infant_salvation_children" not in topics
 
 
-def test_r40_specific_infant_keyword_retained():
+def test_r40_specific_infant_keyword_retained() -> None:
     topics = dict(select_source_pack_topics([], "спасение младенец"))
     assert "infant_salvation_children" in topics
 
 
 # ── globals: credential masking ───────────────────────────────────────────────
-def test_r40_mask_credentials_patterns():
+def test_r40_mask_credentials_patterns() -> None:
     assert mask_credentials("http://user:pass@10.0.0.1:8080") == "http://***:***@10.0.0.1:8080"
     assert "user" not in mask_credentials("proxy socks5://alice:s3cr3t@host:1080")
     assert mask_credentials("bot123456:AAH" + "x" * 33 + " sent") == "bot*** sent"
@@ -106,7 +107,7 @@ def test_r40_mask_credentials_patterns():
     assert mask_credentials("http://host:8080/path") == "http://host:8080/path"
 
 
-def test_r40_log_filter_masks_nonstr_msg():
+def test_r40_log_filter_masks_nonstr_msg() -> None:
     # logger.error(exc) puts a non-str object in record.msg with no args — this
     # previously bypassed the mask entirely.
     f = _TokenMaskFilter()
@@ -120,11 +121,11 @@ def test_r40_log_filter_masks_nonstr_msg():
 
 # ── playlist: guard a non-dict entry ──────────────────────────────────────────
 @pytest.mark.parametrize("bad", [None, "not-a-dict", 123, ["list"]])
-def test_r40_build_media_url_guards_non_dict(bad):
+def test_r40_build_media_url_guards_non_dict(bad: Any) -> None:
     assert _build_media_url(bad) is None
 
 
-def test_r40_build_media_url_normal_entries():
+def test_r40_build_media_url_normal_entries() -> None:
     assert _build_media_url({"id": "abc123"}) == "https://www.youtube.com/watch?v=abc123"
     assert _build_media_url({"url": "https://rutube.ru/video/x/"}) == "https://rutube.ru/video/x/"
     assert _build_media_url({}) is None  # no id, no url

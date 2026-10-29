@@ -14,7 +14,7 @@ from pathlib import Path
 from services.ffmpeg import _is_static_video
 
 
-def test_is_static_video_is_async_and_uses_source_owned_static_policy():
+def test_is_static_video_is_async_and_uses_source_owned_static_policy() -> None:
     assert inspect.iscoroutinefunction(_is_static_video)
     wrapper = Path("services/ffmpeg.py").read_text(encoding="utf-8")
     policy = Path("services/shorts_static_policy.py").read_text(encoding="utf-8")
@@ -23,7 +23,7 @@ def test_is_static_video_is_async_and_uses_source_owned_static_policy():
     assert "moving/default-crop" in policy
 
 
-def test_shorts_render_switches_static_to_full_frame():
+def test_shorts_render_switches_static_to_full_frame() -> None:
     src = Path("services/shorts_video_impl.py").read_text(encoding="utf-8")
     assert "_is_static_video(source_video_path" in src
     idx = src.find("_is_static_video(source_video_path")
@@ -32,13 +32,13 @@ def test_shorts_render_switches_static_to_full_frame():
     assert 'visual_mode = "full_frame_vertical"' in src
 
 
-def test_montage_render_switches_static_to_full_frame():
+def test_montage_render_switches_static_to_full_frame() -> None:
     src = Path("services/render_clips_montage.py").read_text(encoding="utf-8")
     assert "_is_static_video(source_video_path" in src
     assert 'visual_mode = "full_frame_vertical"' in src
 
 
-def test_full_frame_blur_filter_still_present_in_both_renderers():
+def test_full_frame_blur_filter_still_present_in_both_renderers() -> None:
     """Режим вписывания (blur-фон + overlay по центру) должен существовать —
     именно в него мы переключаемся для статичных кадров."""
     for path in ("services/shorts_video_impl.py", "services/render_clips_montage.py"):

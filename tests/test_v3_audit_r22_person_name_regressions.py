@@ -41,27 +41,27 @@ from core.source_titles import AUTHOR_CANONICAL, canonical_author_name
 from core.utils import parse_title
 
 
-def test_known_author_not_matched_inside_unrelated_word():
+def test_known_author_not_matched_inside_unrelated_word() -> None:
     """ "Beggar" contains "Begg", "bagpiper" contains "piper" — neither
     should trigger a false author match."""
     assert known_author_from_text("The Rich Man and the Beggar") == ""
     assert known_author_from_text("bagpiper practice session") == ""
 
 
-def test_known_author_still_matches_real_mentions():
+def test_known_author_still_matches_real_mentions() -> None:
     """The word-boundary fix must not break genuine whole-word matches."""
     assert known_author_from_text("A sermon by Alistair Begg") == "Алистер Бегг"
     assert known_author_from_text("John Piper on prayer") == "Джон Пайпер"
     assert known_author_from_text("Paul Washer preaches") == "Пол Вошер"
 
 
-def test_known_author_dotted_name_substring_still_works():
+def test_known_author_dotted_name_substring_still_works() -> None:
     """R.C. Sproul-style names with periods can't rely on \\b (punctuation
     boundary is unreliable) — the substring path must stay for THESE."""
     assert known_author_from_text("Prayer with R.C. Sproul") == "Р. Ч. Спроул"
 
 
-def test_parse_title_no_longer_mistags_beggar_as_begg():
+def test_parse_title_no_longer_mistags_beggar_as_begg() -> None:
     """Live-log-shaped regression: a real Luke 16 sermon title must not be
     misattributed to Alistair Begg via the "Beggar" substring bug."""
     performer, title = parse_title(
@@ -72,7 +72,7 @@ def test_parse_title_no_longer_mistags_beggar_as_begg():
     assert title != "Алистер Бегг"
 
 
-def test_known_author_ru_and_person_replacements_spelling_consistent():
+def test_known_author_ru_and_person_replacements_spelling_consistent() -> None:
     """Any FULL-NAME key present in BOTH registries must have the identical
     canonical RU spelling in each — otherwise the same author renders two
     different ways depending on which function processed the text.
@@ -91,18 +91,18 @@ def test_known_author_ru_and_person_replacements_spelling_consistent():
     assert not mismatches, f"spelling mismatch between registries: {mismatches}"
 
 
-def test_lloyd_jones_spelling_consistent_across_both_functions():
+def test_lloyd_jones_spelling_consistent_across_both_functions() -> None:
     assert known_author_from_text("Martyn Lloyd-Jones") == "Мартин Лойд-Джонс"
     assert normalize_person_names("Martyn Lloyd-Jones").endswith("Лойд-Джонс")
     assert "Ллойд" not in normalize_person_names("Martyn Lloyd-Jones")
 
 
-def test_beeke_spelling_consistent_across_both_functions():
+def test_beeke_spelling_consistent_across_both_functions() -> None:
     assert known_author_from_text("Joel Beeke") == "Джоэль Бики"
     assert normalize_person_names("Joel Beeke") == "Джоэль Бики"
 
 
-def test_known_author_ru_and_author_canonical_spelling_consistent():
+def test_known_author_ru_and_author_canonical_spelling_consistent() -> None:
     """core/source_titles.py::AUTHOR_CANONICAL is a THIRD, independent
     registry (Source Card citations) — must agree with KNOWN_AUTHOR_RU on
     every full-name key shared between them."""
@@ -114,7 +114,7 @@ def test_known_author_ru_and_author_canonical_spelling_consistent():
     assert not mismatches, f"spelling mismatch vs AUTHOR_CANONICAL: {mismatches}"
 
 
-def test_lloyd_jones_and_beeke_consistent_through_source_card_path():
+def test_lloyd_jones_and_beeke_consistent_through_source_card_path() -> None:
     """Live gap found during this audit: canonical_author_name() pipes
     AUTHOR_CANONICAL's value through normalize_person_names(), but with no
     matching _PERSON_REPLACEMENTS source for the already-hyphenated
@@ -123,7 +123,7 @@ def test_lloyd_jones_and_beeke_consistent_through_source_card_path():
     assert canonical_author_name("Joel Beeke") == "Джоэль Бики"
 
 
-def test_gemini_prompt_does_not_teach_stale_spelling():
+def test_gemini_prompt_does_not_teach_stale_spelling() -> None:
     """core/prompts.py directly instructs Gemini with example translations —
     if it still teaches the stale double-л/no-soft-sign forms, the model
     will keep generating text no downstream normalization was designed to

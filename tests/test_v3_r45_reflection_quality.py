@@ -17,7 +17,7 @@ from core.content_audit import audit_expanded_sections
 from core.prompts import REFLECTION_APPLICATION_PROMPT
 
 
-def test_r45_reflection_strips_forbidden_pair_markers():
+def test_r45_reflection_strips_forbidden_pair_markers() -> None:
     sections = [
         {
             "title": "Предупреждения и духовные контрасты",
@@ -39,7 +39,7 @@ def test_r45_reflection_strips_forbidden_pair_markers():
     assert any(i.code == "reflection_forbidden_marker_scrubbed" for i in issues)
 
 
-def test_r45_study_analysis_pair_cards_untouched():
+def test_r45_study_analysis_pair_cards_untouched() -> None:
     # The ❌/✅ format is legitimate for Study Analysis SECTION TYPE 6 — must
     # NOT be scrubbed there.
     sections = [
@@ -55,14 +55,14 @@ def test_r45_study_analysis_pair_cards_untouched():
     assert not any(i.code == "reflection_forbidden_marker_scrubbed" for i in issues)
 
 
-def test_r45_scrubber_is_noop_without_markers():
+def test_r45_scrubber_is_noop_without_markers() -> None:
     sections = [{"title": "Обычный раздел", "content": "Простой текст без эмодзи-маркеров."}]
     out_sections, _, issues = audit_expanded_sections(sections, [], label="ReflectionApplication")
     assert out_sections[0]["content"] == "Простой текст без эмодзи-маркеров."
     assert not any(i.code == "reflection_forbidden_marker_scrubbed" for i in issues)
 
 
-def test_r45_type4_warns_against_treating_hyperbole_as_lying():
+def test_r45_type4_warns_against_treating_hyperbole_as_lying() -> None:
     assert "гипербола как приём речи" in REFLECTION_APPLICATION_PROMPT
     assert "НЕ ПЕРЕНОСИ ЧУЖОЙ ГРЕХ НА ОБЫЧНУЮ РЕЧЬ" in REFLECTION_APPLICATION_PROMPT
     # anchored inside TYPE 4 (Практика), not some unrelated section

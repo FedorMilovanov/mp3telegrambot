@@ -7,7 +7,7 @@ from core.candidate_schema import audio_analysis_response_schema, structured_jso
 from core.globals import make_audio_config
 
 
-def test_audio_analysis_response_schema_contract():
+def test_audio_analysis_response_schema_contract() -> None:
     schema = audio_analysis_response_schema()
     assert schema["type"] == "object"
     required = set(schema["required"])
@@ -32,13 +32,13 @@ def test_audio_analysis_response_schema_contract():
     assert set(td["required"]) == {"concepts", "scripture", "translations", "lexicon_notes"}
 
 
-def test_audio_schema_works_with_structured_config_kwargs():
+def test_audio_schema_works_with_structured_config_kwargs() -> None:
     kwargs = structured_json_config_kwargs(audio_analysis_response_schema())
     assert kwargs["response_mime_type"] == "application/json"
     assert kwargs["response_schema"]["properties"]["terms_data"]["type"] == "object"
 
 
-def test_make_audio_config_accepts_audio_analysis_response_schema():
+def test_make_audio_config_accepts_audio_analysis_response_schema() -> None:
     cfg = make_audio_config(
         model_name="gemini-3.5-flash",
         response_mime_type="application/json",
@@ -50,7 +50,7 @@ def test_make_audio_config_accepts_audio_analysis_response_schema():
     assert getattr(cfg, "response_schema", None) is not None
 
 
-def test_gemini_analyze_uses_schema_with_legacy_fallback():
+def test_gemini_analyze_uses_schema_with_legacy_fallback() -> None:
     src = Path("services/gemini_analyze.py").read_text(encoding="utf-8")
     assert "from core.candidate_schema import audio_analysis_response_schema" in src
     assert "def _audio_structured_output_enabled" in src
@@ -60,7 +60,7 @@ def test_gemini_analyze_uses_schema_with_legacy_fallback():
     assert "retry legacy JSON config" in src
 
 
-def test_gemini_analyze_generate_block_has_quota_overload_passthrough():
+def test_gemini_analyze_generate_block_has_quota_overload_passthrough() -> None:
     src = Path("services/gemini_analyze.py").read_text(encoding="utf-8")
     ast.parse(src)  # валидируем синтаксис; дерево само не нужно
     # Lightweight structural check: the fallback path must not swallow quota/503.

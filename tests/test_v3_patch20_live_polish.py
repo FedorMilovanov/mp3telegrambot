@@ -12,7 +12,7 @@ from converters.md_telegraph import _postprocess_telegraph_nodes
 from core.text_utils import _scrub_inline, normalize_common_typos
 
 
-def _flat(node):
+def _flat(node: object) -> str:
     if isinstance(node, str):
         return node
     if isinstance(node, dict):
@@ -20,17 +20,17 @@ def _flat(node):
     return ""
 
 
-def test_normalize_common_typos_for_live_run_words():
+def test_normalize_common_typos_for_live_run_words() -> None:
     text = "доктлинальным основанием, великими богологами, понимание Божьего Слово"
     assert normalize_common_typos(text) == ("доктринальным основанием, великими богословами, понимание Божьего Слова")
 
 
-def test_scrub_inline_applies_common_typos():
+def test_scrub_inline_applies_common_typos() -> None:
     assert _scrub_inline("Искаженным доктлинальным основанием") == "Искаженным доктринальным основанием"
     assert _scrub_inline("создавались великими богологами") == "создавались великими богословами"
 
 
-def test_telegraph_postprocess_fixes_typos_in_toc_and_titles():
+def test_telegraph_postprocess_fixes_typos_in_toc_and_titles() -> None:
     nodes = [
         {"tag": "p", "children": ["**6.** Искаженным доктлинальным основанием"]},
         {"tag": "h3", "children": ["Имеет ли смысл оставаться с доктлинальным основанием?"]},
@@ -47,7 +47,7 @@ def test_telegraph_postprocess_fixes_typos_in_toc_and_titles():
     assert "Божьего Слова" in flat
 
 
-def test_study_translation_prompt_forbids_bare_headings():
+def test_study_translation_prompt_forbids_bare_headings() -> None:
     from core.prompts import STUDY_ANALYSIS_PROMPT
 
     assert "НЕ ОСТАВЛЯЙ ГОЛЫЕ ЗАГОЛОВКИ" in STUDY_ANALYSIS_PROMPT
@@ -56,7 +56,7 @@ def test_study_translation_prompt_forbids_bare_headings():
     assert "полностью пропусти section TYPE 4" in STUDY_ANALYSIS_PROMPT
 
 
-def test_audio_prompt_final_checklist_mentions_summary_fields_and_pompous_labels():
+def test_audio_prompt_final_checklist_mentions_summary_fields_and_pompous_labels() -> None:
     from core.prompts import build_audio_analysis_prompt
 
     prompt = build_audio_analysis_prompt("T", "", "55:00", 3300, mode="deep")
@@ -67,7 +67,7 @@ def test_audio_prompt_final_checklist_mentions_summary_fields_and_pompous_labels
     assert "богословские гиганты" in tail
 
 
-def test_audio_prompt_example_stays_neutral():
+def test_audio_prompt_example_stays_neutral() -> None:
     from core.prompts import build_audio_analysis_prompt
 
     prompt = build_audio_analysis_prompt("T", "", "55:00", 3300, mode="deep")
@@ -77,12 +77,12 @@ def test_audio_prompt_example_stays_neutral():
     assert "Он вскрывает" not in example
 
 
-def test_normalize_common_typos_fixes_mixed_greek_cyrillic_terms():
+def test_normalize_common_typos_fixes_mixed_greek_cyrillic_terms() -> None:
     assert normalize_common_typos("βασιлеία") == "βασιλεία"
     assert normalize_common_typos("μορφύω и μεταμορφύω") == "μορφόω и μεταμορφόω"
 
 
-def test_source_map_prefers_original_title_over_invented_russian_title():
+def test_source_map_prefers_original_title_over_invented_russian_title() -> None:
     from converters.md_telegraph import _section_to_nodes_v2
 
     nodes = _section_to_nodes_v2(

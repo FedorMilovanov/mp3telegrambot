@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pytest
 
@@ -62,7 +64,7 @@ def _cadence(
     audio: np.ndarray,
     sample_rate: int,
     **metadata: object,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     segment: dict[str, object] = {
         "id": 1,
         "text": text,

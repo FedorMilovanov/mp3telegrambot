@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import subprocess
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 import pytest
@@ -24,8 +25,11 @@ def _function_source(name: str) -> str:
     return ast.get_source_segment(source, node) or ""
 
 
-def _configure_clip_render(monkeypatch, owner) -> None:
-    async def no_snap(path, target, search_window=5.0):
+def _configure_clip_render(
+    monkeypatch: pytest.MonkeyPatch,
+    owner: Callable[..., Awaitable[subprocess.CompletedProcess[str] | None]],
+) -> None:
+    async def no_snap(path: Path, target: Path, search_window: float = 5.0) -> Path:
         return target
 
     monkeypatch.setattr(render_clips_montage.shutil, "which", lambda name: "ffmpeg")
@@ -56,7 +60,7 @@ def test_render_surfaces_have_transactional_cleanup_contract() -> None:
 
 @pytest.mark.asyncio
 async def test_stale_clip_cannot_satisfy_signal_two_exception(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     source_path = tmp_path / "source.mp4"
@@ -64,7 +68,7 @@ async def test_stale_clip_cannot_satisfy_signal_two_exception(
     source_path.write_bytes(b"source")
     output_path.write_bytes(b"old valid clip")
 
-    async def failed_owner(command, **kwargs):
+    async def failed_owner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(
             command,
             1,
@@ -87,7 +91,7 @@ async def test_stale_clip_cannot_satisfy_signal_two_exception(
 
 @pytest.mark.asyncio
 async def test_fresh_clip_is_still_accepted_after_signal_two(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     source_path = tmp_path / "source.mp4"
@@ -95,7 +99,7 @@ async def test_fresh_clip_is_still_accepted_after_signal_two(
     source_path.write_bytes(b"source")
     output_path.write_bytes(b"old clip")
 
-    async def signal_owner(command, **kwargs):
+    async def signal_owner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         await asyncio.to_thread(_write_bytes, Path(command[-1]), b"fresh clip")
         return subprocess.CompletedProcess(
             command,
@@ -119,7 +123,7 @@ async def test_fresh_clip_is_still_accepted_after_signal_two(
 
 @pytest.mark.asyncio
 async def test_clip_cancellation_removes_partial_output(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     source_path = tmp_path / "source.mp4"
@@ -127,7 +131,7 @@ async def test_clip_cancellation_removes_partial_output(
     source_path.write_bytes(b"source")
     output_path.write_bytes(b"old clip")
 
-    async def cancelled_owner(command, **kwargs):
+    async def cancelled_owner(command: list[str], **kwargs: object) -> None:
         await asyncio.to_thread(_write_bytes, Path(command[-1]), b"partial clip")
         raise asyncio.CancelledError
 
@@ -147,7 +151,7 @@ async def test_clip_cancellation_removes_partial_output(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("payload", [None, b""], ids=["missing", "empty"])
 async def test_clip_rejects_missing_or_empty_successful_output(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     payload: bytes | None,
 ) -> None:
@@ -156,7 +160,7 @@ async def test_clip_rejects_missing_or_empty_successful_output(
     source_path.write_bytes(b"source")
     output_path.write_bytes(b"stale clip")
 
-    async def successful_owner(command, **kwargs):
+    async def successful_owner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         if payload is not None:
             await asyncio.to_thread(_write_bytes, Path(command[-1]), payload)
         return subprocess.CompletedProcess(command, 0, "", "")
@@ -176,7 +180,7 @@ async def test_clip_rejects_missing_or_empty_successful_output(
 
 @pytest.mark.asyncio
 async def test_snapshot_failure_removes_stale_file(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     video_path = tmp_path / "video.mp4"
@@ -184,7 +188,7 @@ async def test_snapshot_failure_removes_stale_file(
     video_path.write_bytes(b"video")
     snapshot_path.write_bytes(b"old snapshot")
 
-    async def failed_owner(command, **kwargs):
+    async def failed_owner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(command, 1, "", "failed")
 
     monkeypatch.setattr(render_clips_montage.shutil, "which", lambda name: "ffmpeg")
@@ -207,7 +211,7 @@ async def test_snapshot_failure_removes_stale_file(
     ids=["missing", "empty", "nonempty"],
 )
 async def test_snapshot_requires_nonempty_fresh_output(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     payload: bytes | None,
     expected: bool,
@@ -217,7 +221,7 @@ async def test_snapshot_requires_nonempty_fresh_output(
     video_path.write_bytes(b"video")
     snapshot_path.write_bytes(b"stale snapshot")
 
-    async def successful_owner(command, **kwargs):
+    async def successful_owner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         if payload is not None:
             await asyncio.to_thread(_write_bytes, Path(command[-1]), payload)
         return subprocess.CompletedProcess(command, 0, "", "")
@@ -240,7 +244,7 @@ async def test_snapshot_requires_nonempty_fresh_output(
 
 @pytest.mark.asyncio
 async def test_montage_cancellation_removes_all_partial_artifacts(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     source_path = tmp_path / "source.mp4"
@@ -254,7 +258,7 @@ async def test_montage_cancellation_removes_all_partial_artifacts(
     part1.write_bytes(b"old part one")
     concat.write_text("old concat", encoding="utf-8")
 
-    async def cancelled_owner(command, **kwargs):
+    async def cancelled_owner(command: list[str], **kwargs: object) -> None:
         await asyncio.to_thread(_write_bytes, Path(command[-1]), b"partial current render")
         raise asyncio.CancelledError
 
@@ -287,7 +291,7 @@ async def test_montage_cancellation_removes_all_partial_artifacts(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("failure_stage", ["part", "concat"])
 async def test_montage_rejects_empty_successful_output_and_cleans_artifacts(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     failure_stage: str,
 ) -> None:
@@ -301,7 +305,7 @@ async def test_montage_rejects_empty_successful_output_and_cleans_artifacts(
     concat.write_text("stale concat", encoding="utf-8")
     calls: list[list[str]] = []
 
-    async def successful_owner(command, **kwargs):
+    async def successful_owner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         calls.append(list(command))
         target = Path(command[-1])
         payload = b"" if failure_stage == "part" or "concat" in command else b"video"

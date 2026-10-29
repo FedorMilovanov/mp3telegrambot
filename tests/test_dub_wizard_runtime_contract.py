@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import inspect
 from types import SimpleNamespace
+from typing import cast
+
+from telegram import Update
+from telegram.ext import ContextTypes
 
 import pytest
 
@@ -18,7 +22,7 @@ async def test_text_handler_ignores_update_without_user_context() -> None:
     )
     context = SimpleNamespace(user_data=None)
 
-    await dub_wizard.handle_dub_wizard_text(update, context)
+    await dub_wizard.handle_dub_wizard_text(cast(Update, update), cast(ContextTypes.DEFAULT_TYPE, context))
 
 
 @pytest.mark.asyncio
@@ -29,7 +33,7 @@ async def test_document_handler_ignores_update_without_user_context() -> None:
     )
     context = SimpleNamespace(user_data=None)
 
-    await dub_wizard.handle_dub_wizard_document(update, context)
+    await dub_wizard.handle_dub_wizard_document(cast(Update, update), cast(ContextTypes.DEFAULT_TYPE, context))
 
 
 def test_message_handlers_are_limited_to_regular_messages() -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 from pathlib import Path
+from typing import Any
 import pytest
 from tools.voxcpm2 import expressive_translation
 from tools.voxcpm2 import generic_gemini_runtime
@@ -29,7 +30,7 @@ def test_full_payload_accepts_reordered_unique_ids_and_restores_source_order() -
         {"segments": [{"id": 1, "russian": "А"}, {"id": 2, "russian": "   "}]},
     ],
 )
-def test_full_payload_rejects_ambiguous_or_incomplete_segments(payload) -> None:
+def test_full_payload_rejects_ambiguous_or_incomplete_segments(payload: Any) -> None:
     with pytest.raises(RuntimeError):
         strict.validate_full(payload, GROUPS)
 
@@ -50,11 +51,13 @@ def test_clean_translation_routes_use_strict_validator() -> None:
     assert "validate_translation=strict_translation_payload.validate_full" in custom
 
 
-def test_expressive_prompts_do_not_assume_english_source(monkeypatch) -> None:
+def test_expressive_prompts_do_not_assume_english_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     calls: list[str] = []
     groups = [{"id": 1, "start": 0.0, "end": 10.0, "english": "Sie lacht über die kommende Zeit."}]
 
-    def fake_gemini(prompt: str, _model_name: str):
+    def fake_gemini(prompt: str, _model_name: str) -> dict[str, Any]:
         calls.append(prompt)
         return {"segments": [{"id": 1, "russian": "Она смеётся над грядущим."}]}
 
@@ -75,7 +78,7 @@ def test_expressive_prompts_do_not_assume_english_source(monkeypatch) -> None:
     assert "с исходного языка на русский" in combined
 
 
-def test_actual_transcript_language_overrides_stale_metadata(monkeypatch) -> None:
+def test_actual_transcript_language_overrides_stale_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
     metadata = {"title": "Video", "language": "en"}
     cues = [object()]
     monkeypatch.setattr(

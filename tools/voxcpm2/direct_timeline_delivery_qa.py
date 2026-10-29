@@ -29,14 +29,14 @@ LINKED_PREFERRED_GAP_SECONDS = 0.32
 LINKED_MAX_GAP_SECONDS = 0.55
 
 
-def _mono(samples: Any) -> np.ndarray:
+def _legacy_mono(samples: Any) -> np.ndarray:
     audio = np.asarray(samples, dtype=np.float32)
     if audio.ndim > 1:
         audio = audio.mean(axis=1)
     return audio.reshape(-1)
 
 
-def _finite(value: Any, default: float = 0.0) -> float:
+def _legacy_finite(value: Any, default: float = 0.0) -> float:
     try:
         result = float(value)
     except (TypeError, ValueError, OverflowError):
@@ -58,7 +58,7 @@ def _append_cadence_failure(
     cadence["penalty"] = _finite(cadence.get("penalty")) + max(0.0, penalty)
 
 
-def verify_timeline_delivery(
+def _legacy_verify_timeline_delivery_impl(
     timeline: Path,
     fitted_segments: list[tuple[dict[str, Any], Path]],
 ) -> dict[str, Any]:
@@ -203,8 +203,8 @@ def verify_timeline_delivery(
             reasons = list(cadence.get("failures") or [])
             if tail.get("suspicious"):
                 reasons.append(str(tail.get("artifact_type") or "late_tail"))
-            gap = item.get("gap_to_next_seconds")
-            gap_text = f"; next-gap={float(gap):.3f}s" if gap is not None else ""
+            reported_gap = item.get("gap_to_next_seconds")
+            gap_text = f"; next-gap={float(reported_gap):.3f}s" if reported_gap is not None else ""
             details.append(
                 "#{id}: {reasons}; ending={ending:.2f}st; energy={energy:.2f}dB{gap}".format(
                     id=item["id"],
@@ -262,7 +262,7 @@ GLOBAL_F0_SOURCE_HEADROOM_ST = 3.0
 
 GLOBAL_F0_MAX_LIMIT_ST = 13.0
 
-_legacy_verify_timeline_delivery = verify_timeline_delivery
+_legacy_verify_timeline_delivery = _legacy_verify_timeline_delivery_impl
 
 
 def _mono(samples: Any) -> np.ndarray:

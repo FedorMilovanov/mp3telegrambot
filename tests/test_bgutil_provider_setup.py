@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Any
 
 import json
 import shutil
@@ -194,7 +195,7 @@ def test_compiled_script_offline_smoke_requires_exact_version(
 
 
 def test_command_timeout_is_bounded_and_translated(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def timeout(*_args, **_kwargs):
+    async def timeout(*_args: Any, **_kwargs: Any) -> None:
         raise subprocess.TimeoutExpired(cmd=["npm", "ci"], timeout=1)
 
     monkeypatch.setattr(setup, "run_cancellable_process", timeout)
@@ -207,7 +208,7 @@ def test_build_command_inherits_stdio_but_keeps_shared_process_owner(
 ) -> None:
     captured: dict[str, object] = {}
 
-    async def fake_owned(command, **kwargs):
+    async def fake_owned(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         captured["command"] = command
         captured.update(kwargs)
         return subprocess.CompletedProcess(command, 0, None, None)
@@ -241,10 +242,10 @@ def test_windows_command_shim_is_run_through_comspec(
     assert "ci" in command[4]
 
 
-def test_exact_checkout_fetches_reviewed_commit(monkeypatch, tmp_path):
+def test_exact_checkout_fetches_reviewed_commit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     commands: list[tuple[list[str], Path | None]] = []
 
-    def fake_run(command, *, cwd=None, **_kwargs):
+    def fake_run(command: list[str], *, cwd: Path | None = None, **_kwargs: object) -> None:
         commands.append((command, cwd))
 
     monkeypatch.setattr(setup, "_run", fake_run)

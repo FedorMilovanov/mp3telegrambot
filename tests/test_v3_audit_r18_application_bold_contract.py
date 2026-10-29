@@ -23,7 +23,7 @@ anchor_timestamp + concrete_step) ВСЕГДА даёт жирный тригг�
 from converters.md_telegraph import _postprocess_telegraph_nodes
 
 
-def _walk(node, parts):
+def _walk(node: object, parts: list[str]) -> None:
     if isinstance(node, str):
         parts.append(node)
     elif isinstance(node, dict):
@@ -31,8 +31,8 @@ def _walk(node, parts):
             _walk(c, parts)
 
 
-def _flat(node) -> str:
-    parts = []
+def _flat(node: object) -> str:
+    parts: list[str] = []
     _walk(node, parts)
     return "".join(parts)
 
@@ -44,7 +44,7 @@ TS_LINK = {
 }
 
 
-def test_non_bold_trigger_before_shag_gets_wrapped_bold():
+def test_non_bold_trigger_before_shag_gets_wrapped_bold() -> None:
     nodes = [
         {
             "tag": "p",
@@ -68,7 +68,7 @@ def test_non_bold_trigger_before_shag_gets_wrapped_bold():
     assert "Желание понравиться" in _flat(trigger_para)
 
 
-def test_duplicate_adjacent_timestamp_link_collapsed():
+def test_duplicate_adjacent_timestamp_link_collapsed() -> None:
     nodes = [
         {
             "tag": "p",
@@ -87,7 +87,7 @@ def test_duplicate_adjacent_timestamp_link_collapsed():
     assert len(links) == 1, f"дублирующийся таймкод не убран: {bold_node!r}"
 
 
-def test_already_bold_trigger_left_untouched_no_double_wrap():
+def test_already_bold_trigger_left_untouched_no_double_wrap() -> None:
     nodes = [
         {"tag": "p", "children": [{"tag": "b", "children": ["Уже жирный триггер ⏱ 10:00."]}]},
         {"tag": "p", "children": ["Шаг: сделать нечто конкретное."]},
@@ -102,7 +102,7 @@ def test_already_bold_trigger_left_untouched_no_double_wrap():
     )
 
 
-def test_paragraph_not_followed_by_shag_is_untouched():
+def test_paragraph_not_followed_by_shag_is_untouched() -> None:
     """Обычные соседние абзацы (без «Шаг:» после) не должны неожиданно жирнеть."""
     nodes = [
         {"tag": "p", "children": ["Обычный абзац без применения."]},
@@ -112,7 +112,7 @@ def test_paragraph_not_followed_by_shag_is_untouched():
     assert out[0]["children"] == ["Обычный абзац без применения."]
 
 
-def test_fix_present_in_source():
+def test_fix_present_in_source() -> None:
     from pathlib import Path
 
     src = Path(__file__).resolve().parents[1].joinpath("converters/md_telegraph.py").read_text(encoding="utf-8")

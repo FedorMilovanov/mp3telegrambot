@@ -5,7 +5,7 @@ from pathlib import Path
 from core.title_topic_audit import choose_safe_public_title
 
 
-def test_choose_safe_public_title_uses_fallback_only_when_warning_present():
+def test_choose_safe_public_title_uses_fallback_only_when_warning_present() -> None:
     ai = {
         "real_title": "Святой Дух Откровения",
         "title_topic_warning": "low overlap",
@@ -17,7 +17,7 @@ def test_choose_safe_public_title_uses_fallback_only_when_warning_present():
     assert choose_safe_public_title({"real_title": "Святой Дух Откровения"}, "Fallback") == "Святой Дух Откровения"
 
 
-def test_analysis_stage_applies_title_topic_fallback_before_publication():
+def test_analysis_stage_applies_title_topic_fallback_before_publication() -> None:
     """Подмена заголовка происходит в стадии анализа, до конспекта.
 
     После выноса стадии (P0-3) проверка идёт по её файлу: поведение закреплено

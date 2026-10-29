@@ -1,8 +1,12 @@
 """Executed behavior contracts for Dub Studio audio repair controls."""
 
+import pathlib
+
 import asyncio
 import json
 from types import SimpleNamespace
+from collections.abc import Callable, Coroutine
+from typing import Any, cast
 
 import pytest
 
@@ -10,14 +14,16 @@ from handlers import dub_audio_repair as repair
 
 
 class Message:
-    def __init__(self):
-        self.replies = []
+    def __init__(self) -> None:
+        self.replies: list[tuple[str, dict[str, Any]]] = []
 
-    async def reply_text(self, text, **kwargs):
+    async def reply_text(self, text: str, **kwargs: Any) -> None:
         self.replies.append((text, kwargs))
 
 
-def _update(*, user_id=1, with_user=True, with_message=True):
+def _update(
+    *, user_id: int = 1, with_user: bool = True, with_message: bool = True
+) -> tuple[SimpleNamespace, Message | None]:
     message = Message() if with_message else None
     update = SimpleNamespace(
         effective_user=SimpleNamespace(id=user_id) if with_user else None,
@@ -26,11 +32,11 @@ def _update(*, user_id=1, with_user=True, with_message=True):
     return update, message
 
 
-def _run(callback, *args):
+def _run(callback: Callable[..., Coroutine[Any, Any, Any]], *args: Any) -> Any:
     return asyncio.run(callback(*args))
 
 
-def test_process_lock_path_creates_studio_root(monkeypatch, tmp_path):
+def test_process_lock_path_creates_studio_root(monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path) -> None:
     root = tmp_path / "studio"
     monkeypatch.setattr(repair, "studio_root", lambda: root)
 
@@ -40,14 +46,14 @@ def test_process_lock_path_creates_studio_root(monkeypatch, tmp_path):
     assert root.is_dir()
 
 
-def test_process_lock_bounded_when_competitor_disappears(monkeypatch):
+def test_process_lock_bounded_when_competitor_disappears(monkeypatch: pytest.MonkeyPatch) -> None:
     class DisappearingPath:
-        def stat(self):
+        def stat(self) -> None:
             raise FileNotFoundError
 
-    attempts = []
+    attempts: list[tuple[Any, ...]] = []
 
-    def already_exists(*args):
+    def already_exists(*args: Any) -> None:
         attempts.append(args)
         raise FileExistsError
 
@@ -60,19 +66,20 @@ def test_process_lock_bounded_when_competitor_disappears(monkeypatch):
     assert len(attempts) == 2
 
 
-def test_strict_ids_require_a_nonempty_list_and_short_bounds_text():
+def test_strict_ids_require_a_nonempty_list_and_short_bounds_text() -> None:
     with pytest.raises(RuntimeError, match="непустым списком"):
         repair._strict_ids([], field="ids")
     assert repair._short(" one\n two ") == "one two"
     assert repair._short("x" * 20, limit=5) == "xxxx…"
 
 
-def test_repair_admin_gate_handles_all_user_shapes(monkeypatch):
+def test_repair_admin_gate_handles_all_user_shapes(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(repair, "ADMIN_IDS", {1})
     update, _ = _update(user_id=1)
     assert _run(repair._admin, update) is True
 
     update, message = _update(user_id=2)
+    assert message is not None
     assert _run(repair._admin, update) is False
     assert message.replies == [("⛔ Ремонт Dub Studio доступен только администратору.", {})]
 
@@ -80,7 +87,7 @@ def test_repair_admin_gate_handles_all_user_shapes(monkeypatch):
     assert _run(repair._admin, update) is False
 
 
-def test_repair_commands_stop_when_admin_update_has_no_message(monkeypatch):
+def test_repair_commands_stop_when_admin_update_has_no_message(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(repair, "ADMIN_IDS", {1})
     monkeypatch.setattr(repair, "DubStore", lambda: pytest.fail("missing message must not open the store"))
     update, _ = _update(user_id=1, with_message=False)
@@ -89,46 +96,46 @@ def test_repair_commands_stop_when_admin_update_has_no_message(monkeypatch):
     _run(repair._dubfix_command_unlocked, update, SimpleNamespace(args=[]))
 
 
-def test_project_resolution_enforces_owner_and_generic_recipe():
-    project = {
+def test_project_resolution_enforces_owner_and_generic_recipe() -> None:
+    project: dict[str, Any] = {
         "id": "p",
         "owner_user_id": 7,
         "recipe_id": "generic_short_v1",
     }
 
     class Store:
-        def __init__(self):
-            self.project = project
-            self.explicit = []
-            self.latest = []
+        def __init__(self) -> None:
+            self.project: dict[str, Any] | None = project
+            self.explicit: list[str] = []
+            self.latest: list[int] = []
 
-        def get_project(self, token):
+        def get_project(self, token: str) -> dict[str, Any] | None:
             self.explicit.append(token)
             return self.project
 
-        def latest_project(self, *, owner_user_id):
+        def latest_project(self, *, owner_user_id: int) -> dict[str, Any] | None:
             self.latest.append(owner_user_id)
             return self.project
 
     store = Store()
-    assert repair._resolve_project(store, 7, " P ") is project
-    assert repair._resolve_project(store, 7, "last") is project
-    assert repair._resolve_project(store, 7, None) is project
+    assert repair._resolve_project(cast(Any, store), 7, " P ") is project
+    assert repair._resolve_project(cast(Any, store), 7, "last") is project
+    assert repair._resolve_project(cast(Any, store), 7, None) is project
     assert store.explicit == ["p"]
     assert store.latest == [7, 7]
 
     store.project = None
     with pytest.raises(KeyError, match="не найден"):
-        repair._resolve_project(store, 7, None)
+        repair._resolve_project(cast(Any, store), 7, None)
     store.project = {**project, "owner_user_id": 8}
     with pytest.raises(PermissionError, match="не ваш проект"):
-        repair._resolve_project(store, 7, None)
+        repair._resolve_project(cast(Any, store), 7, None)
     store.project = {**project, "recipe_id": "other"}
     with pytest.raises(RuntimeError, match="только универсальным"):
-        repair._resolve_project(store, 7, None)
+        repair._resolve_project(cast(Any, store), 7, None)
 
 
-def test_project_root_and_segments_path_are_contained(monkeypatch, tmp_path):
+def test_project_root_and_segments_path_are_contained(monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path) -> None:
     monkeypatch.setattr(repair, "studio_root", lambda: tmp_path)
 
     assert repair._project_root("project") == tmp_path / "projects" / "project"
@@ -137,7 +144,9 @@ def test_project_root_and_segments_path_are_contained(monkeypatch, tmp_path):
         repair._project_root("../outside")
 
 
-def test_segment_loader_requires_an_existing_valid_json_file(monkeypatch, tmp_path):
+def test_segment_loader_requires_an_existing_valid_json_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     path = tmp_path / "segments.json"
     monkeypatch.setattr(repair, "_segments_path", lambda _project_id: path)
 
@@ -176,7 +185,9 @@ def test_segment_loader_requires_an_existing_valid_json_file(monkeypatch, tmp_pa
         ),
     ],
 )
-def test_segment_loader_rejects_malformed_payloads(monkeypatch, tmp_path, payload, match):
+def test_segment_loader_rejects_malformed_payloads(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path, payload: Any, match: str
+) -> None:
     path = tmp_path / "segments.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
     monkeypatch.setattr(repair, "_segments_path", lambda _project_id: path)
@@ -185,7 +196,9 @@ def test_segment_loader_rejects_malformed_payloads(monkeypatch, tmp_path, payloa
         repair.load_repair_segments("p")
 
 
-def test_segment_loader_normalizes_source_end_and_sorts_ids(monkeypatch, tmp_path):
+def test_segment_loader_normalizes_source_end_and_sorts_ids(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     path = tmp_path / "segments.json"
     path.write_text(
         json.dumps(
@@ -213,7 +226,7 @@ def test_segment_loader_normalizes_source_end_and_sorts_ids(monkeypatch, tmp_pat
     assert segments[1]["start_delay_ms"] == 250
 
 
-def test_segment_selector_rejects_empty_malformed_oversized_and_blank_selection():
+def test_segment_selector_rejects_empty_malformed_oversized_and_blank_selection() -> None:
     with pytest.raises(ValueError, match="Не указаны"):
         repair.parse_segment_selector(" ", [1])
     with pytest.raises(ValueError, match="Некорректный диапазон"):
@@ -225,7 +238,7 @@ def test_segment_selector_rejects_empty_malformed_oversized_and_blank_selection(
     assert repair.parse_segment_selector("1,,2,", [1, 2]) == [1, 2]
 
 
-def test_segments_text_escapes_content_and_bounds_long_project_list():
+def test_segments_text_escapes_content_and_bounds_long_project_list() -> None:
     segments = [
         {
             "id": 1,
@@ -247,9 +260,11 @@ def test_segments_text_escapes_content_and_bounds_long_project_list():
     assert "/dubfix &lt;project&gt; all" in text
 
 
-def test_request_writer_validates_project_and_segments_existence(monkeypatch, tmp_path):
+def test_request_writer_validates_project_and_segments_existence(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     with pytest.raises(RuntimeError, match="JSON-объектом"):
-        repair._write_repair_request(None, [], [], requested_by=1)
+        repair._write_repair_request(cast(Any, None), [], [], requested_by=1)
     with pytest.raises(RuntimeError, match="Project ID пуст"):
         repair._write_repair_request({"id": " "}, [], [], requested_by=1)
 
@@ -268,13 +283,13 @@ def test_request_writer_validates_project_and_segments_existence(monkeypatch, tm
         )
 
 
-def test_dubsegments_command_renders_project_segments(monkeypatch):
+def test_dubsegments_command_renders_project_segments(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(repair, "ADMIN_IDS", {1})
-    project = {"id": "p"}
-    calls = {}
+    project: dict[str, Any] = {"id": "p"}
+    calls: dict[str, Any] = {}
     monkeypatch.setattr(repair, "DubStore", lambda: object())
 
-    def resolve(_store, user_id, token):
+    def resolve(_store: Any, user_id: int, token: str | None) -> dict[str, Any]:
         calls["resolve"] = (user_id, token)
         return project
 
@@ -285,6 +300,7 @@ def test_dubsegments_command_renders_project_segments(monkeypatch):
         lambda project_id: [{"id": 1, "start": 0.0, "end": 1.0, "text": "line"}],
     )
     update, message = _update()
+    assert message is not None
 
     _run(repair.dubsegments_command, update, SimpleNamespace(args=["p"]))
 
@@ -293,15 +309,16 @@ def test_dubsegments_command_renders_project_segments(monkeypatch):
     assert message.replies[0][1] == {"parse_mode": "HTML"}
 
 
-def test_dubsegments_command_escapes_and_bounds_errors(monkeypatch):
+def test_dubsegments_command_escapes_and_bounds_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(repair, "ADMIN_IDS", {1})
 
     class Store:
-        def __init__(self):
+        def __init__(self) -> None:
             raise RuntimeError("<" + "x" * 1200)
 
     monkeypatch.setattr(repair, "DubStore", Store)
     update, message = _update()
+    assert message is not None
 
     _run(repair.dubsegments_command, update, SimpleNamespace(args=[]))
 
@@ -311,14 +328,15 @@ def test_dubsegments_command_escapes_and_bounds_errors(monkeypatch):
     assert kwargs == {"parse_mode": "HTML"}
 
 
-def test_segment_commands_return_after_admin_rejection(monkeypatch):
+def test_segment_commands_return_after_admin_rejection(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(repair, "ADMIN_IDS", set())
 
-    def store_must_not_run():
+    def store_must_not_run() -> None:
         raise AssertionError("unauthorized commands must not touch the store")
 
     monkeypatch.setattr(repair, "DubStore", store_must_not_run)
     update, message = _update(user_id=2)
+    assert message is not None
     context = SimpleNamespace(args=[])
     _run(repair.dubsegments_command, update, context)
     _run(repair._dubfix_command_unlocked, update, context)
@@ -328,32 +346,40 @@ def test_segment_commands_return_after_admin_rejection(monkeypatch):
 
 
 class Store:
-    def __init__(self, *, enqueue_error=None):
+    def __init__(self, *, enqueue_error: Exception | None = None) -> None:
         self.enqueue_error = enqueue_error
-        self.enqueued = []
+        self.enqueued: list[tuple[str, str]] = []
 
-    def enqueue_job(self, project_id, kind):
+    def enqueue_job(self, project_id: str, kind: str) -> dict[str, Any]:
         self.enqueued.append((project_id, kind))
         if self.enqueue_error:
             raise self.enqueue_error
         return {"id": 42}
 
 
-def _fix_dependencies(monkeypatch, tmp_path, store):
-    project = {"id": "p", "owner_user_id": 1, "recipe_id": "generic_short_v1"}
+def _fix_dependencies(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path, store: Store
+) -> tuple[dict[str, list[Any]], pathlib.Path]:
+    project: dict[str, Any] = {"id": "p", "owner_user_id": 1, "recipe_id": "generic_short_v1"}
     segments = [
         {"id": 1, "start": 0.0, "end": 1.0, "text": "one"},
         {"id": 2, "start": 1.0, "end": 2.0, "text": "two"},
     ]
     request_path = tmp_path / "audio_repair.json"
-    calls = {"tokens": [], "writes": [], "slots": []}
+    calls: dict[str, list[Any]] = {"tokens": [], "writes": [], "slots": []}
     monkeypatch.setattr(repair, "DubStore", lambda: store)
 
-    def resolve(_store, _user_id, token):
+    def resolve(_store: Any, _user_id: int, token: str | None) -> dict[str, Any]:
         calls["tokens"].append(token)
         return project
 
-    def write(actual_project, actual_segments, selected, *, requested_by):
+    def write(
+        actual_project: dict[str, Any],
+        actual_segments: list[dict[str, Any]],
+        selected: list[int],
+        *,
+        requested_by: int,
+    ) -> pathlib.Path:
         calls["writes"].append((actual_project, actual_segments, selected, requested_by))
         request_path.write_text("request", encoding="utf-8")
         return request_path
@@ -369,11 +395,14 @@ def _fix_dependencies(monkeypatch, tmp_path, store):
     return calls, request_path
 
 
-def test_dubfix_without_selector_only_displays_segments(monkeypatch, tmp_path):
+def test_dubfix_without_selector_only_displays_segments(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     monkeypatch.setattr(repair, "ADMIN_IDS", {1})
     store = Store()
     calls, _request_path = _fix_dependencies(monkeypatch, tmp_path, store)
     update, message = _update()
+    assert message is not None
 
     _run(repair._dubfix_command_unlocked, update, SimpleNamespace(args=[]))
 
@@ -390,11 +419,14 @@ def test_dubfix_without_selector_only_displays_segments(monkeypatch, tmp_path):
         ("1", "Реплики: <code>1</code>", "Выбранные реплики получают новый seed"),
     ],
 )
-def test_dubfix_enqueues_full_and_partial_repairs(monkeypatch, tmp_path, selector, expected_text, expected_detail):
+def test_dubfix_enqueues_full_and_partial_repairs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path, selector: str, expected_text: str, expected_detail: str
+) -> None:
     monkeypatch.setattr(repair, "ADMIN_IDS", {1})
     store = Store()
     calls, _request_path = _fix_dependencies(monkeypatch, tmp_path, store)
     update, message = _update()
+    assert message is not None
 
     _run(
         repair._dubfix_command_unlocked,
@@ -413,11 +445,14 @@ def test_dubfix_enqueues_full_and_partial_repairs(monkeypatch, tmp_path, selecto
     assert kwargs == {"parse_mode": "HTML"}
 
 
-def test_dubfix_enqueue_failure_removes_request_and_reports_error(monkeypatch, tmp_path):
+def test_dubfix_enqueue_failure_removes_request_and_reports_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     monkeypatch.setattr(repair, "ADMIN_IDS", {1})
     store = Store(enqueue_error=RuntimeError("<" + "x" * 1200))
     _calls, request_path = _fix_dependencies(monkeypatch, tmp_path, store)
     update, message = _update()
+    assert message is not None
 
     _run(
         repair._dubfix_command_unlocked,
@@ -432,14 +467,17 @@ def test_dubfix_enqueue_failure_removes_request_and_reports_error(monkeypatch, t
     assert kwargs == {"parse_mode": "HTML"}
 
 
-def test_dubfix_wrapper_reports_runtime_error_to_message(monkeypatch, tmp_path):
+def test_dubfix_wrapper_reports_runtime_error_to_message(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     monkeypatch.setattr(repair, "_process_lock_path", lambda: tmp_path / "dubfix.lock")
 
-    async def fail(_update, _context):
+    async def fail(_update: Any, _context: Any) -> None:
         raise RuntimeError("repair failed")
 
     monkeypatch.setattr(repair, "_dubfix_command_unlocked", fail)
     update, message = _update()
+    assert message is not None
 
     _run(repair.dubfix_command, update, SimpleNamespace(args=[]))
 
@@ -447,13 +485,13 @@ def test_dubfix_wrapper_reports_runtime_error_to_message(monkeypatch, tmp_path):
     assert not (tmp_path / "dubfix.lock").exists()
 
 
-def test_audio_repair_registration_is_idempotent():
+def test_audio_repair_registration_is_idempotent() -> None:
     class Application:
-        def __init__(self):
-            self.bot_data = {}
-            self.handlers = []
+        def __init__(self) -> None:
+            self.bot_data: dict[str, Any] = {}
+            self.handlers: list[Any] = []
 
-        def add_handler(self, handler):
+        def add_handler(self, handler: Any) -> None:
             self.handlers.append(handler)
 
     application = Application()

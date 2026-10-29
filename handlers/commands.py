@@ -74,10 +74,10 @@ from pipelines.video_dispatch import process_single_video
 from pipelines.playlist import handle_playlist
 from core.progress import safe_edit_text
 
-import asyncio
+import asyncio as asyncio
 import contextlib
 import logging
-import os  # FIX #9
+import os as os  # FIX #9
 import re  # FIX #9
 import uuid
 from pathlib import Path  # FIX #9

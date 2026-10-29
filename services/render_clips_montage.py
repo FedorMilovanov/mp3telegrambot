@@ -12,9 +12,9 @@ from core.globals import (
 )
 from services.gemini_router import gemini_generate
 from core.database import GEMINI_MODEL  # FIX render
-from services.ffmpeg import _get_video_encoder
+from services.ffmpeg import _get_video_encoder as _get_video_encoder
 from services.ffmpeg import _find_silence_end  # FIX render
-from services.ffmpeg import _is_static_video  # AUDIT R28
+from services.ffmpeg import _is_static_video as _is_static_video  # AUDIT R28
 from services.async_process import run_cancellable_process
 from services.async_worker import await_owned_coroutine
 from core.utils import format_timestamp
@@ -30,7 +30,7 @@ import asyncio
 import json  # FIX render
 import logging
 import re
-import shutil
+import shutil as shutil
 import subprocess
 import time
 from pathlib import Path

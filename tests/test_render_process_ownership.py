@@ -84,7 +84,7 @@ def test_gpu_semaphores_still_wrap_long_render_owners() -> None:
 
 @pytest.mark.asyncio
 async def test_render_clip_calls_tree_owner_with_existing_command_contract(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     source_path = tmp_path / "source.mp4"
@@ -92,10 +92,10 @@ async def test_render_clip_calls_tree_owner_with_existing_command_contract(
     source_path.write_bytes(b"source")
     calls: list[tuple[list[str], dict[str, object]]] = []
 
-    async def no_snap(path, target, search_window=5.0):
+    async def no_snap(path: Path, target: float, search_window: float = 5.0) -> float:
         return target
 
-    async def fake_owner(command, **kwargs):
+    async def fake_owner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         calls.append((list(command), dict(kwargs)))
         await asyncio.to_thread(_write_bytes, Path(command[-1]), b"rendered")
         return subprocess.CompletedProcess(command, 0, "", "")

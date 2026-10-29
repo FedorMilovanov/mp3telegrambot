@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
-import subprocess
+import shutil as shutil
+import subprocess as subprocess
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path

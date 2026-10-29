@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import pytest
+from typing import cast
 
-from services.speech_backends import BackendCapabilities
+from services.speech_backends import BackendCapabilities, SpeechBackend
 from services.speech_backends import registry
 
 
@@ -26,8 +27,8 @@ class _StubBackend:
 
 
 def test_alias_collision_does_not_partially_register_backend() -> None:
-    first = _StubBackend("registry-atomic-first", ("registry-shared-alias",))
-    second = _StubBackend("registry-atomic-second", ("registry-shared-alias",))
+    first = cast(SpeechBackend, _StubBackend("registry-atomic-first", ("registry-shared-alias",)))
+    second = cast(SpeechBackend, _StubBackend("registry-atomic-second", ("registry-shared-alias",)))
     registry.register_backend(first)
     try:
         before = registry.backend_ids()

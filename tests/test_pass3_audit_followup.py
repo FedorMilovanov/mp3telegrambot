@@ -1,5 +1,7 @@
+import pytest
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 from core import observability
 from core.candidate_schema import shorts_response_schema
@@ -7,11 +9,11 @@ from core.globals import make_audio_config, make_text_config_smart
 from core.observability import format_gemini_metrics_report, log_gemini_run
 
 
-def _dump_config(config) -> str:
+def _dump_config(config: Any) -> str:
     return str(config).lower()
 
 
-def test_structured_output_configs_allow_thinking_config_with_schema_for_3x():
+def test_structured_output_configs_allow_thinking_config_with_schema_for_3x() -> None:
     schema = shorts_response_schema()
     audio_cfg = make_audio_config(
         model_name="gemini-3.5-flash",
@@ -31,7 +33,7 @@ def test_structured_output_configs_allow_thinking_config_with_schema_for_3x():
     assert "response_mime_type='application/json'" in _dump_config(audio_cfg)
 
 
-def test_observability_table_ensure_is_cached_per_db_path(tmp_path, monkeypatch):
+def test_observability_table_ensure_is_cached_per_db_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     db1 = tmp_path / "one.db"
     db2 = tmp_path / "two.db"
     monkeypatch.setattr(observability, "DB_PATH", db1)
@@ -49,7 +51,7 @@ def test_observability_table_ensure_is_cached_per_db_path(tmp_path, monkeypatch)
     assert count == 1
 
 
-def test_metrics_report_truncation_has_visible_notice(tmp_path, monkeypatch):
+def test_metrics_report_truncation_has_visible_notice(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     db_path = tmp_path / "long_metrics.db"
     monkeypatch.setattr(observability, "DB_PATH", db_path)
     for i in range(80):
@@ -65,7 +67,7 @@ def test_metrics_report_truncation_has_visible_notice(tmp_path, monkeypatch):
     assert "Отчёт обрезан" in report
 
 
-def test_ci_runs_supported_python_matrix():
+def test_ci_runs_supported_python_matrix() -> None:
     ci = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
     # 3.12 — floor, 3.13 — верхняя граница; 3.11 снят 2026-10-24.
     assert 'python-version: ["3.12", "3.13"]' in ci

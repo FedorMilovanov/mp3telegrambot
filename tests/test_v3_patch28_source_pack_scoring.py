@@ -8,7 +8,7 @@ from core.source_packs import (
 )
 
 
-def test_source_pack_has_new_major_doctrinal_topics():
+def test_source_pack_has_new_major_doctrinal_topics() -> None:
     for topic in [
         "christology",
         "trinity",
@@ -23,13 +23,13 @@ def test_source_pack_has_new_major_doctrinal_topics():
         assert len(_PACKS[topic]) >= 3
 
 
-def test_source_pack_scoring_prefers_prayer_over_generic_church():
+def test_source_pack_scoring_prefers_prayer_over_generic_church() -> None:
     topics = select_source_pack_topics(["молитва", "церковь"], "Как нам следует молиться в церкви")
     assert topics[0][0] == "prayer_spirituality"
     assert "ecclesiology" not in [t for t, _ in topics[:1]]
 
 
-def test_source_pack_scoring_for_isaiah_servant_and_sufficiency():
+def test_source_pack_scoring_for_isaiah_servant_and_sufficiency() -> None:
     isaiah = get_source_pack(["Исаия 53", "заместительное искупление"], "Презренный Раб Иеговы", duration_seconds=3700)
     assert "темы: isaiah_servant" in isaiah
     assert "Commentary on Isaiah" in isaiah
@@ -42,7 +42,7 @@ def test_source_pack_scoring_for_isaiah_servant_and_sufficiency():
     assert "The Sufficiency of Scripture" in suff
 
 
-def test_source_pack_duration_limits_and_dedupe():
+def test_source_pack_duration_limits_and_dedupe() -> None:
     short = get_source_pack(["Исаия 53"], "Раб Иеговы", duration_seconds=600)
     long = get_source_pack(["Исаия 53"], "Раб Иеговы", duration_seconds=4000)
     short_sources = [ln for ln in short.splitlines() if ln.startswith("- ")]
@@ -52,7 +52,7 @@ def test_source_pack_duration_limits_and_dedupe():
     assert len(long_sources) == len(set(long_sources))
 
 
-def test_source_pack_for_ai_data_reads_duration_and_gives_positive_guidance():
+def test_source_pack_for_ai_data_reads_duration_and_gives_positive_guidance() -> None:
     pack = get_source_pack_for_ai_data(
         {
             "key_categories": ["ангелология", "служение ангелов"],
@@ -65,7 +65,7 @@ def test_source_pack_for_ai_data_reads_duration_and_gives_positive_guidance():
     assert "Названия на английском не переводи" in pack
 
 
-def test_source_packs_do_not_include_disallowed_authors():
+def test_source_packs_do_not_include_disallowed_authors() -> None:
     from core.source_packs import _PACKS
     from core.source_titles import is_disallowed_source_author
 

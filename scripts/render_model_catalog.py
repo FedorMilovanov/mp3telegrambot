@@ -244,14 +244,22 @@ def _replace_block(text: str, block: str, *, marker: str = "MODEL-CATALOG") -> s
     replacement = f"{start}\n{block.rstrip()}\n{end}"
     if not pattern.search(text):
         raise SystemExit(f"marker {marker} not found")
-    return pattern.sub(lambda _m: replacement, text, count=1)
+
+    def _replace_match(_match: re.Match[str]) -> str:
+        return replacement
+
+    return pattern.sub(_replace_match, text, count=1)
 
 
 def _render_env(text: str) -> str:
     for name, value in ENV_ROLE_MAP.items():
         pattern = re.compile(rf"^(\s*#?\s*{re.escape(name)})=(\S*)\s*$", re.MULTILINE)
         if pattern.search(text):
-            text = pattern.sub(lambda m, value=value: f"{m.group(1)}={value}", text)
+
+            def _replace_env(match: re.Match[str], replacement: str = value) -> str:
+                return f"{match.group(1)}={replacement}"
+
+            text = pattern.sub(_replace_env, text)
     return text
 
 
@@ -259,7 +267,11 @@ def _render_ps1(text: str) -> str:
     for name, value in ENV_ROLE_MAP.items():
         pattern = re.compile(rf'(Set-EnvValue\s+-Name\s+"{re.escape(name)}"\s+-Value\s+)"[^"]*"')
         if pattern.search(text):
-            text = pattern.sub(lambda m, value=value: f'{m.group(1)}"{value}"', text)
+
+            def _replace_ps1(match: re.Match[str], replacement: str = value) -> str:
+                return f'{match.group(1)}"{replacement}"'
+
+            text = pattern.sub(_replace_ps1, text)
     return text
 
 

@@ -52,10 +52,10 @@ def test_ffmpeg_outputs_are_transactional() -> None:
 
 
 @pytest.mark.asyncio
-async def test_audio_duration_uses_cancellable_ffprobe(monkeypatch) -> None:
+async def test_audio_duration_uses_cancellable_ffprobe(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[list[str], dict[str, object]]] = []
 
-    async def fake_owner(command, **kwargs):
+    async def fake_owner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         calls.append((list(command), dict(kwargs)))
         return subprocess.CompletedProcess(command, 0, "12.75\n", "")
 
@@ -72,15 +72,17 @@ async def test_audio_duration_uses_cancellable_ffprobe(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_subtitle_audio_discovery_uses_downloaded_candidate(monkeypatch, tmp_path) -> None:
+async def test_subtitle_audio_discovery_uses_downloaded_candidate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     audio_path = tmp_path / "original_audio.mp3"
     audio_path.write_bytes(b"audio")
-    duration_inputs = []
+    duration_inputs: list[Path] = []
 
-    async def fake_owner(command, **kwargs):
+    async def fake_owner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(command, 0, "", "")
 
-    async def fake_duration(path):
+    async def fake_duration(path: Path) -> float:
         duration_inputs.append(path)
         return eng_subtitles._MAX_SUBTITLE_AUDIO_SECONDS + 1
 
@@ -97,13 +99,15 @@ async def test_subtitle_audio_discovery_uses_downloaded_candidate(monkeypatch, t
 
 
 @pytest.mark.asyncio
-async def test_subtitle_audio_discovery_rejects_partial_download(monkeypatch, tmp_path) -> None:
+async def test_subtitle_audio_discovery_rejects_partial_download(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     (tmp_path / "original_audio.part").write_bytes(b"partial")
 
-    async def fake_owner(command, **kwargs):
+    async def fake_owner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(command, 0, "", "")
 
-    async def unexpected_duration(_path):
+    async def unexpected_duration(_path: Path) -> None:
         pytest.fail("partial audio must not reach duration probing")
 
     monkeypatch.setattr(eng_subtitles, "run_cancellable_process", fake_owner)
@@ -117,11 +121,11 @@ async def test_subtitle_audio_discovery_rejects_partial_download(monkeypatch, tm
 
 
 @pytest.mark.asyncio
-async def test_original_video_download_reuses_valid_existing(monkeypatch, tmp_path) -> None:
+async def test_original_video_download_reuses_valid_existing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     existing = tmp_path / "original_video.mp4"
     existing.write_bytes(b"v" * 200_000)
 
-    async def unexpected_owner(_command, **_kwargs):
+    async def unexpected_owner(_command: list[str], **_kwargs: object) -> None:
         pytest.fail("valid existing video must be reused without yt-dlp")
 
     monkeypatch.setattr(eng_subtitles, "run_cancellable_process", unexpected_owner)
@@ -136,11 +140,13 @@ async def test_original_video_download_reuses_valid_existing(monkeypatch, tmp_pa
 
 
 @pytest.mark.asyncio
-async def test_original_video_download_discovers_post_download_candidate(monkeypatch, tmp_path) -> None:
+async def test_original_video_download_discovers_post_download_candidate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     video_path = tmp_path / "original_video.mp4"
 
-    async def fake_owner(command, **kwargs):
-        video_path.write_bytes(b"v" * 200_000)
+    async def fake_owner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        await asyncio.to_thread(video_path.write_bytes, b"v" * 200_000)
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(eng_subtitles, "run_cancellable_process", fake_owner)
@@ -155,11 +161,13 @@ async def test_original_video_download_discovers_post_download_candidate(monkeyp
 
 
 @pytest.mark.asyncio
-async def test_original_video_download_rejects_audio_only_candidate(monkeypatch, tmp_path) -> None:
+async def test_original_video_download_rejects_audio_only_candidate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     audio_path = tmp_path / "original_video.f140.m4a"
     audio_path.write_bytes(b"a" * 200_000)
 
-    async def fake_owner(command, **kwargs):
+    async def fake_owner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(eng_subtitles, "run_cancellable_process", fake_owner)
@@ -173,8 +181,8 @@ async def test_original_video_download_rejects_audio_only_candidate(monkeypatch,
 
 
 @pytest.mark.asyncio
-async def test_original_video_download_rejects_failed_owner(monkeypatch, tmp_path) -> None:
-    async def fake_owner(command, **kwargs):
+async def test_original_video_download_rejects_failed_owner(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    async def fake_owner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(command, 7, "", "download failed")
 
     monkeypatch.setattr(eng_subtitles, "run_cancellable_process", fake_owner)
@@ -188,7 +196,7 @@ async def test_original_video_download_rejects_failed_owner(monkeypatch, tmp_pat
 
 
 @pytest.mark.asyncio
-async def test_hardsub_failure_removes_stale_output(monkeypatch, tmp_path) -> None:
+async def test_hardsub_failure_removes_stale_output(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     video_path = tmp_path / "video.mp4"
     srt_path = tmp_path / "subs.srt"
     output_path = video_path.with_suffix(".sub.mp4")
@@ -196,7 +204,7 @@ async def test_hardsub_failure_removes_stale_output(monkeypatch, tmp_path) -> No
     srt_path.write_text("1\n00:00:00,000 --> 00:00:01,000\nText\n", encoding="utf-8")
     output_path.write_bytes(b"stale output")
 
-    async def fake_owner(command, **kwargs):
+    async def fake_owner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(command, 1, "", "encode failed")
 
     monkeypatch.setattr(eng_subtitles, "run_cancellable_process", fake_owner)
@@ -212,7 +220,7 @@ async def test_hardsub_failure_removes_stale_output(monkeypatch, tmp_path) -> No
 
 
 @pytest.mark.asyncio
-async def test_mux_cancellation_removes_partial_output(monkeypatch, tmp_path) -> None:
+async def test_mux_cancellation_removes_partial_output(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     video_path = tmp_path / "video.mp4"
     srt_path = tmp_path / "subs.srt"
     output_path = video_path.with_suffix(".merged.mp4")
@@ -220,8 +228,8 @@ async def test_mux_cancellation_removes_partial_output(monkeypatch, tmp_path) ->
     srt_path.write_text("1\n00:00:00,000 --> 00:00:01,000\nText\n", encoding="utf-8")
     output_path.write_bytes(b"stale output")
 
-    async def cancelled_owner(command, **kwargs):
-        output_path.write_bytes(b"partial output")
+    async def cancelled_owner(command: list[str], **kwargs: object) -> None:
+        await asyncio.to_thread(output_path.write_bytes, b"partial output")
         raise asyncio.CancelledError
 
     monkeypatch.setenv("LIVEDUB_HARDSUB", "0")

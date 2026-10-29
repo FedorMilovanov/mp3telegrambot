@@ -5,7 +5,7 @@ from pathlib import Path
 from core.database import SETTINGS_DEFAULTS, SETTINGS_GROUPS, SETTINGS_LABELS
 
 
-def test_segment_settings_are_declared_and_grouped():
+def test_segment_settings_are_declared_and_grouped() -> None:
     assert SETTINGS_DEFAULTS["segments"] is False
     assert SETTINGS_DEFAULTS["segments_render"] is True
     assert SETTINGS_DEFAULTS["segments_batch_render"] is False
@@ -17,7 +17,7 @@ def test_segment_settings_are_declared_and_grouped():
     assert groups["🧩 Сегменты"] == ["segments", "segments_render", "segments_subtitles", "segments_batch_render"]
 
 
-def test_segments_commands_check_settings_before_work():
+def test_segments_commands_check_settings_before_work() -> None:
     commands = Path("handlers/commands.py").read_text(encoding="utf-8")
     assert 'await asettings_get("segments")' in commands
     assert 'await asettings_get("segments_render")' in commands
@@ -26,7 +26,7 @@ def test_segments_commands_check_settings_before_work():
     assert "Рендер сегментов выключен" in commands
 
 
-def test_settings_keyboard_will_render_segment_buttons():
+def test_settings_keyboard_will_render_segment_buttons() -> None:
     callbacks = Path("handlers/callbacks.py").read_text(encoding="utf-8")
     assert "SETTINGS_GROUPS" in callbacks
     assert "SETTINGS_LABELS" in callbacks

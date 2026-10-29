@@ -17,9 +17,9 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import platform
-import shutil
-import subprocess
+import platform as platform
+import shutil as shutil
+import subprocess as subprocess
 from typing import Any, cast
 
 from services.tts_weighted_smoke import _assert_privacy_allowlist, _atomic_report

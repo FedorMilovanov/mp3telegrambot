@@ -1,11 +1,12 @@
 from __future__ import annotations
+import pytest
 
 from pathlib import Path
 
 from tools.voxcpm2 import professional_audio_qa_v45
 
 
-def test_forced_russian_can_rescue_only_nonforeign_auto_failure(monkeypatch) -> None:
+def test_forced_russian_can_rescue_only_nonforeign_auto_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     auto = {
         "passed": False,
         "heard": "благочестивая женшина",
@@ -34,7 +35,7 @@ def test_forced_russian_can_rescue_only_nonforeign_auto_failure(monkeypatch) -> 
     assert result["heard"] == "благочестивая женщина"
 
 
-def test_confident_foreign_auto_result_cannot_be_rescued(monkeypatch) -> None:
+def test_confident_foreign_auto_result_cannot_be_rescued(monkeypatch: pytest.MonkeyPatch) -> None:
     auto = {
         "passed": False,
         "heard": "أنا",
@@ -65,7 +66,7 @@ def test_confident_foreign_auto_result_cannot_be_rescued(monkeypatch) -> None:
     assert result["heard"] == "أنا"
 
 
-def test_failed_forced_russian_keeps_segment_rejected(monkeypatch) -> None:
+def test_failed_forced_russian_keeps_segment_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     auto = {
         "passed": False,
         "heard": "неразборчиво",

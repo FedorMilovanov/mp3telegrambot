@@ -9,8 +9,10 @@ import json
 import sqlite3
 from pathlib import Path
 
+import pytest
 
-def test_pdf_command_is_implemented():
+
+def test_pdf_command_is_implemented() -> None:
     """Тело /pdf было заглушкой `...` — команда молча ничего не делала."""
     src = Path("handlers/commands.py").read_text(encoding="utf-8")
     body = src.split("async def pdf_command", 1)[1].split("async def disk_command", 1)[0]
@@ -20,7 +22,7 @@ def test_pdf_command_is_implemented():
     assert "reply_document" in body
 
 
-def test_strim_record_stores_source_video_not_rendered_clip():
+def test_strim_record_stores_source_video_not_rendered_clip() -> None:
     """trim-кнопки хранили отрендеренный клип (который тут же удалялся) и
     абсолютные таймкоды исходника — каждый ретрим падал."""
     shorts = Path("pipelines/shorts.py").read_text(encoding="utf-8")
@@ -36,7 +38,7 @@ def test_strim_record_stores_source_video_not_rendered_clip():
     assert "download_video_for_shorts" in callbacks
 
 
-def test_strim_captions_trimmed_after_prefix():
+def test_strim_captions_trimmed_after_prefix() -> None:
     """Префикс добавлялся ПОСЛЕ обрезки до 1024 — длинные caption падали
     с MEDIA_CAPTION_TOO_LONG (AGENTS.md: respect Telegram limits)."""
     callbacks = Path("handlers/callbacks.py").read_text(encoding="utf-8")
@@ -50,7 +52,7 @@ def test_strim_captions_trimmed_after_prefix():
     assert prefix_pos2 != -1 and trim_pos2 > prefix_pos2
 
 
-def test_quiz_correct_index_survives_dedupe():
+def test_quiz_correct_index_survives_dedupe() -> None:
     """Индекс correct указывает в исходный список ДО dedupe: выпавший дубль
     смещал правильный ответ на соседний вариант."""
     from services.quiz_generator import _parse_quiz_json
@@ -78,18 +80,18 @@ def test_quiz_correct_index_survives_dedupe():
     assert item["options"][item["correct"]] == "Оправдание принимается только верой во Христа"
 
 
-def test_mode_handlers_use_executor_and_ignore_not_modified():
+def test_mode_handlers_use_executor_and_ignore_not_modified() -> None:
     src = Path("handlers/mode_command.py").read_text(encoding="utf-8")
     assert src.count("run_in_executor") >= 2
     assert "is not modified" in src
 
 
-def test_refund_rate_limit_decrements_today_only(tmp_path, monkeypatch):
+def test_refund_rate_limit_decrements_today_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import core.utils as cu
 
     db = tmp_path / "rl.db"
 
-    def _conn():
+    def _conn() -> sqlite3.Connection:
         return sqlite3.connect(db)
 
     with _conn() as c:
@@ -119,7 +121,7 @@ def test_refund_rate_limit_decrements_today_only(tmp_path, monkeypatch):
         assert c.execute("SELECT daily_count FROM rate_limit WHERE user_id=2").fetchone()[0] == 5
 
 
-def test_lock_timeout_refunds_reserved_slot():
+def test_lock_timeout_refunds_reserved_slot() -> None:
     src = Path("handlers/commands.py").read_text(encoding="utf-8")
     timeout_block = src.split("except asyncio.TimeoutError:", 1)[1][:900]
     assert "arefund_rate_limit" in timeout_block

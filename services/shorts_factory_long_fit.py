@@ -8,7 +8,7 @@ import contextlib
 import logging
 import math
 import os
-import shutil
+import shutil as shutil
 from pathlib import Path
 
 from services.async_process import run_cancellable_process

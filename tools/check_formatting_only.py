@@ -18,8 +18,8 @@ from __future__ import annotations
 import argparse
 import ast
 from pathlib import Path
-import shutil
-import subprocess
+import shutil as shutil
+import subprocess as subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]

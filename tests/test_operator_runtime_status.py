@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -13,11 +14,11 @@ class _Contract:
         self.supported = supported
         self.validated = 0
 
-    def validate_profile(self, profile) -> None:
+    def validate_profile(self, profile: Any) -> None:
         self.validated += 1
         assert profile.profile_id == "voxcpm2-production-v1"
 
-    def as_dict(self) -> dict:
+    def as_dict(self) -> dict[str, Any]:
         return {
             "backend_id": "voxcpm2",
             "option_keys": ["threads"],
@@ -31,9 +32,9 @@ class _Contract:
 
 class _Message:
     def __init__(self) -> None:
-        self.replies: list[tuple[object, tuple, dict]] = []
+        self.replies: list[tuple[object, tuple[Any, ...], dict[str, Any]]] = []
 
-    async def reply_text(self, text=None, *args, **kwargs):
+    async def reply_text(self, text: object = None, *args: Any, **kwargs: Any) -> SimpleNamespace:
         self.replies.append((text, args, kwargs))
         return SimpleNamespace(message_id=len(self.replies))
 
@@ -44,7 +45,7 @@ class _Update:
         self.message = _Message()
 
 
-def _profile(*, evidence: bool = True):
+def _profile(*, evidence: bool = True) -> SimpleNamespace:
     return SimpleNamespace(
         profile_id="voxcpm2-production-v1",
         backend_id="voxcpm2",
@@ -58,7 +59,7 @@ def _profile(*, evidence: bool = True):
     )
 
 
-def _runtime_payload(*, ready: bool = True) -> dict:
+def _runtime_payload(*, ready: bool = True) -> dict[str, Any]:
     return {
         "policy": "declarative-runtime-composition-v1",
         "required_ready": ready,
@@ -79,7 +80,7 @@ def _runtime_payload(*, ready: bool = True) -> dict:
     }
 
 
-def _source() -> dict:
+def _source() -> dict[str, Any]:
     return {
         "schema_version": 1,
         "profile_id": "voxcpm2-production-v1",
@@ -170,7 +171,7 @@ def test_html_formatter_labels_default_profile_and_truncates_hashes() -> None:
     assert "C:/private" not in rendered
 
 
-def test_safe_formatter_never_exposes_exception_message(monkeypatch) -> None:
+def test_safe_formatter_never_exposes_exception_message(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         status,
         "operator_runtime_status_html_lines",

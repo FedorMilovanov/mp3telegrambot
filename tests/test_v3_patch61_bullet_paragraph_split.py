@@ -3,7 +3,7 @@
 from converters.md_telegraph import _postprocess_telegraph_nodes
 
 
-def _flat(node):
+def _flat(node: object) -> str:
     if isinstance(node, str):
         return node
     if isinstance(node, dict):
@@ -11,7 +11,7 @@ def _flat(node):
     return ""
 
 
-def test_postprocess_splits_glued_bullet_cards_into_paragraphs():
+def test_postprocess_splits_glued_bullet_cards_into_paragraphs() -> None:
     nodes = [
         {
             "tag": "p",
@@ -34,7 +34,7 @@ def test_postprocess_splits_glued_bullet_cards_into_paragraphs():
     assert _flat(paragraphs[2]).startswith("• Церковная дисциплина")
 
 
-def test_postprocess_does_not_split_single_bullet_paragraph():
+def test_postprocess_does_not_split_single_bullet_paragraph() -> None:
     nodes = [{"tag": "p", "children": ["• ", {"tag": "b", "children": ["Один пункт"]}, " — текст."]}]
     out = _postprocess_telegraph_nodes(nodes)
     assert len([n for n in out if isinstance(n, dict) and n.get("tag") == "p"]) == 1

@@ -1,5 +1,8 @@
 """Executed boundaries for Telegraph node cleanup and page publication."""
 
+from collections.abc import Callable, Coroutine
+from typing import Any, TypeVar
+
 import asyncio
 import json
 
@@ -11,7 +14,10 @@ from services import telegraph
 from services.telegraph_edit import TelegraphEditResult
 
 
-def _run(callback, *args, **kwargs):
+_T = TypeVar("_T")
+
+
+def _run(callback: Callable[..., Coroutine[Any, Any, _T]], *args: Any, **kwargs: Any) -> _T:
     return asyncio.run(callback(*args, **kwargs))
 
 
@@ -23,7 +29,9 @@ def _run(callback, *args, **kwargs):
         ("SYNOPSIS_VERBATIM_PROMPT", telegraph._synopsis_verbatim_prompt_enabled, True),
     ],
 )
-def test_synopsis_feature_flags(monkeypatch, name, enabled, default):
+def test_synopsis_feature_flags(
+    monkeypatch: pytest.MonkeyPatch, name: str, enabled: Callable[[], bool], default: bool
+) -> None:
     monkeypatch.delenv(name, raising=False)
     assert enabled() is default
     monkeypatch.setenv(name, "off")
@@ -32,8 +40,8 @@ def test_synopsis_feature_flags(monkeypatch, name, enabled, default):
     assert enabled() is True
 
 
-def test_synopsis_grounding_helper_stores_bounded_verbatim_text():
-    data = {}
+def test_synopsis_grounding_helper_stores_bounded_verbatim_text() -> None:
+    data: dict[str, Any] = {}
     telegraph._attach_synopsis_grounding(
         data,
         [
@@ -48,13 +56,13 @@ def test_synopsis_grounding_helper_stores_bounded_verbatim_text():
     assert "### Second (00:02)" in grounding
 
 
-def test_synopsis_grounding_helper_survives_malformed_sections():
-    data = {"existing": "kept"}
+def test_synopsis_grounding_helper_survives_malformed_sections() -> None:
+    data: dict[str, Any] = {"existing": "kept"}
     telegraph._attach_synopsis_grounding(data, [object()])
     assert data == {"existing": "kept"}
 
 
-def test_classified_edit_requires_token_and_honors_strict_audit(monkeypatch):
+def test_classified_edit_requires_token_and_honors_strict_audit(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(telegraph, "TELEGRAPH_TOKEN", "")
     result = _run(
         telegraph._edit_telegraph_page_classified,
@@ -87,7 +95,7 @@ def test_classified_edit_requires_token_and_honors_strict_audit(monkeypatch):
     assert result.retryable is False
 
 
-def test_classified_edit_survives_cache_invalidation_failure(monkeypatch):
+def test_classified_edit_survives_cache_invalidation_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     from services import pdf_generator
 
     monkeypatch.setattr(telegraph, "TELEGRAPH_TOKEN", "token")
@@ -96,10 +104,10 @@ def test_classified_edit_survives_cache_invalidation_failure(monkeypatch):
     monkeypatch.setattr(telegraph, "_final_telegraph_polish", lambda nodes: nodes)
     monkeypatch.setattr(telegraph, "audit_telegraph_page", lambda *_a, **_k: [])
 
-    async def retry(_operation, **_kwargs):
+    async def retry(_operation: Any, **_kwargs: Any) -> TelegraphEditResult:
         return TelegraphEditResult(ok=True)
 
-    def invalidate(_url):
+    def invalidate(_url: str) -> None:
         raise RuntimeError("cache unavailable")
 
     monkeypatch.setattr(telegraph, "run_telegraph_edit_with_retry", retry)
@@ -115,7 +123,7 @@ def test_classified_edit_survives_cache_invalidation_failure(monkeypatch):
     assert result.ok is True
 
 
-def test_demote_paragraph_bold_preserves_markup_and_demotes_only_long_blocks():
+def test_demote_paragraph_bold_preserves_markup_and_demotes_only_long_blocks() -> None:
     assert telegraph._demote_paragraph_bold("") == ""
     assert telegraph._demote_paragraph_bold("plain") == "plain"
     assert telegraph._demote_paragraph_bold("**a** || **b**") == "**a** || **b**"
@@ -135,7 +143,7 @@ def test_demote_paragraph_bold_preserves_markup_and_demotes_only_long_blocks():
     assert telegraph._demote_paragraph_bold(accent) == accent
 
 
-def test_markdown_conversion_handles_headings_spacing_and_rules(monkeypatch):
+def test_markdown_conversion_handles_headings_spacing_and_rules(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(telegraph_nodes, "_scrub_inline", lambda text: "" if text == "SCRUB" else text)
     markdown = "\n".join(
         [
@@ -165,10 +173,10 @@ def test_markdown_conversion_handles_headings_spacing_and_rules(monkeypatch):
     assert all("SCRUB" not in json.dumps(node) for node in nodes)
 
 
-def test_markdown_conversion_preserves_rtl_and_numbered_bold_contracts(monkeypatch):
+def test_markdown_conversion_preserves_rtl_and_numbered_bold_contracts(monkeypatch: pytest.MonkeyPatch) -> None:
     parse_inline = telegraph._md_parse_inline
 
-    def parse_with_plain_fallback(text):
+    def parse_with_plain_fallback(text: str) -> list[Any]:
         if text.startswith("**unclosed") or text.startswith("**שלום unclosed"):
             return ["plain fallback"]
         return parse_inline(text)
@@ -207,11 +215,11 @@ def test_markdown_conversion_preserves_rtl_and_numbered_bold_contracts(monkeypat
     assert "• " in encoded
 
 
-def test_markdown_conversion_falls_back_to_original_text():
+def test_markdown_conversion_falls_back_to_original_text() -> None:
     assert telegraph._md_to_telegraph_nodes("\n.\n") == [{"tag": "p", "children": ["\n.\n"]}]
 
 
-def test_text_and_recursive_node_cleanup_preserve_real_content():
+def test_text_and_recursive_node_cleanup_preserve_real_content() -> None:
     assert telegraph._clean_text_block("") == ""
     assert telegraph._clean_text_block("Cocoon AI Summary") == ""
     assert telegraph._clean_text_block("  real\ntext  ") == "  real\ntext  "
@@ -235,7 +243,7 @@ def test_text_and_recursive_node_cleanup_preserve_real_content():
     assert telegraph._clean_node_texts({"tag": "p", "children": []}) is None
 
 
-def test_clean_telegraph_nodes_drops_meta_and_leading_dates(monkeypatch):
+def test_clean_telegraph_nodes_drops_meta_and_leading_dates(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(telegraph_nodes, "is_meta_garbage", lambda text: text in {"", "META"})
     nodes = [
         None,
@@ -252,29 +260,31 @@ def test_clean_telegraph_nodes_drops_meta_and_leading_dates(monkeypatch):
 
 
 class Response:
-    def __init__(self, status=200, payload=None, json_error=None):
+    def __init__(self, status: int = 200, payload: Any = None, json_error: BaseException | None = None) -> None:
         self.status_code = status
         self.payload = payload
         self.json_error = json_error
 
-    def json(self):
+    def json(self) -> Any:
         if self.json_error is not None:
             raise self.json_error
         return self.payload
 
 
-def _prepare_post(monkeypatch, responder, *, token="token"):
-    calls = []
-    sleeps = []
+def _prepare_post(
+    monkeypatch: pytest.MonkeyPatch, responder: Callable[[dict[str, Any], int], Any], *, token: str = "token"
+) -> tuple[list[dict[str, Any]], list[float]]:
+    calls: list[dict[str, Any]] = []
+    sleeps: list[float] = []
 
-    def post(_url, **kwargs):
+    def post(_url: str, **kwargs: Any) -> Any:
         calls.append(kwargs)
         outcome = responder(kwargs, len(calls))
         if isinstance(outcome, BaseException):
             raise outcome
         return outcome
 
-    async def sleep(delay):
+    async def sleep(delay: float) -> None:
         sleeps.append(delay)
 
     monkeypatch.setattr(telegraph, "TELEGRAPH_TOKEN", token)
@@ -285,8 +295,8 @@ def _prepare_post(monkeypatch, responder, *, token="token"):
     return calls, sleeps
 
 
-def _post(title="Title", nodes=None, author_url=""):
-    async def invoke():
+def _post(title: str = "Title", nodes: list[Any] | None = None, author_url: str = "") -> str | None:
+    async def invoke() -> str | None:
         return await telegraph._telegraph_post(
             title,
             "Author",
@@ -298,8 +308,8 @@ def _post(title="Title", nodes=None, author_url=""):
     return _run(invoke)
 
 
-def test_post_cleans_dirty_fields_and_returns_url(monkeypatch):
-    def respond(_kwargs, _count):
+def test_post_cleans_dirty_fields_and_returns_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    def respond(_kwargs: dict[str, Any], _count: int) -> Response:
         return Response(payload={"ok": True, "result": {"url": "https://telegra.ph/ok"}})
 
     calls, _sleeps = _prepare_post(monkeypatch, respond)
@@ -316,23 +326,23 @@ def test_post_cleans_dirty_fields_and_returns_url(monkeypatch):
     ]
 
 
-def test_post_uses_pre_cleaned_nodes_when_dirty_cleanup_fails(monkeypatch):
-    def respond(_kwargs, _count):
+def test_post_uses_pre_cleaned_nodes_when_dirty_cleanup_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    def respond(_kwargs: dict[str, Any], _count: int) -> Response:
         return Response(payload={"ok": True, "result": {"url": "https://telegra.ph/fallback"}})
 
-    def fail_dump(*_args, **_kwargs):
+    def fail_dump(*_args: Any, **_kwargs: Any) -> None:
         raise ValueError("unserializable node")
 
     calls, _sleeps = _prepare_post(monkeypatch, respond)
-    monkeypatch.setattr(telegraph.json, "dumps", fail_dump)
+    monkeypatch.setattr(json, "dumps", fail_dump)
     nodes = [{"tag": "p", "children": ["already cleaned"]}]
 
     assert _post("Title", nodes) == "https://telegra.ph/fallback"
     assert calls[0]["json"]["content"] == nodes
 
 
-def test_post_without_token_or_with_unserializable_nodes_returns_none(monkeypatch):
-    def must_not_post(_kwargs, _count):
+def test_post_without_token_or_with_unserializable_nodes_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    def must_not_post(_kwargs: dict[str, Any], _count: int) -> None:
         raise AssertionError("network must not be called")
 
     calls, _ = _prepare_post(monkeypatch, must_not_post, token="")
@@ -342,7 +352,7 @@ def test_post_without_token_or_with_unserializable_nodes_returns_none(monkeypatc
     assert calls == []
 
 
-def test_post_terminal_invalid_json_and_http_exhaustion(monkeypatch):
+def test_post_terminal_invalid_json_and_http_exhaustion(monkeypatch: pytest.MonkeyPatch) -> None:
     _calls, _ = _prepare_post(
         monkeypatch,
         lambda _kwargs, _count: Response(json_error=ValueError("not json")),
@@ -357,7 +367,7 @@ def test_post_terminal_invalid_json_and_http_exhaustion(monkeypatch):
     assert sleeps == [1, 2]
 
 
-def test_post_network_exhaustion_and_unexpected_error(monkeypatch):
+def test_post_network_exhaustion_and_unexpected_error(monkeypatch: pytest.MonkeyPatch) -> None:
     _calls, sleeps = _prepare_post(
         monkeypatch,
         lambda _kwargs, _count: requests.ConnectionError("offline"),
@@ -370,8 +380,8 @@ def test_post_network_exhaustion_and_unexpected_error(monkeypatch):
     assert sleeps == []
 
 
-def test_post_flood_wait_uses_bounded_server_delay(monkeypatch):
-    def respond(_kwargs, count):
+def test_post_flood_wait_uses_bounded_server_delay(monkeypatch: pytest.MonkeyPatch) -> None:
+    def respond(_kwargs: dict[str, Any], count: int) -> Response:
         if count == 1:
             return Response(payload={"ok": False, "error": "FLOOD_WAIT_99"})
         return Response(payload={"ok": True, "result": {"url": "https://telegra.ph/after"}})
@@ -381,7 +391,7 @@ def test_post_flood_wait_uses_bounded_server_delay(monkeypatch):
     assert sleeps == [31]
 
 
-def test_post_deterministic_api_error_is_not_retried(monkeypatch):
+def test_post_deterministic_api_error_is_not_retried(monkeypatch: pytest.MonkeyPatch) -> None:
     calls, sleeps = _prepare_post(
         monkeypatch,
         lambda _kwargs, _count: Response(payload={"ok": False, "error": "BAD_REQUEST"}),
@@ -391,8 +401,8 @@ def test_post_deterministic_api_error_is_not_retried(monkeypatch):
     assert sleeps == []
 
 
-def test_content_too_big_recurses_and_builds_partial_toc(monkeypatch):
-    def respond(kwargs, _count):
+def test_content_too_big_recurses_and_builds_partial_toc(monkeypatch: pytest.MonkeyPatch) -> None:
+    def respond(kwargs: dict[str, Any], _count: int) -> Response:
         title = kwargs["json"]["title"]
         if title in {"Title", "Title (1)"}:
             return Response(payload={"ok": False, "error": "CONTENT_TOO_BIG"})
@@ -427,7 +437,7 @@ def test_content_too_big_recurses_and_builds_partial_toc(monkeypatch):
     ]
 
 
-def test_content_too_big_returns_none_when_no_part_publishes(monkeypatch):
+def test_content_too_big_returns_none_when_no_part_publishes(monkeypatch: pytest.MonkeyPatch) -> None:
     _prepare_post(
         monkeypatch,
         lambda _kwargs, _count: (
@@ -440,8 +450,8 @@ def test_content_too_big_returns_none_when_no_part_publishes(monkeypatch):
     assert _post(nodes=nodes) is None
 
 
-def test_content_too_big_returns_only_successful_part(monkeypatch):
-    def respond(kwargs, count):
+def test_content_too_big_returns_only_successful_part(monkeypatch: pytest.MonkeyPatch) -> None:
+    def respond(kwargs: dict[str, Any], count: int) -> Response:
         title = kwargs["json"]["title"]
         if count == 1 or title == "Title (1)":
             error = "CONTENT_TOO_BIG" if count == 1 else "BAD_PART"
@@ -453,7 +463,7 @@ def test_content_too_big_returns_only_successful_part(monkeypatch):
     assert _post(nodes=nodes) == "https://telegra.ph/only"
 
 
-def test_numbered_bold_fallback_keeps_number_as_separate_bold_node(monkeypatch):
+def test_numbered_bold_fallback_keeps_number_as_separate_bold_node(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(telegraph_nodes, "_md_parse_inline", lambda _text: ["plain"])
 
     nodes = telegraph_nodes._md_to_telegraph_nodes("1. **Title** rest")

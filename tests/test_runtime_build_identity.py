@@ -1,6 +1,8 @@
 from __future__ import annotations
+from typing import Any
+import pytest
 
-from types import SimpleNamespace
+import subprocess
 
 import services.runtime_build_identity as identity
 from services.runtime_build_identity import (
@@ -11,7 +13,7 @@ from services.runtime_build_identity import (
 )
 
 
-def _payload():
+def _payload() -> dict[str, Any]:
     return runtime_build_identity_payload(
         build_sha="a" * 40,
         dirty="no",
@@ -81,11 +83,11 @@ def test_invalid_build_sha_and_dirty_state_fail_safe() -> None:
     assert "secret" not in runtime_build_identity_log_line(payload).casefold()
 
 
-def test_git_command_uses_resolved_executable(monkeypatch) -> None:
-    commands = []
-    result = SimpleNamespace(returncode=0, stdout="a" * 40 + "\n", stderr="")
+def test_git_command_uses_resolved_executable(monkeypatch: pytest.MonkeyPatch) -> None:
+    commands: list[tuple[list[str], dict[str, object]]] = []
+    result = subprocess.CompletedProcess([], 0, stdout="a" * 40 + "\n", stderr="")
 
-    def run(command, **kwargs):
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         commands.append((command, kwargs))
         return result
 
@@ -97,8 +99,8 @@ def test_git_command_uses_resolved_executable(monkeypatch) -> None:
     assert commands[0][0][-2:] == ["rev-parse", "HEAD"]
 
 
-def test_git_command_missing_executable_is_nonfatal(monkeypatch) -> None:
-    def fail_run(*args, **kwargs):
+def test_git_command_missing_executable_is_nonfatal(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail_run(*args: Any, **kwargs: Any) -> None:
         raise AssertionError("subprocess must not start")
 
     monkeypatch.setattr(identity.shutil, "which", lambda name: None)

@@ -1,4 +1,6 @@
+import pytest
 from pathlib import Path
+from typing import Any
 
 from services.livedub_mix import build_mix_filter
 from services import shorts_factory_quality_gate as factory_gate
@@ -9,7 +11,7 @@ def _dialogues(document: str) -> list[str]:
     return [line for line in document.splitlines() if line.startswith("Dialogue:")]
 
 
-def test_ass_control_characters_cannot_inject_dialogue_events(monkeypatch):
+def test_ass_control_characters_cannot_inject_dialogue_events(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "services.shorts_video_impl._pick_subtitle_font",
         lambda: "Arial",
@@ -37,7 +39,7 @@ def test_ass_control_characters_cannot_inject_dialogue_events(monkeypatch):
     assert "\nDialogue: 9," not in document
 
 
-def test_one_centisecond_over_karaoke_limit_is_rejected():
+def test_one_centisecond_over_karaoke_limit_is_rejected() -> None:
     ass = "\n".join(
         [
             "[Events]",
@@ -51,7 +53,7 @@ def test_one_centisecond_over_karaoke_limit_is_rejected():
     assert any("karaoke hold" in issue for issue in issues)
 
 
-def test_exact_karaoke_limit_is_valid():
+def test_exact_karaoke_limit_is_valid() -> None:
     ass = "\n".join(
         [
             "[Events]",
@@ -63,7 +65,7 @@ def test_exact_karaoke_limit_is_valid():
     assert subtitle_integrity.validate_ass_document(ass, karaoke=True) == ()
 
 
-def test_livedub_mix_delays_ru_branch_but_not_original_branch():
+def test_livedub_mix_delays_ru_branch_but_not_original_branch() -> None:
     filter_complex = build_mix_filter(
         orig_volume=0.45,
         trans_volume=1.3,
@@ -77,7 +79,7 @@ def test_livedub_mix_delays_ru_branch_but_not_original_branch():
     assert "adelay=" not in en_chain
 
 
-def test_factory_orchestration_uses_post_alignment_render_plan_and_single_timeout_owner():
+def test_factory_orchestration_uses_post_alignment_render_plan_and_single_timeout_owner() -> None:
     source = Path("pipelines/shorts_factory.py").read_text(encoding="utf-8")
 
     render_plan_pos = source.index("render_plan = dict(plan")
@@ -95,7 +97,7 @@ def test_factory_orchestration_uses_post_alignment_render_plan_and_single_timeou
     assert "return bool(shorts_sent or longs_sent or full_video_sent)" in source
 
 
-def _factory_candidate(title: str, score=None) -> dict:
+def _factory_candidate(title: str, score: float | None = None) -> dict[str, Any]:
     item = {
         "title": title,
         "hook": "Сильныйй хак",
@@ -109,7 +111,7 @@ def _factory_candidate(title: str, score=None) -> dict:
     return item
 
 
-def test_factory_invalid_scores_stay_closed_at_zero_threshold(monkeypatch):
+def test_factory_invalid_scores_stay_closed_at_zero_threshold(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SHORTS_FACTORY_MIN_SHORT_SCORE", "0")
     monkeypatch.setenv("SHORTS_FACTORY_MIN_LONG_SCORE", "0")
     nonfinite = _factory_candidate("Nonfinite", float("inf"))
@@ -126,7 +128,7 @@ def test_factory_invalid_scores_stay_closed_at_zero_threshold(monkeypatch):
     assert gated["long_candidates"] == []
 
 
-def test_factory_malformed_candidate_collections_fail_closed():
+def test_factory_malformed_candidate_collections_fail_closed() -> None:
     gated = factory_gate.apply_factory_quality_gate(
         {
             "shorts_candidates": 42,

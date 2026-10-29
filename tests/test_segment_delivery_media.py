@@ -1,6 +1,9 @@
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
+
+from telegram import Message
 
 import pytest
 
@@ -13,34 +16,34 @@ def _write_bytes(path: Path, payload: bytes) -> None:
 
 
 class _ReplyTarget:
-    def __init__(self):
-        self.videos = []
-        self.texts = []
+    def __init__(self) -> None:
+        self.videos: list[dict[str, Any]] = []
+        self.texts: list[str] = []
 
-    async def reply_video(self, **kwargs):
+    async def reply_video(self, **kwargs: Any) -> dict[str, Any]:
         self.videos.append(kwargs)
         return kwargs
 
-    async def reply_text(self, text, **kwargs):
+    async def reply_text(self, text: str, **kwargs: Any) -> str:
         self.texts.append(text)
         return text
 
 
 class _Status:
-    async def edit_text(self, text, **kwargs):
+    async def edit_text(self, text: str, **kwargs: Any) -> str:
         return text
 
 
 @pytest.mark.asyncio
-async def test_segment_delivery_uses_actual_probed_duration(monkeypatch, tmp_path):
+async def test_segment_delivery_uses_actual_probed_duration(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(segment_render, "DOWNLOAD_DIR", tmp_path)
     source = tmp_path / "source.mp4"
     source.write_bytes(b"source")
 
-    async def fake_download(_url, _video_id):
+    async def fake_download(_url: str, _video_id: str) -> Path:
         return source
 
-    async def fake_render(_source, output, _start, _end):
+    async def fake_render(_source: Path, output: Path, _start: float, _end: float) -> bool:
         await asyncio.to_thread(_write_bytes, Path(output), b"rendered" * 300)
         return True
 
@@ -54,10 +57,10 @@ async def test_segment_delivery_uses_actual_probed_duration(monkeypatch, tmp_pat
         audio_codec="aac",
     )
 
-    async def fake_probe(_path):
+    async def fake_probe(_path: Path) -> SimpleNamespace:
         return probe
 
-    async def fake_setting(_key):
+    async def fake_setting(_key: str) -> bool:
         return False
 
     monkeypatch.setattr(segment_render, "download_video_for_shorts", fake_download)
@@ -69,8 +72,8 @@ async def test_segment_delivery_uses_actual_probed_duration(monkeypatch, tmp_pat
 
     reply = _ReplyTarget()
     result = await segment_render.render_and_send_segment(
-        reply_target=reply,
-        status_msg=_Status(),
+        reply_target=cast(Message, reply),
+        status_msg=cast(Message, _Status()),
         video_id="video",
         source_url="https://example.test/video",
         segment=PlannedSegment(index=1, start=10, end=130, title="Тема"),
@@ -84,19 +87,21 @@ async def test_segment_delivery_uses_actual_probed_duration(monkeypatch, tmp_pat
 
 
 @pytest.mark.asyncio
-async def test_segment_rejects_base_render_without_video_and_audio(monkeypatch, tmp_path):
+async def test_segment_rejects_base_render_without_video_and_audio(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setattr(segment_render, "DOWNLOAD_DIR", tmp_path)
     source = tmp_path / "source.mp4"
     source.write_bytes(b"source")
 
-    async def fake_download(_url, _video_id):
+    async def fake_download(_url: str, _video_id: str) -> Path:
         return source
 
-    async def fake_render(_source, output, _start, _end):
+    async def fake_render(_source: Path, output: Path, _start: float, _end: float) -> bool:
         await asyncio.to_thread(_write_bytes, Path(output), b"rendered" * 300)
         return True
 
-    async def fake_probe(_path):
+    async def fake_probe(_path: Path) -> None:
         return None
 
     monkeypatch.setattr(segment_render, "download_video_for_shorts", fake_download)
@@ -106,8 +111,8 @@ async def test_segment_rejects_base_render_without_video_and_audio(monkeypatch, 
 
     reply = _ReplyTarget()
     result = await segment_render.render_and_send_segment(
-        reply_target=reply,
-        status_msg=_Status(),
+        reply_target=cast(Message, reply),
+        status_msg=cast(Message, _Status()),
         video_id="video",
         source_url="https://example.test/video",
         segment=PlannedSegment(index=1, start=10, end=130, title="Тема"),
@@ -120,7 +125,7 @@ async def test_segment_rejects_base_render_without_video_and_audio(monkeypatch, 
     assert any("видео и звука" in text for text in reply.texts)
 
 
-def test_segment_pipeline_contains_final_delivery_fallback():
+def test_segment_pipeline_contains_final_delivery_fallback() -> None:
     source = Path("services/segment_render.py").read_text(encoding="utf-8")
 
     assert "select_delivery_file(" in source

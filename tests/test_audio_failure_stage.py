@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
+from typing import Any
 from types import SimpleNamespace
 
 import pytest
@@ -12,22 +14,24 @@ from pipelines.audio_stage import AudioTooLarge
 
 
 class _Message:
-    def __init__(self, events, *, error=None):
+    def __init__(self, events: list[tuple[str, Any]], *, error: BaseException | None = None) -> None:
         self.events = events
         self.error = error
 
-    async def reply_text(self, text):
+    async def reply_text(self, text: str) -> None:
         self.events.append(("reply", text))
         if self.error is not None:
             raise self.error
 
 
-def _update(events, *, error=None):
+def _update(events: list[tuple[str, Any]], *, error: BaseException | None = None) -> SimpleNamespace:
     return SimpleNamespace(message=_Message(events, error=error))
 
 
-def _sender(events, *, delivered=True, error=None):
-    async def send():
+def _sender(
+    events: list[tuple[str, Any]], *, delivered: bool = True, error: BaseException | None = None
+) -> Callable[[], Awaitable[bool]]:
+    async def send() -> bool:
         events.append(("send", None))
         if error is not None:
             raise error
@@ -36,8 +40,8 @@ def _sender(events, *, delivered=True, error=None):
     return send
 
 
-def _cleanup(events, *, error=None):
-    def cleanup(media_id):
+def _cleanup(events: list[tuple[str, Any]], *, error: BaseException | None = None) -> Callable[[str], None]:
+    def cleanup(media_id: str) -> None:
         events.append(("cleanup", media_id))
         if error is not None:
             raise error
@@ -45,7 +49,14 @@ def _cleanup(events, *, error=None):
     return cleanup
 
 
-def _run(events, *, cache_hit, send=None, update=None, cleanup=None):
+def _run(
+    events: list[tuple[str, Any]],
+    *,
+    cache_hit: bool,
+    send: Callable[[], Awaitable[bool]] | None = None,
+    update: Any = None,
+    cleanup: Callable[[str], None] | None = None,
+) -> bool:
     return asyncio.run(
         fail_audio_too_large(
             AudioTooLarge(60.0, 50),
@@ -58,12 +69,12 @@ def _run(events, *, cache_hit, send=None, update=None, cleanup=None):
     )
 
 
-def _kinds(events):
+def _kinds(events: list[tuple[str, Any]]) -> list[str]:
     return [event[0] for event in events]
 
 
-def test_fresh_path_uses_exception_message_and_returns_false():
-    events = []
+def test_fresh_path_uses_exception_message_and_returns_false() -> None:
+    events: list[tuple[str, Any]] = []
 
     result = _run(events, cache_hit=False)
 
@@ -73,8 +84,8 @@ def test_fresh_path_uses_exception_message_and_returns_false():
     assert events[-1][1] == "media-1"
 
 
-def test_cache_hit_preserves_its_historical_size_message():
-    events = []
+def test_cache_hit_preserves_its_historical_size_message() -> None:
+    events: list[tuple[str, Any]] = []
 
     result = _run(
         events,
@@ -87,8 +98,8 @@ def test_cache_hit_preserves_its_historical_size_message():
     assert _kinds(events) == ["reply", "send", "cleanup"]
 
 
-def test_livedub_failure_is_suppressed_and_cleanup_still_runs():
-    events = []
+def test_livedub_failure_is_suppressed_and_cleanup_still_runs() -> None:
+    events: list[tuple[str, Any]] = []
 
     result = _run(
         events,
@@ -100,8 +111,8 @@ def test_livedub_failure_is_suppressed_and_cleanup_still_runs():
     assert _kinds(events) == ["reply", "send", "cleanup"]
 
 
-def test_reply_failure_prevents_delivery_and_cleanup():
-    events = []
+def test_reply_failure_prevents_delivery_and_cleanup() -> None:
+    events: list[tuple[str, Any]] = []
 
     with pytest.raises(RuntimeError, match="reply failed"):
         _run(
@@ -113,8 +124,8 @@ def test_reply_failure_prevents_delivery_and_cleanup():
     assert _kinds(events) == ["reply"]
 
 
-def test_cleanup_failure_propagates_after_delivery_attempt():
-    events = []
+def test_cleanup_failure_propagates_after_delivery_attempt() -> None:
+    events: list[tuple[str, Any]] = []
 
     with pytest.raises(OSError, match="cleanup failed"):
         _run(
@@ -126,8 +137,8 @@ def test_cleanup_failure_propagates_after_delivery_attempt():
     assert _kinds(events) == ["reply", "send", "cleanup"]
 
 
-def test_cancelled_livedub_delivery_is_not_swallowed():
-    events = []
+def test_cancelled_livedub_delivery_is_not_swallowed() -> None:
+    events: list[tuple[str, Any]] = []
 
     with pytest.raises(asyncio.CancelledError):
         _run(

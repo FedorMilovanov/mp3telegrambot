@@ -44,7 +44,7 @@ _SUPPORTED_COMMANDS = frozenset(
 )
 
 
-def parse_dub_command_lines(text: str) -> list[tuple[str, list[str]]]:
+def parse_dub_command_lines(text: str | None) -> list[tuple[str, list[str]]]:
     """Parse only complete, recognized Dub commands from one Telegram message."""
     result: list[tuple[str, list[str]]] = []
     for raw_line in str(text or "").splitlines():

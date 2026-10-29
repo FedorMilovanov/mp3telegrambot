@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from tools.voxcpm2 import clean_production_core as core
 
 
@@ -16,15 +18,17 @@ def _master_command() -> list[str]:
     ]
 
 
-def test_successful_master_must_pass_post_aac_delivery_gate(monkeypatch) -> None:
+def test_successful_master_must_pass_post_aac_delivery_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     calls: list[list[str]] = []
     verified: list[list[str]] = []
 
-    def fake_run(command, *args, **kwargs):
+    def fake_run(command: list[str], *args: object, **kwargs: object) -> SimpleNamespace:
         calls.append(list(command))
         return SimpleNamespace(returncode=0, stderr="")
 
-    def fake_verify(command):
+    def fake_verify(command: list[str]) -> dict[str, bool]:
         verified.append(list(command))
         return {"passed": True}
 
@@ -38,11 +42,13 @@ def test_successful_master_must_pass_post_aac_delivery_gate(monkeypatch) -> None
     assert verified == [_master_command()]
 
 
-def test_post_aac_failure_is_not_returned_as_success(monkeypatch) -> None:
-    def fake_run(command, *args, **kwargs):
+def test_post_aac_failure_is_not_returned_as_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run(command: list[str], *args: object, **kwargs: object) -> SimpleNamespace:
         return SimpleNamespace(returncode=0, stderr="")
 
-    def fake_verify(command):
+    def fake_verify(command: list[str]) -> None:
         raise RuntimeError("late_broadband_burst")
 
     monkeypatch.setattr(core._stdlib_subprocess, "run", fake_run)

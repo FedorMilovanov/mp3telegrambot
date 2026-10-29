@@ -151,7 +151,7 @@ async def create_telegraph_analytics(ai_data: dict[str, Any], title: str, author
     return await _telegraph_post(f"Аналитика: {title}", author, nodes, loop)
 
 
-def _normalize_question_items(questions: list[Any], *, max_items: int = 15) -> list[str]:
+def _normalize_question_items(questions: object, *, max_items: int = 15) -> list[str]:
     """Normalize generated reflection questions before publishing/reusing them.
 
     Keeps only useful, deduplicated open questions. Preserves the 🟢/🔵 marker

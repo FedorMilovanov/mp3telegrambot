@@ -116,7 +116,7 @@ def record_alert() -> None:
         _state.last_alert_at = time.time()
 
 
-def alert_is_due(interval_hours: float, *, now: float | None = None) -> bool:
+def alert_is_due(interval_hours: float | str, *, now: float | None = None) -> bool:
     """Пора ли повторять алерт владельцу.
 
     Логика вынесена из обработчика, чтобы её можно было проверить без

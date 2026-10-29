@@ -403,7 +403,7 @@ def verify_timeline_v45(
     failed, report = _ORIGINAL_VERIFY(timeline, segments, report_path)
     failed_ids = set(map(int, failed))
     checks = {
-        int(item.get("id")): item
+        int(item["id"]): item
         for item in report.get("segments", [])
         if isinstance(item, dict) and str(item.get("id", "")).isdigit()
     }
@@ -443,3 +443,38 @@ def verify_timeline_v45(
         encoding="utf-8",
     )
     return result, report
+
+
+# Keep the historical star-import surface while explicitly re-exporting the
+# analysis helpers used by the continuous-reference policy.
+__all__ = [
+    "Any",
+    "Iterable",
+    "POLICY",
+    "Path",
+    "activity_stats",
+    "annotations",
+    "build_direct_segments_v45",
+    "build_reference_v45",
+    "build_render_segments_v45",
+    "dub_quality_v4",
+    "hashlib",
+    "json",
+    "log",
+    "math",
+    "migrate_legacy_audio_repair",
+    "np",
+    "pipeline",
+    "pitch_profile",
+    "re",
+    "semantic_tts_guard_v4",
+    "sf",
+    "sha256",
+    "shutil",
+    "split_balanced",
+    "split_text",
+    "subprocess",
+    "tempfile",
+    "verify_timeline_v45",
+    "words",
+]

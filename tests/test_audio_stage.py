@@ -8,6 +8,8 @@
 """
 
 from __future__ import annotations
+from collections.abc import Awaitable
+from typing import Any
 
 import asyncio
 from pathlib import Path
@@ -28,11 +30,16 @@ def _no_real_io(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
     """Никакой реальной нормализации и пережатия: только фиксация вызовов."""
     normalized: list[Path] = []
 
-    async def owned(coro):
+    async def owned(coro: Awaitable[Any]) -> Any:
         return await coro
 
     monkeypatch.setattr(audio_stage, "await_owned_coroutine", owned)
-    monkeypatch.setattr(audio_stage, "normalize_mp3_lossless", lambda path: normalized.append(path) or True)
+
+    def normalize(path: Path) -> bool:
+        normalized.append(path)
+        return True
+
+    monkeypatch.setattr(audio_stage, "normalize_mp3_lossless", normalize)
     return normalized
 
 
@@ -42,8 +49,8 @@ def _make_mp3(path: Path, size_mb: float) -> Path:
     return path
 
 
-def _prepare(tmp_path: Path, **overrides):
-    kwargs = {
+def _prepare(tmp_path: Path, **overrides: Any) -> audio_stage.AudioResult:
+    kwargs: dict[str, Any] = {
         "media_id": "abc123",
         "url": "https://youtu.be/abc123",
         "duration": 600,
@@ -57,11 +64,11 @@ def _prepare(tmp_path: Path, **overrides):
 # ── переиспользование и скачивание ──────────────────────────────────────────
 
 
-def test_existing_file_is_reused_without_download(tmp_path, monkeypatch) -> None:
+def test_existing_file_is_reused_without_download(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _make_mp3(tmp_path / "abc123.mp3", 1.0)
     calls: list[list[str]] = []
 
-    async def fake_run(cmd, **_kwargs):
+    async def fake_run(cmd: list[str], **_kwargs: Any) -> _Proc:
         calls.append(cmd)
         return _Proc()
 
@@ -74,11 +81,11 @@ def test_existing_file_is_reused_without_download(tmp_path, monkeypatch) -> None
     assert result.size_mb == pytest.approx(1.0, abs=0.01)
 
 
-def test_compressed_variant_is_reused(tmp_path, monkeypatch) -> None:
+def test_compressed_variant_is_reused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Прошлый прогон мог оставить только `_64.mp3` — качать заново не нужно."""
     _make_mp3(tmp_path / "abc123_64.mp3", 0.5)
 
-    async def boom(_cmd, **_kwargs):
+    async def boom(_cmd: list[str], **_kwargs: Any) -> _Proc:
         raise AssertionError("скачивания быть не должно")
 
     monkeypatch.setattr(audio_stage, "run_cancellable_process", boom)
@@ -89,11 +96,11 @@ def test_compressed_variant_is_reused(tmp_path, monkeypatch) -> None:
     assert result.bitrate == "64"
 
 
-def test_download_then_normalize(tmp_path, monkeypatch, _no_real_io) -> None:
+def test_download_then_normalize(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, _no_real_io: list[Path]) -> None:
     """Скачанный файл нормализуется без потерь (mp3gain), а не loudnorm'ом."""
     commands: list[list[str]] = []
 
-    async def fake_run(cmd, **_kwargs):
+    async def fake_run(cmd: list[str], **_kwargs: Any) -> _Proc:
         commands.append(cmd)
         _make_mp3(tmp_path / "abc123.mp3", 2.0)
         return _Proc()
@@ -106,10 +113,10 @@ def test_download_then_normalize(tmp_path, monkeypatch, _no_real_io) -> None:
     assert result.size_mb == pytest.approx(2.0, abs=0.01)
 
 
-def test_download_passes_sponsorblock_and_extra_args(tmp_path, monkeypatch) -> None:
+def test_download_passes_sponsorblock_and_extra_args(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     seen: list[list[str]] = []
 
-    async def fake_run(cmd, **_kwargs):
+    async def fake_run(cmd: list[str], **_kwargs: Any) -> _Proc:
         seen.append(cmd)
         _make_mp3(tmp_path / "abc123.mp3", 1.0)
         return _Proc()
@@ -128,8 +135,8 @@ def test_download_passes_sponsorblock_and_extra_args(tmp_path, monkeypatch) -> N
     assert "--embed-metadata" in cmd and "--embed-thumbnail" in cmd
 
 
-def test_download_failure_reports_stderr(tmp_path, monkeypatch) -> None:
-    async def fake_run(_cmd, **_kwargs):
+def test_download_failure_reports_stderr(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_run(_cmd: list[str], **_kwargs: Any) -> _Proc:
         return _Proc(returncode=1, stderr="ERROR: Video unavailable")
 
     monkeypatch.setattr(audio_stage, "run_cancellable_process", fake_run)
@@ -137,10 +144,10 @@ def test_download_failure_reports_stderr(tmp_path, monkeypatch) -> None:
         _prepare(tmp_path)
 
 
-def test_download_without_result_fails(tmp_path, monkeypatch) -> None:
+def test_download_without_result_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """rc=0, но файла нет — это тоже ошибка, а не «продолжаем без mp3»."""
 
-    async def fake_run(_cmd, **_kwargs):
+    async def fake_run(_cmd: list[str], **_kwargs: Any) -> _Proc:
         return _Proc(returncode=0)
 
     monkeypatch.setattr(audio_stage, "run_cancellable_process", fake_run)
@@ -148,10 +155,10 @@ def test_download_without_result_fails(tmp_path, monkeypatch) -> None:
         _prepare(tmp_path)
 
 
-def test_missing_message_is_configurable(tmp_path, monkeypatch) -> None:
+def test_missing_message_is_configurable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Ветка кэша говорит «Не удалось скачать аудио» — текст не унифицируем молча."""
 
-    async def fake_run(_cmd, **_kwargs):
+    async def fake_run(_cmd: list[str], **_kwargs: Any) -> _Proc:
         return _Proc()
 
     monkeypatch.setattr(audio_stage, "run_cancellable_process", fake_run)
@@ -162,27 +169,27 @@ def test_missing_message_is_configurable(tmp_path, monkeypatch) -> None:
 # ── лимит размера и пережатие ───────────────────────────────────────────────
 
 
-def test_file_within_limit_is_returned_as_is(tmp_path, monkeypatch) -> None:
+def test_file_within_limit_is_returned_as_is(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _make_mp3(tmp_path / "abc123.mp3", 10.0)
 
-    async def boom(*_a, **_k):
+    async def boom(*_a: Any, **_k: Any) -> None:
         raise AssertionError("пережатия быть не должно")
 
     monkeypatch.setattr(audio_stage, "reencode_mp3_64k_atomic", boom)
     assert _prepare(tmp_path, max_size_mb=50).size_mb == pytest.approx(10.0, abs=0.01)
 
 
-def test_large_file_is_squeezed_to_64k(tmp_path, monkeypatch) -> None:
+def test_large_file_is_squeezed_to_64k(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _make_mp3(tmp_path / "abc123.mp3", 3.0)
     squeezed: list[tuple[Path, Path]] = []
     notices: list[float] = []
 
-    async def fake_reencode(source, output):
+    async def fake_reencode(source: Path, output: Path) -> bool:
         squeezed.append((source, output))
         _make_mp3(output, 1.0)
         return True
 
-    async def notice(size_mb):
+    async def notice(size_mb: float) -> None:
         notices.append(size_mb)
 
     monkeypatch.setattr(audio_stage, "reencode_mp3_64k_atomic", fake_reencode)
@@ -197,11 +204,11 @@ def test_large_file_is_squeezed_to_64k(tmp_path, monkeypatch) -> None:
     assert not (tmp_path / "abc123.mp3").exists()
 
 
-def test_failed_reencode_keeps_original(tmp_path, monkeypatch) -> None:
+def test_failed_reencode_keeps_original(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Сбой ffmpeg не должен оставлять пользователя без файла вообще."""
     _make_mp3(tmp_path / "abc123.mp3", 3.0)
 
-    async def fake_reencode(_source, _output):
+    async def fake_reencode(_source: Path, _output: Path) -> bool:
         return False
 
     monkeypatch.setattr(audio_stage, "reencode_mp3_64k_atomic", fake_reencode)
@@ -210,10 +217,10 @@ def test_failed_reencode_keeps_original(tmp_path, monkeypatch) -> None:
     assert (tmp_path / "abc123.mp3").exists()
 
 
-def test_still_too_large_after_squeeze(tmp_path, monkeypatch) -> None:
+def test_still_too_large_after_squeeze(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _make_mp3(tmp_path / "abc123.mp3", 3.0)
 
-    async def fake_reencode(_source, output):
+    async def fake_reencode(_source: Path, output: Path) -> bool:
         _make_mp3(output, 2.5)
         return True
 
@@ -230,11 +237,11 @@ def test_still_too_large_after_squeeze(tmp_path, monkeypatch) -> None:
     assert "лимит отправки — 2 МБ" in str(error)
 
 
-def test_already_64k_is_not_recompressed_into_itself(tmp_path, monkeypatch) -> None:
+def test_already_64k_is_not_recompressed_into_itself(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """`_64.mp3` пережимать в себя нельзя: ffmpeg читал бы файл, который пишет."""
     _make_mp3(tmp_path / "abc123_64.mp3", 3.0)
 
-    async def boom(*_a, **_k):
+    async def boom(*_a: Any, **_k: Any) -> None:
         raise AssertionError("самопережатия быть не должно")
 
     monkeypatch.setattr(audio_stage, "reencode_mp3_64k_atomic", boom)
@@ -246,7 +253,7 @@ def test_already_64k_is_not_recompressed_into_itself(tmp_path, monkeypatch) -> N
 
 
 @pytest.mark.parametrize(("duration", "expected"), [(0, "128K"), (3599, "128K"), (3601, "64K"), (10_800, "64K")])
-def test_quality_depends_on_duration(duration, expected) -> None:
+def test_quality_depends_on_duration(duration: int, expected: str) -> None:
     assert audio_stage.audio_quality(duration) == expected
 
 
@@ -256,17 +263,21 @@ def test_bitrate_label_prefers_actual_file() -> None:
     assert audio_stage.bitrate_label(7200, "abc.mp3") == "64"
 
 
-def test_find_existing_is_deterministic(tmp_path) -> None:
+def test_find_existing_is_deterministic(tmp_path: Path) -> None:
     _make_mp3(tmp_path / "abc_b.mp3", 0.1)
     _make_mp3(tmp_path / "abc_a.mp3", 0.1)
-    assert audio_stage.find_existing(tmp_path, "abc").name == "abc_a.mp3"
+    existing = audio_stage.find_existing(tmp_path, "abc")
+    assert existing is not None
+    assert existing.name == "abc_a.mp3"
 
 
-def test_find_existing_prefers_exact_name(tmp_path) -> None:
+def test_find_existing_prefers_exact_name(tmp_path: Path) -> None:
     _make_mp3(tmp_path / "abc_a.mp3", 0.1)
     _make_mp3(tmp_path / "abc.mp3", 0.1)
-    assert audio_stage.find_existing(tmp_path, "abc").name == "abc.mp3"
+    existing = audio_stage.find_existing(tmp_path, "abc")
+    assert existing is not None
+    assert existing.name == "abc.mp3"
 
 
-def test_find_existing_returns_none_for_empty_dir(tmp_path) -> None:
+def test_find_existing_returns_none_for_empty_dir(tmp_path: Path) -> None:
     assert audio_stage.find_existing(tmp_path, "abc") is None

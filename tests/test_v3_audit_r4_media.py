@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 
-def test_run_subprocess_splits_npx_argv0_with_args():
+def test_run_subprocess_splits_npx_argv0_with_args() -> None:
     """npx-fallback возвращал argv[0]="npx vot-cli-live" одной строкой, а
     сплит срабатывал только при len==1 — все реальные вызовы (с аргументами)
     падали FileNotFoundError."""
@@ -27,7 +27,7 @@ def test_run_subprocess_splits_npx_argv0_with_args():
     assert "hello world" in out
 
 
-def test_pdf_generator_no_global_popen_monkeypatch():
+def test_pdf_generator_no_global_popen_monkeypatch() -> None:
     """Глобальный патч subprocess.Popen убивал по таймауту ЧУЖОЙ процесс
     (например, параллельный ffmpeg-рендер шорта)."""
     src = Path("services/pdf_generator.py").read_text(encoding="utf-8")
@@ -36,19 +36,19 @@ def test_pdf_generator_no_global_popen_monkeypatch():
     assert "communicate(timeout=_WKHTMLTOPDF_TIMEOUT)" in src
 
 
-def test_livedub_info_card_keeps_source_url_on_success():
+def test_livedub_info_card_keeps_source_url_on_success() -> None:
     src = Path("services/livedub_info.py").read_text(encoding="utf-8")
     assert "_normalize_card(data, title_line, source_url)" in src
 
 
-def test_livedub_qa_temp_audio_cleanup_not_dead():
+def test_livedub_qa_temp_audio_cleanup_not_dead() -> None:
     """Без nonlocal внешняя _temp_original_audio оставалась None и
     {stem}_qa_original.mp3 утекал после каждого Quick-QA."""
     src = Path("services/livedub_qa.py").read_text(encoding="utf-8")
     assert "nonlocal client_used, _temp_original_audio" in src
 
 
-def test_parse_mmss_accepts_three_digit_minutes():
+def test_parse_mmss_accepts_three_digit_minutes() -> None:
     """srt_to_timed_text даёт [105:22] для видео >=100 минут — QA-отметки
     финала длинных проповедей теряли ссылки и autofix их пропускал."""
     from services.livedub_mix import parse_mmss
@@ -60,7 +60,7 @@ def test_parse_mmss_accepts_three_digit_minutes():
     assert parse_mmss("") is None
 
 
-def test_shorts_workdir_reuse_validates_video_stream():
+def test_shorts_workdir_reuse_validates_video_stream() -> None:
     src = Path("services/shorts_video_impl.py").read_text(encoding="utf-8")
     tree = ast.parse(src)
     implementation = next(
@@ -93,13 +93,13 @@ def test_shorts_workdir_reuse_validates_video_stream():
     assert "_unowned_download_video_for_shorts" in wrapper
 
 
-def test_eng_subtitles_checks_ytdlp_exit_code():
+def test_eng_subtitles_checks_ytdlp_exit_code() -> None:
     src = Path("services/eng_subtitles.py").read_text(encoding="utf-8")
     assert "proc.returncode != 0" in src
     assert '".part"' in src and '".ytdl"' in src
 
 
-def test_montage_temp_vars_initialized_before_try():
+def test_montage_temp_vars_initialized_before_try() -> None:
     """Cleanup state and every deterministic artifact must exist before try.
 
     The exception handlers need the complete part list even when cancellation
@@ -152,7 +152,7 @@ def test_montage_temp_vars_initialized_before_try():
     assert "temp_parts.append(" not in function_source
 
 
-def test_vk_group_resolve_handles_v5199_and_token():
+def test_vk_group_resolve_handles_v5199_and_token() -> None:
     src = Path("services/search.py").read_text(encoding="utf-8")
     block = src.split('mapping.get("vk_domain")', 1)[1][:2000]
     assert '_gid_params["access_token"]' in block

@@ -9,6 +9,7 @@
 """
 
 from __future__ import annotations
+import pytest
 
 import re
 import subprocess
@@ -34,7 +35,7 @@ def test_reference_is_in_sync_with_the_code() -> None:
     )
 
 
-def test_collection_is_invariant_to_multiline_formatting(tmp_path, monkeypatch) -> None:
+def test_collection_is_invariant_to_multiline_formatting(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     services = tmp_path / "services"
     services.mkdir()
     source = services / "example.py"

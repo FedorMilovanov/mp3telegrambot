@@ -6,8 +6,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
-import subprocess
+import shutil as shutil
+import subprocess as subprocess
 from pathlib import Path
 from typing import Any
 

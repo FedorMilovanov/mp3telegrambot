@@ -7,7 +7,7 @@ import os
 import runpy
 import sys
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
 import numpy as np
 import soundfile as sf
@@ -28,7 +28,7 @@ def _required_callable(namespace: dict[str, Any], name: str) -> Callable[..., An
     value = namespace.get(name)
     if not callable(value):
         raise RuntimeError(f"Legacy VoxCPM2 renderer contract is missing callable {name!r}.")
-    return value
+    return cast(Callable[..., Any], value)
 
 
 def _execution_globals(namespace: dict[str, Any]) -> dict[str, Any]:

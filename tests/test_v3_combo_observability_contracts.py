@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-def test_telegraph_text_request_has_observability_contract():
+def test_telegraph_text_request_has_observability_contract() -> None:
     source = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
     assert "from core.observability import alog_gemini_response, alog_gemini_run" in source
     assert 'task: str = "telegraph_text"' in source
@@ -11,7 +11,7 @@ def test_telegraph_text_request_has_observability_contract():
     assert 'error=(str(last_err)[:300] if last_err else "empty_response")' in source
 
 
-def test_video_candidate_generators_log_observability_and_use_schema_report():
+def test_video_candidate_generators_log_observability_and_use_schema_report() -> None:
     source = Path("services/shorts_candidates.py").read_text(encoding="utf-8")
     assert "CandidateValidationReport" in source
     assert "validate_candidate_times" in source
@@ -22,7 +22,7 @@ def test_video_candidate_generators_log_observability_and_use_schema_report():
     assert "validate_candidate_times(" in source
 
 
-def test_extras_candidates_logs_observability():
+def test_extras_candidates_logs_observability() -> None:
     source = Path("services/render_clips_montage.py").read_text(encoding="utf-8")
     assert "from core.observability import alog_gemini_response, alog_gemini_run" in source
     assert 'task="extras_candidates"' in source

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -30,7 +31,7 @@ def _calm_report(path: Path) -> None:
 
 
 def test_mismatched_calm_composite_is_rejected_before_expression(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     identity = tmp_path / "extended_reference.wav"
@@ -42,7 +43,7 @@ def test_mismatched_calm_composite_is_rejected_before_expression(
 
     called = False
 
-    def expressive_should_not_run(**_kwargs):
+    def expressive_should_not_run(**_kwargs: Any) -> bool:
         nonlocal called
         called = True
         return False
@@ -63,7 +64,7 @@ def test_mismatched_calm_composite_is_rejected_before_expression(
 
 
 def test_safe_calm_fallback_carries_identity_evidence(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     identity = tmp_path / "extended_reference.wav"
@@ -93,7 +94,7 @@ def test_safe_calm_fallback_carries_identity_evidence(
 
 
 def test_nonfinite_expressive_report_duration_is_rejected(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     identity = tmp_path / "extended_reference.wav"

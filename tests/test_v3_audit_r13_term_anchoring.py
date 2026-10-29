@@ -18,12 +18,12 @@ def _count(haystack: str, needle: str) -> int:
     return haystack.count(needle)
 
 
-def test_anti_default_warning_present_after_calque_example():
+def test_anti_default_warning_present_after_calque_example() -> None:
     assert "ОБРАЗЦЫ ФОРМАТА, а не чек-лист" in STUDY_ANALYSIS_PROMPT
     assert "ЗАПРЕЩЁН как автовыбор" in STUDY_ANALYSIS_PROMPT
 
 
-def test_term_pair_only_appears_inside_anti_default_framing():
+def test_term_pair_only_appears_inside_anti_default_framing() -> None:
     """Раньше пара встречалась 9 раз как НЕЙТРАЛЬНЫЙ пример формата — теперь
     каждое упоминание обёрнуто явной оговоркой «не по умолчанию» / «только
     если проповедь предметно спорит» / это часть анти-дефолт-инструкции."""
@@ -37,24 +37,24 @@ def test_term_pair_only_appears_inside_anti_default_framing():
     assert "берётся ТОЛЬКО если проповедь предметно спорит" in STUDY_ANALYSIS_PROMPT
 
 
-def test_final_selfcheck_flags_lordship_easy_believism_default():
+def test_final_selfcheck_flags_lordship_easy_believism_default() -> None:
     assert "Lordship Salvation / Easy Believism" in STUDY_ANALYSIS_PROMPT
     assert "предметно спорит именно об этом" in STUDY_ANALYSIS_PROMPT
 
 
-def test_diversified_examples_present():
+def test_diversified_examples_present() -> None:
     """Новые альтернативные примеры введены, чтобы разбавить якорь."""
     assert "Cheap Grace" in STUDY_ANALYSIS_PROMPT
     assert "Carnal Christian" in STUDY_ANALYSIS_PROMPT
 
 
-def test_reflection_prompt_frames_calque_as_conditional():
+def test_reflection_prompt_frames_calque_as_conditional() -> None:
     assert "не вставляй калькированные" in REFLECTION_APPLICATION_PROMPT
     # старая жёсткая пара как единственный образец убрана
     assert "**«Лёгкое верие»** (**Easy Believism**), **«Спасение господством»**" not in REFLECTION_APPLICATION_PROMPT
 
 
-def test_counterexample_definition_rule_diversified():
+def test_counterexample_definition_rule_diversified() -> None:
     """❌-пример нарушения «определение через контрпример» больше не
     использует ту же пару терминов, что и калька-пример."""
     assert "Полная испорченность — это против самоуверенности человека" in STUDY_ANALYSIS_PROMPT

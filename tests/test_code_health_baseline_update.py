@@ -3,18 +3,19 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
 from tools import check_code_health_baseline_update as guard
 
 
-def _write(path: Path, payload: dict) -> None:
+def _write(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload), encoding="utf-8")
 
 
-def _baseline() -> dict:
+def _baseline() -> dict[str, Any]:
     return {
         "files_scanned": 10,
         "total_regex_markers": 20,
@@ -22,7 +23,7 @@ def _baseline() -> dict:
     }
 
 
-def _report(current: dict) -> dict:
+def _report(current: dict[str, Any]) -> dict[str, Any]:
     return {
         "policy": "intentional-code-health-baseline-refresh-v1",
         "reason": "Reviewed architecture change.",
@@ -31,10 +32,12 @@ def _report(current: dict) -> dict:
     }
 
 
-def test_git_requires_and_uses_a_resolved_executable(monkeypatch) -> None:
-    commands = []
+def test_git_requires_and_uses_a_resolved_executable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    commands: list[list[str]] = []
 
-    def run(command, **kwargs):
+    def run(command: list[str], **kwargs: object) -> SimpleNamespace:
         commands.append(command)
         return SimpleNamespace(returncode=0, stdout="payload\n", stderr="")
 
@@ -49,10 +52,12 @@ def test_git_requires_and_uses_a_resolved_executable(monkeypatch) -> None:
         guard._git("status")
 
 
-def test_changed_files_places_revision_after_option_boundary(monkeypatch) -> None:
-    calls = []
+def test_changed_files_places_revision_after_option_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, ...]] = []
 
-    def fake_git(*args):
+    def fake_git(*args: str) -> str:
         calls.append(args)
         return "services/example.py\n"
 
@@ -70,7 +75,7 @@ def test_changed_files_places_revision_after_option_boundary(monkeypatch) -> Non
     ]
 
 
-def test_unchanged_baseline_needs_no_report(monkeypatch, tmp_path: Path):
+def test_unchanged_baseline_needs_no_report(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
     assert guard.validate_update(("services/example.py",)) == {
         "policy": guard.POLICY,
@@ -79,14 +84,14 @@ def test_unchanged_baseline_needs_no_report(monkeypatch, tmp_path: Path):
     }
 
 
-def test_changed_baseline_without_report_fails(monkeypatch, tmp_path: Path):
+def test_changed_baseline_without_report_fails(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
     _write(guard.BASELINE, _baseline())
     with pytest.raises(RuntimeError, match="without a JSON report"):
         guard.validate_update((guard.BASELINE.as_posix(),))
 
 
-def test_matching_report_authorizes_reviewed_baseline(monkeypatch, tmp_path: Path):
+def test_matching_report_authorizes_reviewed_baseline(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
     baseline = _baseline()
     report_path = Path("docs/code_health_reports/review.json")
@@ -100,7 +105,7 @@ def test_matching_report_authorizes_reviewed_baseline(monkeypatch, tmp_path: Pat
     assert result["reports"] == [report_path.as_posix()]
 
 
-def test_report_must_match_new_snapshot(monkeypatch, tmp_path: Path):
+def test_report_must_match_new_snapshot(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
     baseline = _baseline()
     report_path = Path("docs/code_health_reports/review.json")

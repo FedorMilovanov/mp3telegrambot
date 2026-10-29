@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -36,7 +37,7 @@ def _loudness(integrated: float) -> dict[str, float]:
     }
 
 
-def _verify(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, integrated: float):
+def _verify(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, integrated: float) -> dict[str, Any]:
     output = tmp_path / "result.mp4"
     output.write_bytes(b"not-empty")
     monkeypatch.setattr(final_media_qa, "probe_media", lambda _path: _media())

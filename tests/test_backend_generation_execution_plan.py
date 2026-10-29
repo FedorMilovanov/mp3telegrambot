@@ -1,4 +1,6 @@
 from __future__ import annotations
+import pytest
+from typing import Any
 
 import json
 from pathlib import Path
@@ -15,24 +17,24 @@ from services.speech_backends.execution_plan import GENERATION_EXECUTION_PLAN_PO
 
 class _Model:
     def __init__(self) -> None:
-        self.calls = []
+        self.calls: list[dict[str, Any]] = []
 
     def generate(
         self,
         *,
-        text,
-        reference_wav_path,
-        cfg_value,
-        inference_timesteps,
-        min_len,
-        max_len,
-        normalize,
-        denoise,
-        retry_badcase,
-        retry_badcase_max_times,
-        retry_badcase_ratio_threshold,
-        seed,
-    ):
+        text: str,
+        reference_wav_path: str,
+        cfg_value: float,
+        inference_timesteps: int,
+        min_len: int,
+        max_len: int,
+        normalize: bool,
+        denoise: bool,
+        retry_badcase: bool,
+        retry_badcase_max_times: int,
+        retry_badcase_ratio_threshold: float,
+        seed: int,
+    ) -> list[float]:
         call = {
             "text": text,
             "reference_wav_path": reference_wav_path,
@@ -68,7 +70,7 @@ def _request(tmp_path: Path) -> BackendGenerationRequest:
     )
 
 
-def test_exact_execution_plan_matches_real_model_kwargs(monkeypatch, tmp_path: Path):
+def test_exact_execution_plan_matches_real_model_kwargs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     model = _Model()
     session = AuditedVoxCPM2Session(
         model,
@@ -102,5 +104,5 @@ def test_exact_execution_plan_matches_real_model_kwargs(monkeypatch, tmp_path: P
     assert persisted["model_kwargs"] == model.calls[0]
 
 
-def test_default_production_backend_is_audited_voxcpm2():
+def test_default_production_backend_is_audited_voxcpm2() -> None:
     assert isinstance(default_backend(), AuditedVoxCPM2Backend)

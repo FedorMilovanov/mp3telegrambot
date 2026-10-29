@@ -41,7 +41,7 @@ from services.tts_profile_selection import (
     rebind_inactive_project_tts_profile,
     write_durable_request,
 )
-from tools.voxcpm2 import clean_source_download, generic_project_runtime
+from tools.voxcpm2 import clean_source_download, generic_project_runtime as generic_project_runtime
 from tools.voxcpm2.generic_direct_runtime import parse_srt_text
 
 _GENERIC_RECIPE = "generic_short_v1"

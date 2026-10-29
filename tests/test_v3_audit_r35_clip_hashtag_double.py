@@ -19,19 +19,19 @@ from services.render_clips_montage import (
 )
 
 
-def test_normalize_hashtag_returns_with_hash():
+def test_normalize_hashtag_returns_with_hash() -> None:
     # Фиксируем предпосылку бага: normalize_hashtag ВОЗВРАЩАЕТ с «#».
     assert normalize_hashtag("СилаБожья") == "#СилаБожья"
 
 
-def test_hashtags_line_idempotent():
+def test_hashtags_line_idempotent() -> None:
     assert _hashtags_line(["#A", "B", " ##C ", "#"]) == "#A #B #C"
     assert _hashtags_line([]) == ""
     # ограничение в 4 тега сохраняется
     assert _hashtags_line(["#a", "#b", "#c", "#d", "#e"]) == "#a #b #c #d"
 
 
-def test_clip_caption_no_double_hash():
+def test_clip_caption_no_double_hash() -> None:
     # Так теги реально лежат в clip-кандидате — уже с «#».
     tags = [normalize_hashtag(t) for t in ["СилаБожья", "СокрушениеСердца", "ПреображениеЖизни", "ЖивойБог"]]
     assert tags == ["#СилаБожья", "#СокрушениеСердца", "#ПреображениеЖизни", "#ЖивойБог"]
@@ -53,7 +53,7 @@ def test_clip_caption_no_double_hash():
     assert "#СилаБожья" in cap
 
 
-def test_montage_and_highlights_no_double_hash():
+def test_montage_and_highlights_no_double_hash() -> None:
     tags = ["#Вера", "#Покаяние"]
     m = build_montage_caption(
         theme="Покаяние",

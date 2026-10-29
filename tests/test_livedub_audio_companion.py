@@ -1,5 +1,7 @@
+import pytest
 from pathlib import Path
 import subprocess
+from typing import Any
 
 import services.livedub_audio_companion as companion
 
@@ -27,24 +29,29 @@ def test_public_error_text_masks_bot_tokens_and_proxy_passwords() -> None:
     assert token not in public and "secret" not in public and "***" in public
 
 
-def test_file_id_cache_stores_two_independent_variants(tmp_path: Path, monkeypatch) -> None:
+def test_file_id_cache_stores_two_independent_variants(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     cache_path = tmp_path / "audio-map.json"
     monkeypatch.setattr(companion, "_cache_path", lambda: cache_path)
     companion._cache_put_variant("video-1", "clean", "audio-clean", title="Title")
     companion._cache_put_variant("video-1", "mixed", "audio-mixed", title="Title")
     cached = companion._cache_get("video-1")
+    assert cached is not None
     assert cached["variants"]["clean"]["audio_file_id"] == "audio-clean"
     assert cached["variants"]["mixed"]["audio_file_id"] == "audio-mixed"
     companion._cache_drop_variant("video-1", "clean")
-    assert "clean" not in companion._cache_get("video-1")["variants"]
+    remaining = companion._cache_get("video-1")
+    assert remaining is not None
+    assert "clean" not in remaining["variants"]
     companion._cache_drop("video-1")
     assert companion._cache_get("video-1") is None
 
 
-def test_run_text_keeps_non_throwing_subprocess_policy(monkeypatch) -> None:
-    captured = {}
+def test_run_text_keeps_non_throwing_subprocess_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
 
-    def fake_run(command, **kwargs):
+    def fake_run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         captured.update(kwargs)
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
@@ -55,10 +62,10 @@ def test_run_text_keeps_non_throwing_subprocess_policy(monkeypatch) -> None:
     assert result.returncode == 0
 
 
-def test_run_text_sets_windows_creation_flag(monkeypatch) -> None:
-    captured = {}
+def test_run_text_sets_windows_creation_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
 
-    def fake_run(command, **kwargs):
+    def fake_run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         captured.update(kwargs)
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 

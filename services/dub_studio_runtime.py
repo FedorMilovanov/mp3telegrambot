@@ -16,7 +16,7 @@ import html
 import json
 import logging
 import os
-import subprocess
+import subprocess as subprocess
 import sys
 from typing import Any
 

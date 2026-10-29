@@ -14,8 +14,8 @@ import math
 import os
 from pathlib import Path
 import platform
-import shutil
-import subprocess
+import shutil as shutil
+import subprocess as subprocess
 import sys
 import time
 from typing import Any

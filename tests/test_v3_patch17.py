@@ -11,25 +11,25 @@ Context Caching: skipped (incompatible with thinking_level=high)
 import re
 
 
-def test_qa_has_expand():
+def test_qa_has_expand() -> None:
     src = open("core/prompts.py", encoding="utf-8").read()
     assert "SYNOPSIS_PROMPT_QA = _expand_prompt_rules(SYNOPSIS_PROMPT_QA)" in src
 
 
-def test_qa_has_verified_context():
+def test_qa_has_verified_context() -> None:
     from core.prompts import SYNOPSIS_PROMPT_QA
 
     assert "ВЕРИФИЦИРОВАННОГО КОНТЕКСТА" in SYNOPSIS_PROMPT_QA
 
 
-def test_qa_has_third_person_check():
+def test_qa_has_third_person_check() -> None:
     from core.prompts import SYNOPSIS_PROMPT_QA
 
     # QA final checklist must warn about 3rd person
     assert "фамилия/роль автора" in SYNOPSIS_PROMPT_QA or "автор/проповедник/спикер" in SYNOPSIS_PROMPT_QA
 
 
-def test_qa_no_raw_shared_placeholders():
+def test_qa_no_raw_shared_placeholders() -> None:
     from core.prompts import SYNOPSIS_PROMPT_QA
 
     shared = re.compile(
@@ -39,20 +39,20 @@ def test_qa_no_raw_shared_placeholders():
     assert not shared.findall(SYNOPSIS_PROMPT_QA)
 
 
-def test_qa_format_works():
+def test_qa_format_works() -> None:
     from core.prompts import SYNOPSIS_PROMPT_QA
 
     r = SYNOPSIS_PROMPT_QA.format(title="Q&A Test", duration="60:00", timestamps_block="0:00 Вопрос 1")
     assert "Q&A Test" in r
 
 
-def test_reflection_has_verified_context():
+def test_reflection_has_verified_context() -> None:
     from core.prompts import REFLECTION_APPLICATION_PROMPT
 
     assert "ВЕРИФИЦИРОВАННОГО КОНТЕКСТА" in REFLECTION_APPLICATION_PROMPT
 
 
-def test_reflection_no_raw_shared_placeholders():
+def test_reflection_no_raw_shared_placeholders() -> None:
     from core.prompts import REFLECTION_APPLICATION_PROMPT
 
     shared = re.compile(
@@ -62,7 +62,7 @@ def test_reflection_no_raw_shared_placeholders():
     assert not shared.findall(REFLECTION_APPLICATION_PROMPT)
 
 
-def test_synopsis_v2_final_checklist_has_third_person():
+def test_synopsis_v2_final_checklist_has_third_person() -> None:
     from core.prompts import SYNOPSIS_PROMPT_V2
 
     # After final checklist header, must have third-person check
@@ -73,7 +73,7 @@ def test_synopsis_v2_final_checklist_has_third_person():
     )
 
 
-def test_all_four_prompts_fully_clean():
+def test_all_four_prompts_fully_clean() -> None:
     from core.prompts import (
         SYNOPSIS_PROMPT_V2,
         SYNOPSIS_PROMPT_QA,
@@ -96,7 +96,7 @@ def test_all_four_prompts_fully_clean():
         assert not found, f"{name} has unresolved: {found}"
 
 
-def test_patch14_test_updated_for_quality_first():
+def test_patch14_test_updated_for_quality_first() -> None:
     src = open("tests/test_v3_patch14.py", encoding="utf-8").read()
     assert "test_reflection_reverted_to_high_quality" in src, (
         "patch14 test must be updated to reflect quality-first decision"

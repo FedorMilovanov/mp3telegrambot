@@ -12,8 +12,8 @@ import logging
 import os
 import re
 import shlex
-import shutil
-import subprocess
+import shutil as shutil
+import subprocess as subprocess
 import sys
 from pathlib import Path
 from typing import Any

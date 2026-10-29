@@ -7,6 +7,7 @@
 """
 
 from __future__ import annotations
+from typing import Any
 
 import asyncio
 import logging
@@ -49,40 +50,46 @@ AI = {"real_title": "Тема", "main_topic": "молитва"}
 class Pages:
     """Фейковые публикующие функции с записью порядка вызовов."""
 
-    def __init__(self, results=None, errors=None, links=None, links_error=None):
+    def __init__(
+        self,
+        results: dict[str, Any] | None = None,
+        errors: dict[str, BaseException] | None = None,
+        links: dict[str, str | None] | None = None,
+        links_error: BaseException | None = None,
+    ) -> None:
         self.calls: list[str] = []
         self._results = results or {}
         self._errors = errors or {}
         self._links = links
         self._links_error = links_error
-        self.kwargs: dict[str, dict] = {}
+        self.kwargs: dict[str, dict[str, Any]] = {}
 
-    async def _page(self, name, *args, **kwargs):
+    async def _page(self, name: str, *args: Any, **kwargs: Any) -> Any:
         self.calls.append(name)
         self.kwargs[name] = kwargs
         if name in self._errors:
             raise self._errors[name]
         return self._results.get(name)
 
-    async def analytics(self, *a, **kw):
+    async def analytics(self, *a: Any, **kw: Any) -> Any:
         return await self._page("analytics", *a, **kw)
 
-    async def questions(self, *a, **kw):
+    async def questions(self, *a: Any, **kw: Any) -> Any:
         return await self._page("questions", *a, **kw)
 
-    async def terms(self, *a, **kw):
+    async def terms(self, *a: Any, **kw: Any) -> Any:
         return await self._page("terms", *a, **kw)
 
-    async def study(self, *a, **kw):
+    async def study(self, *a: Any, **kw: Any) -> Any:
         return await self._page("study", *a, **kw)
 
-    async def reflection(self, *a, **kw):
+    async def reflection(self, *a: Any, **kw: Any) -> Any:
         return await self._page("reflection", *a, **kw)
 
-    async def combined(self, *a, **kw):
+    async def combined(self, *a: Any, **kw: Any) -> Any:
         return await self._page("combined", *a, **kw)
 
-    async def find_links(self, *a, **kw):
+    async def find_links(self, *a: Any, **kw: Any) -> Any:
         self.calls.append("links")
         if self._links_error is not None:
             raise self._links_error
@@ -100,8 +107,8 @@ class Pages:
         )
 
 
-def make_request(**overrides) -> RenderRequest:
-    base = dict(
+def make_request(**overrides: Any) -> RenderRequest:
+    base: dict[str, Any] = dict(
         ai_data=dict(AI),
         questions=["вопрос 1"],
         terms_data={"concepts": ["термин"]},
@@ -364,7 +371,7 @@ async def test_real_reflection_url_stays() -> None:
         ("https://telegra.ph/konspekt-1", True),
     ],
 )
-def test_is_reflection_fallback(url, expected) -> None:
+def test_is_reflection_fallback(url: str | None, expected: bool) -> None:
     assert is_reflection_fallback(url) is expected
 
 
@@ -402,7 +409,7 @@ def test_production_deps_wire_real_boundaries() -> None:
 
 
 class _Combined:
-    def __init__(self, study_url: str, reflection_url: str):
+    def __init__(self, study_url: str, reflection_url: str) -> None:
         self.study_url = study_url
         self.reflection_url = reflection_url
         self.mode = "combined"
@@ -439,7 +446,7 @@ async def test_cancellation_is_not_swallowed() -> None:
     """Отмена должна дойти до вызывающего кода: иначе `finally` не сработает."""
 
     class Cancelling(Pages):
-        async def find_links(self, *a, **kw):
+        async def find_links(self, *a: Any, **kw: Any) -> None:
             raise asyncio.CancelledError()
 
     pages = Cancelling()
@@ -455,7 +462,7 @@ async def test_base_exception_other_than_cancellation_propagates() -> None:
         pass
 
     class Exploding(Pages):
-        async def find_links(self, *a, **kw):
+        async def find_links(self, *a: Any, **kw: Any) -> None:
             raise Boom()
 
     with pytest.raises(Boom):

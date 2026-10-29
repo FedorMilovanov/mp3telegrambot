@@ -9,6 +9,8 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 import pytest
 
@@ -21,19 +23,19 @@ class _FakeMessage:
         self.replies: list[str] = []
         self._fail = fail
 
-    async def reply_text(self, text, **_kwargs):
+    async def reply_text(self, text: str, **_kwargs: Any) -> None:
         if self._fail:
             raise RuntimeError("Telegram недоступен")
         self.replies.append(text)
 
 
 class _FakeUser:
-    def __init__(self, user_id) -> None:
+    def __init__(self, user_id: int | str) -> None:
         self.id = user_id
 
 
 class _FakeUpdate:
-    def __init__(self, user_id=42, *, message_fail: bool = False) -> None:
+    def __init__(self, user_id: int | str | None = 42, *, message_fail: bool = False) -> None:
         self.effective_user = _FakeUser(user_id) if user_id is not None else None
         self.effective_message = _FakeMessage(fail=message_fail)
 
@@ -51,27 +53,27 @@ def traces(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     return outcomes
 
 
-def _mode_reader(mode: str = "rus"):
-    async def reader(_user_id):
+def _mode_reader(mode: str = "rus") -> Callable[[int], Awaitable[str]]:
+    async def reader(_user_id: int) -> str:
         return mode
 
     return reader
 
 
 @pytest.fixture
-def calls(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[tuple]]:
+def calls(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[tuple[Any, ...]]]:
     """Подменяем все три пайплайна и запоминаем, кто был вызван."""
-    recorded: dict[str, list[tuple]] = {"main": [], "editorial": [], "factory": []}
+    recorded: dict[str, list[tuple[Any, ...]]] = {"main": [], "editorial": [], "factory": []}
 
-    async def main_video(url, update, **kwargs):
+    async def main_video(url: str, update: Any, **kwargs: Any) -> bool:
         recorded["main"].append((url, update, kwargs))
         return True
 
-    async def editorial(url, update, **kwargs):
+    async def editorial(url: str, update: Any, **kwargs: Any) -> bool:
         recorded["editorial"].append((url, update, kwargs))
         return True
 
-    async def factory(url, update, **kwargs):
+    async def factory(url: str, update: Any, **kwargs: Any) -> bool:
         recorded["factory"].append((url, update, kwargs))
         return True
 
@@ -92,7 +94,7 @@ def calls(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[tuple]]:
     return recorded
 
 
-def _dispatch(update, *, silent_errors: bool = False):
+def _dispatch(update: Any, *, silent_errors: bool = False) -> bool:
     return asyncio.run(
         video_dispatch.process_single_video(
             "https://youtu.be/abc",
@@ -105,7 +107,7 @@ def _dispatch(update, *, silent_errors: bool = False):
     )
 
 
-def test_default_mode_goes_to_main_pipeline(calls, traces) -> None:
+def test_default_mode_goes_to_main_pipeline(calls: dict[str, list[tuple[Any, ...]]], traces: list[str]) -> None:
     update = _FakeUpdate()
     assert _dispatch(update) is True
     assert len(calls["main"]) == 1
@@ -113,7 +115,7 @@ def test_default_mode_goes_to_main_pipeline(calls, traces) -> None:
     assert traces == ["ok"]
 
 
-def test_arguments_are_passed_through(calls, traces) -> None:
+def test_arguments_are_passed_through(calls: dict[str, list[tuple[Any, ...]]], traces: list[str]) -> None:
     """Потеря `context`/`status_msg` ломает прогресс и отмену задач."""
     update = _FakeUpdate()
     _dispatch(update)
@@ -128,7 +130,9 @@ def test_arguments_are_passed_through(calls, traces) -> None:
     }
 
 
-def test_editorial_mode_goes_to_editorial_runner(calls, traces, monkeypatch) -> None:
+def test_editorial_mode_goes_to_editorial_runner(
+    calls: dict[str, list[tuple[Any, ...]]], traces: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
 
     monkeypatch.setattr(user_modes, "get_user_mode", _mode_reader(user_modes.EDITORIAL_MODE))
     assert _dispatch(_FakeUpdate()) is True
@@ -136,7 +140,9 @@ def test_editorial_mode_goes_to_editorial_runner(calls, traces, monkeypatch) -> 
     assert calls["main"] == [] and calls["factory"] == []
 
 
-def test_shorts_max_goes_to_factory(calls, traces, monkeypatch) -> None:
+def test_shorts_max_goes_to_factory(
+    calls: dict[str, list[tuple[Any, ...]]], traces: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
 
     monkeypatch.setattr(user_modes, "get_user_mode", _mode_reader("shorts_max"))
     assert _dispatch(_FakeUpdate()) is True
@@ -144,7 +150,9 @@ def test_shorts_max_goes_to_factory(calls, traces, monkeypatch) -> None:
     assert calls["main"] == []
 
 
-def test_shorts_max_without_whisper_is_refused(calls, traces, monkeypatch) -> None:
+def test_shorts_max_without_whisper_is_refused(
+    calls: dict[str, list[tuple[Any, ...]]], traces: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Без faster-whisper фабрика не стартует — пользователь узнаёт почему."""
     import services.shorts_video
 
@@ -158,7 +166,9 @@ def test_shorts_max_without_whisper_is_refused(calls, traces, monkeypatch) -> No
     assert traces == ["rejected:no_whisper"]
 
 
-def test_shorts_max_refusal_is_silent_in_playlist_mode(calls, traces, monkeypatch) -> None:
+def test_shorts_max_refusal_is_silent_in_playlist_mode(
+    calls: dict[str, list[tuple[Any, ...]]], traces: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
     import services.shorts_video
 
     monkeypatch.setattr(user_modes, "get_user_mode", _mode_reader("shorts_max"))
@@ -169,7 +179,9 @@ def test_shorts_max_refusal_is_silent_in_playlist_mode(calls, traces, monkeypatc
     assert update.effective_message.replies == []
 
 
-def test_refusal_survives_broken_telegram(calls, traces, monkeypatch) -> None:
+def test_refusal_survives_broken_telegram(
+    calls: dict[str, list[tuple[Any, ...]]], traces: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Не смогли предупредить — всё равно возвращаем отказ, а не падаем."""
     import services.shorts_video
 
@@ -179,8 +191,10 @@ def test_refusal_survives_broken_telegram(calls, traces, monkeypatch) -> None:
     assert _dispatch(_FakeUpdate(message_fail=True)) is False
 
 
-def test_false_result_is_reported_as_failed(calls, traces, monkeypatch) -> None:
-    async def failing_main(_url, _update, **_kwargs):
+def test_false_result_is_reported_as_failed(
+    calls: dict[str, list[tuple[Any, ...]]], traces: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def failing_main(_url: str, _update: Any, **_kwargs: Any) -> bool:
         return False
 
     import pipelines.main_pipeline
@@ -190,8 +204,10 @@ def test_false_result_is_reported_as_failed(calls, traces, monkeypatch) -> None:
     assert traces == ["failed"]
 
 
-def test_exception_is_reported_and_propagated(calls, traces, monkeypatch) -> None:
-    async def exploding_main(_url, _update, **_kwargs):
+def test_exception_is_reported_and_propagated(
+    calls: dict[str, list[tuple[Any, ...]]], traces: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def exploding_main(_url: str, _update: Any, **_kwargs: Any) -> bool:
         raise RuntimeError("ffmpeg упал")
 
     import pipelines.main_pipeline
@@ -202,8 +218,10 @@ def test_exception_is_reported_and_propagated(calls, traces, monkeypatch) -> Non
     assert traces == ["error:RuntimeError"]
 
 
-def test_cancellation_is_not_swallowed(calls, traces, monkeypatch) -> None:
-    async def cancelled_main(_url, _update, **_kwargs):
+def test_cancellation_is_not_swallowed(
+    calls: dict[str, list[tuple[Any, ...]]], traces: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def cancelled_main(_url: str, _update: Any, **_kwargs: Any) -> bool:
         raise asyncio.CancelledError
 
     import pipelines.main_pipeline
@@ -214,12 +232,14 @@ def test_cancellation_is_not_swallowed(calls, traces, monkeypatch) -> None:
     assert traces == ["cancelled"]
 
 
-def test_unknown_user_does_not_read_the_database(calls, traces, monkeypatch) -> None:
+def test_unknown_user_does_not_read_the_database(
+    calls: dict[str, list[tuple[Any, ...]]], traces: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Служебный апдейт без пользователя не должен ходить в БД за режимом."""
 
     asked: list[int] = []
 
-    async def reader(user_id):
+    async def reader(user_id: int) -> str:
         asked.append(user_id)
         return "rus"
 

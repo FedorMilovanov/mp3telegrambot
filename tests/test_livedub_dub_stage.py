@@ -1,6 +1,7 @@
 """Pro-mix selection and ordinary LiveDub fallback keep their exact contract."""
 
 from __future__ import annotations
+from typing import Any
 
 import asyncio
 import logging
@@ -11,19 +12,19 @@ import pytest
 from pipelines.livedub_dub_stage import make_livedub_video, wait_for_livedub_video
 
 
-def test_plain_path_uses_original_live_dub_arguments(monkeypatch, tmp_path):
+def test_plain_path_uses_original_live_dub_arguments(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     import services.livedub_mix as mix
     import services.yandex_live_dub as live_dub
 
     live_path = tmp_path / "live.mp4"
-    pro_calls = []
-    live_calls = []
+    pro_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+    live_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
 
-    async def pro(*args, **kwargs):
+    async def pro(*args: Any, **kwargs: Any) -> Path:
         pro_calls.append((args, kwargs))
         return live_path
 
-    async def live(*args, **kwargs):
+    async def live(*args: Any, **kwargs: Any) -> Path:
         live_calls.append((args, kwargs))
         return live_path
 
@@ -56,20 +57,20 @@ def test_plain_path_uses_original_live_dub_arguments(monkeypatch, tmp_path):
     ]
 
 
-def test_existing_pro_mix_wins_without_fallback(monkeypatch, tmp_path):
+def test_existing_pro_mix_wins_without_fallback(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     import services.livedub_mix as mix
     import services.yandex_live_dub as live_dub
 
     pro_path = tmp_path / "pro.mp4"
     pro_path.write_bytes(b"video")
-    pro_calls = []
-    live_calls = []
+    pro_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+    live_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
 
-    async def pro(*args, **kwargs):
+    async def pro(*args: Any, **kwargs: Any) -> Path:
         pro_calls.append((args, kwargs))
         return pro_path
 
-    async def live(*args, **kwargs):
+    async def live(*args: Any, **kwargs: Any) -> Path:
         live_calls.append((args, kwargs))
         return tmp_path / "unexpected.mp4"
 
@@ -91,16 +92,18 @@ def test_existing_pro_mix_wins_without_fallback(monkeypatch, tmp_path):
     assert live_calls == []
 
 
-def test_missing_pro_mix_falls_back_with_legacy_log(monkeypatch, tmp_path, caplog):
+def test_missing_pro_mix_falls_back_with_legacy_log(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     import services.livedub_mix as mix
     import services.yandex_live_dub as live_dub
 
     live_path = tmp_path / "live.mp4"
 
-    async def pro(*_args, **_kwargs):
+    async def pro(*_args: Any, **_kwargs: Any) -> None:
         return None
 
-    async def live(*_args, **_kwargs):
+    async def live(*_args: Any, **_kwargs: Any) -> Path:
         return live_path
 
     monkeypatch.setattr(mix, "build_pro_dub", pro)
@@ -120,16 +123,16 @@ def test_missing_pro_mix_falls_back_with_legacy_log(monkeypatch, tmp_path, caplo
     assert "pro-микс не собрался — fallback на vot-merge" in caplog.text
 
 
-def test_pro_runtime_error_reaches_background_error_policy(monkeypatch, tmp_path):
+def test_pro_runtime_error_reaches_background_error_policy(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     import services.livedub_mix as mix
     import services.yandex_live_dub as live_dub
 
-    live_calls = []
+    live_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
 
-    async def pro(*_args, **_kwargs):
+    async def pro(*_args: Any, **_kwargs: Any) -> None:
         raise RuntimeError("LIVEDUB_NOT_AVAILABLE")
 
-    async def live(*args, **kwargs):
+    async def live(*args: Any, **kwargs: Any) -> Path:
         live_calls.append((args, kwargs))
         return tmp_path / "unexpected.mp4"
 
@@ -148,16 +151,18 @@ def test_pro_runtime_error_reaches_background_error_policy(monkeypatch, tmp_path
     assert live_calls == []
 
 
-def test_other_pro_error_falls_back_with_legacy_log(monkeypatch, tmp_path, caplog):
+def test_other_pro_error_falls_back_with_legacy_log(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     import services.livedub_mix as mix
     import services.yandex_live_dub as live_dub
 
     live_path = tmp_path / "live.mp4"
 
-    async def pro(*_args, **_kwargs):
+    async def pro(*_args: Any, **_kwargs: Any) -> None:
         raise ValueError("bad mix")
 
-    async def live(*_args, **_kwargs):
+    async def live(*_args: Any, **_kwargs: Any) -> Path:
         return live_path
 
     monkeypatch.setattr(mix, "build_pro_dub", pro)
@@ -177,17 +182,17 @@ def test_other_pro_error_falls_back_with_legacy_log(monkeypatch, tmp_path, caplo
     assert "pro-микс сбой (bad mix) — fallback на vot-merge" in caplog.text
 
 
-def _wait_with_error(error, workdir):
-    async def task():
+def _wait_with_error(error: Exception, workdir: Path) -> Path | None:
+    async def task() -> None:
         raise error
 
     return asyncio.run(wait_for_livedub_video(task(), workdir))
 
 
-def test_wait_for_dub_returns_success_without_markers(tmp_path):
+def test_wait_for_dub_returns_success_without_markers(tmp_path: Path) -> None:
     expected = tmp_path / "dub.mp4"
 
-    async def task():
+    async def task() -> Path:
         return expected
 
     result = asyncio.run(wait_for_livedub_video(task(), tmp_path))
@@ -227,7 +232,14 @@ def test_wait_for_dub_returns_success_without_markers(tmp_path):
         ),
     ],
 )
-def test_wait_for_dub_records_historical_error_policy(error, marker, expected_text, expected_log, tmp_path, caplog):
+def test_wait_for_dub_records_historical_error_policy(
+    error: Exception,
+    marker: str,
+    expected_text: str,
+    expected_log: str,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     with caplog.at_level(logging.INFO):
         result = _wait_with_error(error, tmp_path)
 
@@ -236,7 +248,7 @@ def test_wait_for_dub_records_historical_error_policy(error, marker, expected_te
     assert expected_log in caplog.text
 
 
-def test_wait_for_dub_truncates_failure_marker(tmp_path):
+def test_wait_for_dub_truncates_failure_marker(tmp_path: Path) -> None:
     result = _wait_with_error(RuntimeError("x" * 600), tmp_path)
 
     assert result is None
@@ -252,8 +264,10 @@ def test_wait_for_dub_truncates_failure_marker(tmp_path):
         ValueError("unknown failure"),
     ],
 )
-def test_wait_for_dub_ignores_marker_write_os_errors(error, tmp_path, monkeypatch):
-    def broken_write(*_args, **_kwargs):
+def test_wait_for_dub_ignores_marker_write_os_errors(
+    error: Exception, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken_write(*_args: Any, **_kwargs: Any) -> None:
         raise OSError("read-only filesystem")
 
     monkeypatch.setattr(Path, "write_text", broken_write)
@@ -261,8 +275,8 @@ def test_wait_for_dub_ignores_marker_write_os_errors(error, tmp_path, monkeypatc
     assert _wait_with_error(error, tmp_path) is None
 
 
-def test_wait_for_dub_propagates_cancellation_without_failed_marker(tmp_path):
-    async def task():
+def test_wait_for_dub_propagates_cancellation_without_failed_marker(tmp_path: Path) -> None:
+    async def task() -> None:
         raise asyncio.CancelledError
 
     with pytest.raises(asyncio.CancelledError):

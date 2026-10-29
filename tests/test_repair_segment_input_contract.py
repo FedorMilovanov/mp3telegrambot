@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -9,7 +10,7 @@ from tools.voxcpm2 import clean_segment_normalizer as normalizer
 from tools.voxcpm2 import legacy_segment_migration_v45 as migration
 
 
-def _project(tmp_path: Path, segments) -> tuple[Path, Path, bytes]:
+def _project(tmp_path: Path, segments: object) -> tuple[Path, Path, bytes]:
     root = tmp_path / "project"
     (root / "input").mkdir(parents=True)
     (root / "output").mkdir(parents=True)
@@ -25,7 +26,7 @@ def _project(tmp_path: Path, segments) -> tuple[Path, Path, bytes]:
     return root, segments_path, segments_path.read_bytes()
 
 
-def _valid_segment() -> dict:
+def _valid_segment() -> dict[str, Any]:
     return {
         "id": 1,
         "start": 0.0,
@@ -51,9 +52,9 @@ def _valid_segment() -> dict:
 )
 @pytest.mark.parametrize("runner", ["migration", "normalizer"])
 def test_invalid_repair_segments_do_not_replace_source_file(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    segments,
+    segments: object,
     runner: str,
 ) -> None:
     root, path, before = _project(tmp_path, segments)

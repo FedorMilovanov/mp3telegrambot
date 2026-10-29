@@ -17,9 +17,13 @@ from tools.voxcpm2 import continuous_reference_policy
 from tools.voxcpm2 import controlled_reference_gate
 from tools.voxcpm2 import direct_max_quality_io
 from tools.voxcpm2 import expressive_continuity
-from tools.voxcpm2 import generic_audio_repair_runtime as legacy_repair
+from tools.voxcpm2 import generic_audio_repair_runtime as generic_audio_repair_runtime
+
+legacy_repair = generic_audio_repair_runtime
 from tools.voxcpm2 import generic_project_runtime as production
-from tools.voxcpm2 import generic_short_production as pipeline
+from tools.voxcpm2 import generic_short_production as generic_short_production
+
+pipeline = generic_short_production
 from tools.voxcpm2 import legacy_segment_migration_v45
 from tools.voxcpm2 import semantic_tts_guard_v4
 
@@ -55,7 +59,7 @@ def _finite_report_value(value: Any) -> bool:
         return False
 
 
-def _checkpoint_ready(
+def _legacy_checkpoint_ready_impl(
     work_dir: Path,
     segment_id: int,
 ) -> tuple[bool, str]:
@@ -146,7 +150,7 @@ def _fingerprinted_baseline_ready(
     return True, "fingerprinted release-complete clean expressive baseline"
 
 
-def _next_seed(
+def _legacy_next_seed(
     request: dict[str, Any],
     marker: dict[str, Any],
     manifest: dict[str, Any],
@@ -180,7 +184,7 @@ def _existing_references(root: Path) -> tuple[Path, Path]:
     return extended, composite
 
 
-def _update_manifest(
+def _legacy_update_manifest_impl(
     path: Path,
     manifest: dict[str, Any],
     *,
@@ -237,7 +241,7 @@ def _reload_repair_and_segments(
     return repair, segments
 
 
-def main() -> None:
+def _legacy_main_impl() -> None:
     pipeline.configure_utf8()
     project_id = production.current_project_id()
     root = production.project_root(project_id)
@@ -409,7 +413,7 @@ def main() -> None:
 
 if __name__ == "__main__":
     try:
-        main()
+        _legacy_main_impl()
     except Exception as exc:
         import traceback
 
@@ -417,7 +421,7 @@ if __name__ == "__main__":
         traceback.print_exc()
         raise SystemExit(1) from None
 
-_source_main = main
+_source_main = _legacy_main_impl
 
 _BASE_ALL = tuple(globals().get("__all__", ()))
 
@@ -428,9 +432,9 @@ from tools.voxcpm2 import clean_production_core as strict_core  # noqa: E402
 from tools.voxcpm2 import clean_request_settings  # noqa: E402
 
 
-_legacy_update_manifest = _update_manifest
+_legacy_update_manifest = _legacy_update_manifest_impl
 
-_legacy_checkpoint_ready = _checkpoint_ready
+_legacy_checkpoint_ready = _legacy_checkpoint_ready_impl
 
 
 def _load_json_object(path: Path, label: str) -> dict[str, Any]:
@@ -727,4 +731,5 @@ __all__ = [
     "_validated_sha256",
     "_update_manifest",
     "main",
+    "production",
 ]

@@ -7,6 +7,8 @@ the existing ~126 test files. Each of these protects one real, already-
 shipped fix; none are speculative or "protection for protection's sake".
 """
 
+from collections.abc import Iterable
+
 from converters.md_telegraph import (
     _dedup_consecutive_timestamps,
     _final_telegraph_polish,
@@ -16,10 +18,10 @@ from converters.md_telegraph import (
 from core.text_utils import _fix_latin_homoglyphs
 
 
-def _flat(nodes) -> str:
-    parts = []
+def _flat(nodes: Iterable[object]) -> str:
+    parts: list[str] = []
 
-    def walk(n):
+    def walk(n: object) -> None:
         if isinstance(n, str):
             parts.append(n)
         elif isinstance(n, dict):
@@ -35,19 +37,19 @@ def _flat(nodes) -> str:
 # paragraphs that start with the identical timestamp ────────────────────
 
 
-def test_dedup_consecutive_timestamps_removes_duplicate():
+def test_dedup_consecutive_timestamps_removes_duplicate() -> None:
     out = _dedup_consecutive_timestamps("12:34 Первая мысль\n12:34 Вторая мысль")
     assert out == "12:34 Первая мысль\nВторая мысль"
 
 
-def test_dedup_consecutive_timestamps_handles_bare_timestamp_line():
+def test_dedup_consecutive_timestamps_handles_bare_timestamp_line() -> None:
     """b7973c2: the dedup regex was broadened to also match a line that is
     JUST a timestamp (no trailing text) following an identical one."""
     out = _dedup_consecutive_timestamps("12:34 Текст мысли\n12:34")
     assert out == "12:34 Текст мысли\n"
 
 
-def test_dedup_consecutive_timestamps_leaves_different_timestamps_alone():
+def test_dedup_consecutive_timestamps_leaves_different_timestamps_alone() -> None:
     out = _dedup_consecutive_timestamps("12:34 Первая мысль\n12:40 Вторая мысль")
     assert out == "12:34 Первая мысль\n12:40 Вторая мысль"
 
@@ -56,7 +58,7 @@ def test_dedup_consecutive_timestamps_leaves_different_timestamps_alone():
 # quote/punctuation mark gets a space inserted and loses its bold markers ──
 
 
-def test_quote_glued_bold_timestamp_gets_space_and_loses_bold():
+def test_quote_glued_bold_timestamp_gets_space_and_loses_bold() -> None:
     nodes = _section_to_nodes_v2(
         {
             "title": "Т",
@@ -78,11 +80,11 @@ def test_quote_glued_bold_timestamp_gets_space_and_loses_bold():
 # word get fixed, but real English words/acronyms stay untouched ───────────
 
 
-def test_fix_latin_homoglyphs_repairs_single_letter_substitution():
+def test_fix_latin_homoglyphs_repairs_single_letter_substitution() -> None:
     assert _fix_latin_homoglyphs("Cемья это опора") == "Семья это опора"
 
 
-def test_fix_latin_homoglyphs_does_not_touch_real_english_runs():
+def test_fix_latin_homoglyphs_does_not_touch_real_english_runs() -> None:
     """Negative-case guard: a genuine multi-letter Latin run (an acronym,
     even mixed with Cyrillic via a hyphen) must not be mangled — only
     single-letter homoglyph runs are translated."""
@@ -94,12 +96,12 @@ def test_fix_latin_homoglyphs_does_not_touch_real_english_runs():
 # ending period, but NOT after short abbreviations ("см.", "т.д.") ────────
 
 
-def test_capitalizes_after_real_sentence_boundary():
+def test_capitalizes_after_real_sentence_boundary() -> None:
     out = _postprocess_telegraph_nodes([{"tag": "p", "children": ["Это было их следствием. возрождение меняет всё."]}])
     assert "следствием. Возрождение" in _flat(out)
 
 
-def test_does_not_capitalize_after_short_abbreviations():
+def test_does_not_capitalize_after_short_abbreviations() -> None:
     """The >=5-letter-word guard exists specifically so "см.", "т.д." etc.
     don't get their next word wrongly capitalized."""
     out = _postprocess_telegraph_nodes(
@@ -117,7 +119,7 @@ def test_does_not_capitalize_after_short_abbreviations():
 # visible gap in Hebrew/RTL lexicon cards — collapse the whitespace ───────
 
 
-def test_ltr_mark_space_before_it_is_collapsed():
+def test_ltr_mark_space_before_it_is_collapsed() -> None:
     """Existing tests strip \\u200e before comparing (so they can't catch a
     regression of the space-collapsing itself) — this test keeps the mark."""
     out = _final_telegraph_polish([{"tag": "p", "children": ["«enosh» ‎— слабый человек"]}])
@@ -130,13 +132,13 @@ def test_ltr_mark_space_before_it_is_collapsed():
 # code-switch words get translated ONLY when adjacent to Cyrillic ────────
 
 
-def test_stray_english_word_translated_in_cyrillic_context():
+def test_stray_english_word_translated_in_cyrillic_context() -> None:
     out = _final_telegraph_polish([{"tag": "p", "children": ["Это, however, интересно для нас"]}])
     assert "однако" in _flat(out)
     assert "however" not in _flat(out)
 
 
-def test_stray_english_word_not_touched_in_all_english_context():
+def test_stray_english_word_not_touched_in_all_english_context() -> None:
     """fd91e0e regression: an all-English phrase (e.g. a book title) must
     not have words replaced just because they match the code-switch dict."""
     out = _final_telegraph_polish([{"tag": "p", "children": ['The book "However Long the Night" is famous']}])

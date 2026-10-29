@@ -13,7 +13,11 @@ def _write_bytes(path: Path, payload: bytes) -> None:
     path.write_bytes(payload)
 
 
-def _probe(duration):
+def _glob_paths(path: Path, pattern: str) -> list[Path]:
+    return list(path.glob(pattern))
+
+
+def _probe(duration: float) -> SimpleNamespace:
     return SimpleNamespace(
         duration=duration,
         has_video=True,
@@ -23,13 +27,13 @@ def _probe(duration):
     )
 
 
-def test_long_fit_bitrate_uses_highest_budget_after_audio_and_reserve():
+def test_long_fit_bitrate_uses_highest_budget_after_audio_and_reserve() -> None:
     bitrate = long_fit.factory_long_target_video_kbps(2000, 600)
     assert bitrate > 25000
     assert long_fit.factory_long_target_video_kbps(1000, 600) < bitrate
 
 
-def test_long_fit_rejects_invalid_or_unacceptably_low_bitrate():
+def test_long_fit_rejects_invalid_or_unacceptably_low_bitrate() -> None:
     with pytest.raises(RuntimeError, match="positive file-size"):
         long_fit.factory_long_target_video_kbps(0, 600)
     with pytest.raises(RuntimeError, match="positive duration"):
@@ -38,13 +42,13 @@ def test_long_fit_rejects_invalid_or_unacceptably_low_bitrate():
         long_fit.factory_long_target_video_kbps(1, 900)
 
 
-def test_long_fit_disk_requirement_reserves_target_and_overhead():
+def test_long_fit_disk_requirement_reserves_target_and_overhead() -> None:
     required = long_fit.factory_long_fit_required_free_bytes(2000)
     assert required >= int(2000 * 1024**2 * 1.10)
     assert required >= 2 * _GIB
 
 
-def test_long_fit_disk_guard_rejects_shortage(monkeypatch, tmp_path):
+def test_long_fit_disk_guard_rejects_shortage(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
         long_fit.shutil,
         "disk_usage",
@@ -54,7 +58,7 @@ def test_long_fit_disk_guard_rejects_shortage(monkeypatch, tmp_path):
         long_fit.ensure_factory_long_fit_space(tmp_path, 2000)
 
 
-def test_two_pass_commands_preserve_resolution_and_exact_interval(tmp_path):
+def test_two_pass_commands_preserve_resolution_and_exact_interval(tmp_path: Path) -> None:
     first, second = long_fit._two_pass_commands(
         "ffmpeg",
         tmp_path / "source.mkv",
@@ -83,20 +87,22 @@ def test_two_pass_commands_preserve_resolution_and_exact_interval(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_two_pass_fit_replaces_oversized_output_after_proof(monkeypatch, tmp_path):
+async def test_two_pass_fit_replaces_oversized_output_after_proof(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     source_path = tmp_path / "source.mkv"
     output_path = tmp_path / "clip.mp4"
     source_path.write_bytes(b"s" * 4096)
     output_path.write_bytes(b"o" * 4096)
-    commands = []
+    commands: list[list[str]] = []
 
-    async def fake_run(command, **kwargs):
+    async def fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
         commands.append(list(command))
         if command[command.index("-pass") + 1] == "2":
             await asyncio.to_thread(_write_bytes, Path(command[-1]), b"f" * 4096)
         return SimpleNamespace(returncode=0, stderr="")
 
-    async def fake_probe(path):
+    async def fake_probe(path: Path) -> SimpleNamespace:
         assert path.name.endswith("_factory_fit.mp4")
         return _probe(600.0)
 
@@ -116,23 +122,23 @@ async def test_two_pass_fit_replaces_oversized_output_after_proof(monkeypatch, t
     assert result is True
     assert output_path.read_bytes() == b"f" * 4096
     assert len(commands) == 2
-    assert not list(tmp_path.glob("clip_factory_x264*"))
+    assert not await asyncio.to_thread(_glob_paths, tmp_path, "clip_factory_x264*")
     assert not (tmp_path / "clip_factory_fit.mp4").exists()
 
 
 @pytest.mark.asyncio
-async def test_two_pass_fit_rejects_truncated_result(monkeypatch, tmp_path):
+async def test_two_pass_fit_rejects_truncated_result(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     source_path = tmp_path / "source.mkv"
     output_path = tmp_path / "clip.mp4"
     source_path.write_bytes(b"s" * 4096)
     output_path.write_bytes(b"original")
 
-    async def fake_run(command, **kwargs):
+    async def fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
         if command[command.index("-pass") + 1] == "2":
             await asyncio.to_thread(_write_bytes, Path(command[-1]), b"f" * 4096)
         return SimpleNamespace(returncode=0, stderr="")
 
-    async def fake_probe(_path):
+    async def fake_probe(_path: Path) -> SimpleNamespace:
         return _probe(597.0)
 
     monkeypatch.setattr(long_fit, "run_cancellable_process", fake_run)
@@ -153,7 +159,7 @@ async def test_two_pass_fit_rejects_truncated_result(monkeypatch, tmp_path):
     assert not (tmp_path / "clip_factory_fit.mp4").exists()
 
 
-def test_clips_pipeline_owns_factory_long_fit_without_runtime_rebinding():
+def test_clips_pipeline_owns_factory_long_fit_without_runtime_rebinding() -> None:
     clips = Path("pipelines/clips.py").read_text(encoding="utf-8")
     utility = Path(long_fit.__file__).read_text(encoding="utf-8")
     assert "fit_factory_long_clip_to_limit(" in clips
@@ -165,7 +171,7 @@ def test_clips_pipeline_owns_factory_long_fit_without_runtime_rebinding():
     assert "_FACTORY_SETTINGS" not in utility
 
 
-def test_factory_pipeline_disables_second_silence_snap_for_longs():
+def test_factory_pipeline_disables_second_silence_snap_for_longs() -> None:
     factory = Path("pipelines/shorts_factory.py").read_text(encoding="utf-8")
     assert "factory_publication=True" in factory
     assert "snap_to_silence=False" in factory

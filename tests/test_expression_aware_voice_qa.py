@@ -1,4 +1,6 @@
 from __future__ import annotations
+import pathlib
+import pytest
 
 from tools.voxcpm2 import direct_max_quality_render as render
 from tools.voxcpm2.professional_audio_qa_v45 import _voice_limits
@@ -65,7 +67,7 @@ def test_calm_profile_remains_tighter_than_expressive_profile() -> None:
     assert calm["max_p90_ratio"] < expressive["max_p90_ratio"]
 
 
-def test_fitted_phrase_has_real_fade_in_and_fade_out(monkeypatch, tmp_path) -> None:
+def test_fitted_phrase_has_real_fade_in_and_fade_out(monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path) -> None:
     commands: list[list[str]] = []
     clean = tmp_path / "clean.wav"
     fitted = tmp_path / "fitted.wav"

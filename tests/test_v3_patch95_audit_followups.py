@@ -12,7 +12,7 @@ Covers:
 from converters.md_telegraph import _final_telegraph_polish
 
 
-def test_polish_drops_empty_paragraph_keeps_hr_and_img():
+def test_polish_drops_empty_paragraph_keeps_hr_and_img() -> None:
     nodes = [
         {"tag": "p", "children": ["настоящий текст"]},
         {"tag": "p", "children": []},  # empty -> dropped
@@ -29,12 +29,12 @@ def test_polish_drops_empty_paragraph_keeps_hr_and_img():
     assert all(not (isinstance(n, dict) and n.get("tag") == "p" and not n.get("children")) for n in out)
 
 
-def test_polish_keeps_self_closing_br():
+def test_polish_keeps_self_closing_br() -> None:
     out = _final_telegraph_polish([{"tag": "br"}, {"tag": "p", "children": ["x"]}])
     assert {"tag": "br"} in out
 
 
-def test_gemini_background_delete_helper_is_gc_safe():
+def test_gemini_background_delete_helper_is_gc_safe() -> None:
     import services.gemini_analyze as g
 
     assert hasattr(g, "_spawn_safe_delete")

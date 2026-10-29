@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
+
+import pytest
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock
 
 from services import gemini_analyze as analyze
@@ -12,11 +16,11 @@ class _ServiceError(RuntimeError):
     pass
 
 
-async def _noop_progress(*_args, **_kwargs):
+async def _noop_progress(*_args: Any, **_kwargs: Any) -> None:
     return None
 
 
-def _install_common(monkeypatch, tmp_path):
+def _install_common(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     audio = tmp_path / "analysis.mp3"
     audio.write_bytes(b"x" * 2048)
     monkeypatch.setenv("GEMINI_HEAVY_MAX_CONCURRENCY", "1")
@@ -51,30 +55,32 @@ def _install_common(monkeypatch, tmp_path):
     return audio
 
 
-def test_audio_inference_503_is_capped_at_three_calls_across_four_keys(monkeypatch, tmp_path):
+def test_audio_inference_503_is_capped_at_three_calls_across_four_keys(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     audio = _install_common(monkeypatch, tmp_path)
     model_calls: list[str] = []
     upload_calls: list[str] = []
 
     class Files:
-        def __init__(self, name: str):
+        def __init__(self, name: str) -> None:
             self.name = name
 
-        async def upload(self, **_kwargs):
+        async def upload(self, **_kwargs: Any) -> SimpleNamespace:
             upload_calls.append(self.name)
             return SimpleNamespace(name=f"files/{self.name}", state="ACTIVE")
 
-        async def get(self, **_kwargs):
+        async def get(self, **_kwargs: Any) -> None:
             raise AssertionError("ACTIVE upload must not be polled")
 
-        async def delete(self, **_kwargs):
+        async def delete(self, **_kwargs: Any) -> None:
             return None
 
     class Models:
-        def __init__(self, name: str):
+        def __init__(self, name: str) -> None:
             self.name = name
 
-        async def generate_content(self, **_kwargs):
+        async def generate_content(self, **_kwargs: Any) -> None:
             model_calls.append(self.name)
             raise _ServiceError("503 UNAVAILABLE: high demand")
 
@@ -88,27 +94,29 @@ def test_audio_inference_503_is_capped_at_three_calls_across_four_keys(monkeypat
     assert upload_calls == ["k1", "k2"]
 
 
-def test_audio_files_503_is_capped_at_three_uploads_and_never_reaches_inference(monkeypatch, tmp_path):
+def test_audio_files_503_is_capped_at_three_uploads_and_never_reaches_inference(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     audio = _install_common(monkeypatch, tmp_path)
     upload_calls: list[str] = []
     model_calls: list[str] = []
 
     class Files:
-        def __init__(self, name: str):
+        def __init__(self, name: str) -> None:
             self.name = name
 
-        async def upload(self, **_kwargs):
+        async def upload(self, **_kwargs: Any) -> None:
             upload_calls.append(self.name)
             raise _ServiceError("503 UNAVAILABLE: Files API overloaded")
 
-        async def delete(self, **_kwargs):
+        async def delete(self, **_kwargs: Any) -> None:
             return None
 
     class Models:
-        def __init__(self, name: str):
+        def __init__(self, name: str) -> None:
             self.name = name
 
-        async def generate_content(self, **_kwargs):
+        async def generate_content(self, **_kwargs: Any) -> SimpleNamespace:
             model_calls.append(self.name)
             return SimpleNamespace(text="{}", candidates=[])
 
@@ -122,25 +130,25 @@ def test_audio_files_503_is_capped_at_three_uploads_and_never_reaches_inference(
     assert model_calls == []
 
 
-def test_audio_poll_503_cleans_remote_handle(monkeypatch, tmp_path):
+def test_audio_poll_503_cleans_remote_handle(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     audio = _install_common(monkeypatch, tmp_path)
     deleted: list[str] = []
 
     class Files:
-        async def upload(self, **_kwargs):
+        async def upload(self, **_kwargs: Any) -> SimpleNamespace:
             return SimpleNamespace(name="files/created", state="PROCESSING")
 
-        async def get(self, **_kwargs):
+        async def get(self, **_kwargs: Any) -> None:
             raise _ServiceError("503 Files API polling overloaded")
 
-        async def delete(self, *, name):
+        async def delete(self, *, name: str) -> None:
             deleted.append(name)
 
     class Models:
-        async def generate_content(self, **_kwargs):
+        async def generate_content(self, **_kwargs: Any) -> None:
             raise AssertionError("poll failure must not reach inference")
 
-    async def no_sleep(_delay):
+    async def no_sleep(_delay: float) -> None:
         return None
 
     monkeypatch.setattr(analyze.asyncio, "sleep", no_sleep)
@@ -156,13 +164,13 @@ def test_audio_poll_503_cleans_remote_handle(monkeypatch, tmp_path):
     assert deleted == ["files/created"]
 
 
-def test_audio_low_thinking_recovery_is_not_silently_promoted_to_high():
+def test_audio_low_thinking_recovery_is_not_silently_promoted_to_high() -> None:
     from core.globals import _effective_thinking_level
 
     assert _effective_thinking_level("gemini-3.7-flash", "low") == "low"
 
 
-def test_validate_and_fix_timestamps_executes_nested_typed_helpers():
+def test_validate_and_fix_timestamps_executes_nested_typed_helpers() -> None:
     parsed = {
         "time": "2:00",
         "nested": [{"time": "0:30", "value": "kept"}],
@@ -176,21 +184,21 @@ def test_validate_and_fix_timestamps_executes_nested_typed_helpers():
     }
 
 
-def test_audio_empty_response_uses_real_low_thinking_recovery(monkeypatch, tmp_path):
+def test_audio_empty_response_uses_real_low_thinking_recovery(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     audio = _install_common(monkeypatch, tmp_path)
     monkeypatch.setattr(analyze, "make_audio_config", lambda **kwargs: kwargs)
     monkeypatch.setattr(analyze, "alog_gemini_response", AsyncMock())
     monkeypatch.setattr(analyze, "alog_gemini_run", AsyncMock())
 
     class Files:
-        async def upload(self, **_kwargs):
+        async def upload(self, **_kwargs: Any) -> SimpleNamespace:
             return SimpleNamespace(name="files/audio", state="ACTIVE")
 
     class Models:
-        def __init__(self):
-            self.calls = []
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
 
-        async def generate_content(self, **kwargs):
+        async def generate_content(self, **kwargs: Any) -> SimpleNamespace:
             self.calls.append(kwargs)
             if len(self.calls) == 1:
                 return SimpleNamespace(text="", candidates=[])

@@ -1,6 +1,7 @@
 """Behavior contract for the ENG Full LiveDub failure notification."""
 
 from __future__ import annotations
+from typing import Any
 
 import asyncio
 import html
@@ -21,18 +22,18 @@ from pipelines.livedub_failure_stage import (
 class _Bot:
     def __init__(self, error: BaseException | None = None) -> None:
         self.error = error
-        self.messages = []
+        self.messages: list[dict[str, Any]] = []
 
-    async def send_message(self, **kwargs):
+    async def send_message(self, **kwargs: Any) -> None:
         if self.error is not None:
             raise self.error
         self.messages.append(kwargs)
 
 
-def _send(bot: _Bot, reason: str = "reason", *, flushes: list | None = None):
+def _send(bot: _Bot, reason: str = "reason", *, flushes: list[str] | None = None) -> bool:
     calls = flushes if flushes is not None else []
 
-    async def flush():
+    async def flush() -> None:
         calls.append("LiveDub unavailable")
 
     return asyncio.run(
@@ -47,9 +48,9 @@ def _send(bot: _Bot, reason: str = "reason", *, flushes: list | None = None):
     )
 
 
-def test_failure_notice_flushes_and_preserves_html_contract():
+def test_failure_notice_flushes_and_preserves_html_contract() -> None:
     bot = _Bot()
-    flushes = []
+    flushes: list[str] = []
 
     assert _send(bot, '  <bad> & "quote"  ', flushes=flushes) is True
 
@@ -66,14 +67,14 @@ def test_failure_notice_flushes_and_preserves_html_contract():
 
 
 @pytest.mark.parametrize("reason", ["", "  \n  "])
-def test_failure_notice_uses_historical_default_reason(reason):
+def test_failure_notice_uses_historical_default_reason(reason: str) -> None:
     bot = _Bot()
 
     assert _send(bot, reason) is True
     assert "Яндекс/VOT не отдал живой дубляж для этого ролика." in bot.messages[0]["text"]
 
 
-def test_failure_notice_send_error_is_nonfatal_and_log_is_truncated(caplog):
+def test_failure_notice_send_error_is_nonfatal_and_log_is_truncated(caplog: pytest.LogCaptureFixture) -> None:
     bot = _Bot(RuntimeError("x" * 200))
 
     with caplog.at_level(logging.INFO):
@@ -84,10 +85,10 @@ def test_failure_notice_send_error_is_nonfatal_and_log_is_truncated(caplog):
     assert "x" * 161 not in caplog.text
 
 
-def test_source_audio_flush_error_still_propagates_before_notice():
+def test_source_audio_flush_error_still_propagates_before_notice() -> None:
     bot = _Bot()
 
-    async def flush():
+    async def flush() -> None:
         raise RuntimeError("flush failed")
 
     with pytest.raises(RuntimeError, match="flush failed"):
@@ -104,17 +105,17 @@ def test_source_audio_flush_error_still_propagates_before_notice():
     assert bot.messages == []
 
 
-def test_notice_cancellation_is_not_swallowed():
+def test_notice_cancellation_is_not_swallowed() -> None:
     bot = _Bot(asyncio.CancelledError())
 
     with pytest.raises(asyncio.CancelledError):
         _send(bot)
 
 
-def _send_timeout(bot: _Bot):
-    flushes = []
+def _send_timeout(bot: _Bot) -> list[str]:
+    flushes: list[str] = []
 
-    async def flush():
+    async def flush() -> None:
         flushes.append("LiveDub timeout")
 
     asyncio.run(
@@ -128,14 +129,14 @@ def _send_timeout(bot: _Bot):
     return flushes
 
 
-def _notify_send_failure(bot: _Bot, error: Exception, *, limit: int = 50):
-    flushes = []
-    limit_calls = []
+def _notify_send_failure(bot: _Bot, error: Exception, *, limit: int = 50) -> tuple[None, list[str], list[int]]:
+    flushes: list[str] = []
+    limit_calls: list[int] = []
 
-    async def flush():
+    async def flush() -> None:
         flushes.append("LiveDub send/generation failure")
 
-    def max_file_size_mb():
+    def max_file_size_mb() -> int:
         limit_calls.append(limit)
         return limit
 
@@ -153,7 +154,7 @@ def _notify_send_failure(bot: _Bot, error: Exception, *, limit: int = 50):
     return result, flushes, limit_calls
 
 
-def test_timeout_notice_flushes_and_preserves_message_contract():
+def test_timeout_notice_flushes_and_preserves_message_contract() -> None:
     bot = _Bot()
 
     assert _send_timeout(bot) == ["LiveDub timeout"]
@@ -169,14 +170,14 @@ def test_timeout_notice_flushes_and_preserves_message_contract():
     ]
 
 
-def test_timeout_notice_send_error_propagates():
+def test_timeout_notice_send_error_propagates() -> None:
     bot = _Bot(RuntimeError("timeout send failed"))
 
     with pytest.raises(RuntimeError, match="timeout send failed"):
         _send_timeout(bot)
 
 
-def test_send_failure_notice_preserves_size_hint_escaping_and_truncation():
+def test_send_failure_notice_preserves_size_hint_escaping_and_truncation() -> None:
     error = RuntimeError("Request Entity Too Large " + "<bad>&" * 60)
     bot = _Bot()
 
@@ -193,7 +194,7 @@ def test_send_failure_notice_preserves_size_hint_escaping_and_truncation():
     assert "Перевод сгенерирован, но отправка не удалась." in message["text"]
 
 
-def test_send_failure_size_hint_is_absent_above_cloud_limit():
+def test_send_failure_size_hint_is_absent_above_cloud_limit() -> None:
     bot = _Bot()
 
     _, _, limit_calls = _notify_send_failure(bot, RuntimeError("too large"), limit=51)
@@ -202,7 +203,7 @@ def test_send_failure_size_hint_is_absent_above_cloud_limit():
     assert "LOCAL_BOT_API_URL" not in bot.messages[0]["text"]
 
 
-def test_send_failure_non_size_error_does_not_query_file_limit():
+def test_send_failure_non_size_error_does_not_query_file_limit() -> None:
     bot = _Bot()
 
     _, _, limit_calls = _notify_send_failure(bot, ValueError("ordinary <error>"))
@@ -212,7 +213,7 @@ def test_send_failure_non_size_error_does_not_query_file_limit():
     assert "LOCAL_BOT_API_URL" not in bot.messages[0]["text"]
 
 
-def test_send_failure_notice_error_is_nonfatal_and_log_is_truncated(caplog):
+def test_send_failure_notice_error_is_nonfatal_and_log_is_truncated(caplog: pytest.LogCaptureFixture) -> None:
     bot = _Bot(RuntimeError("x" * 200))
 
     with caplog.at_level(logging.INFO):
@@ -224,10 +225,10 @@ def test_send_failure_notice_error_is_nonfatal_and_log_is_truncated(caplog):
     assert "x" * 161 not in caplog.text
 
 
-def test_send_failure_flush_error_propagates_before_notice():
+def test_send_failure_flush_error_propagates_before_notice() -> None:
     bot = _Bot()
 
-    async def flush():
+    async def flush() -> None:
         raise RuntimeError("flush failed")
 
     with pytest.raises(RuntimeError, match="flush failed"):
@@ -245,7 +246,7 @@ def test_send_failure_flush_error_propagates_before_notice():
     assert bot.messages == []
 
 
-def test_send_failure_notice_cancellation_is_not_swallowed():
+def test_send_failure_notice_cancellation_is_not_swallowed() -> None:
     bot = _Bot(asyncio.CancelledError())
 
     with pytest.raises(asyncio.CancelledError):
@@ -259,27 +260,27 @@ def _reject_oversize(
     *,
     size_mb: float,
     limit: int,
-    flushes: list | None = None,
+    flushes: list[str] | None = None,
     flush_error: Exception | None = None,
-):
+) -> tuple[bool, list[str], list[int]]:
     video = tmp_path / "dub.mp4"
     real_stat = Path.stat
 
-    def fake_stat(path, *args, **kwargs):
+    def fake_stat(path: Path, *args: Any, **kwargs: Any) -> Any:
         if path == video:
             return SimpleNamespace(st_size=int(size_mb * 1024 * 1024))
         return real_stat(path, *args, **kwargs)
 
     monkeypatch.setattr(Path, "stat", fake_stat)
     flush_calls = flushes if flushes is not None else []
-    limit_calls = []
+    limit_calls: list[int] = []
 
-    async def flush():
+    async def flush() -> None:
         flush_calls.append("LiveDub video exceeds Telegram limit")
         if flush_error is not None:
             raise flush_error
 
-    def max_file_size_mb():
+    def max_file_size_mb() -> int:
         limit_calls.append(limit)
         return limit
 
@@ -297,7 +298,9 @@ def _reject_oversize(
 
 
 @pytest.mark.parametrize(("size_mb", "limit"), [(1.0, 50), (50.0, 50)])
-def test_oversize_guard_allows_video_at_or_below_limit(tmp_path, monkeypatch, size_mb, limit):
+def test_oversize_guard_allows_video_at_or_below_limit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, size_mb: float, limit: int
+) -> None:
     bot = _Bot()
 
     result, flushes, limit_calls = _reject_oversize(bot, tmp_path, monkeypatch, size_mb=size_mb, limit=limit)
@@ -308,7 +311,9 @@ def test_oversize_guard_allows_video_at_or_below_limit(tmp_path, monkeypatch, si
     assert bot.messages == []
 
 
-def test_oversize_guard_notifies_then_flushes_with_cloud_hint(tmp_path, monkeypatch, caplog):
+def test_oversize_guard_notifies_then_flushes_with_cloud_hint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     bot = _Bot()
 
     with caplog.at_level(logging.WARNING):
@@ -332,7 +337,7 @@ def test_oversize_guard_notifies_then_flushes_with_cloud_hint(tmp_path, monkeypa
     ]
 
 
-def test_oversize_guard_omits_hint_above_cloud_limit(tmp_path, monkeypatch):
+def test_oversize_guard_omits_hint_above_cloud_limit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     bot = _Bot()
 
     result, _, limit_calls = _reject_oversize(bot, tmp_path, monkeypatch, size_mb=52.0, limit=51)
@@ -342,9 +347,9 @@ def test_oversize_guard_omits_hint_above_cloud_limit(tmp_path, monkeypatch):
     assert "LOCAL_BOT_API_URL" not in bot.messages[0]["text"]
 
 
-def test_oversize_notice_error_prevents_flush_and_propagates(tmp_path, monkeypatch):
+def test_oversize_notice_error_prevents_flush_and_propagates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     bot = _Bot(RuntimeError("size notice failed"))
-    flushes = []
+    flushes: list[str] = []
 
     with pytest.raises(RuntimeError, match="size notice failed"):
         _reject_oversize(
@@ -358,7 +363,7 @@ def test_oversize_notice_error_prevents_flush_and_propagates(tmp_path, monkeypat
     assert flushes == []
 
 
-def test_oversize_flush_error_propagates_after_notice(tmp_path, monkeypatch):
+def test_oversize_flush_error_propagates_after_notice(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     bot = _Bot()
 
     with pytest.raises(RuntimeError, match="flush failed"):

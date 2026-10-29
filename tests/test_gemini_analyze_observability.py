@@ -1,3 +1,4 @@
+import pytest
 import ast
 from pathlib import Path
 from types import SimpleNamespace
@@ -5,7 +6,7 @@ from types import SimpleNamespace
 from services import gemini_analyze
 
 
-def test_gemini_analyze_audio_logs_observability_events():
+def test_gemini_analyze_audio_logs_observability_events() -> None:
     source = Path("services/gemini_analyze.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
     calls = [
@@ -22,16 +23,16 @@ def test_gemini_analyze_audio_logs_observability_events():
     assert 'error="empty_response"' in source
 
 
-def test_gemini_analyze_masks_errors_before_observability_logging():
+def test_gemini_analyze_masks_errors_before_observability_logging() -> None:
     source = Path("services/gemini_analyze.py").read_text(encoding="utf-8")
     assert "safe_err = _mask_api_key(str(e))" in source
     assert 'error=f"{err_type}: {safe_err[:300]}"' in source
 
 
-def test_finish_reason_logging_survives_malformed_response(caplog):
+def test_finish_reason_logging_survives_malformed_response(caplog: pytest.LogCaptureFixture) -> None:
     class BrokenResponse:
         @property
-        def candidates(self):
+        def candidates(self) -> None:
             raise RuntimeError("malformed response")
 
     caplog.set_level("DEBUG", logger=gemini_analyze.__name__)

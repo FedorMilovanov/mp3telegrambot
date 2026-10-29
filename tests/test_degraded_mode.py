@@ -8,6 +8,7 @@
 """
 
 from __future__ import annotations
+from typing import Any
 
 import asyncio
 from pathlib import Path
@@ -17,8 +18,8 @@ import pytest
 from pipelines import degraded_mode
 
 
-def _attach(tmp_path: Path, **overrides):
-    kwargs = {
+def _attach(tmp_path: Path, **overrides: Any) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {
         "url": "https://youtu.be/abc",
         "media_id": "abc",
         "download_dir": tmp_path,
@@ -31,7 +32,7 @@ def _attach(tmp_path: Path, **overrides):
 
 
 @pytest.fixture(autouse=True)
-def _clean_env(monkeypatch: pytest.MonkeyPatch):
+def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("DEGRADED_TRANSCRIPT_TIMESTAMPS", raising=False)
 
 
@@ -57,26 +58,26 @@ def test_caption_warns_the_user_honestly() -> None:
 
 
 @pytest.mark.parametrize("value", ["1", "true", "yes", "on", "", None])
-def test_fallback_is_enabled_by_default(value) -> None:
+def test_fallback_is_enabled_by_default(value: str | None) -> None:
     assert degraded_mode.transcript_fallback_enabled(value) is True
 
 
 @pytest.mark.parametrize("value", ["0", "false", "no", "off", " OFF "])
-def test_fallback_can_be_disabled(value) -> None:
+def test_fallback_can_be_disabled(value: str) -> None:
     assert degraded_mode.transcript_fallback_enabled(value) is False
 
 
 # ── таймкоды ────────────────────────────────────────────────────────────────
 
 
-def test_timestamps_are_added_without_gemini(tmp_path) -> None:
-    calls: list[dict] = []
+def test_timestamps_are_added_without_gemini(tmp_path: Path) -> None:
+    calls: list[dict[str, Any]] = []
 
-    async def fetch(url, work_dir, **kwargs):
+    async def fetch(url: str, work_dir: str | Path, **kwargs: Any) -> str:
         calls.append({"url": url, "work_dir": Path(work_dir), **kwargs})
         return "00:00 текст"
 
-    def to_timestamps(text, max_lines):
+    def to_timestamps(text: str, max_lines: int) -> str:
         assert max_lines == degraded_mode.TRANSCRIPT_MAX_LINES
         return "00:00 — текст"
 
@@ -89,10 +90,10 @@ def test_timestamps_are_added_without_gemini(tmp_path) -> None:
     assert calls[0]["lang"] == "ru"
 
 
-def test_empty_language_falls_back_to_russian(tmp_path) -> None:
+def test_empty_language_falls_back_to_russian(tmp_path: Path) -> None:
     seen: list[str] = []
 
-    async def fetch(_url, _dir, **kwargs):
+    async def fetch(_url: str, _dir: str | Path, **kwargs: Any) -> str:
         seen.append(kwargs["lang"])
         return "текст"
 
@@ -105,10 +106,10 @@ def test_empty_language_falls_back_to_russian(tmp_path) -> None:
     assert seen == ["ru"]
 
 
-def test_no_timestamps_keeps_data_untouched(tmp_path) -> None:
+def test_no_timestamps_keeps_data_untouched(tmp_path: Path) -> None:
     data = degraded_mode.degraded_caption_data("Н", "А")
 
-    async def fetch(_url, _dir, **_kwargs):
+    async def fetch(_url: str, _dir: str | Path, **_kwargs: Any) -> str:
         return ""
 
     result = _attach(tmp_path, data=data, fetch=fetch, to_timestamps=lambda _t, max_lines: "")
@@ -116,34 +117,34 @@ def test_no_timestamps_keeps_data_untouched(tmp_path) -> None:
     assert "timestamps" not in result
 
 
-def test_fetch_failure_does_not_break_delivery(tmp_path) -> None:
+def test_fetch_failure_does_not_break_delivery(tmp_path: Path) -> None:
     """Субтитров может не быть — это не повод не отправить mp3."""
     data = degraded_mode.degraded_caption_data("Н", "А")
 
-    async def fetch(_url, _dir, **_kwargs):
+    async def fetch(_url: str, _dir: str | Path, **_kwargs: Any) -> str:
         raise RuntimeError("субтитры недоступны")
 
     assert _attach(tmp_path, data=data, fetch=fetch, to_timestamps=lambda t, max_lines: t) == data
 
 
-def test_switch_off_skips_fetch(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_switch_off_skips_fetch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DEGRADED_TRANSCRIPT_TIMESTAMPS", "0")
 
-    async def fetch(*_a, **_k):
+    async def fetch(*_a: Any, **_k: Any) -> None:
         raise AssertionError("запрос субтитров должен быть пропущен")
 
     data = degraded_mode.degraded_caption_data("Н", "А")
     assert _attach(tmp_path, data=data, fetch=fetch, to_timestamps=lambda t, _m: t) == data
 
 
-def test_work_directory_is_created_and_removed(tmp_path) -> None:
+def test_work_directory_is_created_and_removed(tmp_path: Path) -> None:
     """Деградация не должна оставлять мусор в каталоге загрузок."""
     seen: list[Path] = []
 
-    async def fetch(_url, work_dir, **_kwargs):
+    async def fetch(_url: str, work_dir: str | Path, **_kwargs: Any) -> str:
         work_dir = Path(work_dir)
-        work_dir.mkdir(parents=True, exist_ok=True)
-        (work_dir / "sub.srt").write_text("1", encoding="utf-8")
+        await asyncio.to_thread(work_dir.mkdir, parents=True, exist_ok=True)
+        await asyncio.to_thread((work_dir / "sub.srt").write_text, "1", encoding="utf-8")
         seen.append(work_dir)
         return "текст"
 
@@ -151,12 +152,12 @@ def test_work_directory_is_created_and_removed(tmp_path) -> None:
     assert seen and not seen[0].exists()
 
 
-def test_work_directory_is_removed_even_on_failure(tmp_path) -> None:
+def test_work_directory_is_removed_even_on_failure(tmp_path: Path) -> None:
     seen: list[Path] = []
 
-    async def fetch(_url, work_dir, **_kwargs):
+    async def fetch(_url: str, work_dir: str | Path, **_kwargs: Any) -> str:
         work_dir = Path(work_dir)
-        work_dir.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(work_dir.mkdir, parents=True, exist_ok=True)
         seen.append(work_dir)
         raise RuntimeError("сеть упала")
 
@@ -166,11 +167,11 @@ def test_work_directory_is_removed_even_on_failure(tmp_path) -> None:
     assert seen and not seen[0].exists()
 
 
-def test_original_dict_is_not_mutated(tmp_path) -> None:
+def test_original_dict_is_not_mutated(tmp_path: Path) -> None:
     """Частичный результат не должен протекать в вызывающий код."""
     data = degraded_mode.degraded_caption_data("Н", "А")
 
-    async def fetch(_url, _dir, **_kwargs):
+    async def fetch(_url: str, _dir: str | Path, **_kwargs: Any) -> str:
         return "текст"
 
     result = _attach(tmp_path, data=data, fetch=fetch, to_timestamps=lambda _t, max_lines: "00:00")
@@ -178,17 +179,17 @@ def test_original_dict_is_not_mutated(tmp_path) -> None:
     assert "timestamps" in result
 
 
-def test_default_sources_are_the_youtube_transcript_helpers(tmp_path, monkeypatch) -> None:
+def test_default_sources_are_the_youtube_transcript_helpers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Без явных аргументов берутся штатные функции, а не заглушки."""
     import services.youtube_transcript as yt
 
     calls: list[str] = []
 
-    async def fake_download(url, work_dir, **kwargs):
+    async def fake_download(url: str, work_dir: str | Path, **kwargs: Any) -> str:
         calls.append(f"download:{url}:{kwargs['lang']}")
         return "00:00 текст"
 
-    def fake_convert(text, max_lines):
+    def fake_convert(text: str, max_lines: int) -> str:
         calls.append(f"convert:{max_lines}")
         return "00:00 — текст"
 

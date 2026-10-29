@@ -1,4 +1,5 @@
 from __future__ import annotations
+import pytest
 
 import json
 import sys
@@ -31,7 +32,7 @@ from services.speech_backends import (
 
 class _ProductionDeterministicBackend(DeterministicSpeechBackend):
     backend_id = "deterministic-production-test"
-    aliases = ("deterministic-production-test",)
+    aliases: tuple[str, ...] = ("deterministic-production-test",)
 
     def capabilities(self) -> BackendCapabilities:
         return BackendCapabilities(
@@ -46,12 +47,12 @@ class _ProductionDeterministicBackend(DeterministicSpeechBackend):
         )
 
 
-def test_reference_strategy_is_selected_by_backend_not_generic_runtime():
+def test_reference_strategy_is_selected_by_backend_not_generic_runtime() -> None:
     assert reference_strategy_for_backend("voxcpm2").strategy_id == ("voxcpm2-extended-composite")
     assert reference_strategy_for_backend("deterministic-ci").strategy_id == ("no-reference")
 
 
-def test_media_master_is_not_owned_by_speech_backend(tmp_path: Path):
+def test_media_master_is_not_owned_by_speech_backend(tmp_path: Path) -> None:
     repo = Path(__file__).resolve().parents[1]
     master = get_media_master("constant-mix")
     runtime = master.runtime_paths(
@@ -77,9 +78,9 @@ def test_media_master_is_not_owned_by_speech_backend(tmp_path: Path):
 
 
 def test_preflight_plan_consumes_backend_model_and_media_contracts(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-):
+) -> None:
     backend = _ProductionDeterministicBackend()
     contract = deterministic_model_profile_contract(backend.backend_id)
     profile = SpeechModelProfile(

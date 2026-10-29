@@ -58,7 +58,7 @@ def _read_payload(path: Path) -> dict[str, Any]:
     return payload
 
 
-def load_retry_epoch(work_dir: Path, segment_id: Any) -> int:
+def _raw_load_retry_epoch(work_dir: Path, segment_id: Any) -> int:
     path = retry_epoch_path(work_dir, segment_id)
     payload = _read_payload(path)
     value = payload.get("epoch", 0)
@@ -112,7 +112,7 @@ def _atomic_write(path: Path, payload: dict[str, Any]) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def advance_retry_epoch(
+def _raw_advance_retry_epoch(
     work_dir: Path,
     segment_id: Any,
     *,
@@ -190,8 +190,8 @@ def _polish_base_invalidate_segment_for_retry(
 
 
 BASE_POLICY = POLICY
-_base_load_retry_epoch = load_retry_epoch
-_base_advance_retry_epoch = advance_retry_epoch
+_base_load_retry_epoch = _raw_load_retry_epoch
+_base_advance_retry_epoch = _raw_advance_retry_epoch
 
 POLICY = "failed-segment-seed-epoch-scope-v2"
 MAX_SCOPE_EPOCH = 3

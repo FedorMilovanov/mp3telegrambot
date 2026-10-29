@@ -13,7 +13,7 @@ from core.text_utils import normalize_source_map_text
 from converters.md_telegraph import _postprocess_telegraph_nodes
 
 
-def _flat(node):
+def _flat(node: object) -> str:
     if isinstance(node, str):
         return node
     if isinstance(node, dict):
@@ -23,14 +23,14 @@ def _flat(node):
     return ""
 
 
-def test_source_title_registry_contains_official_titles_and_authors():
+def test_source_title_registry_contains_official_titles_and_authors() -> None:
     assert AUTHOR_CANONICAL["John MacArthur"] == "Джон МакАртур"
     assert OFFICIAL_RU_TITLES[("John MacArthur", "Strange Fire")] == "Чуждый огонь"
     assert official_ru_title("John MacArthur", "Strange Fire") == "Чуждый огонь"
     assert canonical_author_name("John Owen") == "Джон Оуэн"
 
 
-def test_source_title_registry_corrects_wrong_ru_title_but_prefers_original_card_title():
+def test_source_title_registry_corrects_wrong_ru_title_but_prefers_original_card_title() -> None:
     assert correct_known_ru_title("Странный огонь") == "Чуждый огонь"
     assert (
         normalize_source_card_line("• Джон МакАртур, Странный огонь (John MacArthur, Strange Fire).")
@@ -42,7 +42,7 @@ def test_source_title_registry_corrects_wrong_ru_title_but_prefers_original_card
     )
 
 
-def test_source_title_registry_dedupes_generic_bilingual_authors():
+def test_source_title_registry_dedupes_generic_bilingual_authors() -> None:
     line = "• Кевин ДеЯнг, Грег Гилберт, Greg Gilbert, What Is the Mission of the Church?."
     assert normalize_source_card_line(line).startswith("**What Is the Mission")
     assert "Greg Gilbert" not in normalize_source_card_line(line)
@@ -50,7 +50,7 @@ def test_source_title_registry_dedupes_generic_bilingual_authors():
     assert dedupe_bilingual_authors("Джон Оуэн, John Owen, The Death of Death") == ("Джон Оуэн, The Death of Death")
 
 
-def test_source_title_registry_canonicalizes_english_author_source_cards():
+def test_source_title_registry_canonicalizes_english_author_source_cards() -> None:
     assert normalize_source_card_line("• John Owen, The Death of Death in the Death of Christ") == (
         "**Смерть смерти в смерти Христа**, Джон Оуэн (The Death of Death in the Death of Christ, John Owen)."
     )
@@ -59,7 +59,7 @@ def test_source_title_registry_canonicalizes_english_author_source_cards():
     )
 
 
-def test_telegraph_postprocess_uses_source_title_registry():
+def test_telegraph_postprocess_uses_source_title_registry() -> None:
     nodes = [
         {"tag": "p", "children": ["• John Owen, The Death of Death in the Death of Christ"]},
         {"tag": "p", "children": ["• Джон МакАртур, Странный огонь (John MacArthur, Strange Fire)."]},

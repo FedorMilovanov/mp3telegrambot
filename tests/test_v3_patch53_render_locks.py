@@ -7,7 +7,7 @@ from core.render_locks import is_render_locked, release_render_lock, render_lock
 
 
 @pytest.mark.asyncio
-async def test_render_lock_allows_single_owner_and_release():
+async def test_render_lock_allows_single_owner_and_release() -> None:
     key = render_lock_key("segment", "vid-lock")
     token1 = await try_acquire_render_lock(key)
     token2 = await try_acquire_render_lock(key)
@@ -21,7 +21,7 @@ async def test_render_lock_allows_single_owner_and_release():
     await release_render_lock(token3)
 
 
-def test_cutseg_and_segcut_callbacks_use_render_locks():
+def test_cutseg_and_segcut_callbacks_use_render_locks() -> None:
     commands = Path("handlers/commands.py").read_text(encoding="utf-8")
     callbacks = Path("handlers/callbacks.py").read_text(encoding="utf-8")
     assert "try_acquire_render_lock" in commands

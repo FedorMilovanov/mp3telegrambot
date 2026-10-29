@@ -9,6 +9,9 @@
 """
 
 from __future__ import annotations
+from typing import Any
+
+import pytest
 
 from converters.md_telegraph import visible_length
 from pipelines import caption_stage
@@ -24,8 +27,8 @@ from pipelines.caption_stage import (
 TIMESTAMPS = "\n".join(f"{i}:00 — тезис номер {i} с довольно длинным пояснением" for i in range(1, 25))
 
 
-def _source(**overrides):
-    values = dict(
+def _source(**overrides: Any) -> CaptionSource:
+    values: dict[str, Any] = dict(
         performer="Джон МакАртур",
         title="Достаточность Писания",
         duration=3400,
@@ -44,8 +47,8 @@ def _source(**overrides):
     return CaptionSource(**values)
 
 
-def _ai(**overrides):
-    values = {
+def _ai(**overrides: Any) -> dict[str, Any]:
+    values: dict[str, Any] = {
         "real_author": "Джон МакАртур",
         "real_title": "Достаточность Писания",
         "main_topic": "Тема: Писание достаточно для веры и жизни. " * 12,
@@ -57,7 +60,7 @@ def _ai(**overrides):
     return values
 
 
-def test_short_caption_is_not_touched_and_reports_no_trimming():
+def test_short_caption_is_not_touched_and_reports_no_trimming() -> None:
     ai = _ai(timestamps="0:00 — вступление", hashtags="", main_topic="Короткая тема")
     fit = fit_caption(_source(), ai)
     assert fit.timestamps_total == 1
@@ -66,7 +69,7 @@ def test_short_caption_is_not_touched_and_reports_no_trimming():
     assert visible_length(fit.caption) <= MAX_CAPTION_VISIBLE
 
 
-def test_ai_data_is_not_mutated():
+def test_ai_data_is_not_mutated() -> None:
     ai = _ai()
     before = {key: value for key, value in ai.items()}
     fit_caption(_source(), ai)
@@ -74,7 +77,7 @@ def test_ai_data_is_not_mutated():
     assert "caption_trim_stage" not in ai
 
 
-def test_enriched_data_carries_archive_metrics():
+def test_enriched_data_carries_archive_metrics() -> None:
     fit = fit_caption(_source(), _ai())
     assert fit.data is not None
     assert fit.data["caption_timestamps_total"] == fit.timestamps_total
@@ -82,14 +85,14 @@ def test_enriched_data_carries_archive_metrics():
     assert fit.data["caption_trim_stage"] == fit.trim_stage
 
 
-def test_timestamps_are_never_dropped_completely_while_a_mini_set_fits():
+def test_timestamps_are_never_dropped_completely_while_a_mini_set_fits() -> None:
     """Главный инвариант шага 4: навигация сохраняется, пока влезает 3 якоря."""
     fit = fit_caption(_source(), _ai())
     assert fit.timestamps_shown >= MINI_TIMESTAMP_LIMITS[-1]
     assert fit.trim_stage == "timestamps_trimmed"
 
 
-def test_trim_stage_is_removed_only_when_no_timestamps_fit(monkeypatch):
+def test_trim_stage_is_removed_only_when_no_timestamps_fit(monkeypatch: pytest.MonkeyPatch) -> None:
     # Бюджет сжимаем искусственно: на реальных 1024 мини-набор обычно влезает,
     # а проверить этот шаг нужно детерминированно.
     monkeypatch.setattr(caption_stage, "MAX_CAPTION_VISIBLE", 280)
@@ -99,7 +102,7 @@ def test_trim_stage_is_removed_only_when_no_timestamps_fit(monkeypatch):
     assert visible_length(fit.caption) <= 280
 
 
-def test_last_resort_keeps_header_and_links_when_nothing_else_fits(monkeypatch):
+def test_last_resort_keeps_header_and_links_when_nothing_else_fits(monkeypatch: pytest.MonkeyPatch) -> None:
     """Последний резерв: шапка (4 строки) + ссылки вместо обрезанного HTML."""
     monkeypatch.setattr(caption_stage, "MAX_CAPTION_VISIBLE", 200)
     fit = fit_caption(_source(), _ai())
@@ -109,7 +112,7 @@ def test_last_resort_keeps_header_and_links_when_nothing_else_fits(monkeypatch):
     assert fit.timestamps_shown == 0
 
 
-def test_footer_order_is_telegraph_first_with_section_headers():
+def test_footer_order_is_telegraph_first_with_section_headers() -> None:
     """Кэш-хит раньше собирал футер наоборот и без заголовков — это была регрессия."""
     footer = _source().footer()
     assert "<b>📂 Читать Подробный Разбор:</b>" in footer
@@ -117,13 +120,13 @@ def test_footer_order_is_telegraph_first_with_section_headers():
     assert footer.index("Читать Подробный Разбор") < footer.index("Смотреть Видео")
 
 
-def test_footer_without_telegraph_keeps_only_platform_block():
+def test_footer_without_telegraph_keeps_only_platform_block() -> None:
     footer = _source(telegraph_url="", quotes_link="", questions_link="", terms_link="").footer()
     assert "Смотреть Видео" in footer
     assert "Читать Подробный Разбор" not in footer
 
 
-def test_full_caption_is_a_separate_long_text_and_keeps_all_timestamps():
+def test_full_caption_is_a_separate_long_text_and_keeps_all_timestamps() -> None:
     fit = fit_caption(_source(), _ai())
     assert count_timestamps(TIMESTAMPS) == 24
     # Полный текст не участвует в обрезке до 1024 и собирается из входа как есть.
@@ -131,14 +134,14 @@ def test_full_caption_is_a_separate_long_text_and_keeps_all_timestamps():
     assert visible_length(fit.full_caption) <= MAX_FULL_VISIBLE
 
 
-def test_format_limit_applies_before_the_overflow_steps():
+def test_format_limit_applies_before_the_overflow_steps() -> None:
     """У формата может быть свой лимит таймкодов; он применяется первым."""
     fit = fit_caption(_source(format_name="qa"), _ai(format="qa"))
     assert fit.timestamps_total == 24
     assert fit.timestamps_shown <= fit.timestamps_total
 
 
-def test_missing_ai_data_still_produces_a_caption():
+def test_missing_ai_data_still_produces_a_caption() -> None:
     fit = fit_caption(_source(), None)
     assert fit.caption
     assert fit.data is None
@@ -146,19 +149,19 @@ def test_missing_ai_data_still_produces_a_caption():
     assert fit.trim_stage == ""
 
 
-def test_count_timestamps_ignores_blank_lines():
+def test_count_timestamps_ignores_blank_lines() -> None:
     assert count_timestamps("0:00 — a\n\n  \n1:00 — b\n") == 2
     assert count_timestamps(None) == 0
 
 
-def test_full_caption_is_trimmed_to_its_own_message_limit(monkeypatch):
+def test_full_caption_is_trimmed_to_its_own_message_limit(monkeypatch: pytest.MonkeyPatch) -> None:
     # Полный текст уходит отдельным сообщением: у него свой лимит 4096.
     monkeypatch.setattr(caption_stage, "MAX_FULL_VISIBLE", 200)
     fit = fit_caption(_source(), _ai())
     assert visible_length(fit.full_caption) <= 200
 
 
-def test_hashtags_are_dropped_before_timestamps(monkeypatch):
+def test_hashtags_are_dropped_before_timestamps(monkeypatch: pytest.MonkeyPatch) -> None:
     # 1024 -> 760: подпись перестаёт влезать, и первым уходит хэштег, а не
     # навигация — иначе терять таймкоды пришлось бы раньше времени.
     monkeypatch.setattr(caption_stage, "MAX_CAPTION_VISIBLE", 760)
@@ -168,7 +171,7 @@ def test_hashtags_are_dropped_before_timestamps(monkeypatch):
     assert fit.timestamps_shown > 0
 
 
-def test_format_limit_trims_long_timestamp_list_before_overflow(monkeypatch):
+def test_format_limit_trims_long_timestamp_list_before_overflow(monkeypatch: pytest.MonkeyPatch) -> None:
     # Лимит формата для "other" — 20 строк, а таймкодов 24: усечение обязано
     # произойти до шагов переполнения. Лимит подписи поднимаем, чтобы шаги
     # 1-5 заведомо не участвовали и проверялся именно шаг 0.
@@ -180,12 +183,12 @@ def test_format_limit_trims_long_timestamp_list_before_overflow(monkeypatch):
     assert count_timestamps(fit.data["timestamps"]) == 20
 
 
-def test_trimmed_flag_mirrors_trim_stage():
+def test_trimmed_flag_mirrors_trim_stage() -> None:
     assert fit_caption(_source(), _ai()).trimmed is True
     short = fit_caption(_source(), _ai(timestamps="0:00 — вступление", hashtags="", main_topic="Тема"))
     assert short.trimmed is False
 
 
-def test_footer_with_neither_telegraph_nor_platform_is_empty():
+def test_footer_with_neither_telegraph_nor_platform_is_empty() -> None:
     source = _source(telegraph_url="", quotes_link="", questions_link="", terms_link="", url="")
     assert source.footer() == ""

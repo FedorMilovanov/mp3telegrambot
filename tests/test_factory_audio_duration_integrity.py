@@ -1,4 +1,5 @@
 from __future__ import annotations
+import pytest
 
 import json
 import time
@@ -41,7 +42,7 @@ def test_retry_cache_policy_v2_requires_verified_duration() -> None:
     )
 
 
-def test_cleanup_removes_legacy_v1_false_duration_cache(monkeypatch, tmp_path: Path) -> None:
+def test_cleanup_removes_legacy_v1_false_duration_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(retry_cache, "FACTORY_CACHE_DIR", tmp_path)
     media = tmp_path / "legacy.aac"
     media.write_bytes(b"aac" * 500)
@@ -66,7 +67,7 @@ def test_cleanup_removes_legacy_v1_false_duration_cache(monkeypatch, tmp_path: P
     assert not media.exists()
 
 
-def test_cleanup_keeps_v2_verified_duration_cache(monkeypatch, tmp_path: Path) -> None:
+def test_cleanup_keeps_v2_verified_duration_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(retry_cache, "FACTORY_CACHE_DIR", tmp_path)
     media = tmp_path / "verified.aac"
     media.write_bytes(b"aac" * 500)

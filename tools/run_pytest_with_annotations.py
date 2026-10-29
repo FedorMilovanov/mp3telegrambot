@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import os
 import re
-import subprocess
-import sys
+import subprocess as subprocess
+import sys as sys
 
 _FAILED_RE = re.compile(r"^FAILED\s+([^\s]+?)(?:\s+-\s+.*)?$", re.MULTILINE)
 

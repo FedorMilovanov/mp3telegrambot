@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 
-from telegram.ext import ApplicationBuilder, CallbackQueryHandler, MessageHandler
+from telegram import InlineKeyboardMarkup
+
+from telegram.ext import ApplicationBuilder, CallbackQueryHandler, ContextTypes, MessageHandler
 
 from handlers.dub_wizard import (
     _home_keyboard as dub_home_keyboard,
@@ -16,7 +19,7 @@ from handlers.mode_command import (
 )
 
 
-def _callbacks(markup) -> list[str]:
+def _callbacks(markup: InlineKeyboardMarkup) -> list[object]:
     return [button.callback_data for row in markup.inline_keyboard for button in row if button.callback_data]
 
 
@@ -57,11 +60,14 @@ def test_analysis_menu_is_compact_and_has_back_button() -> None:
 
 
 def test_leaving_dub_wizard_clears_hidden_prompt_state() -> None:
-    context = SimpleNamespace(
-        user_data={
-            "dub_universal_wizard": {"awaiting": "url", "mode": "gemini"},
-            "other": "keep",
-        }
+    context = cast(
+        ContextTypes.DEFAULT_TYPE,
+        SimpleNamespace(
+            user_data={
+                "dub_universal_wizard": {"awaiting": "url", "mode": "gemini"},
+                "other": "keep",
+            }
+        ),
     )
     assert _clear_dub_wizard_state(context) is True
     assert context.user_data == {"other": "keep"}

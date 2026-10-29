@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from tools.voxcpm2 import direct_source_relative_continuity
 from tools.voxcpm2 import direct_fail_closed_identity as monolithic_runtime_install
 
@@ -32,7 +34,7 @@ def test_cross_language_source_is_diagnostic_and_never_changes_ranking() -> None
 
 
 def test_fail_closed_timeline_rejects_large_jump_even_with_source_support() -> None:
-    rows = [
+    rows: list[dict[str, Any]] = [
         {
             "pitch": _identity(170.0, 230.0),
             "failures": [],
@@ -67,7 +69,7 @@ def test_fail_closed_timeline_rejects_large_jump_even_with_source_support() -> N
 
 
 def test_fail_closed_timeline_keeps_normal_connected_variation() -> None:
-    rows = [
+    rows: list[dict[str, Any]] = [
         {"pitch": _identity(170.0, 230.0), "failures": [], "passed": True},
         {"pitch": _identity(187.0, 250.0), "failures": [], "passed": True},
     ]

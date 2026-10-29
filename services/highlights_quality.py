@@ -17,9 +17,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
+import os as os
 import re
-import shutil
+import shutil as shutil
 import subprocess
 import tempfile
 from pathlib import Path

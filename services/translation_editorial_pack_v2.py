@@ -21,7 +21,7 @@ from services.translation_editorial import (
     ACTION_TYPES,
     EXECUTABLE_ACTIONS,
     ISSUE_SEVERITIES,
-    PACK_SCHEMA_NAME,
+    PACK_SCHEMA_NAME as PACK_SCHEMA_NAME,
     VERDICTS,
     build_review_pack as _build_review_pack_v1,
 )

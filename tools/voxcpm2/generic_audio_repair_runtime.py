@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import shutil
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -229,7 +230,8 @@ def _refresh_named_outputs(
     stable_mixed: Path,
     stable_russian: Path,
 ) -> None:
-    outputs = manifest.get("outputs") if isinstance(manifest.get("outputs"), dict) else {}
+    outputs_value: object = manifest.get("outputs")
+    outputs = outputs_value if isinstance(outputs_value, dict) else {}
     pairs = (
         (outputs.get("mixed"), stable_mixed),
         (outputs.get("russian_only"), stable_russian),
@@ -445,6 +447,6 @@ if __name__ == "__main__":
     except Exception as exc:
         import traceback
 
-        print(f"ОШИБКА AUDIO REPAIR: {exc}", file=os.sys.stderr)
+        print(f"ОШИБКА AUDIO REPAIR: {exc}", file=sys.stderr)
         traceback.print_exc()
         raise SystemExit(1) from None

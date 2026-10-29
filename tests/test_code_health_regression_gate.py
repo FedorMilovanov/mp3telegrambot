@@ -1,4 +1,5 @@
 from __future__ import annotations
+import pytest
 
 import json
 from pathlib import Path
@@ -19,7 +20,7 @@ def _write_baseline(path: Path, *, regex: int, post: int) -> None:
     )
 
 
-def test_regression_gate_accepts_equal_snapshot(tmp_path, monkeypatch):
+def test_regression_gate_accepts_equal_snapshot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     core = tmp_path / "core"
     core.mkdir()
     (core / "sample.py").write_text("import re\nre.search('x', 'x')\n", encoding="utf-8")
@@ -31,7 +32,7 @@ def test_regression_gate_accepts_equal_snapshot(tmp_path, monkeypatch):
     assert cli._regression_exit_code(tmp_path, baseline) == 0
 
 
-def test_regression_gate_rejects_positive_marker_growth(tmp_path, monkeypatch):
+def test_regression_gate_rejects_positive_marker_growth(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     core = tmp_path / "core"
     core.mkdir()
     (core / "sample.py").write_text(
@@ -45,7 +46,7 @@ def test_regression_gate_rejects_positive_marker_growth(tmp_path, monkeypatch):
     assert cli._regression_exit_code(tmp_path, baseline) == 1
 
 
-def test_regression_gate_supports_reviewed_temporary_allowance(tmp_path, monkeypatch):
+def test_regression_gate_supports_reviewed_temporary_allowance(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     core = tmp_path / "core"
     core.mkdir()
     (core / "sample.py").write_text(
@@ -59,5 +60,5 @@ def test_regression_gate_supports_reviewed_temporary_allowance(tmp_path, monkeyp
     assert cli._regression_exit_code(tmp_path, baseline) == 0
 
 
-def test_regression_gate_fails_closed_when_baseline_missing(tmp_path):
+def test_regression_gate_fails_closed_when_baseline_missing(tmp_path: Path) -> None:
     assert cli._regression_exit_code(tmp_path, tmp_path / "missing.json") == 2

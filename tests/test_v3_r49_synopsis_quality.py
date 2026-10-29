@@ -33,7 +33,7 @@ from core.text_utils import (
 
 
 # ── #34. Scripture-ref в косвенном падеже не является видео-таймкодом ─────────
-def test_r49_scripture_context_guard_matches_declensions():
+def test_r49_scripture_context_guard_matches_declensions() -> None:
     # «before» — текст ДО числа N:NN; guard должен сработать (это не таймкод).
     for before in (
         "В книге Деяний ",
@@ -49,7 +49,7 @@ def test_r49_scripture_context_guard_matches_declensions():
         assert _SCRIPTURE_CTX_BEFORE.search(before), f"guard missed: {before!r}"
 
 
-def test_r49_scripture_context_guard_does_not_match_plain_prose():
+def test_r49_scripture_context_guard_does_not_match_plain_prose() -> None:
     # Обычный текст перед таймкодом — guard молчит, линкификация разрешена.
     for before in (
         "И тогда он сказал в ",
@@ -60,7 +60,7 @@ def test_r49_scripture_context_guard_does_not_match_plain_prose():
 
 
 # ── #35. Голый ⏱ внутри «…»-цитаты вырезается (в т.ч. multi-paragraph) ───────
-def test_r49_strip_timestamp_inside_multiparagraph_quote():
+def test_r49_strip_timestamp_inside_multiparagraph_quote() -> None:
     content = (
         "*«Он был презираем, и мы ни во что ставили Его ⏱ 2:18. Но Он взял на "
         "Себя наши немощи.*\n\n"
@@ -74,33 +74,33 @@ def test_r49_strip_timestamp_inside_multiparagraph_quote():
     assert " ." not in out.replace(" .*", ".*")  # без осиротевшей « .»
 
 
-def test_r49_timestamp_outside_quote_is_preserved():
+def test_r49_timestamp_outside_quote_is_preserved() -> None:
     outside = "Этот текст — неисчерпаемый источник ⏱ 0:45. Чем больше исследую."
     assert _strip_timestamps_inside_scripture_quotes(outside) == outside
 
 
-def test_r49_timestamp_after_closed_quote_is_preserved():
+def test_r49_timestamp_after_closed_quote_is_preserved() -> None:
     after = "*«Кто поверил слышанному».* И далее мысль ⏱ 5:21. Продолжение."
     assert _strip_timestamps_inside_scripture_quotes(after) == after
 
 
-def test_r49_unbalanced_quotes_skipped_for_safety():
+def test_r49_unbalanced_quotes_skipped_for_safety() -> None:
     unbal = "«открыли но не закрыли ⏱ 1:00 дальше текст без закрытия"
     assert _strip_timestamps_inside_scripture_quotes(unbal) == unbal
 
 
-def test_r49_strip_wired_into_section_pipeline():
+def test_r49_strip_wired_into_section_pipeline() -> None:
     src = Path("converters/md_telegraph.py").read_text(encoding="utf-8")
     assert "_strip_timestamps_inside_scripture_quotes(content)" in src
 
 
 # ── #36. ITALIC-строка Писания не получает '.*.' ─────────────────────────────
-def test_r49_italic_line_already_ended_with_period_unchanged():
+def test_r49_italic_line_already_ended_with_period_unchanged() -> None:
     line = "*…наказуем и уничижен Богом.*"
     assert _ensure_trailing_period(line) == line
 
 
-def test_r49_italic_line_without_period_gets_period_inside_italic():
+def test_r49_italic_line_without_period_gets_period_inside_italic() -> None:
     line = "*…наказуем и уничижен Богом*"
     out = _ensure_trailing_period(line)
     assert out == "*…наказуем и уничижен Богом.*"
@@ -108,25 +108,25 @@ def test_r49_italic_line_without_period_gets_period_inside_italic():
 
 
 # ── #37a. Дубликат автора в заголовке ────────────────────────────────────────
-def test_r49_join_title_author_no_duplicate_when_title_ends_with_author():
+def test_r49_join_title_author_no_duplicate_when_title_ends_with_author() -> None:
     title = "Евангелие от Бога - 1 - Приводящий в Изумление Раб Иеговы (Исаия 53) Джон МакАртур"
     assert join_title_author(title, "Джон МакАртур") == title
 
 
-def test_r49_join_title_author_appends_when_absent():
+def test_r49_join_title_author_appends_when_absent() -> None:
     assert join_title_author("Поразительный Раб Иеговы", "Джон МакАртур") == "Поразительный Раб Иеговы — Джон МакАртур"
 
 
-def test_r49_join_title_author_ignores_placeholder_author():
+def test_r49_join_title_author_ignores_placeholder_author() -> None:
     assert join_title_author("Проповедь", "Автор не указан") == "Проповедь"
 
 
-def test_r49_join_title_author_partial_word_is_not_a_match():
+def test_r49_join_title_author_partial_word_is_not_a_match() -> None:
     # «Артур» ≠ «МакАртур»: частичное совпадение хвоста не глушит суффикс.
     assert join_title_author("Проповедь Артура", "Джон МакАртур") == "Проповедь Артура — Джон МакАртур"
 
 
-def test_r49_join_title_author_used_in_related_and_page_builders():
+def test_r49_join_title_author_used_in_related_and_page_builders() -> None:
     md = Path("converters/md_telegraph.py").read_text(encoding="utf-8")
     assert "join_title_author(title, author)" in md
     tp = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
@@ -142,7 +142,7 @@ def test_r49_join_title_author_used_in_related_and_page_builders():
 
 
 # ── #37b. Якорь «поверхностное чтение упускает» снят из промпта ──────────────
-def test_r49_prompt_no_longer_anchors_superficial_reading_stem():
+def test_r49_prompt_no_longer_anchors_superficial_reading_stem() -> None:
     src = Path("core/prompts.py").read_text(encoding="utf-8")
     # дословный few-shot-якорь и инструкция-заголовок с тем же штампом убраны
     assert "Что поверхностное чтение упускает" not in src
@@ -150,13 +150,13 @@ def test_r49_prompt_no_longer_anchors_superficial_reading_stem():
     assert "что часто понимают поверхностно" not in src
 
 
-def test_r49_prompt_bans_semantic_node_cliche():
+def test_r49_prompt_bans_semantic_node_cliche() -> None:
     src = Path("core/prompts.py").read_text(encoding="utf-8")
     assert "семантический узел активирован" in src
 
 
 # ── #37c. Полноширинные скобки 【…】 в заголовке нормализуются ────────────────
-def test_r49_fullwidth_brackets_normalized_in_title():
+def test_r49_fullwidth_brackets_normalized_in_title() -> None:
     t = "Приводящий в Изумление Раб Иеговы【исаия 53】Джон МакАртур"
     out = normalize_title_text(t)
     assert "【" not in out and "】" not in out
@@ -164,7 +164,7 @@ def test_r49_fullwidth_brackets_normalized_in_title():
 
 
 # ── #37d. Ис. 53:5 «мучем за» → «мучим за» (Синодальный) ─────────────────────
-def test_r49_isaiah_53_5_mucem_typo_fixed():
+def test_r49_isaiah_53_5_mucem_typo_fixed() -> None:
     assert (
         normalize_common_typos(
             "Он был изъязвлен за грехи наши и мучем за беззакония наши",
@@ -174,7 +174,7 @@ def test_r49_isaiah_53_5_mucem_typo_fixed():
     )
 
 
-def test_r49_mucem_correction_is_anchored_not_context_blind():
+def test_r49_mucem_correction_is_anchored_not_context_blind() -> None:
     # правка привязана к «мучем за» — иные контексты не задеваем (их и нет,
     # но фиксируем намерение: голое «мучем» без «за» не трогаем этой парой)
     src = Path("core/text_utils.py").read_text(encoding="utf-8")
@@ -182,7 +182,7 @@ def test_r49_mucem_correction_is_anchored_not_context_blind():
 
 
 # ── #37e. Пс. 2:10 «уразумейте, цари» → «вразумитесь, цари» (Синодальный) ─────
-def test_r49_psalm_2_10_urazumejte_typo_fixed():
+def test_r49_psalm_2_10_urazumejte_typo_fixed() -> None:
     assert (
         normalize_common_typos(
             "Итак, уразумейте, цари; научитесь, судьи земли",
@@ -192,6 +192,6 @@ def test_r49_psalm_2_10_urazumejte_typo_fixed():
     )
 
 
-def test_r49_psalm_2_10_correction_is_anchored():
+def test_r49_psalm_2_10_correction_is_anchored() -> None:
     # голый императив «уразумейте» (не Пс. 2:10) — легитимен, не трогаем
     assert normalize_common_typos("уразумейте волю Божью", source_map=False) == "уразумейте волю Божью"

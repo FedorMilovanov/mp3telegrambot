@@ -11,7 +11,7 @@ from core.generated_pages import (
 )
 
 
-def test_archive_export_path_mapping(tmp_path):
+def test_archive_export_path_mapping(tmp_path: Path) -> None:
     assert get_archive_export_path("latest", base_dir=tmp_path) == tmp_path / "latest.md"
     assert get_archive_export_path("all", base_dir=tmp_path) == tmp_path / "all_links.md"
     assert get_archive_export_path("jsonl", base_dir=tmp_path) == tmp_path / "generated_pages.jsonl"
@@ -19,7 +19,7 @@ def test_archive_export_path_mapping(tmp_path):
     assert get_archive_export_path("unknown", base_dir=tmp_path) is None
 
 
-def test_segment_export_path_mapping_and_file_creation(tmp_path):
+def test_segment_export_path_mapping_and_file_creation(tmp_path: Path) -> None:
     paths = get_segment_export_paths("abc123", base_dir=tmp_path)
     assert paths["md"].endswith("abc123_segments.md")
     assert paths["json"].endswith("abc123_segments.json")
@@ -35,7 +35,7 @@ def test_segment_export_path_mapping_and_file_creation(tmp_path):
     assert Path(out["json"]).exists()
 
 
-def test_archivefile_and_segmentfile_commands_are_registered():
+def test_archivefile_and_segmentfile_commands_are_registered() -> None:
     commands = Path("handlers/commands.py").read_text(encoding="utf-8")
     main = Path("main.py").read_text(encoding="utf-8")
     assert "async def archivefile_command" in commands
@@ -48,7 +48,7 @@ def test_archivefile_and_segmentfile_commands_are_registered():
     assert 'CommandHandler("segmentfile"' in main
 
 
-def test_archive_exports_exist_after_save_record(tmp_path):
+def test_archive_exports_exist_after_save_record(tmp_path: Path) -> None:
     record = build_generated_page_record(
         video_id="v",
         source_url="https://youtu.be/v",

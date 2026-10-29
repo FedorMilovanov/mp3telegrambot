@@ -9,10 +9,12 @@ Density-retry (schema отключена для verbatim-режима) верн�
 теперь убирает подряд идущие секции с одинаковым title+time.
 """
 
+from typing import Any
+
 from core.content_audit import ContentAuditIssue, audit_expanded_sections
 
 
-def test_consecutive_duplicate_section_removed():
+def test_consecutive_duplicate_section_removed() -> None:
     sections = [
         {"title": "Посланник в ночи", "time": "12:20", "content": "А" * 200},
         {"title": "Решительный выбор в библиотеке", "time": "20:00", "content": "Б" * 100},
@@ -29,7 +31,7 @@ def test_consecutive_duplicate_section_removed():
     assert any(i.code == "duplicate_section_removed" for i in issues)
 
 
-def test_non_duplicate_sections_with_same_empty_time_survive():
+def test_non_duplicate_sections_with_same_empty_time_survive() -> None:
     """QA-режим: несколько application-секций легитимно делят time='' —
     дедуп не должен их схлопывать, раз title у них разный."""
     sections = [
@@ -43,7 +45,7 @@ def test_non_duplicate_sections_with_same_empty_time_survive():
     assert not any(i.code == "duplicate_section_removed" for i in issues)
 
 
-def test_non_consecutive_duplicates_not_merged():
+def test_non_consecutive_duplicates_not_merged() -> None:
     """Дедуп ловит только ПОДРЯД идущие дубли — не трогает случайные
     совпадения title в разных концах material (риск ложного схлопывания)."""
     sections = [
@@ -56,7 +58,7 @@ def test_non_consecutive_duplicates_not_merged():
     assert not any(i.code == "duplicate_section_removed" for i in issues)
 
 
-def test_dedup_keeps_richer_when_first_is_better():
+def test_dedup_keeps_richer_when_first_is_better() -> None:
     sections = [
         {"title": "Тема", "time": "1:00", "content": "Х" * 500},
         {"title": "Тема", "time": "1:00", "content": "Х" * 50},
@@ -66,7 +68,7 @@ def test_dedup_keeps_richer_when_first_is_better():
     assert len(new_sections[0]["content"]) == 500
 
 
-def test_content_audit_issue_dataclass_accepts_dedup_code():
+def test_content_audit_issue_dataclass_accepts_dedup_code() -> None:
     issue = ContentAuditIssue(code="duplicate_section_removed", location="x", message="y")
     assert issue.code == "duplicate_section_removed"
 
@@ -74,7 +76,7 @@ def test_content_audit_issue_dataclass_accepts_dedup_code():
 # ── R15b (скриншот 2026-07-09): мёртвые таймкоды в mini-outline части 2+ ──
 
 
-def test_mini_outline_builds_real_link_not_bare_string():
+def test_mini_outline_builds_real_link_not_bare_string() -> None:
     """Part [2/2] TOC вставлял таймкод голой строкой без href — курсор не
     менялся, ссылка была мертва. Теперь строится настоящая <a>-нода, как
     и в _build_toc_nodes_v2 для части 1."""
@@ -87,7 +89,7 @@ def test_mini_outline_builds_real_link_not_bare_string():
     assert "time_to_seconds(_ps_time)" in block
 
 
-def test_telegraph_imports_link_building_utils():
+def test_telegraph_imports_link_building_utils() -> None:
     import ast
     from pathlib import Path
 
@@ -102,7 +104,7 @@ def test_telegraph_imports_link_building_utils():
     assert ("core.url_utils", "get_youtube_timestamp_url") in imports
 
 
-def test_mini_outline_logic_produces_link_children():
+def test_mini_outline_logic_produces_link_children() -> None:
     """Модульная проверка самой логики построения ссылки (без запуска
     полного async pipeline публикации)."""
     from core.core_utils import time_to_seconds
@@ -112,11 +114,11 @@ def test_mini_outline_logic_produces_link_children():
     part_secs = [
         {"title": "Решительный выбор в библиотеке", "time": "20:00"},
     ]
-    _mini_outline = []
+    _mini_outline: list[dict[str, Any]] = []
     for _ps in part_secs:
         _ps_title = _ps.get("title", "")
         _ps_time = (_ps.get("time") or "").strip()
-        _children = [{"tag": "b", "children": [f"• {_ps_title}"]}]
+        _children: list[Any] = [{"tag": "b", "children": [f"• {_ps_title}"]}]
         if _ps_time:
             _secs = time_to_seconds(_ps_time)
             if _secs is not None and url:

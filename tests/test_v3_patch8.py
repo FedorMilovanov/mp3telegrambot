@@ -3,39 +3,39 @@
 import re
 
 
-def test_reflection_has_third_person_ban():
+def test_reflection_has_third_person_ban() -> None:
     from core.prompts import REFLECTION_APPLICATION_PROMPT
 
     assert "ЗАПРЕТ ОТ ТРЕТЬЕГО ЛИЦА" in REFLECTION_APPLICATION_PROMPT
 
 
-def test_reflection_no_raw_placeholders():
+def test_reflection_no_raw_placeholders() -> None:
     from core.prompts import REFLECTION_APPLICATION_PROMPT
 
     assert not re.findall(r"\{[A-Z_]+\}", REFLECTION_APPLICATION_PROMPT)
 
 
-def test_reflection_longer_than_baseline():
+def test_reflection_longer_than_baseline() -> None:
     from core.prompts import REFLECTION_APPLICATION_PROMPT
 
     assert len(REFLECTION_APPLICATION_PROMPT) > 28846
 
 
-def test_audio_prompt_has_style_note():
+def test_audio_prompt_has_style_note() -> None:
     from core.prompts import build_audio_analysis_prompt
 
     p = build_audio_analysis_prompt("Test", "Chan", "50:00", 3000)
     assert "Пиши безлично или от первого лица автора" in p
 
 
-def test_audio_prompt_has_bad_example():
+def test_audio_prompt_has_bad_example() -> None:
     from core.prompts import build_audio_analysis_prompt
 
     p = build_audio_analysis_prompt("Test", "Chan", "50:00", 3000)
     assert "фамилия автора + показывает" in p
 
 
-def test_all_prompts_no_shared_placeholders():
+def test_all_prompts_no_shared_placeholders() -> None:
     from core.prompts import (
         SYNOPSIS_PROMPT_V2,
         SYNOPSIS_PROMPT_QA,
@@ -58,7 +58,7 @@ def test_all_prompts_no_shared_placeholders():
         assert not found, f"{name} has unresolved: {found}"
 
 
-def test_synopsis_v2_still_intact():
+def test_synopsis_v2_still_intact() -> None:
     from core.prompts import SYNOPSIS_PROMPT_V2
 
     assert "ЗАПРЕТ ОТ ТРЕТЬЕГО ЛИЦА" in SYNOPSIS_PROMPT_V2

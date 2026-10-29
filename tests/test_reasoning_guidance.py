@@ -8,7 +8,7 @@ def _flat(text: str) -> str:
     return " ".join(str(text or "").split())
 
 
-def test_reflection_guidance_places_truth_before_application():
+def test_reflection_guidance_places_truth_before_application() -> None:
     prompt = _flat(build_reasoning_first_block("reflection"))
     assert "ИСТИНА ПРЕЖДЕ ПРАКТИКИ" in prompt
     assert "истина → усвоение → сопротивление → мудрый ответ" in prompt
@@ -17,7 +17,7 @@ def test_reflection_guidance_places_truth_before_application():
     assert "Богословская проповедь может почти не" in prompt
 
 
-def test_study_guidance_teaches_biblical_assimilation():
+def test_study_guidance_teaches_biblical_assimilation() -> None:
     prompt = _flat(build_reasoning_first_block("study"))
     assert "МОДЕЛЬ УСВОЕНИЯ ИСТИНЫ" in prompt
     assert "показать её основание в тексте" in prompt
@@ -25,7 +25,7 @@ def test_study_guidance_teaches_biblical_assimilation():
     assert "действие без истины не формирует зрелость" in prompt
 
 
-def test_translation_guidance_is_selective_and_explanatory():
+def test_translation_guidance_is_selective_and_explanatory() -> None:
     prompt = _flat(build_reasoning_first_block("study"))
     assert "ПОЛОЖИТЕЛЬНЫЙ МЕТОД РАЗБОРА ПЕРЕВОДОВ И ОРИГИНАЛА" in prompt
     assert "Отсутствие содержательной развилки — нормальный результат" in prompt
@@ -36,7 +36,7 @@ def test_translation_guidance_is_selective_and_explanatory():
     assert "не создавай эффект «в синодальном всё потеряно" in prompt.lower()
 
 
-def test_translation_guidance_blocks_fake_aspect_claims_positively():
+def test_translation_guidance_blocks_fake_aspect_claims_positively() -> None:
     prompt = _flat(build_reasoning_first_block("audio"))
     assert "какая именно форма стоит в оригинале" in prompt
     assert "чего сама по себе НЕ доказывает" in prompt
@@ -44,7 +44,7 @@ def test_translation_guidance_blocks_fake_aspect_claims_positively():
     assert "Не делай этимологию богословием" in prompt
 
 
-def test_synopsis_has_a_separate_full_clean_verbatim_contract():
+def test_synopsis_has_a_separate_full_clean_verbatim_contract() -> None:
     prompt = _flat(build_synopsis_reasoning_note())
     assert "FULL CLEAN-VERBATIM SYNOPSIS" in prompt
     assert "полная подробная clean-verbatim стенограмма" in prompt
@@ -58,5 +58,5 @@ def test_synopsis_has_a_separate_full_clean_verbatim_contract():
     assert "АНТИБАНАЛЬНЫЙ ФИЛЬТР" not in prompt
 
 
-def test_synopsis_reasoning_block_is_the_same_dedicated_contract():
+def test_synopsis_reasoning_block_is_the_same_dedicated_contract() -> None:
     assert build_reasoning_first_block("synopsis") == build_synopsis_reasoning_note()

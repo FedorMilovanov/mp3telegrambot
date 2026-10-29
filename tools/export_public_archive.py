@@ -171,7 +171,7 @@ def render_markdown(records: list[dict[str, Any]], *, source_db: Path) -> str:
 
 
 def find_default_db() -> Path | None:
-    candidates = []
+    candidates: list[Path] = []
     candidates.extend(Path(".").glob("bot_cache.db.bak.*"))
     candidates.append(Path("bot_cache.db"))
     existing = [p for p in candidates if p.exists() and p.is_file()]

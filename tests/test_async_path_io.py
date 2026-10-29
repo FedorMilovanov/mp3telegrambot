@@ -29,7 +29,9 @@ def _exists(path: Path) -> bool:
     return path.exists()
 
 
-def test_factory_validated_source_persistence_and_missing_source(monkeypatch, tmp_path: Path) -> None:
+def test_factory_validated_source_persistence_and_missing_source(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setattr(shorts_factory, "DOWNLOAD_DIR", tmp_path / "downloads")
     source = _write_file(tmp_path / "source.mp4")
 
@@ -71,7 +73,7 @@ def test_factory_cleanup_honors_keep_source_and_removes_workdir(tmp_path: Path) 
 
 
 @pytest.mark.asyncio
-async def test_deferral_recovers_source_from_audio_name(monkeypatch, tmp_path: Path) -> None:
+async def test_deferral_recovers_source_from_audio_name(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     source = _write_file(tmp_path / "source.mp3", b"source audio")
     monkeypatch.setattr(coordinator.tempfile, "gettempdir", lambda: str(tmp_path / "deferred"))
     delivery = coordinator.create_source_audio_deferral(bot=SimpleNamespace(), chat_id=7, reply_to=9, enabled=True)
@@ -96,7 +98,9 @@ async def test_deferral_recovers_source_from_audio_name(monkeypatch, tmp_path: P
 
 
 @pytest.mark.asyncio
-async def test_static_policy_missing_file_fails_safe_without_probe(monkeypatch, tmp_path: Path) -> None:
+async def test_static_policy_missing_file_fails_safe_without_probe(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     run = AsyncMock()
     monkeypatch.setattr(shorts_static_policy.shutil, "which", lambda name: "ffmpeg")
     monkeypatch.setattr(shorts_static_policy, "run_cancellable_process", run)
@@ -105,7 +109,7 @@ async def test_static_policy_missing_file_fails_safe_without_probe(monkeypatch, 
     run.assert_not_awaited()
 
 
-def test_clips_cleanup_removes_outputs_and_owned_source(monkeypatch, tmp_path: Path) -> None:
+def test_clips_cleanup_removes_outputs_and_owned_source(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     clip = _write_file(tmp_path / "clip.mp4")
     snapshot = _write_file(tmp_path / "snapshot.png")
     source = _write_file(tmp_path / "source.mp4")
@@ -154,7 +158,7 @@ def test_shorts_cleanup_preserves_borrowed_livedub_source(tmp_path: Path) -> Non
     assert source.exists()
 
 
-def test_clips_cleanup_suppresses_settings_failure(monkeypatch, tmp_path: Path) -> None:
+def test_clips_cleanup_suppresses_settings_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     source = _write_file(tmp_path / "source.mp4")
 
     def _fail_settings(key: str) -> bool:
@@ -168,7 +172,7 @@ def test_clips_cleanup_suppresses_settings_failure(monkeypatch, tmp_path: Path) 
 
 
 @pytest.mark.asyncio
-async def test_montage_thumbnail_prefers_ready_poster(monkeypatch, tmp_path: Path) -> None:
+async def test_montage_thumbnail_prefers_ready_poster(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     poster = _write_file(tmp_path / "poster.jpg")
     create_poster = AsyncMock(return_value=True)
     create_snapshot = AsyncMock(return_value=True)
@@ -191,7 +195,9 @@ async def test_montage_thumbnail_prefers_ready_poster(monkeypatch, tmp_path: Pat
 
 
 @pytest.mark.asyncio
-async def test_montage_thumbnail_falls_back_to_snapshot_after_poster_failure(monkeypatch, tmp_path: Path) -> None:
+async def test_montage_thumbnail_falls_back_to_snapshot_after_poster_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     snapshot = _write_file(tmp_path / "snapshot.jpg")
     monkeypatch.setattr(
         montage,
@@ -215,7 +221,9 @@ async def test_montage_thumbnail_falls_back_to_snapshot_after_poster_failure(mon
 
 
 @pytest.mark.asyncio
-async def test_montage_thumbnail_returns_none_after_both_failures(monkeypatch, tmp_path: Path) -> None:
+async def test_montage_thumbnail_returns_none_after_both_failures(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setattr(
         montage,
         "create_short_title_poster",
@@ -240,7 +248,7 @@ async def test_montage_thumbnail_returns_none_after_both_failures(monkeypatch, t
     assert thumbnail is None
 
 
-def test_shorts_cleanup_suppresses_source_unlink_oserror(monkeypatch, tmp_path: Path) -> None:
+def test_shorts_cleanup_suppresses_source_unlink_oserror(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     source = _write_file(tmp_path / "source.mp4")
 
     def _fail_unlink(self: Path, *, missing_ok: bool = False) -> None:

@@ -9,7 +9,7 @@ from core import prompts as P
 from core.prompt_rules import INLINE_TIMESTAMP_RULES, QA_TIMESTAMP_RULE
 
 
-def test_style_fixes_do_not_create_banned_wrappers():
+def test_style_fixes_do_not_create_banned_wrappers() -> None:
     """Рерайт «В материале говорится» → «Автор говорит» сам создавал
     third-person wrapper, который следом вычищал другой скраббер."""
     from core.content_audit import _scrub_prompt_context_leaks
@@ -27,7 +27,7 @@ def test_style_fixes_do_not_create_banned_wrappers():
     assert out3.startswith("Критикуется")
 
 
-def test_inline_timestamp_rules_single_source_of_truth():
+def test_inline_timestamp_rules_single_source_of_truth() -> None:
     """Ручные копии в STUDY/REFLECTION заменены плейсхолдером — правило
     живёт только в prompt_rules и раскрывается при импорте."""
     # обогащённая строка есть в общем правиле…
@@ -39,14 +39,14 @@ def test_inline_timestamp_rules_single_source_of_truth():
         assert "{INLINE_TIMESTAMP_RULES}" not in prompt
 
 
-def test_qa_timestamp_rule_wired_into_qa_prompt():
+def test_qa_timestamp_rule_wired_into_qa_prompt() -> None:
     assert "перепроверь принадлежность" in QA_TIMESTAMP_RULE
     assert "перепроверь принадлежность" in P.SYNOPSIS_PROMPT_QA
     assert "{QA_TIMESTAMP_RULE}" not in P.SYNOPSIS_PROMPT_QA
     assert P.SYNOPSIS_PROMPT_QA.count("ПРАВИЛО ТАЙМКОДОВ ОТНОСИТЕЛЬНО СЕКЦИИ") == 1
 
 
-def test_quiz_schema_requires_exactly_four_options():
+def test_quiz_schema_requires_exactly_four_options() -> None:
     from services.quiz_generator import quiz_response_schema
 
     schema = quiz_response_schema()
@@ -54,7 +54,7 @@ def test_quiz_schema_requires_exactly_four_options():
     assert opts["minItems"] == 4 and opts["maxItems"] == 4
 
 
-def test_study_content_is_short_digest_when_blocks_used():
+def test_study_content_is_short_digest_when_blocks_used() -> None:
     """Рендерер игнорирует content при валидных blocks — полное дублирование
     было чистой тратой output-токенов и множителем MAX_TOKENS-обрезаний."""
     assert "ЭКОНОМИЯ ВЫВОДА" in P.STUDY_ANALYSIS_PROMPT

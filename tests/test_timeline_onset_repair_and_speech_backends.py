@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -21,7 +22,7 @@ from tools.voxcpm2.professional_audio_qa_v45 import (
 )
 
 
-def _late_speech(*, onset: float, trailing: float, duration: float = 4.0):
+def _late_speech(*, onset: float, trailing: float, duration: float = 4.0) -> tuple[np.ndarray, int]:
     sample_rate = 16_000
     audio = np.zeros(int(duration * sample_rate), dtype=np.float32)
     start = int(onset * sample_rate)
@@ -35,7 +36,7 @@ def _late_speech(*, onset: float, trailing: float, duration: float = 4.0):
     return audio, sample_rate
 
 
-def _timing_report(segment_id: int, *, onset_ms: float, trailing_ms: float):
+def _timing_report(segment_id: int, *, onset_ms: float, trailing_ms: float) -> dict[str, Any]:
     return {
         "segments": [
             {

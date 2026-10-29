@@ -11,27 +11,27 @@ blind max() выбрал случайный битый вариант, ffmpeg у
 from services.ffmpeg import _crop_consensus
 
 
-def test_three_disagreeing_single_votes_rejected():
+def test_three_disagreeing_single_votes_rejected() -> None:
     votes = {"648:634:154:86": 1, "458:620:296:100": 1, "894:644:140:76": 1}
     assert _crop_consensus(votes, 3) == ""
 
 
-def test_full_agreement_accepted():
+def test_full_agreement_accepted() -> None:
     assert _crop_consensus({"1202:676:0:0": 3}, 3) == "1202:676:0:0"
 
 
-def test_majority_two_of_three_accepted():
+def test_majority_two_of_three_accepted() -> None:
     assert _crop_consensus({"1202:676:0:0": 2, "470:328:16:24": 1}, 3) == "1202:676:0:0"
 
 
-def test_two_disagreeing_rejected():
+def test_two_disagreeing_rejected() -> None:
     assert _crop_consensus({"a": 1, "b": 1}, 2) == ""
 
 
-def test_single_sample_accepted():
+def test_single_sample_accepted() -> None:
     # при единственном сэмпле выбора нет — принимаем его
     assert _crop_consensus({"396:270:72:44": 1}, 1) == "396:270:72:44"
 
 
-def test_empty_votes_returns_empty():
+def test_empty_votes_returns_empty() -> None:
     assert _crop_consensus({}, 0) == ""

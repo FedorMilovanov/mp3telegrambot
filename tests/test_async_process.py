@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
+from typing import Any, cast
 
 import pytest
 
@@ -10,14 +11,14 @@ from services import async_process
 
 class _FakeProcess:
     def __init__(self) -> None:
-        self.returncode = None
+        self.returncode: int | None = None
         self.terminated = 0
         self.killed = 0
         self.wait_calls = 0
         self.communicate_started = asyncio.Event()
         self.release_communicate = asyncio.Event()
 
-    async def communicate(self):
+    async def communicate(self) -> tuple[bytes, bytes]:
         self.communicate_started.set()
         await self.release_communicate.wait()
         self.returncode = 0
@@ -35,12 +36,12 @@ class _FakeProcess:
         self.wait_calls += 1
         if self.returncode is None:
             await asyncio.sleep(3600)
-        return int(self.returncode)
+        return cast(int, self.returncode)
 
 
 class _TerminateLookupRace:
     def __init__(self) -> None:
-        self.returncode = None
+        self.returncode: int | None = None
         self.terminated = 0
         self.wait_calls = 0
 
@@ -59,7 +60,7 @@ class _TerminateLookupRace:
 
 class _KillLookupRace:
     def __init__(self) -> None:
-        self.returncode = None
+        self.returncode: int | None = None
         self.terminated = 0
         self.killed = 0
         self.wait_calls = 0
@@ -81,7 +82,7 @@ class _KillLookupRace:
 
 class _SlowCleanupProcess:
     def __init__(self) -> None:
-        self.returncode = None
+        self.returncode: int | None = None
         self.terminated = 0
         self.killed = 0
         self.wait_started = asyncio.Event()
@@ -105,14 +106,14 @@ class _SlowCleanupProcess:
             raise
         if self.returncode is None:
             self.returncode = -15
-        return int(self.returncode)
+        return self.returncode
 
 
 @pytest.mark.asyncio
 async def test_terminate_lookup_race_is_still_reaped() -> None:
     process = _TerminateLookupRace()
 
-    await async_process._stop_process(process, grace_seconds=0.1)
+    await async_process._stop_process(cast(asyncio.subprocess.Process, process), grace_seconds=0.1)
 
     assert process.terminated == 1
     assert process.wait_calls == 1
@@ -123,7 +124,7 @@ async def test_terminate_lookup_race_is_still_reaped() -> None:
 async def test_kill_lookup_race_is_still_reaped() -> None:
     process = _KillLookupRace()
 
-    await async_process._stop_process(process, grace_seconds=0.1)
+    await async_process._stop_process(cast(asyncio.subprocess.Process, process), grace_seconds=0.1)
 
     assert process.terminated == 1
     assert process.killed == 1
@@ -132,10 +133,10 @@ async def test_kill_lookup_race_is_still_reaped() -> None:
 
 
 @pytest.mark.asyncio
-async def test_timeout_stops_and_reaps_child(monkeypatch) -> None:
+async def test_timeout_stops_and_reaps_child(monkeypatch: pytest.MonkeyPatch) -> None:
     process = _FakeProcess()
 
-    async def fake_create(*args, **kwargs):
+    async def fake_create(*args: Any, **kwargs: Any) -> _FakeProcess:
         return process
 
     monkeypatch.setattr(async_process.asyncio, "create_subprocess_exec", fake_create)
@@ -153,10 +154,10 @@ async def test_timeout_stops_and_reaps_child(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_cancellation_stops_child_before_task_finishes(monkeypatch) -> None:
+async def test_cancellation_stops_child_before_task_finishes(monkeypatch: pytest.MonkeyPatch) -> None:
     process = _FakeProcess()
 
-    async def fake_create(*args, **kwargs):
+    async def fake_create(*args: Any, **kwargs: Any) -> _FakeProcess:
         return process
 
     monkeypatch.setattr(async_process.asyncio, "create_subprocess_exec", fake_create)
@@ -180,7 +181,9 @@ async def test_cancellation_stops_child_before_task_finishes(monkeypatch) -> Non
 @pytest.mark.asyncio
 async def test_repeated_cancellation_cannot_cancel_child_cleanup() -> None:
     process = _SlowCleanupProcess()
-    task = asyncio.create_task(async_process._stop_before_returning(process, grace_seconds=1.0))
+    task = asyncio.create_task(
+        async_process._stop_before_returning(cast(asyncio.subprocess.Process, process), grace_seconds=1.0)
+    )
     await process.wait_started.wait()
 
     task.cancel()
@@ -203,10 +206,12 @@ async def test_repeated_cancellation_cannot_cancel_child_cleanup() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("bad_timeout", ["not-a-number", float("inf"), float("nan")])
-async def test_invalid_timeout_is_rejected_before_spawn(monkeypatch, bad_timeout) -> None:
+async def test_invalid_timeout_is_rejected_before_spawn(
+    monkeypatch: pytest.MonkeyPatch, bad_timeout: str | float
+) -> None:
     create_calls = 0
 
-    async def fake_create(*args, **kwargs):
+    async def fake_create(*args: Any, **kwargs: Any) -> _FakeProcess:
         nonlocal create_calls
         create_calls += 1
         return _FakeProcess()
@@ -216,17 +221,17 @@ async def test_invalid_timeout_is_rejected_before_spawn(monkeypatch, bad_timeout
     with pytest.raises(ValueError, match="timeout must be a finite number"):
         await async_process.run_cancellable_process(
             ["ffmpeg", "-version"],
-            timeout=bad_timeout,
+            timeout=cast(Any, bad_timeout),
         )
 
     assert create_calls == 0
 
 
 @pytest.mark.asyncio
-async def test_invalid_grace_is_rejected_before_spawn(monkeypatch) -> None:
+async def test_invalid_grace_is_rejected_before_spawn(monkeypatch: pytest.MonkeyPatch) -> None:
     create_calls = 0
 
-    async def fake_create(*args, **kwargs):
+    async def fake_create(*args: Any, **kwargs: Any) -> _FakeProcess:
         nonlocal create_calls
         create_calls += 1
         return _FakeProcess()
@@ -244,10 +249,10 @@ async def test_invalid_grace_is_rejected_before_spawn(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_empty_command_is_rejected_before_spawn(monkeypatch) -> None:
+async def test_empty_command_is_rejected_before_spawn(monkeypatch: pytest.MonkeyPatch) -> None:
     create_calls = 0
 
-    async def fake_create(*args, **kwargs):
+    async def fake_create(*args: Any, **kwargs: Any) -> _FakeProcess:
         nonlocal create_calls
         create_calls += 1
         return _FakeProcess()
@@ -261,12 +266,12 @@ async def test_empty_command_is_rejected_before_spawn(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_success_returns_completed_process_and_closes_stdin(monkeypatch) -> None:
+async def test_success_returns_completed_process_and_closes_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
     process = _FakeProcess()
     process.release_communicate.set()
-    captured_kwargs = {}
+    captured_kwargs: dict[str, Any] = {}
 
-    async def fake_create(*args, **kwargs):
+    async def fake_create(*args: Any, **kwargs: Any) -> _FakeProcess:
         captured_kwargs.update(kwargs)
         return process
 
@@ -287,12 +292,12 @@ async def test_success_returns_completed_process_and_closes_stdin(monkeypatch) -
 
 
 @pytest.mark.asyncio
-async def test_inherited_stdio_keeps_tree_ownership_without_capture(monkeypatch) -> None:
+async def test_inherited_stdio_keeps_tree_ownership_without_capture(monkeypatch: pytest.MonkeyPatch) -> None:
     process = _FakeProcess()
     process.release_communicate.set()
-    captured_kwargs = {}
+    captured_kwargs: dict[str, Any] = {}
 
-    async def fake_create(*args, **kwargs):
+    async def fake_create(*args: Any, **kwargs: Any) -> _FakeProcess:
         captured_kwargs.update(kwargs)
         return process
 

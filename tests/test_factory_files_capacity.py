@@ -1,6 +1,8 @@
 from __future__ import annotations
+from typing import Any
 
 import asyncio
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -16,22 +18,22 @@ class _Files:
         self.get_calls = 0
         self.deleted: list[str] = []
 
-    async def upload(self, **_kwargs):
+    async def upload(self, **_kwargs: Any) -> SimpleNamespace:
         self.upload_calls += 1
         return SimpleNamespace(name="files/factory", state="PROCESSING")
 
-    async def get(self, **_kwargs):
+    async def get(self, **_kwargs: Any) -> None:
         self.get_calls += 1
         raise RuntimeError("503 Files API overloaded")
 
-    async def delete(self, *, name):
+    async def delete(self, *, name: str) -> None:
         self.deleted.append(name)
 
 
 def test_factory_poll_503_cleans_remote_handle_and_stays_in_files_domain(
-    monkeypatch,
-    tmp_path,
-):
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     import services.shorts_factory_candidates as candidates
     import services.shorts_factory_source as source
 
@@ -42,10 +44,10 @@ def test_factory_poll_503_cleans_remote_handle_and_stays_in_files_domain(
     files = _Files()
     client = SimpleNamespace(aio=SimpleNamespace(files=files))
 
-    async def verified_duration(_path):
+    async def verified_duration(_path: Path) -> float:
         return 120.0
 
-    async def no_sleep(_delay):
+    async def no_sleep(_delay: float) -> None:
         return None
 
     monkeypatch.setattr(runtime.asyncio, "sleep", no_sleep)

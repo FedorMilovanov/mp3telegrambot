@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 import tools.check_tts_weighted_runner_provisioning as cli
+from services.tts_weighted_runner_provisioning import WeightedTTSRunnerProvisioningConfig
 
 
 def _argv(tmp_path: Path) -> list[str]:
@@ -35,13 +37,13 @@ def _argv(tmp_path: Path) -> list[str]:
 
 
 def test_cli_prints_only_safe_success_summary(
-    monkeypatch,
-    capsys,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
     argv = _argv(tmp_path)
 
-    def fake_run(config):
+    def fake_run(config: WeightedTTSRunnerProvisioningConfig) -> dict[str, Any]:
         config.work_directory.mkdir()
         (config.work_directory / "setup-report.json").write_text(
             '{"passed":true}',
@@ -69,8 +71,8 @@ def test_cli_prints_only_safe_success_summary(
 
 
 def test_cli_redacts_every_local_path_from_failure(
-    monkeypatch,
-    capsys,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
     argv = _argv(tmp_path)
@@ -82,7 +84,7 @@ def test_cli_redacts_every_local_path_from_failure(
         str(tmp_path / "private-work"),
     ]
 
-    def fake_run(_config):
+    def fake_run(_config: WeightedTTSRunnerProvisioningConfig) -> dict[str, Any]:
         raise RuntimeError("failure " + " ".join(private_values))
 
     monkeypatch.setattr(cli, "run_weighted_tts_runner_provisioning_check", fake_run)

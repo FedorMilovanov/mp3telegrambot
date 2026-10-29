@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from tools.voxcpm2 import continuous_reference_policy
 
@@ -17,15 +18,17 @@ def _amplitude(samples: np.ndarray) -> float:
     return float(np.median(np.abs(np.asarray(samples, dtype=np.float64))))
 
 
-def test_equal_quality_windows_choose_typical_pitch_not_lowest_pitch(monkeypatch) -> None:
+def test_equal_quality_windows_choose_typical_pitch_not_lowest_pitch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     audio, intervals = _fixture()
 
-    def pitch(samples, sample_rate):
+    def pitch(samples: np.ndarray, sample_rate: int) -> dict[str, float]:
         amplitude = _amplitude(samples)
         f0 = 90.0 if amplitude < 0.15 else 170.0 if amplitude < 0.25 else 250.0
         return {"voiced_ratio": 0.58, "f0_median": f0, "f0_p90": f0 * 1.30}
 
-    def activity(samples, sample_rate):
+    def activity(samples: np.ndarray, sample_rate: int) -> dict[str, float]:
         return {"active_ratio": 0.74, "max_internal_gap": 0.08}
 
     monkeypatch.setattr(
@@ -55,15 +58,17 @@ def test_equal_quality_windows_choose_typical_pitch_not_lowest_pitch(monkeypatch
     assert selected["score"] < min(item["score"] for item in lowest)
 
 
-def test_quality_metrics_remain_part_of_reference_ranking(monkeypatch) -> None:
+def test_quality_metrics_remain_part_of_reference_ranking(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     audio, intervals = _fixture()
 
-    def pitch(samples, sample_rate):
+    def pitch(samples: np.ndarray, sample_rate: int) -> dict[str, float]:
         amplitude = _amplitude(samples)
         f0 = 90.0 if amplitude < 0.15 else 170.0 if amplitude < 0.25 else 250.0
         return {"voiced_ratio": 0.58, "f0_median": f0, "f0_p90": f0 * 1.30}
 
-    def activity(samples, sample_rate):
+    def activity(samples: np.ndarray, sample_rate: int) -> dict[str, float]:
         amplitude = _amplitude(samples)
         if 0.15 <= amplitude < 0.25:
             return {"active_ratio": 0.30, "max_internal_gap": 0.82}

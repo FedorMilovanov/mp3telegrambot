@@ -81,7 +81,7 @@ def _legacy_checkpoint_prefix(root: Path, request: dict[str, Any]) -> list[int]:
     if not isinstance(segments_payload, list) or len(segments_payload) < 2:
         return []
     segments = {
-        int(item.get("id")): item
+        int(item["id"]): item
         for item in segments_payload
         if isinstance(item, dict) and str(item.get("id") or "").isdigit()
     }
@@ -102,8 +102,11 @@ def _legacy_checkpoint_prefix(root: Path, request: dict[str, Any]) -> list[int]:
         report = payload.get("report")
         if not isinstance(signature, dict) or not isinstance(report, dict):
             return []
+        raw_id = report.get("id")
+        if raw_id is None:
+            return []
         try:
-            segment_id = int(report.get("id"))
+            segment_id = int(raw_id)
         except (TypeError, ValueError, OverflowError):
             return []
         segment = segments.get(segment_id)

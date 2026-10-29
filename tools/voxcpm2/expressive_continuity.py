@@ -18,7 +18,9 @@ from typing import Any
 
 import numpy as np
 
-from tools.voxcpm2 import professional_audio_v45 as audio_policy
+from tools.voxcpm2 import professional_audio_v45 as professional_audio_v45
+
+audio_policy = professional_audio_v45
 from tools.voxcpm2.direct_russian_cadence import (
     classify_cadence,
     prosody_contour,
@@ -31,7 +33,7 @@ def _words(value: str) -> int:
     return len(re.findall(r"\w+", str(value or ""), flags=re.UNICODE))
 
 
-def _number(value: Any, default: float = 0.0) -> float:
+def _legacy_number(value: Any, default: float = 0.0) -> float:
     try:
         result = float(value)
     except (TypeError, ValueError):
@@ -140,7 +142,7 @@ def _reference_profile(tier: str) -> str:
     return "composite" if tier in {"emphatic", "passionate"} else "extended"
 
 
-def plan_segments(
+def _legacy_plan_segments_impl(
     *,
     source: Path,
     segments: list[dict[str, Any]],
@@ -381,7 +383,7 @@ MAX_ADJACENT_SCORE_STEP = 0.26
 
 MIN_STRONG_NEIGHBOUR_SCORE = 0.20
 
-_legacy_plan_segments = plan_segments
+_legacy_plan_segments = _legacy_plan_segments_impl
 
 
 def _number(value: Any, default: float = 0.0) -> float:
@@ -585,6 +587,7 @@ __all__ = sorted(
         "POLICY",
         "REFERENCE_POLICY",
         "_legacy_plan_segments",
+        "audio_policy",
         "build_controlled_expressive_reference",
         "plan_json",
         "plan_segments",

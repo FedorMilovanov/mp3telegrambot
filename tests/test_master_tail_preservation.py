@@ -1,4 +1,5 @@
 from __future__ import annotations
+import pytest
 
 from pathlib import Path
 
@@ -7,7 +8,7 @@ from tools.voxcpm2.examples.john_piper_z20py4yqhyq import (
 )
 
 
-def test_master_cannot_end_with_short_source_audio(monkeypatch, tmp_path: Path) -> None:
+def test_master_cannot_end_with_short_source_audio(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     commands: list[list[str]] = []
     monkeypatch.setattr(
         master,

@@ -26,7 +26,7 @@ def test_segmented_checked_runner_preserves_internal_argv(monkeypatch: pytest.Mo
     monkeypatch.setattr(segmented_cpu_dub.subprocess, "run", run)
     command = ["/resolved/ffmpeg", "-v", "error"]
 
-    assert segmented_cpu_dub.run_checked(command) is None
+    segmented_cpu_dub.run_checked(command)
     assert run.call_args.args[0] == command
     assert run.call_args.kwargs["check"] is False
     assert "shell" not in run.call_args.kwargs

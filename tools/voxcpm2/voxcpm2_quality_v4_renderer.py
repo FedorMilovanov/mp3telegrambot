@@ -15,7 +15,7 @@ import re
 import runpy
 import sys
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, TypeGuard, cast
 
 # This file is executed by the separate VoxCPM CPU interpreter as a script, not
 # as ``python -m``. In that mode Python adds tools/voxcpm2 to sys.path but may
@@ -51,10 +51,10 @@ def _required_callable(namespace: dict[str, Any], name: str) -> Callable[..., An
     value = namespace.get(name)
     if not callable(value):
         raise RuntimeError(f"Исходный NoChew renderer не экспортирует обязательную функцию {name!r}.")
-    return value
+    return cast(Callable[..., Any], value)
 
 
-def _has_render_hooks(namespace: object) -> bool:
+def _has_render_hooks(namespace: object) -> TypeGuard[dict[str, Any]]:
     return isinstance(namespace, dict) and all(callable(namespace.get(name)) for name in _REQUIRED_RENDER_HOOKS)
 
 

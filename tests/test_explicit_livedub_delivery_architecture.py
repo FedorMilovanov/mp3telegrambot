@@ -20,7 +20,7 @@ def _function_source(source: str, name: str) -> str:
     raise AssertionError(f"function {name!r} not found")
 
 
-def test_services_import_has_no_import_hook_or_install_side_effects():
+def test_services_import_has_no_import_hook_or_install_side_effects() -> None:
     src = _source("services/__init__.py")
     assert "sys.meta_path.insert" not in src
     assert "sys.meta_path.remove" not in src
@@ -28,7 +28,7 @@ def test_services_import_has_no_import_hook_or_install_side_effects():
     assert "install_" not in src
 
 
-def test_manifest_uses_explicit_delivery_contract_not_telegram_patch_stack():
+def test_manifest_uses_explicit_delivery_contract_not_telegram_patch_stack() -> None:
     src = _source("services/runtime_manifest.py")
     for feature in (
         "livedub-audio-companion",
@@ -44,7 +44,7 @@ def test_manifest_uses_explicit_delivery_contract_not_telegram_patch_stack():
     assert '"pre-main-quality-policy"' in src
 
 
-def test_pipeline_calls_explicit_delivery_transactions():
+def test_pipeline_calls_explicit_delivery_transactions() -> None:
     src = _source("pipelines/main_pipeline.py")
     cached_stage = _source("pipelines/livedub_cached_delivery_stage.py")
     assert "deliver_new_companions(" in src
@@ -54,7 +54,7 @@ def test_pipeline_calls_explicit_delivery_transactions():
     assert "format_video_caption(_publication_card" in src
 
 
-def test_coordinator_does_not_patch_telegram_methods():
+def test_coordinator_does_not_patch_telegram_methods() -> None:
     tree = ast.parse(_source("services/livedub_delivery_coordinator.py"))
     forbidden = {"send_video", "send_audio", "send_message", "reply_audio"}
     for node in ast.walk(tree):
@@ -64,7 +64,7 @@ def test_coordinator_does_not_patch_telegram_methods():
     assert "sys.meta_path" not in _source("services/livedub_delivery_coordinator.py")
 
 
-def test_companion_cache_and_clean_track_are_source_owned():
+def test_companion_cache_and_clean_track_are_source_owned() -> None:
     companion = _source("services/livedub_audio_companion.py")
     assert "load_recoverable_cache(_cache_path())" in companion
     assert "save_recoverable_cache(_cache_path(), data)" in companion
@@ -74,7 +74,7 @@ def test_companion_cache_and_clean_track_are_source_owned():
     assert "companion._send_new_audio =" not in quality
 
 
-def test_livedub_mix_probe_is_utf8_and_major_fix_does_not_truncate():
+def test_livedub_mix_probe_is_utf8_and_major_fix_does_not_truncate() -> None:
     src = _source("services/livedub_mix.py")
     probe = src[src.index("def probe_video_meta") : src.index("def make_video_thumbnail")]
     assert 'encoding="utf-8"' in probe
@@ -84,7 +84,7 @@ def test_livedub_mix_probe_is_utf8_and_major_fix_does_not_truncate():
     assert "refusing a partial auto-fix" in fix
 
 
-def test_gemini_semantic_config_preserves_38_quality_and_explicit_recovery_levels():
+def test_gemini_semantic_config_preserves_38_quality_and_explicit_recovery_levels() -> None:
     from core.globals import _effective_thinking_level
 
     # Production semantic callers explicitly request HIGH. Gemini 3.8 also

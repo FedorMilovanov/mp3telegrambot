@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Any
 
 import pytest
 
@@ -33,7 +34,12 @@ class ServiceResult:
 
 
 class Service:
-    def __init__(self, chains=None, results=None, errors=None):
+    def __init__(
+        self,
+        chains: dict[str, list[str | None]] | None = None,
+        results: dict[str, ServiceResult] | None = None,
+        errors: dict[str, Exception] | None = None,
+    ) -> None:
         self.chains = chains or {}
         self.results = results or {}
         self.errors = errors or {}
@@ -41,20 +47,20 @@ class Service:
         self.repaired: list[str] = []
         self.sleeps: list[float] = []
 
-    async def expand(self, url: str):
+    async def expand(self, url: str) -> list[str | None] | None:
         self.expanded.append(url)
         return self.chains.get(url)
 
-    async def repair(self, url: str):
+    async def repair(self, url: str) -> ServiceResult:
         self.repaired.append(url)
         if url in self.errors:
             raise self.errors[url]
         return self.results.get(url, ServiceResult(url=url, ok=True))
 
-    async def sleep(self, delay: float):
+    async def sleep(self, delay: float) -> None:
         self.sleeps.append(delay)
 
-    async def run(self, urls, **kwargs):
+    async def run(self, urls: list[str | None], **kwargs: Any) -> RepairReport:
         return await repair_pages(urls, expand=self.expand, repair=self.repair, sleep=self.sleep, **kwargs)
 
 
@@ -75,7 +81,7 @@ class Service:
         ("off", False),
     ],
 )
-def test_repair_enabled_reads_flag(value, expected) -> None:
+def test_repair_enabled_reads_flag(value: str | None, expected: bool) -> None:
     assert repair_enabled(value) is expected
 
 
@@ -134,10 +140,10 @@ async def test_chain_parts_are_expanded_before_repair() -> None:
 
 @pytest.mark.asyncio
 async def test_expand_failure_does_not_stop_publication(
-    caplog: pytest.LogCaptureFixture,
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     service = Service()
-    service.expand = _raiser  # type: ignore[assignment]
+    monkeypatch.setattr(service, "expand", _raiser)
     with caplog.at_level(logging.WARNING):
         report = await service.run([A])
 
@@ -145,7 +151,7 @@ async def test_expand_failure_does_not_stop_publication(
     assert "crashed non-fatally" in caplog.text
 
 
-async def _raiser(url: str):
+async def _raiser(url: str) -> None:
     raise RuntimeError("сеть легла")
 
 
@@ -233,15 +239,15 @@ async def test_default_dependencies_are_used_when_not_injected(
 
     calls: list[str] = []
 
-    async def fake_expand(url):
+    async def fake_expand(url: str) -> list[str]:
         calls.append(f"expand:{url}")
         return [url]
 
-    async def fake_repair(url):
+    async def fake_repair(url: str) -> ServiceResult:
         calls.append(f"repair:{url}")
         return ServiceResult(url, changed=True)
 
-    async def fake_sleep(delay):
+    async def fake_sleep(delay: float) -> None:
         calls.append(f"sleep:{delay}")
 
     monkeypatch.setattr(stage, "production_deps", lambda: (fake_expand, fake_repair))

@@ -11,7 +11,7 @@ import sqlite3
 from pathlib import Path
 
 
-def test_full_name_scripture_refs_not_linkified():
+def test_full_name_scripture_refs_not_linkified() -> None:
     """«в Иоанна 3:16» превращалось в ссылку на 3:16 минуты видео — guard
     знал только аббревиатуры (Ин., Рим.)."""
     from converters.md_telegraph import _linkify_inline_timestamps
@@ -37,7 +37,7 @@ def test_full_name_scripture_refs_not_linkified():
     assert "?t=907" in json.dumps(out)
 
 
-def test_nav_brackets_survive_postprocess_bracket_strip():
+def test_nav_brackets_survive_postprocess_bracket_strip() -> None:
     """Комментарий обещал не трогать [N/M], а регэксп трогал — навигация
     multipart-страниц публиковалась как «Назад: 1/3»."""
     import re
@@ -51,14 +51,14 @@ def test_nav_brackets_survive_postprocess_bracket_strip():
     assert pat.sub(r"\1", "мусор [вставка] и [text](url)") == "мусор вставка и [text](url)"
 
 
-def test_telegraph_post_retries_flood_wait():
+def test_telegraph_post_retries_flood_wait() -> None:
     src = Path("services/telegraph.py").read_text(encoding="utf-8")
     post_once = src.split("async def _post_once", 1)[1].split("await _post_once(title, nodes)", 1)[0]
     assert "FLOOD_WAIT_" in post_once
     assert "asyncio.sleep" in post_once
 
 
-def test_telegraph_split_is_recursive_and_logs_partial():
+def test_telegraph_split_is_recursive_and_logs_partial() -> None:
     src = Path("services/telegraph.py").read_text(encoding="utf-8")
     assert "_publish_chunk" in src
     assert "depth + 1" in src
@@ -67,7 +67,7 @@ def test_telegraph_split_is_recursive_and_logs_partial():
     assert "опубликован НЕ полностью" in src
 
 
-def test_generated_page_lookup_is_exact_sql(tmp_path):
+def test_generated_page_lookup_is_exact_sql(tmp_path: Path) -> None:
     """Скан 500 последних терял записи старше — /repairpage VIDEO_ID
     отвечал «Не найдено в архиве» для существующей строки."""
     from core.generated_pages import get_generated_page_record, save_generated_page_record
@@ -90,7 +90,7 @@ def test_generated_page_lookup_is_exact_sql(tmp_path):
     assert "WHERE video_id = ? LIMIT 1" in src
 
 
-def test_archive_upsert_preserves_existing_urls(tmp_path):
+def test_archive_upsert_preserves_existing_urls(tmp_path: Path) -> None:
     """Повторная обработка с упавшим Study затирала сохранённый study_url
     пустой строкой — «долговечный архив» терял ссылки."""
     from core.generated_pages import get_generated_page_record, save_generated_page_record
@@ -118,12 +118,13 @@ def test_archive_upsert_preserves_existing_urls(tmp_path):
         base_dir=base,
     )
     rec = get_generated_page_record("v1", base_dir=base)
+    assert rec is not None
     assert rec["synopsis_url"] == "https://telegra.ph/syn2", "непустой URL обновляется"
     assert rec["study_url"] == "https://telegra.ph/study", "пустой URL не затирает архив"
     assert rec["title"] == "T2"
 
 
-def test_composed_telegraph_titles_respect_256():
+def test_composed_telegraph_titles_respect_256() -> None:
     from core.telegraph_contract import compose_telegraph_title, fit_telegraph_title
 
     pages = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
@@ -140,7 +141,7 @@ def test_composed_telegraph_titles_respect_256():
     assert part.endswith(" (1.2)")
 
 
-def test_export_public_archive_keeps_both_quotes_and_study(tmp_path):
+def test_export_public_archive_keeps_both_quotes_and_study(tmp_path: Path) -> None:
     from tools.export_public_archive import extract_records
 
     db = tmp_path / "bot_cache.db"

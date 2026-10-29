@@ -10,6 +10,13 @@ proves the runtime-mutable limit is actually honored, not just imported
 correctly.
 """
 
+import asyncio
+from collections.abc import Awaitable, Callable
+from pathlib import Path
+from typing import Any, cast
+
+from telegram import Message
+
 import core.database as db
 import pytest
 from core.segment_planner import PlannedSegment
@@ -18,41 +25,45 @@ from services.segment_render import render_and_send_segment
 
 
 class _FakeMsg:
-    def __init__(self):
-        self.texts = []
-        self.videos = []
+    def __init__(self) -> None:
+        self.texts: list[str] = []
+        self.videos: list[dict[str, Any]] = []
 
-    async def edit_text(self, text, **kw):
+    async def edit_text(self, text: str, **kw: Any) -> None:
         pass
 
-    async def reply_text(self, text, **kw):
+    async def reply_text(self, text: str, **kw: Any) -> None:
         self.texts.append(text)
 
-    async def reply_video(self, **kw):
+    async def reply_video(self, **kw: Any) -> None:
         self.videos.append(kw)
 
 
-async def _fake_asettings_get(key):
+async def _fake_asettings_get(key: str) -> bool:
     return False  # no subtitles — keep the test focused on the size gate
 
 
-def _make_fake_render(size_mb: int):
-    async def _fake_render(video_path, clip_path, start, end):
-        clip_path.write_bytes(b"0" * (size_mb * 1024 * 1024))
+def _make_fake_render(
+    size_mb: int,
+) -> Callable[[Path, Path, float, float], Awaitable[bool]]:
+    async def _fake_render(video_path: Path, clip_path: Path, start: float, end: float) -> bool:
+        await asyncio.to_thread(clip_path.write_bytes, b"0" * (size_mb * 1024 * 1024))
         return True
 
     return _fake_render
 
 
 @pytest.mark.asyncio
-async def test_oversized_segment_rejected_under_cloud_limit_but_accepted_under_local(tmp_path, monkeypatch):
+async def test_oversized_segment_rejected_under_cloud_limit_but_accepted_under_local(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A 60MB rendered clip must be rejected when the bot is effectively on
     the 50MB cloud Bot API, and accepted once the SAME code detects it's
     effectively on the 2000MB local Bot API — without restarting the
     process or re-importing anything, exactly per the R21 fix's contract."""
     segment = PlannedSegment(index=1, start=0, end=10, title="Тестовый сегмент")
 
-    async def fake_download(url, vid):
+    async def fake_download(url: str, vid: str) -> Path:
         return tmp_path / "src.mp4"
 
     monkeypatch.setattr("services.segment_render.download_video_for_shorts", fake_download)
@@ -60,7 +71,8 @@ async def test_oversized_segment_rejected_under_cloud_limit_but_accepted_under_l
     monkeypatch.setattr("services.segment_render.asettings_get", _fake_asettings_get)
     monkeypatch.setattr("services.segment_render.DOWNLOAD_DIR", tmp_path)
 
-    async def fake_probe(path):
+    async def fake_probe(path: Path) -> MediaProbe:
+        stat_result = await asyncio.to_thread(path.stat)
         return MediaProbe(
             duration=10.0,
             width=1920,
@@ -69,7 +81,7 @@ async def test_oversized_segment_rejected_under_cloud_limit_but_accepted_under_l
             audio_codec="aac",
             has_video=True,
             has_audio=True,
-            size_mb=path.stat().st_size / (1024 * 1024),
+            size_mb=stat_result.st_size / (1024 * 1024),
         )
 
     monkeypatch.setattr("services.segment_render.probe_media_async", fake_probe)
@@ -81,8 +93,8 @@ async def test_oversized_segment_rejected_under_cloud_limit_but_accepted_under_l
         db.set_effective_max_file_size_mb(False)  # cloud fallback: 50MB
         cloud_reply = _FakeMsg()
         ok_cloud = await render_and_send_segment(
-            reply_target=cloud_reply,
-            status_msg=_FakeMsg(),
+            reply_target=cast(Message, cloud_reply),
+            status_msg=cast(Message, _FakeMsg()),
             video_id="vid_cloud",
             source_url="http://example.invalid/v",
             segment=segment,
@@ -96,8 +108,8 @@ async def test_oversized_segment_rejected_under_cloud_limit_but_accepted_under_l
         db.set_effective_max_file_size_mb(True)  # local Bot API confirmed live: 2000MB
         local_reply = _FakeMsg()
         ok_local = await render_and_send_segment(
-            reply_target=local_reply,
-            status_msg=_FakeMsg(),
+            reply_target=cast(Message, local_reply),
+            status_msg=cast(Message, _FakeMsg()),
             video_id="vid_local",
             source_url="http://example.invalid/v",
             segment=segment,

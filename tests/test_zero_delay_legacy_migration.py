@@ -1,4 +1,5 @@
 from __future__ import annotations
+import pytest
 
 import json
 from pathlib import Path
@@ -6,7 +7,7 @@ from pathlib import Path
 from tools.voxcpm2 import legacy_segment_migration_v45 as migration
 
 
-def test_legacy_migration_preserves_explicit_zero_delay(monkeypatch, tmp_path: Path) -> None:
+def test_legacy_migration_preserves_explicit_zero_delay(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     root = tmp_path / "project"
     (root / "input").mkdir(parents=True)
     (root / "output").mkdir(parents=True)

@@ -21,6 +21,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -29,15 +30,17 @@ PYPROJECT = ROOT / "pyproject.toml"
 LICENSE = ROOT / "LICENSE"
 
 
-def _pyproject() -> dict:
+def _pyproject() -> dict[str, Any]:
     import tomllib
 
     with PYPROJECT.open("rb") as handle:
         return tomllib.load(handle)
 
 
-def _project() -> dict:
-    return _pyproject()["project"]
+def _project() -> dict[str, Any]:
+    project = _pyproject()["project"]
+    assert isinstance(project, dict)
+    return project
 
 
 def test_license_file_is_the_declared_licence() -> None:

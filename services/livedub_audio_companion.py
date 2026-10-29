@@ -19,10 +19,10 @@ import asyncio
 import html
 import json
 import logging
-import os
+import os as os
 import re
 import shutil
-import subprocess
+import subprocess as subprocess
 import threading
 import time
 from pathlib import Path

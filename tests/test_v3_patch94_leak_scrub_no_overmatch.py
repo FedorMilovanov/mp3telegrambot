@@ -18,7 +18,7 @@ This test pins the corrected behavior.
 from core.content_audit import _scrub_prompt_context_leaks
 
 
-def test_leak_scrub_does_not_break_author_speech_with_scripture_abbrev():
+def test_leak_scrub_does_not_break_author_speech_with_scripture_abbrev() -> None:
     text = "Как в Рим. 8:28 показано, мы придерживаемся монергизма. Это ключевой текст."
     out, changed = _scrub_prompt_context_leaks(text)
     # Legitimate preacher speech ("мы придерживаемся") next to a Bible
@@ -28,7 +28,7 @@ def test_leak_scrub_does_not_break_author_speech_with_scripture_abbrev():
     assert "Как в Рим." not in out.replace("Как в Рим. 8:28", "")  # not truncated to "Рим."
 
 
-def test_leak_scrub_removes_channel_leak_but_keeps_neighbors_with_space():
+def test_leak_scrub_removes_channel_leak_but_keeps_neighbors_with_space() -> None:
     text = "Оправдание — это Божий приговор. Наш канал придерживается реформатского взгляда. Покаяние — поворот воли."
     out, changed = _scrub_prompt_context_leaks(text)
     assert changed is True
@@ -40,7 +40,7 @@ def test_leak_scrub_removes_channel_leak_but_keeps_neighbors_with_space():
     assert "приговор. Покаяние" in out  # space preserved
 
 
-def test_leak_scrub_restores_space_after_scripture_ref():
+def test_leak_scrub_restores_space_after_scripture_ref() -> None:
     text = "Сперджен пишет «трава засыхает» (Ис. 40:6). Наш канал занимает позицию цессационизма. Дальше идёт разбор."
     out, changed = _scrub_prompt_context_leaks(text)
     assert changed is True
@@ -49,14 +49,14 @@ def test_leak_scrub_restores_space_after_scripture_ref():
     assert "Дальше идёт разбор." in out
 
 
-def test_leak_scrub_leaves_clean_text_untouched():
+def test_leak_scrub_leaves_clean_text_untouched() -> None:
     text = "Иаков 4:14 говорит о краткости жизни. Этот образ повторяется у пророков."
     out, changed = _scrub_prompt_context_leaks(text)
     assert out == text
     assert changed is False
 
 
-def test_leak_scrub_still_removes_editorial_position_variants():
+def test_leak_scrub_still_removes_editorial_position_variants() -> None:
     for leak in (
         "Редакторская позиция канала — цессационизм. А вот сам автор говорит иначе.",
         "Наш канал придерживается LBCF 1689. Далее разбор аргумента.",

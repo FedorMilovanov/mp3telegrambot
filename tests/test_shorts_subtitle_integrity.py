@@ -10,7 +10,7 @@ def _dialogues(document: str) -> list[str]:
     return [line for line in document.splitlines() if line.startswith("Dialogue:")]
 
 
-def test_long_pause_after_preposition_is_a_real_chunk_boundary():
+def test_long_pause_after_preposition_is_a_real_chunk_boundary() -> None:
     segments = [
         {
             "start": 0.0,
@@ -35,7 +35,7 @@ def test_long_pause_after_preposition_is_a_real_chunk_boundary():
     assert ",0:00:04.00," in lines[2]
 
 
-def test_overlapping_whisper_words_are_normalized_to_monotonic_events():
+def test_overlapping_whisper_words_are_normalized_to_monotonic_events() -> None:
     segments = [
         {
             "start": 0.0,
@@ -55,7 +55,7 @@ def test_overlapping_whisper_words_are_normalized_to_monotonic_events():
     assert len(_dialogues(document)) == 3
 
 
-def test_zero_duration_whisper_word_is_given_safe_minimum_interval():
+def test_zero_duration_whisper_word_is_given_safe_minimum_interval() -> None:
     segments = [
         {
             "start": 0.0,
@@ -73,7 +73,7 @@ def test_zero_duration_whisper_word_is_given_safe_minimum_interval():
     assert ",0:00:00.50,0:00:00.58," in _dialogues(document)[0]
 
 
-def test_remote_hyphen_particle_does_not_merge_across_silence():
+def test_remote_hyphen_particle_does_not_merge_across_silence() -> None:
     segments = [
         {
             "start": 0.0,
@@ -96,7 +96,7 @@ def test_remote_hyphen_particle_does_not_merge_across_silence():
     assert ",0:00:02.00," in lines[1]
 
 
-def test_remote_punctuation_does_not_extend_previous_word_hold():
+def test_remote_punctuation_does_not_extend_previous_word_hold() -> None:
     segments = [
         {
             "start": 0.0,
@@ -119,7 +119,7 @@ def test_remote_punctuation_does_not_extend_previous_word_hold():
     assert ",0:00:02.10," in lines[1]
 
 
-def test_validator_rejects_abnormally_long_karaoke_hold():
+def test_validator_rejects_abnormally_long_karaoke_hold() -> None:
     document = """[Script Info]
 ScriptType: v4.00+
 [Events]
@@ -132,7 +132,7 @@ Dialogue: 0,0:00:00.00,0:00:04.50,Default,,0,0,0,,word
     assert any("karaoke hold" in issue for issue in issues)
 
 
-def test_validator_rejects_overlapping_dialogue_events():
+def test_validator_rejects_overlapping_dialogue_events() -> None:
     document = """[Script Info]
 ScriptType: v4.00+
 [Events]

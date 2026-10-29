@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import numpy as np
+import pytest
 
 from tools.voxcpm2 import direct_monolith_contract
 from tools.voxcpm2 import direct_source_relative_continuity
@@ -240,11 +242,11 @@ def test_resume_compares_with_immediate_previous_checkpoint(tmp_path: Path) -> N
 
 def test_expression_arc_suppresses_isolated_emotional_burst(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source_segments = [_segment(1), _segment(2), _segment(3)]
 
-    def measured(**kwargs):
+    def measured(**kwargs: Any) -> list[dict[str, object]]:
         result = [dict(item) for item in source_segments]
         result[0]["expression_score"] = 0.0
         result[1]["expression_score"] = 2.0

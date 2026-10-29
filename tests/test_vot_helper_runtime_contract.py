@@ -17,6 +17,7 @@ Two layers are checked here:
 """
 
 from __future__ import annotations
+from typing import Any
 
 import json
 import re
@@ -35,8 +36,9 @@ LOCK = HELPER / "package-lock.json"
 SMOKE = HELPER / "smoke.mjs"
 
 
-def _json(path: Path) -> dict:
-    return json.loads(path.read_text(encoding="utf-8"))
+def _json(path: Path) -> dict[str, Any]:
+    result: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    return result
 
 
 def _version_tuple(value: str) -> tuple[int, ...]:
@@ -154,10 +156,10 @@ def _install_dependency(helper: Path) -> None:
     "failure",
     [FileNotFoundError("missing"), subprocess.TimeoutExpired("vot", 3)],
 )
-def test_run_subprocess_chains_process_failures(monkeypatch, failure) -> None:
+def test_run_subprocess_chains_process_failures(monkeypatch: pytest.MonkeyPatch, failure: Exception) -> None:
     from services import yandex_live_dub
 
-    def fake_run(*_args, **_kwargs):
+    def fake_run(*_args: Any, **_kwargs: Any) -> None:
         raise failure
 
     monkeypatch.setattr(yandex_live_dub.subprocess, "run", fake_run)
@@ -167,7 +169,7 @@ def test_run_subprocess_chains_process_failures(monkeypatch, failure) -> None:
 
 
 @pytest.mark.asyncio
-async def test_live_dub_info_chains_unrecoverable_json_error(monkeypatch) -> None:
+async def test_live_dub_info_chains_unrecoverable_json_error(monkeypatch: pytest.MonkeyPatch) -> None:
     from services import yandex_live_dub
 
     monkeypatch.setattr(yandex_live_dub, "_check_vot_cli", lambda: "vot")
@@ -185,7 +187,7 @@ async def test_live_dub_info_chains_unrecoverable_json_error(monkeypatch) -> Non
         '[{"audioUrl": "https://example.invalid/audio.mp3"}]',
     ],
 )
-async def test_live_dub_info_accepts_object_and_singleton_list(monkeypatch, payload) -> None:
+async def test_live_dub_info_accepts_object_and_singleton_list(monkeypatch: pytest.MonkeyPatch, payload: str) -> None:
     from services import yandex_live_dub
 
     monkeypatch.setattr(yandex_live_dub, "_check_vot_cli", lambda: "vot")
@@ -196,13 +198,13 @@ async def test_live_dub_info_accepts_object_and_singleton_list(monkeypatch, payl
     assert result == {"audioUrl": "https://example.invalid/audio.mp3"}
 
 
-def test_production_install_uses_npm_ci_and_needs_the_lock(monkeypatch, tmp_path) -> None:
+def test_production_install_uses_npm_ci_and_needs_the_lock(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """`npm install` re-resolves versions; production must replay the lock."""
     from services import yandex_live_dub
 
     calls: list[list[str]] = []
 
-    def fake_run(command, **_kwargs):
+    def fake_run(command: list[str], **_kwargs: Any) -> tuple[int, str, str]:
         calls.append(list(command))
         _install_dependency(helper)
         return 0, "", ""
@@ -221,17 +223,20 @@ def test_production_install_uses_npm_ci_and_needs_the_lock(monkeypatch, tmp_path
     assert "install" not in calls[0]
 
 
-def test_missing_lock_disables_the_new_protocol_instead_of_resolving_fresh(monkeypatch, tmp_path) -> None:
+def test_missing_lock_disables_the_new_protocol_instead_of_resolving_fresh(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     from services import yandex_live_dub
 
     calls: list[list[str]] = []
     monkeypatch.setattr(yandex_live_dub, "_find_node", lambda: "/usr/bin/node")
     monkeypatch.setattr(yandex_live_dub.shutil, "which", lambda name: "/usr/bin/npm")
-    monkeypatch.setattr(
-        yandex_live_dub,
-        "_run_subprocess",
-        lambda command, **kwargs: calls.append(list(command)) or (0, "", ""),
-    )
+
+    def unexpected_run(command: list[str], **_kwargs: Any) -> tuple[int, str, str]:
+        calls.append(list(command))
+        return 0, "", ""
+
+    monkeypatch.setattr(yandex_live_dub, "_run_subprocess", unexpected_run)
 
     helper = _helper_dir(tmp_path, with_lock=False)
     monkeypatch.setattr(yandex_live_dub, "VOT_HELPER_DIR", helper)

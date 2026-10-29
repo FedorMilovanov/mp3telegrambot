@@ -1,4 +1,7 @@
 from __future__ import annotations
+from argparse import Namespace
+from collections.abc import Awaitable, Callable
+from typing import Any, cast
 
 import asyncio
 import json
@@ -61,7 +64,9 @@ def _update() -> SimpleNamespace:
 
 
 @pytest.mark.asyncio
-async def test_archive_quality_file_success_opens_and_closes_document(monkeypatch, tmp_path: Path) -> None:
+async def test_archive_quality_file_success_opens_and_closes_document(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     path = _write_file(tmp_path / "quality.md", b"quality")
     update = _update()
     monkeypatch.setattr(commands, "ADMIN_IDS", {123})
@@ -79,7 +84,7 @@ async def test_archive_quality_file_success_opens_and_closes_document(monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_archive_file_success_opens_and_closes_document(monkeypatch, tmp_path: Path) -> None:
+async def test_archive_file_success_opens_and_closes_document(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     path = _write_file(tmp_path / "latest.md", b"archive")
     update = _update()
     monkeypatch.setattr(commands, "ADMIN_IDS", {123})
@@ -93,7 +98,7 @@ async def test_archive_file_success_opens_and_closes_document(monkeypatch, tmp_p
 
 
 @pytest.mark.asyncio
-async def test_segment_file_success_opens_and_closes_document(monkeypatch, tmp_path: Path) -> None:
+async def test_segment_file_success_opens_and_closes_document(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     path = _write_file(tmp_path / "video_segments.md", b"segments")
     update = _update()
     monkeypatch.setattr(commands, "ADMIN_IDS", {123})
@@ -108,7 +113,7 @@ async def test_segment_file_success_opens_and_closes_document(monkeypatch, tmp_p
 
 
 @pytest.mark.asyncio
-async def test_segment_file_rebuilds_missing_export_from_cache(monkeypatch, tmp_path: Path) -> None:
+async def test_segment_file_rebuilds_missing_export_from_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     path = tmp_path / "video_segments.md"
     update = _update()
     cache = {
@@ -125,7 +130,7 @@ async def test_segment_file_rebuilds_missing_export_from_cache(monkeypatch, tmp_
     monkeypatch.setattr(commands, "_resolve_segment_source", AsyncMock(return_value=("video", cache, None)))
     monkeypatch.setattr(commands, "get_segment_export_paths", lambda video_id: {"md": path})
 
-    async def fake_save(**kwargs):
+    async def fake_save(**kwargs: Any) -> None:
         saved.append(kwargs)
         await asyncio.to_thread(_write_file, path, b"rebuilt")
 
@@ -149,7 +154,9 @@ async def test_segment_file_rebuilds_missing_export_from_cache(monkeypatch, tmp_
 
 
 @pytest.mark.asyncio
-async def test_pdf_command_success_sends_and_cleans_generated_file(monkeypatch, tmp_path: Path) -> None:
+async def test_pdf_command_success_sends_and_cleans_generated_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     update = _update()
     status = SimpleNamespace(edit_text=AsyncMock())
     update.message.reply_text = AsyncMock(return_value=status)
@@ -161,7 +168,7 @@ async def test_pdf_command_success_sends_and_cleans_generated_file(monkeypatch, 
         AsyncMock(return_value=("video", {"ai_data": {}, "telegraph_url": "https://example.test/synopsis"}, None)),
     )
 
-    async def fake_generate_pdf(**kwargs) -> str:
+    async def fake_generate_pdf(**kwargs: Any) -> str:
         path = Path(kwargs["output_path"])
         await asyncio.to_thread(_write_file, path, b"%PDF" + b"x" * 1024)
         return str(path)
@@ -178,7 +185,9 @@ async def test_pdf_command_success_sends_and_cleans_generated_file(monkeypatch, 
 
 
 @pytest.mark.asyncio
-async def test_pdf_command_rejects_undersized_output_and_cleans_file(monkeypatch, tmp_path: Path) -> None:
+async def test_pdf_command_rejects_undersized_output_and_cleans_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     update = _update()
     status = SimpleNamespace(edit_text=AsyncMock())
     update.message.reply_text = AsyncMock(return_value=status)
@@ -190,7 +199,7 @@ async def test_pdf_command_rejects_undersized_output_and_cleans_file(monkeypatch
         AsyncMock(return_value=("video", {"ai_data": {}, "telegraph_url": "https://example.test/synopsis"}, None)),
     )
 
-    async def fake_generate_pdf(**kwargs) -> str:
+    async def fake_generate_pdf(**kwargs: Any) -> str:
         path = Path(kwargs["output_path"])
         await asyncio.to_thread(_write_file, path, b"%PDF")
         return str(path)
@@ -205,7 +214,9 @@ async def test_pdf_command_rejects_undersized_output_and_cleans_file(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_status_command_reports_database_size_and_latest_backup(monkeypatch, tmp_path: Path) -> None:
+async def test_status_command_reports_database_size_and_latest_backup(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     import shutil
 
     database = _write_file(tmp_path / "bot.db", b"x" * 4096)
@@ -234,7 +245,9 @@ async def test_status_command_reports_database_size_and_latest_backup(monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_status_command_omits_unavailable_optional_diagnostics(monkeypatch, tmp_path: Path) -> None:
+async def test_status_command_omits_unavailable_optional_diagnostics(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     import shutil
 
     database = _write_file(tmp_path / "bot.db", b"x" * 4096)
@@ -263,7 +276,9 @@ async def test_status_command_omits_unavailable_optional_diagnostics(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_disk_command_reports_file_count_and_database_size(monkeypatch, tmp_path: Path) -> None:
+async def test_disk_command_reports_file_count_and_database_size(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     downloads = tmp_path / "downloads"
     _write_file(downloads / "one.mp3", b"one")
     _write_file(downloads / "two.mp4", b"two")
@@ -283,7 +298,7 @@ async def test_disk_command_reports_file_count_and_database_size(monkeypatch, tm
 @pytest.mark.parametrize("stdout_path_exists", [True, False], ids=["stdout", "fallback"])
 @pytest.mark.asyncio
 async def test_new_protocol_audio_returns_discovered_path(
-    monkeypatch, tmp_path: Path, stdout_path_exists: bool
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, stdout_path_exists: bool
 ) -> None:
     downloaded = _write_file(tmp_path / "translation.mp3", b"audio")
     reported = downloaded if stdout_path_exists else tmp_path / "missing.mp3"
@@ -306,7 +321,9 @@ async def test_new_protocol_audio_returns_discovered_path(
 
 @pytest.mark.parametrize("stdout_path_exists", [True, False], ids=["stdout", "fallback"])
 @pytest.mark.asyncio
-async def test_legacy_audio_returns_discovered_path(monkeypatch, tmp_path: Path, stdout_path_exists: bool) -> None:
+async def test_legacy_audio_returns_discovered_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, stdout_path_exists: bool
+) -> None:
     downloaded = _write_file(tmp_path / "translation.mp3", b"audio")
     reported = downloaded if stdout_path_exists else tmp_path / "missing.mp3"
     monkeypatch.setattr(yandex_live_dub, "_ensure_vot_helper", lambda: None)
@@ -330,7 +347,9 @@ async def test_legacy_audio_returns_discovered_path(monkeypatch, tmp_path: Path,
 
 @pytest.mark.parametrize("stdout_path_exists", [True, False], ids=["stdout", "fallback"])
 @pytest.mark.asyncio
-async def test_legacy_video_returns_discovered_path(monkeypatch, tmp_path: Path, stdout_path_exists: bool) -> None:
+async def test_legacy_video_returns_discovered_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, stdout_path_exists: bool
+) -> None:
     downloaded = _write_file(tmp_path / "translation.mp4", b"video")
     reported = downloaded if stdout_path_exists else tmp_path / "missing.mp4"
     monkeypatch.setattr(
@@ -357,16 +376,16 @@ async def test_legacy_video_returns_discovered_path(monkeypatch, tmp_path: Path,
 )
 @pytest.mark.asyncio
 async def test_normalize_transform_validates_output(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     payload: bytes,
     expected: bool,
 ) -> None:
     input_path = _write_file(tmp_path / "input.mp4", b"input")
     output_path = tmp_path / "processed.mp4"
-    commands = []
+    commands: list[list[str]] = []
 
-    async def run(command, **_kwargs):
+    async def run(command: list[str], **_kwargs: Any) -> SimpleNamespace:
         commands.append(list(command))
         _write_file(output_path, payload)
         return SimpleNamespace(returncode=0, stderr="")
@@ -401,18 +420,18 @@ async def test_normalize_transform_validates_output(
 )
 @pytest.mark.asyncio
 async def test_optional_short_outputs_validate_generated_file(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     public_name: str,
     legacy_name: str,
-    extra_args: tuple,
+    extra_args: tuple[Any, ...],
     payload: bytes,
     expected: bool,
 ) -> None:
     input_path = _write_file(tmp_path / "input.mp4", b"input")
     output_path = tmp_path / "optional.out"
 
-    async def produce(source: Path, destination: Path, *args):
+    async def produce(source: Path, destination: Path, *args: Any) -> bool:
         assert source == input_path
         assert destination == output_path
         assert args == extra_args
@@ -434,7 +453,7 @@ async def test_optional_short_outputs_validate_generated_file(
 @pytest.mark.parametrize("source_exists", [False, True], ids=["missing-source", "no-windows"])
 @pytest.mark.asyncio
 async def test_highlights_audio_probe_source_preflight(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     source_exists: bool,
 ) -> None:
@@ -459,7 +478,7 @@ async def test_highlights_audio_probe_source_preflight(
 )
 @pytest.mark.asyncio
 async def test_highlights_candidate_source_preflight(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     source_exists: bool,
     reason: str,
@@ -479,7 +498,7 @@ async def test_highlights_candidate_source_preflight(
 @pytest.mark.parametrize("payload", [None, b"", b"x" * 1024], ids=["missing", "empty", "threshold"])
 @pytest.mark.asyncio
 async def test_composition_source_rejects_missing_or_small_file(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     payload: bytes | None,
 ) -> None:
@@ -502,7 +521,9 @@ async def test_composition_source_rejects_missing_or_small_file(
 
 
 @pytest.mark.asyncio
-async def test_composition_source_rejects_size_drift_before_hash_or_probe(monkeypatch, tmp_path: Path) -> None:
+async def test_composition_source_rejects_size_drift_before_hash_or_probe(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     source_path = _write_file(tmp_path / "source.mp4", b"x" * 2048)
     document = {
         "source": {
@@ -519,7 +540,7 @@ async def test_composition_source_rejects_size_drift_before_hash_or_probe(monkey
     probe.assert_not_called()
 
 
-def _composition_render_inputs(tmp_path: Path):
+def _composition_render_inputs(tmp_path: Path) -> tuple[Path, dict[str, Any], dict[str, Any]]:
     source_path = _write_file(tmp_path / "source.mp4", b"source" * 400)
     document = {
         "composition_id": "composition-id",
@@ -539,7 +560,7 @@ def _composition_render_inputs(tmp_path: Path):
     return source_path, document, piece
 
 
-def _patch_composition_render_probe(monkeypatch):
+def _patch_composition_render_probe(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     probe = AsyncMock(return_value=SimpleNamespace(duration=10.0))
     monkeypatch.setattr(editorial_composition, "probe_media_async", probe)
     monkeypatch.setattr(editorial_composition, "media_probe_is_deliverable", lambda value: value is not None)
@@ -547,10 +568,12 @@ def _patch_composition_render_probe(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_composition_render_publishes_verified_output_and_cleans_temps(monkeypatch, tmp_path: Path) -> None:
+async def test_composition_render_publishes_verified_output_and_cleans_temps(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     source_path, document, piece = _composition_render_inputs(tmp_path)
 
-    async def run(command, **_kwargs):
+    async def run(command: list[str], **_kwargs: Any) -> SimpleNamespace:
         _write_file(Path(command[-1]), b"rendered" * 300)
         return SimpleNamespace(returncode=0, stderr="")
 
@@ -584,14 +607,14 @@ async def test_composition_render_publishes_verified_output_and_cleans_temps(mon
 )
 @pytest.mark.asyncio
 async def test_composition_render_rejects_invalid_media_and_cleans_temps(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     payload: bytes | None,
     returncode: int,
 ) -> None:
     source_path, document, piece = _composition_render_inputs(tmp_path)
 
-    async def run(command, **_kwargs):
+    async def run(command: list[str], **_kwargs: Any) -> SimpleNamespace:
         if payload is not None:
             _write_file(Path(command[-1]), payload)
         return SimpleNamespace(returncode=returncode, stderr="failed")
@@ -616,10 +639,10 @@ async def test_composition_render_rejects_invalid_media_and_cleans_temps(
 
 
 @pytest.mark.asyncio
-async def test_composition_render_cancellation_cleans_temps(monkeypatch, tmp_path: Path) -> None:
+async def test_composition_render_cancellation_cleans_temps(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     source_path, document, piece = _composition_render_inputs(tmp_path)
 
-    async def run(command, **_kwargs):
+    async def run(command: list[str], **_kwargs: Any) -> SimpleNamespace:
         _write_file(Path(command[-1]), b"partial")
         raise asyncio.CancelledError
 
@@ -641,14 +664,16 @@ async def test_composition_render_cancellation_cleans_temps(monkeypatch, tmp_pat
 
 
 @pytest.mark.asyncio
-async def test_composition_publish_failure_removes_new_sidecar_and_temps(monkeypatch, tmp_path: Path) -> None:
+async def test_composition_publish_failure_removes_new_sidecar_and_temps(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     source_path, document, piece = _composition_render_inputs(tmp_path)
 
-    async def run(command, **_kwargs):
+    async def run(command: list[str], **_kwargs: Any) -> SimpleNamespace:
         _write_file(Path(command[-1]), b"rendered" * 300)
         return SimpleNamespace(returncode=0, stderr="")
 
-    def fail_publish(_temp_path, _final_path):
+    def fail_publish(_temp_path: Path, _final_path: Path) -> None:
         raise RuntimeError("publish failed")
 
     monkeypatch.setattr(editorial_composition, "run_cancellable_process", run)
@@ -670,7 +695,7 @@ async def test_composition_publish_failure_removes_new_sidecar_and_temps(monkeyp
     assert not _matching_paths(tmp_path, ".short-1_*")
 
 
-def _patch_highlights_render_runtime(monkeypatch, run) -> None:
+def _patch_highlights_render_runtime(monkeypatch: pytest.MonkeyPatch, run: Any) -> None:
     monkeypatch.setattr(highlights_quality.shutil, "which", lambda _name: "ffmpeg")
     monkeypatch.setattr(
         highlights_quality,
@@ -681,12 +706,12 @@ def _patch_highlights_render_runtime(monkeypatch, run) -> None:
 
 
 @pytest.mark.asyncio
-async def test_highlights_render_commits_nonempty_output(monkeypatch, tmp_path: Path) -> None:
+async def test_highlights_render_commits_nonempty_output(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     source_path = _write_file(tmp_path / "source.mp4", b"source")
     output_path = _write_file(tmp_path / "nested" / "highlight.mp4", b"stale")
-    commands = []
+    commands: list[list[str]] = []
 
-    async def run(command, **_kwargs):
+    async def run(command: list[str], **_kwargs: Any) -> SimpleNamespace:
         commands.append(list(command))
         _write_file(output_path, b"rendered")
         return SimpleNamespace(returncode=0, stderr="")
@@ -707,7 +732,9 @@ async def test_highlights_render_commits_nonempty_output(monkeypatch, tmp_path: 
 
 
 @pytest.mark.asyncio
-async def test_highlights_render_missing_source_preserves_existing_output(monkeypatch, tmp_path: Path) -> None:
+async def test_highlights_render_missing_source_preserves_existing_output(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     source_path = tmp_path / "missing.mp4"
     output_path = _write_file(tmp_path / "highlight.mp4", b"existing")
     run = AsyncMock()
@@ -727,14 +754,14 @@ async def test_highlights_render_missing_source_preserves_existing_output(monkey
 @pytest.mark.parametrize("failure", ["empty", "returncode", "timeout", "error"])
 @pytest.mark.asyncio
 async def test_highlights_render_failure_cleans_partial_output(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     failure: str,
 ) -> None:
     source_path = _write_file(tmp_path / "source.mp4", b"source")
     output_path = tmp_path / "highlight.mp4"
 
-    async def run(command, **_kwargs):
+    async def run(command: list[str], **_kwargs: Any) -> SimpleNamespace:
         _write_file(output_path, b"" if failure == "empty" else b"partial")
         if failure == "returncode":
             return SimpleNamespace(returncode=1, stderr="failed")
@@ -758,11 +785,13 @@ async def test_highlights_render_failure_cleans_partial_output(
 
 
 @pytest.mark.asyncio
-async def test_highlights_render_cancellation_cleans_partial_output(monkeypatch, tmp_path: Path) -> None:
+async def test_highlights_render_cancellation_cleans_partial_output(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     source_path = _write_file(tmp_path / "source.mp4", b"source")
     output_path = tmp_path / "highlight.mp4"
 
-    async def run(_command, **_kwargs):
+    async def run(_command: list[str], **_kwargs: Any) -> SimpleNamespace:
         _write_file(output_path, b"partial")
         raise asyncio.CancelledError
 
@@ -780,13 +809,13 @@ async def test_highlights_render_cancellation_cleans_partial_output(monkeypatch,
 
 
 def _patch_russian_whisper_runtime(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     *,
     wav_payload: bytes = b"w" * 2048,
-):
+) -> tuple[Path, list[Path], SimpleNamespace]:
     video_path = _write_file(tmp_path / "source.mp4", b"v" * 2048)
-    wav_paths = []
+    wav_paths: list[Path] = []
     segment = SimpleNamespace(
         text=" Привет ",
         start=0.0,
@@ -797,7 +826,7 @@ def _patch_russian_whisper_runtime(
         transcribe=Mock(return_value=([segment], SimpleNamespace(duration=0.5))),
     )
 
-    async def run(command, **_kwargs):
+    async def run(command: list[str], **_kwargs: Any) -> SimpleNamespace:
         wav_path = Path(command[-1])
         wav_paths.append(wav_path)
         _write_file(wav_path, wav_payload)
@@ -812,7 +841,9 @@ def _patch_russian_whisper_runtime(
 
 
 @pytest.mark.asyncio
-async def test_russian_whisper_publishes_outputs_and_cleans_wav(monkeypatch, tmp_path: Path) -> None:
+async def test_russian_whisper_publishes_outputs_and_cleans_wav(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     video_path, wav_paths, model = _patch_russian_whisper_runtime(monkeypatch, tmp_path)
     srt_output = tmp_path / "transcript.srt"
     words_output = tmp_path / "words.json"
@@ -833,7 +864,7 @@ async def test_russian_whisper_publishes_outputs_and_cleans_wav(monkeypatch, tmp
 
 
 @pytest.mark.asyncio
-async def test_russian_whisper_rejects_empty_wav_and_cleans_it(monkeypatch, tmp_path: Path) -> None:
+async def test_russian_whisper_rejects_empty_wav_and_cleans_it(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     video_path, wav_paths, model = _patch_russian_whisper_runtime(monkeypatch, tmp_path, wav_payload=b"")
     srt_output = tmp_path / "transcript.srt"
     words_output = tmp_path / "words.json"
@@ -853,12 +884,14 @@ async def test_russian_whisper_rejects_empty_wav_and_cleans_it(monkeypatch, tmp_
 
 
 @pytest.mark.asyncio
-async def test_russian_whisper_cancellation_cleans_all_temporary_files(monkeypatch, tmp_path: Path) -> None:
+async def test_russian_whisper_cancellation_cleans_all_temporary_files(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     video_path, wav_paths, _model = _patch_russian_whisper_runtime(monkeypatch, tmp_path)
     srt_output = tmp_path / "transcript.srt"
     words_output = tmp_path / "words.json"
 
-    def cancel_publish(_source, _destination):
+    def cancel_publish(_source: Path, _destination: Path) -> None:
         raise asyncio.CancelledError
 
     monkeypatch.setattr(translation_editorial.os, "replace", cancel_publish)
@@ -879,7 +912,9 @@ async def test_russian_whisper_cancellation_cleans_all_temporary_files(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_editorial_prepare_resolves_output_directory_before_source_probe(monkeypatch, tmp_path: Path) -> None:
+async def test_editorial_prepare_resolves_output_directory_before_source_probe(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     output_dir = tmp_path / "editorial"
     source_video = tmp_path / "source.mp4"
     source_probe = AsyncMock(side_effect=RuntimeError("stop after resolve"))
@@ -891,7 +926,7 @@ async def test_editorial_prepare_resolves_output_directory_before_source_probe(m
     )
 
     with pytest.raises(RuntimeError, match="stop after resolve"):
-        await editorial_cli._cmd_prepare(args)
+        await editorial_cli._cmd_prepare(cast(Namespace, args))
 
     assert _path_exists(output_dir)
     source_probe.assert_awaited_once_with(source_video, None)
@@ -904,7 +939,7 @@ async def test_editorial_prepare_resolves_output_directory_before_source_probe(m
 )
 @pytest.mark.asyncio
 async def test_editorial_existing_repair_pair_fails_closed_when_partial(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     output_exists: bool,
     provenance_exists: bool,
@@ -940,7 +975,9 @@ async def test_editorial_existing_repair_pair_fails_closed_when_partial(
 
 
 @pytest.mark.asyncio
-async def test_editorial_existing_repair_pair_accepts_matching_evidence(monkeypatch, tmp_path: Path) -> None:
+async def test_editorial_existing_repair_pair_accepts_matching_evidence(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     output_path = _write_file(tmp_path / "repair.mp4", b"output")
     provenance_path = _write_file(tmp_path / "repair.editorial-repair.json", b"provenance")
     review_path = _write_file(tmp_path / "review.json", b"review")
@@ -948,7 +985,7 @@ async def test_editorial_existing_repair_pair_accepts_matching_evidence(monkeypa
         "review_pack_id": "pack-id",
         "source": {"translated_video": {"sha256": "source-sha"}},
     }
-    review = {"full_sermon": {"issues": []}}
+    review: dict[str, Any] = {"full_sermon": {"issues": []}}
     provenance = {
         "review_pack_id": "pack-id",
         "review_sha256": translation_editorial.sha256_file(review_path),
@@ -971,7 +1008,9 @@ async def test_editorial_existing_repair_pair_accepts_matching_evidence(monkeypa
 
 
 @pytest.mark.asyncio
-async def test_editorial_repair_rejects_missing_translated_source(monkeypatch, tmp_path: Path) -> None:
+async def test_editorial_repair_rejects_missing_translated_source(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     missing_source = tmp_path / "missing.mp4"
     manifest = {
         "source": {
@@ -990,11 +1029,13 @@ async def test_editorial_repair_rejects_missing_translated_source(monkeypatch, t
     )
 
     with pytest.raises(FileNotFoundError, match="translated source path"):
-        await editorial_cli._cmd_repair(args)
+        await editorial_cli._cmd_repair(cast(Namespace, args))
 
 
 @pytest.mark.asyncio
-async def test_translation_qa_cleans_temporary_original_and_qa_audio(monkeypatch, tmp_path: Path) -> None:
+async def test_translation_qa_cleans_temporary_original_and_qa_audio(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     dub_video = _write_file(tmp_path / "dub.mp4", b"video")
     original = _write_file(tmp_path / "original.m4a", b"original")
     dub_audio = _write_file(tmp_path / "clean_ru.mp3", b"dub")
@@ -1004,13 +1045,13 @@ async def test_translation_qa_cleans_temporary_original_and_qa_audio(monkeypatch
     upload = AsyncMock(side_effect=RuntimeError("stop after extraction"))
 
     class QuotaTracker:
-        def __init__(self, *_args, **_kwargs) -> None:
+        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
             pass
 
-        def should_skip(self, *_args, **_kwargs) -> bool:
+        def should_skip(self, *_args: Any, **_kwargs: Any) -> bool:
             return False
 
-        def record_project_scoped_error(self, *_args, **_kwargs) -> None:
+        def record_project_scoped_error(self, *_args: Any, **_kwargs: Any) -> None:
             pass
 
     def extract(source: Path, destination: Path) -> Path:
@@ -1045,7 +1086,7 @@ async def test_translation_qa_cleans_temporary_original_and_qa_audio(monkeypatch
 
 
 def _patch_qa_audio_fix_runtime(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     original: Path,
     translated: Path,
     fixed: Path,
@@ -1064,7 +1105,9 @@ def _patch_qa_audio_fix_runtime(
 
 
 @pytest.mark.asyncio
-async def test_qa_audio_fix_skips_when_clean_tracks_are_missing(monkeypatch, tmp_path: Path) -> None:
+async def test_qa_audio_fix_skips_when_clean_tracks_are_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     mix = AsyncMock()
     monkeypatch.setattr(livedub_mix, "extract_fix_intervals", lambda _issues: [(1.0, 2.0)])
     monkeypatch.setattr(livedub_mix, "find_pro_tracks", lambda _workdir: (None, None))
@@ -1077,7 +1120,9 @@ async def test_qa_audio_fix_skips_when_clean_tracks_are_missing(monkeypatch, tmp
 
 
 @pytest.mark.asyncio
-async def test_qa_audio_fix_deletes_output_that_fails_duration_postcondition(monkeypatch, tmp_path: Path) -> None:
+async def test_qa_audio_fix_deletes_output_that_fails_duration_postcondition(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     original = _write_file(tmp_path / "original.mp4", b"video")
     translated = _write_file(tmp_path / "translation.mp3", b"audio")
     fixed = _write_file(tmp_path / "pro_dub_fixed.mp4", b"broken")
@@ -1090,7 +1135,9 @@ async def test_qa_audio_fix_deletes_output_that_fails_duration_postcondition(mon
 
 
 @pytest.mark.asyncio
-async def test_qa_audio_fix_returns_fixed_video_without_subtitles(monkeypatch, tmp_path: Path) -> None:
+async def test_qa_audio_fix_returns_fixed_video_without_subtitles(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     original = _write_file(tmp_path / "original.mp4", b"video")
     translated = _write_file(tmp_path / "translation.mp3", b"audio")
     fixed = _write_file(tmp_path / "pro_dub_fixed.mp4", b"fixed")
@@ -1102,7 +1149,7 @@ async def test_qa_audio_fix_returns_fixed_video_without_subtitles(monkeypatch, t
 
 
 @pytest.mark.asyncio
-async def test_qa_audio_fix_restores_valid_subtitles(monkeypatch, tmp_path: Path) -> None:
+async def test_qa_audio_fix_restores_valid_subtitles(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     original = _write_file(tmp_path / "original.mp4", b"video")
     translated = _write_file(tmp_path / "translation.mp3", b"audio")
     fixed = _write_file(tmp_path / "pro_dub_fixed.mp4", b"fixed")
@@ -1115,12 +1162,13 @@ async def test_qa_audio_fix_restores_valid_subtitles(monkeypatch, tmp_path: Path
     result = await livedub_mix.apply_qa_audio_fixes(tmp_path, [{"time": "1:00", "severity": "major"}])
 
     assert result == with_subtitles
+    assert merge.await_args is not None
     assert merge.await_args.args == (fixed, subtitles)
     assert merge.await_args.kwargs == {"is_fallback": False}
 
 
 @pytest.mark.asyncio
-async def test_mix_tracks_rejects_audio_only_original(monkeypatch, tmp_path: Path) -> None:
+async def test_mix_tracks_rejects_audio_only_original(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     run_ffmpeg = Mock()
     monkeypatch.setattr(livedub_mix, "has_video_stream", lambda _path: False)
     monkeypatch.setattr(livedub_mix, "_run_ffmpeg", run_ffmpeg)
@@ -1137,7 +1185,9 @@ async def test_mix_tracks_rejects_audio_only_original(monkeypatch, tmp_path: Pat
 
 @pytest.mark.parametrize("output", [b"x" * 10241, b"x", None], ids=["ready", "undersized", "missing"])
 @pytest.mark.asyncio
-async def test_mix_tracks_validates_generated_output(monkeypatch, tmp_path: Path, output: bytes | None) -> None:
+async def test_mix_tracks_validates_generated_output(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, output: bytes | None
+) -> None:
     original = _write_file(tmp_path / "original.mp4", b"video")
     translated = _write_file(tmp_path / "translation.mp3", b"audio")
     output_path = tmp_path / "mixed.mp4"
@@ -1159,7 +1209,7 @@ async def test_mix_tracks_validates_generated_output(monkeypatch, tmp_path: Path
         },
     )
 
-    def run_ffmpeg(args: list[str]):
+    def run_ffmpeg(args: list[str]) -> tuple[bool, str]:
         calls.append(args)
         if output is not None:
             output_path.write_bytes(output)
@@ -1174,7 +1224,9 @@ async def test_mix_tracks_validates_generated_output(monkeypatch, tmp_path: Path
 
 
 @pytest.mark.asyncio
-async def test_shorts_candidates_reads_inline_audio_and_validates_response(monkeypatch, tmp_path: Path) -> None:
+async def test_shorts_candidates_reads_inline_audio_and_validates_response(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     payload = b"x" * 2048
     audio = _write_file(tmp_path / "shorts.mp3", payload)
     client = object()
@@ -1187,7 +1239,7 @@ async def test_shorts_candidates_reads_inline_audio_and_validates_response(monke
     )
     generate_content = AsyncMock(return_value=response)
 
-    async def generate(clients, callback):
+    async def generate(clients: list[Any], callback: Callable[[Any], Awaitable[Any]]) -> Any:
         return await callback(clients[0])
 
     monkeypatch.setattr(shorts_candidates, "HAS_GEMINI", True)
@@ -1210,7 +1262,9 @@ async def test_shorts_candidates_reads_inline_audio_and_validates_response(monke
         duration=120,
     )
 
+    assert from_bytes.call_args is not None
     assert from_bytes.call_args.kwargs == {"data": payload, "mime_type": "audio/mpeg"}
+    assert generate_content.await_args is not None
     assert generate_content.await_args.kwargs["contents"][0] == "audio-part"
     assert len(result) == 1
     assert result[0]["start_seconds"] == 0
@@ -1218,7 +1272,9 @@ async def test_shorts_candidates_reads_inline_audio_and_validates_response(monke
 
 
 @pytest.mark.asyncio
-async def test_clips_candidates_reads_inline_audio_and_validates_response(monkeypatch, tmp_path: Path) -> None:
+async def test_clips_candidates_reads_inline_audio_and_validates_response(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     payload = b"x" * 2048
     audio = _write_file(tmp_path / "clips.mp3", payload)
     client = object()
@@ -1231,7 +1287,7 @@ async def test_clips_candidates_reads_inline_audio_and_validates_response(monkey
     )
     generate_content = AsyncMock(return_value=response)
 
-    async def generate(clients, callback):
+    async def generate(clients: list[Any], callback: Callable[[Any], Awaitable[Any]]) -> Any:
         return await callback(clients[0])
 
     monkeypatch.setattr(shorts_candidates, "HAS_GEMINI", True)
@@ -1254,7 +1310,9 @@ async def test_clips_candidates_reads_inline_audio_and_validates_response(monkey
         duration=900,
     )
 
+    assert from_bytes.call_args is not None
     assert from_bytes.call_args.kwargs == {"data": payload, "mime_type": "audio/mpeg"}
+    assert generate_content.await_args is not None
     assert generate_content.await_args.kwargs["contents"][0] == "audio-part"
     assert len(result) == 1
     assert result[0]["start_seconds"] == 0
@@ -1262,7 +1320,7 @@ async def test_clips_candidates_reads_inline_audio_and_validates_response(monkey
 
 
 @pytest.mark.asyncio
-async def test_factory_plan_rejects_undersized_audio(monkeypatch, tmp_path: Path) -> None:
+async def test_factory_plan_rejects_undersized_audio(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     audio = _write_file(tmp_path / "small.mp3", b"tiny")
     monkeypatch.setattr(shorts_factory_candidates, "HAS_GEMINI", True)
     monkeypatch.setattr(shorts_factory_candidates, "GEMINI_CLIENTS", [object()])
@@ -1278,20 +1336,22 @@ async def test_factory_plan_rejects_undersized_audio(monkeypatch, tmp_path: Path
 
 
 @pytest.mark.asyncio
-async def test_factory_plan_reads_inline_audio_and_returns_validated_plan(monkeypatch, tmp_path: Path) -> None:
+async def test_factory_plan_reads_inline_audio_and_returns_validated_plan(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     payload = b"x" * 2048
     audio = _write_file(tmp_path / "audio.mp3", payload)
     from_bytes = Mock(return_value="audio-part")
     run_pass = AsyncMock(side_effect=["scout", "judge", "audited"])
 
     class QuotaTracker:
-        def __init__(self, *_args, **_kwargs) -> None:
+        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
             pass
 
-        def should_skip(self, *_args, **_kwargs) -> bool:
+        def should_skip(self, *_args: Any, **_kwargs: Any) -> bool:
             return False
 
-        def record_project_scoped_error(self, *_args, **_kwargs) -> None:
+        def record_project_scoped_error(self, *_args: Any, **_kwargs: Any) -> None:
             pass
 
     monkeypatch.setattr(shorts_factory_candidates, "HAS_GEMINI", True)
@@ -1317,6 +1377,7 @@ async def test_factory_plan_reads_inline_audio_and_returns_validated_plan(monkey
         duration=120,
     )
 
+    assert from_bytes.call_args is not None
     assert from_bytes.call_args.kwargs == {"data": payload, "mime_type": "audio/mpeg"}
     assert run_pass.await_count == 3
     assert plan["model"] == "factory-model"
@@ -1325,7 +1386,9 @@ async def test_factory_plan_reads_inline_audio_and_returns_validated_plan(monkey
 
 
 @pytest.mark.asyncio
-async def test_eng_subtitles_writes_expected_srt_in_worker_thread(monkeypatch, tmp_path: Path) -> None:
+async def test_eng_subtitles_writes_expected_srt_in_worker_thread(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     _write_file(tmp_path / "original_audio.m4a", b"audio")
     segment = SimpleNamespace(start=0.0, end=1.5, text="Hello\nworld")
     model = SimpleNamespace(transcribe=Mock(return_value=([segment], None)))
@@ -1370,14 +1433,16 @@ async def test_editorial_files_success_sends_all_documents(tmp_path: Path) -> No
 
 
 @pytest.mark.asyncio
-async def test_montage_writes_expected_concat_list_in_worker_thread(monkeypatch, tmp_path: Path) -> None:
+async def test_montage_writes_expected_concat_list_in_worker_thread(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     source = _write_file(tmp_path / "source.mp4", b"source")
     output = tmp_path / "montage.mp4"
     concat_contents: list[str] = []
     monkeypatch.setattr(render_clips_montage.shutil, "which", lambda name: "/ffmpeg")
     monkeypatch.setattr(render_clips_montage, "_get_video_encoder", lambda: ("libx264", [], []))
 
-    async def fake_run(command, **_kwargs):
+    async def fake_run(command: list[str], **_kwargs: Any) -> SimpleNamespace:
         target = Path(command[-1])
         await asyncio.to_thread(_write_file, target, b"video")
         if "concat" in command:

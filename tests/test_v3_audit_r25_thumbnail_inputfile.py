@@ -28,19 +28,19 @@ _TELEGRAM_INPUTFILE_IMPORT = re.compile(r"^from telegram import [^\n]*\bInputFil
 
 
 @pytest.mark.parametrize("path", _FILES)
-def test_no_readonly_name_assignment_on_thumbnail(path):
+def test_no_readonly_name_assignment_on_thumbnail(path: str) -> None:
     src = Path(path).read_text(encoding="utf-8")
     assert not _BAD_NAME_ASSIGN.search(src), f"{path}: осталось thumb_buf.name = ... (падает на py3.13)"
 
 
 @pytest.mark.parametrize("path", _FILES)
-def test_thumbnail_built_via_inputfile(path):
+def test_thumbnail_built_via_inputfile(path: str) -> None:
     src = Path(path).read_text(encoding="utf-8")
     assert _TELEGRAM_INPUTFILE_IMPORT.search(src), f"{path}: InputFile не импортируется из telegram"
     assert "InputFile(" in src and "read_bytes()" in src
 
 
-def test_inputfile_roundtrip_smoke(tmp_path):
+def test_inputfile_roundtrip_smoke(tmp_path: Path) -> None:
     """InputFile(bytes, filename=...) реально принимает байты и имя —
     именно так теперь строится обложка."""
     from telegram import InputFile

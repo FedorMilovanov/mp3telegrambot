@@ -1,4 +1,6 @@
 from __future__ import annotations
+from collections.abc import Iterator
+from typing import Any
 
 import json
 from pathlib import Path
@@ -27,7 +29,7 @@ from services.tts_profile_selection import (
 
 
 @pytest.fixture
-def alternate_profile() -> SpeechModelProfile:
+def alternate_profile() -> Iterator[SpeechModelProfile]:
     base = default_model_profile()
     profile = SpeechModelProfile(
         profile_id="voxcpm2-rebind-test-v2",
@@ -49,7 +51,9 @@ def alternate_profile() -> SpeechModelProfile:
         unregister_model_profile(profile.profile_id)
 
 
-def _project_with_request(tmp_path: Path) -> tuple[DubStore, dict, Path, dict]:
+def _project_with_request(
+    tmp_path: Path,
+) -> tuple[DubStore, dict[str, Any], Path, dict[str, Any]]:
     store = DubStore(tmp_path / "studio")
     project = store.create_project(
         "generic_short_v1",
@@ -257,13 +261,13 @@ def test_project_rebind_rejects_wrong_owner_and_active_project(
 
 
 def test_project_rebind_restores_request_when_db_event_fails(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     alternate_profile: SpeechModelProfile,
 ) -> None:
     store, project, path, previous = _project_with_request(tmp_path)
 
-    def fail_event(*_args, **_kwargs) -> None:
+    def fail_event(*_args: Any, **_kwargs: Any) -> None:
         raise RuntimeError("EVENT_SENTINEL")
 
     monkeypatch.setattr(store, "_insert_event", fail_event)

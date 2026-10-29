@@ -23,13 +23,16 @@ from converters.md_telegraph import (
 from converters.telegraph_nodes import (
     _HEADING_BOLD_STRIP_RE as _HEADING_BOLD_STRIP_RE,
     _clean_node_texts as _clean_node_texts,
-    _clean_telegraph_nodes,
+    _clean_telegraph_nodes as _clean_telegraph_nodes,
     _clean_text_block as _clean_text_block,
     _demote_paragraph_bold as _demote_paragraph_bold,
-    _md_to_telegraph_nodes,
+    _md_to_telegraph_nodes as _md_to_telegraph_nodes,
 )
 
-from core.core_utils import _md_parse_inline, time_to_seconds  # FIX: circular imports + AUDIT-FIX BUG 1
+from core.core_utils import (
+    _md_parse_inline as _md_parse_inline,
+    time_to_seconds,
+)  # FIX: circular imports + AUDIT-FIX BUG 1
 from core.url_utils import get_youtube_timestamp_url  # AUDIT R15: mini-outline ссылки на части 2+
 from core.globals import (
     TELEGRAPH_TOKEN,
@@ -71,10 +74,10 @@ from converters.md_telegraph import _build_related_materials_nodes
 from services.telegraph_edit import (
     TelegraphEditResult,
     edit_telegraph_page_once,
-    run_telegraph_edit_with_retry,
+    run_telegraph_edit_with_retry as run_telegraph_edit_with_retry,
 )
 
-import asyncio
+import asyncio as asyncio
 import contextlib
 import json  # FIX telegraph
 import logging
@@ -82,7 +85,7 @@ import os
 import re
 import tempfile
 from pathlib import Path
-import requests
+import requests as requests
 from typing import Any, Awaitable, Callable
 
 # types — из google.genai; optional SDK boundary stays explicit for strict typing.

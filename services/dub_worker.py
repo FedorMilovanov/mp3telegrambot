@@ -11,7 +11,7 @@ import queue
 import re
 import shutil
 import signal
-import subprocess
+import subprocess as subprocess
 import sys
 import threading
 import time
@@ -27,9 +27,9 @@ from services.dub_execution import (
     validate_recipe_outputs,
 )
 from services.dub_studio import DubStore, load_recipe, repo_root, studio_root, utc_now
-from services.dub_worker_release import WORKER_RUNTIME
+from services.dub_worker_release import WORKER_RUNTIME as WORKER_RUNTIME
 from services.process_executables import resolve_required_executable
-from tools.voxcpm2 import dub_job_preflight
+from tools.voxcpm2 import dub_job_preflight as dub_job_preflight
 
 _STAGE_RE = re.compile(r"^===\s*(.+?)\s*===\s*$")
 _SEGMENT_RE = re.compile(r"\[(\d+)\s*/\s*(\d+)\]")

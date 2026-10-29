@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import numpy as np
 
@@ -15,7 +16,7 @@ from tools.voxcpm2.semantic_tts_guard_v4 import measure_timing_quality
 from tools.voxcpm2.voxcpm2_quality_v4_renderer import trim_candidate_edges
 
 
-def _cue(start: float, end: float, text: str):
+def _cue(start: float, end: float, text: str) -> SimpleNamespace:
     return SimpleNamespace(start=start, end=end, text=text)
 
 
@@ -66,7 +67,7 @@ def test_ready_srt_splits_long_cue_but_preserves_verbatim_word_order() -> None:
 
 
 def test_render_segments_never_overrun_their_source_windows() -> None:
-    groups = [
+    groups: list[dict[str, Any]] = [
         {"id": 1, "start": 0.0, "end": 1.2, "source": "First."},
         {"id": 2, "start": 1.2, "end": 3.0, "source": "Second."},
     ]

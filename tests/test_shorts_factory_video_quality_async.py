@@ -4,7 +4,9 @@ import asyncio
 import logging
 import os
 from pathlib import Path
+from collections.abc import Awaitable, Callable
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -33,7 +35,9 @@ def _write_download_candidates(directory: Path, prefix: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_factory_ffprobe_evidence_requires_an_existing_file(monkeypatch, tmp_path: Path) -> None:
+async def test_factory_ffprobe_evidence_requires_an_existing_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     run = AsyncMock()
     monkeypatch.setattr(video_quality.shutil, "which", lambda name: "/ffprobe")
     monkeypatch.setattr(video_quality, "run_cancellable_process", run)
@@ -45,11 +49,11 @@ async def test_factory_ffprobe_evidence_requires_an_existing_file(monkeypatch, t
 
 
 @pytest.mark.asyncio
-async def test_factory_ffprobe_evidence_returns_parsed_json(monkeypatch, tmp_path: Path) -> None:
+async def test_factory_ffprobe_evidence_returns_parsed_json(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     path = tmp_path / "source.mkv"
     _write_bytes(path, b"source")
 
-    async def fake_run(command, **kwargs):
+    async def fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
         return SimpleNamespace(
             returncode=0,
             stdout='{"format":{"duration":"12.5"},"streams":[]}',
@@ -65,7 +69,9 @@ async def test_factory_ffprobe_evidence_returns_parsed_json(monkeypatch, tmp_pat
 
 
 @pytest.mark.asyncio
-async def test_factory_media_evidence_logs_worker_side_file_size(monkeypatch, tmp_path: Path, caplog) -> None:
+async def test_factory_media_evidence_logs_worker_side_file_size(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     path = tmp_path / "source.mkv"
     _write_bytes(path, b"x" * (3 * 1024 * 1024))
     monkeypatch.setattr(
@@ -82,8 +88,8 @@ async def test_factory_media_evidence_logs_worker_side_file_size(monkeypatch, tm
     assert "video_encode_stages=0" in caplog.text
 
 
-def _patch_download_probes(monkeypatch) -> None:
-    async def fake_probe(path):
+def _patch_download_probes(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_probe(path: Path) -> SimpleNamespace:
         return SimpleNamespace(height=2160 if path.stem.endswith("tall") else 1080)
 
     monkeypatch.setattr(video_quality, "probe_media_async", fake_probe)
@@ -92,7 +98,9 @@ def _patch_download_probes(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_factory_download_selects_newest_deliverable_1080p_candidate(monkeypatch, tmp_path: Path) -> None:
+async def test_factory_download_selects_newest_deliverable_1080p_candidate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     media_id = "media"
     prefix = f"{media_id}_factory_max_source"
     stale = tmp_path / f"{prefix}.stale"
@@ -100,7 +108,7 @@ async def test_factory_download_selects_newest_deliverable_1080p_candidate(monke
     _write_bytes(stale, b"stale")
     _write_bytes(unrelated, b"unrelated")
 
-    async def fake_run(command, **kwargs):
+    async def fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
         await asyncio.to_thread(_write_download_candidates, tmp_path, prefix)
         return SimpleNamespace(returncode=0, stderr="")
 
@@ -117,7 +125,7 @@ async def test_factory_download_selects_newest_deliverable_1080p_candidate(monke
 
 @pytest.mark.asyncio
 async def test_factory_download_rejects_unverified_candidates_and_cleans_only_owned_paths(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     media_id = "media"
@@ -125,7 +133,7 @@ async def test_factory_download_rejects_unverified_candidates_and_cleans_only_ow
     unrelated = tmp_path / "unrelated.mkv"
     _write_bytes(unrelated, b"unrelated")
 
-    async def fake_run(command, **kwargs):
+    async def fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
         await asyncio.to_thread(_write_download_candidates, tmp_path, prefix)
         return SimpleNamespace(returncode=0, stderr="")
 
@@ -141,12 +149,14 @@ async def test_factory_download_rejects_unverified_candidates_and_cleans_only_ow
 
 
 @pytest.mark.asyncio
-async def test_factory_download_cancellation_cleans_partial_candidate(monkeypatch, tmp_path: Path) -> None:
+async def test_factory_download_cancellation_cleans_partial_candidate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     media_id = "media"
     prefix = f"{media_id}_factory_max_source"
     partial = tmp_path / f"{prefix}.part"
 
-    async def cancelled_run(command, **kwargs):
+    async def cancelled_run(command: list[str], **kwargs: object) -> SimpleNamespace:
         await asyncio.to_thread(_write_bytes, partial, b"partial")
         raise asyncio.CancelledError
 
@@ -159,14 +169,16 @@ async def test_factory_download_cancellation_cleans_partial_candidate(monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_factory_normalize_only_copies_video_and_replaces_stale_output(monkeypatch, tmp_path: Path) -> None:
+async def test_factory_normalize_only_copies_video_and_replaces_stale_output(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     input_path = tmp_path / "input.mp4"
     output_path = tmp_path / "output.mp4"
     _write_bytes(input_path, b"input")
     _write_bytes(output_path, b"stale")
     calls: list[list[str]] = []
 
-    async def fake_run(command, **kwargs):
+    async def fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
         calls.append(list(command))
         await asyncio.to_thread(_write_bytes, output_path, b"normalized")
         return SimpleNamespace(returncode=0, stderr="")
@@ -185,7 +197,9 @@ async def test_factory_normalize_only_copies_video_and_replaces_stale_output(mon
 
 
 @pytest.mark.asyncio
-async def test_factory_normalize_only_missing_input_preserves_existing_output(monkeypatch, tmp_path: Path) -> None:
+async def test_factory_normalize_only_missing_input_preserves_existing_output(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     output_path = tmp_path / "output.mp4"
     _write_bytes(output_path, b"existing")
     run = AsyncMock()
@@ -202,7 +216,7 @@ async def test_factory_normalize_only_missing_input_preserves_existing_output(mo
 @pytest.mark.asyncio
 @pytest.mark.parametrize("failure", ["nonzero", "exception", "cancel", "probe"])
 async def test_factory_normalize_only_failure_cleans_partial_output(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     failure: str,
 ) -> None:
@@ -211,7 +225,7 @@ async def test_factory_normalize_only_failure_cleans_partial_output(
     _write_bytes(input_path, b"input")
     _write_bytes(output_path, b"stale")
 
-    async def fake_run(command, **kwargs):
+    async def fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
         await asyncio.to_thread(_write_bytes, output_path, b"partial")
         if failure == "cancel":
             raise asyncio.CancelledError
@@ -234,17 +248,17 @@ async def test_factory_normalize_only_failure_cleans_partial_output(
 
 
 def _patch_long_runtime(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     source_path: Path,
-    run,
+    run: Callable[..., Awaitable[SimpleNamespace]],
     *,
-    output_probe,
+    output_probe: Any,
     encoder: tuple[str, list[str], list[str]],
 ) -> None:
-    async def no_snap(path, target, search_window=5.0):
+    async def no_snap(path: Path, target: float, search_window: float = 5.0) -> float:
         return target
 
-    async def fake_probe(path):
+    async def fake_probe(path: Path) -> Any:
         if path == source_path:
             return SimpleNamespace(width=3840, height=2160)
         return output_probe
@@ -259,13 +273,15 @@ def _patch_long_runtime(
 
 
 @pytest.mark.asyncio
-async def test_factory_long_render_uses_one_h264_pass_and_scales_large_source(monkeypatch, tmp_path: Path) -> None:
+async def test_factory_long_render_uses_one_h264_pass_and_scales_large_source(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     source_path = tmp_path / "source.mp4"
     output_path = tmp_path / "long.mp4"
     _write_bytes(source_path, b"source")
     calls: list[list[str]] = []
 
-    async def fake_run(command, **kwargs):
+    async def fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
         calls.append(list(command))
         await asyncio.to_thread(_write_bytes, output_path, b"rendered")
         return SimpleNamespace(returncode=0, stderr="")
@@ -288,14 +304,16 @@ async def test_factory_long_render_uses_one_h264_pass_and_scales_large_source(mo
 
 
 @pytest.mark.asyncio
-async def test_factory_long_nvenc_failure_retries_once_with_libx264(monkeypatch, tmp_path: Path) -> None:
+async def test_factory_long_nvenc_failure_retries_once_with_libx264(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     source_path = tmp_path / "source.mp4"
     output_path = tmp_path / "long.mp4"
     _write_bytes(source_path, b"source")
     monkeypatch.setattr(video_quality, "_H264_NVENC_AVAILABLE", True)
     calls: list[list[str]] = []
 
-    async def fake_run(command, **kwargs):
+    async def fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
         calls.append(list(command))
         payload = b"partial" if len(calls) == 1 else b"cpu rendered"
         await asyncio.to_thread(_write_bytes, output_path, payload)
@@ -321,7 +339,7 @@ async def test_factory_long_nvenc_failure_retries_once_with_libx264(monkeypatch,
 @pytest.mark.asyncio
 @pytest.mark.parametrize("failure", ["nonzero", "exception", "cancel", "probe", "wide", "tall"])
 async def test_factory_long_failure_cleans_partial_output(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     failure: str,
 ) -> None:
@@ -334,7 +352,7 @@ async def test_factory_long_failure_cleans_partial_output(
         "tall": SimpleNamespace(width=1920, height=1082),
     }
 
-    async def fake_run(command, **kwargs):
+    async def fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
         await asyncio.to_thread(_write_bytes, output_path, b"partial")
         if failure == "cancel":
             raise asyncio.CancelledError
@@ -362,7 +380,9 @@ async def test_factory_long_failure_cleans_partial_output(
 
 
 @pytest.mark.asyncio
-async def test_factory_long_missing_source_preserves_existing_output(monkeypatch, tmp_path: Path) -> None:
+async def test_factory_long_missing_source_preserves_existing_output(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     output_path = tmp_path / "long.mp4"
     _write_bytes(output_path, b"existing")
     run = AsyncMock()

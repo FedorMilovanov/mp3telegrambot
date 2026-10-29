@@ -3,13 +3,16 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 from pathlib import Path
+
+import pytest
 from types import SimpleNamespace
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME_PATH = ROOT / "services" / "shorts_static_policy.py"
 
 
-def _load_runtime():
+def _load_runtime() -> Any:
     spec = importlib.util.spec_from_file_location("shorts_static_runtime_test", RUNTIME_PATH)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -89,13 +92,13 @@ def _moving_probe_output() -> str:
     return "\n".join("lavfi.signalstats.YDIF=4.00" for _ in range(24))
 
 
-def test_runtime_uses_two_static_probes_and_fail_safe(monkeypatch, tmp_path: Path) -> None:
+def test_runtime_uses_two_static_probes_and_fail_safe(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     runtime = _load_runtime()
     source = tmp_path / "slide.mp4"
     source.write_bytes(b"not-a-real-video")
     seen: list[list[str]] = []
 
-    async def fake_owner(cmd, **kwargs):
+    async def fake_owner(cmd: list[str], **kwargs: object) -> SimpleNamespace:
         seen.append(list(cmd))
         assert kwargs == {"timeout": 45, "text": True}
         return SimpleNamespace(returncode=0, stdout="", stderr=_static_probe_output())
@@ -110,7 +113,7 @@ def test_runtime_uses_two_static_probes_and_fail_safe(monkeypatch, tmp_path: Pat
     assert seen[1][seen[1].index("-ss") + 1] == "24.750"
     assert "scale=96:96:flags=area" in seen[0][seen[0].index("-vf") + 1]
 
-    async def failed_owner(cmd, **kwargs):
+    async def failed_owner(cmd: list[str], **kwargs: object) -> SimpleNamespace:
         return SimpleNamespace(returncode=1, stdout="", stderr="decode failed")
 
     monkeypatch.setattr(runtime, "run_cancellable_process", failed_owner)
@@ -118,13 +121,13 @@ def test_runtime_uses_two_static_probes_and_fail_safe(monkeypatch, tmp_path: Pat
     assert asyncio.run(runtime._is_static_video_confident(source, 15.0)) is False
 
 
-def test_opening_slide_then_moving_footage_keeps_crop(monkeypatch, tmp_path: Path) -> None:
+def test_opening_slide_then_moving_footage_keeps_crop(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     runtime = _load_runtime()
     source = tmp_path / "talk.mp4"
     source.write_bytes(b"not-a-real-video")
     outputs = iter([_static_probe_output(), _moving_probe_output()])
 
-    async def fake_owner(cmd, **kwargs):
+    async def fake_owner(cmd: list[str], **kwargs: object) -> SimpleNamespace:
         return SimpleNamespace(returncode=0, stdout="", stderr=next(outputs))
 
     monkeypatch.setattr(runtime.shutil, "which", lambda name: "ffmpeg")

@@ -18,8 +18,8 @@ from core.user_modes import (
     _get_shorts_factory_full_video_raw as _get_shorts_factory_full_video_raw,
     _get_user_mode_raw as _get_user_mode_raw,
     _read_user_mode,
-    _set_shorts_factory_full_video_raw,
-    _set_user_mode_raw,
+    _set_shorts_factory_full_video_raw as _set_shorts_factory_full_video_raw,
+    _set_user_mode_raw as _set_user_mode_raw,
     get_shorts_factory_full_video,
     get_user_mode,
 )

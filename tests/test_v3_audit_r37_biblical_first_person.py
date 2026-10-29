@@ -12,7 +12,7 @@
 from core.content_audit import _scrub_mismatched_first_person_author as scrub
 
 
-def test_biblical_authors_preserved_in_scripture():
+def test_biblical_authors_preserved_in_scripture() -> None:
     for name in [
         "Иоанн",
         "Павел",
@@ -32,26 +32,26 @@ def test_biblical_authors_preserved_in_scripture():
         assert out == txt and not issues, f"{name} не должен срезаться: {out!r}"
 
 
-def test_god_multiword_preserved():
+def test_god_multiword_preserved() -> None:
     txt = "Я, Господь Бог, творю новое."
     out, issues = scrub(txt, expected_author="Пол Вошер")
     assert out == txt and not issues
 
 
-def test_modern_hallucinated_author_still_scrubbed():
+def test_modern_hallucinated_author_still_scrubbed() -> None:
     out, issues = scrub("Я, Джон МакАртур, считаю иначе.", expected_author="Пол Вошер")
     assert issues and "Джон МакАртур" not in out
     assert out.startswith("Я считаю")
 
 
-def test_expected_author_first_person_kept():
+def test_expected_author_first_person_kept() -> None:
     # Совпадение с ожидаемым автором — не трогаем (прежнее поведение).
     txt = "Я, Пол Вошер, говорю вам."
     out, issues = scrub(txt, expected_author="Пол Вошер")
     assert out == txt and not issues
 
 
-def test_revelation_1_9_regression():
+def test_revelation_1_9_regression() -> None:
     # Точный кейс из живого дампа.
     txt = "мы читаем: «Я, Иоанн, брат ваш и соучастник в скорби»"
     out, issues = scrub(txt, expected_author="Джон МакАртур")

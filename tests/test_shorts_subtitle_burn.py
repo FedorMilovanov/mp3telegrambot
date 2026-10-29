@@ -2,6 +2,8 @@ import asyncio
 import shutil
 import subprocess
 from pathlib import Path
+from types import TracebackType
+from typing import Any
 
 import pytest
 
@@ -16,7 +18,12 @@ class _ObservedTemporaryDirectory:
         self.path.mkdir(parents=True, exist_ok=False)
         return str(self.path)
 
-    def __exit__(self, exc_type, exc, traceback) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         shutil.rmtree(self.path)
 
 
@@ -53,9 +60,9 @@ def _patch_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
 async def test_burn_command_delegates_to_shared_process_owner(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    captured: dict = {}
+    captured: dict[str, Any] = {}
 
-    async def _shared_owner(command, **kwargs):
+    async def _shared_owner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         captured["command"] = command
         captured.update(kwargs)
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
@@ -87,7 +94,7 @@ async def test_timeout_removes_ass_directory_and_partial_output(
         lambda **kwargs: _ObservedTemporaryDirectory(observed_temp),
     )
 
-    async def _timeout(command: list[str]):
+    async def _timeout(command: list[str]) -> None:
         output_path.write_bytes(b"new-partial-output")
         raise subprocess.TimeoutExpired(command, timeout=600)
 
@@ -120,7 +127,7 @@ async def test_cancellation_cleans_artifacts_and_is_not_swallowed(
         lambda **kwargs: _ObservedTemporaryDirectory(observed_temp),
     )
 
-    async def _cancel(command: list[str]):
+    async def _cancel(command: list[str]) -> None:
         output_path.write_bytes(b"partial")
         raise asyncio.CancelledError
 
@@ -155,7 +162,7 @@ async def test_invalid_output_is_rejected_and_removed(
         lambda **kwargs: _ObservedTemporaryDirectory(observed_temp),
     )
 
-    async def _success(command: list[str]):
+    async def _success(command: list[str]) -> subprocess.CompletedProcess[str]:
         if write_output:
             output_path.write_bytes(b"")
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
@@ -189,7 +196,7 @@ async def test_success_commits_nonempty_output_and_cleans_ass_directory(
         lambda **kwargs: _ObservedTemporaryDirectory(observed_temp),
     )
 
-    async def _success(command: list[str]):
+    async def _success(command: list[str]) -> subprocess.CompletedProcess[str]:
         output_path.write_bytes(b"finished-output")
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 

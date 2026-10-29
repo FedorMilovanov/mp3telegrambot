@@ -14,17 +14,20 @@ from __future__ import annotations
 
 import json
 import math
-import subprocess
+import subprocess as subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-import soundfile as sf
+import numpy as numpy
+import soundfile as soundfile
+
+np = numpy
+sf = soundfile
 
 from tools.voxcpm2 import direct_max_quality_analysis as release_analysis
 from tools.voxcpm2 import generic_short_production as pipeline
-from tools.voxcpm2 import professional_audio_v45
+from tools.voxcpm2 import professional_audio_v45 as professional_audio_v45
 
 POLICY = "continuous-clean-reference-v2"
 FALLBACK_VALIDATION_POLICY = "assembled-reference-release-floor-v1"
@@ -213,7 +216,7 @@ def _rounded_stats(stats: dict[str, Any]) -> dict[str, float]:
     }
 
 
-def _candidate_windows(
+def _legacy_candidate_windows(
     audio: np.ndarray,
     sample_rate: int,
     intervals: list[tuple[float, float]],
@@ -297,7 +300,7 @@ def build_reference(
         if not fallback_path.is_file():
             raise RuntimeError("Fallback voice reference не создал selection report.")
         try:
-            payload = json.loads(fallback_path.read_text(encoding="utf-8-sig"))
+            payload: dict[str, Any] = json.loads(fallback_path.read_text(encoding="utf-8-sig"))
         except (OSError, json.JSONDecodeError) as exc:
             raise RuntimeError("Fallback voice reference создал повреждённый selection report.") from exc
         if not _report_has_selection(payload):

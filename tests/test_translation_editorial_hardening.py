@@ -5,6 +5,7 @@ import zipfile
 from pathlib import Path
 
 import pytest
+from typing import Any
 
 import services.translation_editorial as editorial
 from services.translation_editorial import build_review_pack, load_pack_manifest, sha256_file
@@ -19,7 +20,7 @@ def test_pr113_legacy_v1_pack_without_timeline_still_verifies(tmp_path: Path) ->
     source_video.write_bytes(b"legacy-source-bytes")
     original = _srt_payload("Faith apart from works.")
     russian = _srt_payload("Вера отдельно от дел.")
-    candidates = {"shorts": [], "long_clips": []}
+    candidates: dict[str, list[dict[str, Any]]] = {"shorts": [], "long_clips": []}
     source = {
         "url": "https://example.invalid/legacy",
         "media_id": "legacy",

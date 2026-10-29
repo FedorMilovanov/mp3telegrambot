@@ -2,7 +2,7 @@ from core.candidate_schema import CandidateValidationReport, parse_validation_su
 from core.core_utils import time_to_seconds
 
 
-def test_candidate_validation_report_counts_reasons():
+def test_candidate_validation_report_counts_reasons() -> None:
     report = CandidateValidationReport()
     report.accept()
     report.reject("too_short")
@@ -15,7 +15,7 @@ def test_candidate_validation_report_counts_reasons():
     assert "accepted=1" in report.summary()
 
 
-def test_validate_candidate_times_accepts_good_range():
+def test_validate_candidate_times_accepts_good_range() -> None:
     ok, reason, start, end, dur = validate_candidate_times(
         "1:05",
         "2:10",
@@ -29,7 +29,7 @@ def test_validate_candidate_times_accepts_good_range():
     assert (start, end, dur) == (65, 130, 65)
 
 
-def test_validate_candidate_times_rejects_bad_ranges():
+def test_validate_candidate_times_rejects_bad_ranges() -> None:
     cases = [
         ("", "1:00", "missing_time"),
         ("bad", "1:00", "bad_time_format"),
@@ -61,7 +61,7 @@ def test_validate_candidate_times_rejects_bad_ranges():
     assert reason == "too_long"
 
 
-def test_candidate_validation_report_json_roundtrip():
+def test_candidate_validation_report_json_roundtrip() -> None:
     report = CandidateValidationReport()
     report.accept()
     report.reject("too_short")

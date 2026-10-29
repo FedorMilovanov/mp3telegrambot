@@ -1,3 +1,4 @@
+import pytest
 from pathlib import Path
 
 from services import livedub_qa_hardening as qa
@@ -28,7 +29,7 @@ def test_annotate_availability_tracks_original_and_russian_separately(tmp_path: 
     assert data["_qa_russian_audio_available"] is True
 
 
-def test_exact_uncut_original_replaces_edited_reference(monkeypatch, tmp_path: Path) -> None:
+def test_exact_uncut_original_replaces_edited_reference(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     exact = tmp_path / "original_video.mp4"
     exact.write_bytes(b"video")
     monkeypatch.setattr(qa, "_exact_original_in_workdir", lambda _value: exact)

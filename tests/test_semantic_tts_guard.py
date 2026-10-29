@@ -74,15 +74,15 @@ def _model_class(api: str, calls: list[dict[str, Any]]) -> type:
             def generate(
                 self,
                 *,
-                text,
-                reference_wav_path,
-                cfg_value,
-                normalize,
-                denoise,
-                retry_badcase=False,
-                retry_badcase_max_times=0,
-                retry_badcase_ratio_threshold=0,
-            ):
+                text: str,
+                reference_wav_path: str,
+                cfg_value: float,
+                normalize: bool,
+                denoise: bool,
+                retry_badcase: bool = False,
+                retry_badcase_max_times: int = 0,
+                retry_badcase_ratio_threshold: float = 0,
+            ) -> list[int]:
                 calls.append(
                     {
                         "reference": reference_wav_path,
@@ -100,14 +100,14 @@ def _model_class(api: str, calls: list[dict[str, Any]]) -> type:
             def generate(
                 self,
                 *,
-                text,
-                reference_wav_path,
-                cfg_value,
-                normalize,
-                denoise,
-                retry_badcase=False,
-                **kwargs,
-            ):
+                text: str,
+                reference_wav_path: str,
+                cfg_value: float,
+                normalize: bool,
+                denoise: bool,
+                retry_badcase: bool = False,
+                **kwargs: Any,
+            ) -> list[int]:
                 assert "prompt_wav_path" not in kwargs
                 assert "prompt_text" not in kwargs
                 calls.append(
@@ -125,16 +125,16 @@ def _model_class(api: str, calls: list[dict[str, Any]]) -> type:
         def generate(
             self,
             *,
-            text,
-            prompt_wav_path,
-            prompt_text,
-            cfg_value,
-            normalize,
-            denoise,
-            retry_badcase=False,
-            retry_badcase_max_times=0,
-            retry_badcase_ratio_threshold=0,
-        ):
+            text: str,
+            prompt_wav_path: str,
+            prompt_text: str,
+            cfg_value: float,
+            normalize: bool,
+            denoise: bool,
+            retry_badcase: bool = False,
+            retry_badcase_max_times: int = 0,
+            retry_badcase_ratio_threshold: float = 0,
+        ) -> list[int]:
             calls.append(
                 {
                     "reference": prompt_wav_path,
@@ -150,7 +150,7 @@ def _model_class(api: str, calls: list[dict[str, Any]]) -> type:
 def _fake_voxcpm_class(model_class: type) -> type:
     class FakeVoxCPM:
         @staticmethod
-        def from_pretrained(*args, load_denoiser=False, **kwargs):
+        def from_pretrained(*args: Any, load_denoiser: bool = False, **kwargs: Any) -> Any:
             return model_class()
 
     return FakeVoxCPM

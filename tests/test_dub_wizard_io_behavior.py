@@ -2,6 +2,9 @@
 
 import asyncio
 from types import SimpleNamespace
+from collections.abc import Callable, Coroutine
+from pathlib import Path
+from typing import Any, TypeVar
 
 import pytest
 from telegram.ext import ApplicationHandlerStop
@@ -10,21 +13,28 @@ from handlers import dub_wizard as wizard
 
 
 @pytest.fixture(autouse=True)
-def _admin_ids(monkeypatch):
+def _admin_ids(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(wizard, "ADMIN_IDS", {1})
 
 
 class Message:
-    def __init__(self, *, text="", document=None):
+    def __init__(self, *, text: str = "", document: Any = None) -> None:
         self.text = text
         self.document = document
-        self.replies = []
+        self.replies: list[tuple[str, dict[str, Any]]] = []
 
-    async def reply_text(self, text, **kwargs):
+    async def reply_text(self, text: str, **kwargs: Any) -> None:
         self.replies.append((text, kwargs))
 
 
-def _update(*, user_id=1, with_user=True, with_message=True, text="", document=None):
+def _update(
+    *,
+    user_id: int = 1,
+    with_user: bool = True,
+    with_message: bool = True,
+    text: str = "",
+    document: Any = None,
+) -> tuple[Any, Any]:
     message = Message(text=text, document=document) if with_message else None
     update = SimpleNamespace(
         effective_user=SimpleNamespace(id=user_id) if with_user else None,
@@ -34,7 +44,7 @@ def _update(*, user_id=1, with_user=True, with_message=True, text="", document=N
     return update, message
 
 
-def _context(*, args=None, state=None, bot=None):
+def _context(*, args: list[str] | None = None, state: dict[str, Any] | None = None, bot: Any = None) -> Any:
     return SimpleNamespace(
         args=args,
         user_data={} if state is None else state,
@@ -42,11 +52,14 @@ def _context(*, args=None, state=None, bot=None):
     )
 
 
-def _run(callback, *args):
+_T = TypeVar("_T")
+
+
+def _run(callback: Callable[..., Coroutine[Any, Any, _T]], *args: Any) -> _T:
     return asyncio.run(callback(*args))
 
 
-def _choice():
+def _choice() -> Any:
     return SimpleNamespace(
         profile_id="profile",
         display_name="<Profile>",
@@ -56,22 +69,24 @@ def _choice():
     )
 
 
-def test_direct_project_creation_persists_request_and_waits_for_srt(monkeypatch, tmp_path):
+def test_direct_project_creation_persists_request_and_waits_for_srt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     choice = _choice()
 
     class Store:
-        def __init__(self):
-            self.created = []
+        def __init__(self) -> None:
+            self.created: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
 
-        def create_project(self, *args, **kwargs):
+        def create_project(self, *args: Any, **kwargs: Any) -> dict[str, str]:
             self.created.append((args, kwargs))
             return {"id": "project"}
 
-        def enqueue_job(self, *_args):
+        def enqueue_job(self, *_args: Any) -> None:
             raise AssertionError("direct projects wait for SRT before enqueue")
 
     store = Store()
-    writes = []
+    writes: list[tuple[Path, dict[str, Any]]] = []
     monkeypatch.setattr(wizard, "DubStore", lambda: store)
     monkeypatch.setattr(
         wizard,
@@ -125,14 +140,14 @@ def test_direct_project_creation_persists_request_and_waits_for_srt(monkeypatch,
     assert "dubwiz|srt|project" in callbacks
 
 
-def test_decode_text_file_rejects_empty_and_non_srt_payloads():
+def test_decode_text_file_rejects_empty_and_non_srt_payloads() -> None:
     with pytest.raises(RuntimeError, match="Файл пуст"):
         wizard._decode_text_file(b"")
     with pytest.raises(RuntimeError, match="Не удалось прочитать SRT"):
         wizard._decode_text_file(b"not an SRT payload")
 
 
-def test_store_ready_srt_validates_state_owner_and_mode(monkeypatch):
+def test_store_ready_srt_validates_state_owner_and_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     update, _ = _update()
     with pytest.raises(RuntimeError, match="Сначала выберите режим"):
         _run(wizard._store_ready_srt, update, _context(), "text")
@@ -144,7 +159,7 @@ def test_store_ready_srt_validates_state_owner_and_mode(monkeypatch):
     }
 
     class Store:
-        def get_project(self, _project_id):
+        def get_project(self, _project_id: str) -> dict[str, Any]:
             return project
 
     monkeypatch.setattr(wizard, "DubStore", Store)
@@ -156,7 +171,9 @@ def test_store_ready_srt_validates_state_owner_and_mode(monkeypatch):
         _run(wizard._store_ready_srt, update, context, "text")
 
 
-def test_store_ready_srt_normalizes_file_enqueues_and_clears_state(monkeypatch, tmp_path):
+def test_store_ready_srt_normalizes_file_enqueues_and_clears_state(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     project = {
         "id": "p",
         "owner_user_id": 1,
@@ -164,13 +181,13 @@ def test_store_ready_srt_normalizes_file_enqueues_and_clears_state(monkeypatch, 
     }
 
     class Store:
-        def __init__(self):
-            self.jobs = []
+        def __init__(self) -> None:
+            self.jobs: list[tuple[str, str]] = []
 
-        def get_project(self, _project_id):
+        def get_project(self, _project_id: str) -> dict[str, Any]:
             return project
 
-        def enqueue_job(self, project_id, action):
+        def enqueue_job(self, project_id: str, action: str) -> dict[str, int]:
             self.jobs.append((project_id, action))
             return {"id": 91}
 
@@ -195,20 +212,20 @@ def test_store_ready_srt_normalizes_file_enqueues_and_clears_state(monkeypatch, 
     assert kwargs == {"parse_mode": "HTML"}
 
 
-def test_dubsrt_supports_explicit_latest_and_missing_projects(monkeypatch):
+def test_dubsrt_supports_explicit_latest_and_missing_projects(monkeypatch: pytest.MonkeyPatch) -> None:
     project = {"id": "p"}
-    latest = {"project": project}
+    latest: dict[str, dict[str, str] | None] = {"project": project}
 
     class Store:
-        def get_project(self, token):
+        def get_project(self, token: str) -> dict[str, str]:
             assert token == "p"
             return project
 
     monkeypatch.setattr(wizard, "DubStore", Store)
     monkeypatch.setattr(wizard, "_latest_direct_draft", lambda _user_id: latest["project"])
-    activated = []
+    activated: list[str] = []
 
-    async def activate(_update, _context, project_id):
+    async def activate(_update: Any, _context: Any, project_id: str) -> None:
         activated.append(project_id)
 
     monkeypatch.setattr(wizard, "_activate_srt_upload", activate)
@@ -223,10 +240,10 @@ def test_dubsrt_supports_explicit_latest_and_missing_projects(monkeypatch):
     assert "Не найден ожидающий SRT-проект" in message.replies[0][0]
 
 
-def test_translation_alias_delegates_to_dubsrt(monkeypatch):
-    calls = []
+def test_translation_alias_delegates_to_dubsrt(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[Any] = []
 
-    async def dubsrt(update, context):
+    async def dubsrt(update: Any, context: Any) -> None:
         calls.append((update, context))
 
     monkeypatch.setattr(wizard, "dubsrt_command", dubsrt)
@@ -236,7 +253,7 @@ def test_translation_alias_delegates_to_dubsrt(monkeypatch):
     assert calls == [(update, context)]
 
 
-def test_text_handler_guards_and_profile_prompt(monkeypatch):
+def test_text_handler_guards_and_profile_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
     update, _ = _update(with_user=False)
     _run(wizard.handle_dub_wizard_text, update, _context(state=None))
     update, _ = _update()
@@ -258,10 +275,10 @@ def test_text_handler_guards_and_profile_prompt(monkeypatch):
     _run(wizard.handle_dub_wizard_text, update, context)
 
 
-def test_text_handler_url_success_and_validation_error(monkeypatch):
-    calls = []
+def test_text_handler_url_success_and_validation_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[Any] = []
 
-    async def create(_update, _context, text, mode, profile_id):
+    async def create(_update: Any, _context: Any, text: str, mode: str, profile_id: str) -> None:
         calls.append((text, mode, profile_id))
 
     monkeypatch.setattr(wizard, "_create_generic_project", create)
@@ -287,10 +304,10 @@ def test_text_handler_url_success_and_validation_error(monkeypatch):
     assert "Пришлите корректную ссылку" in message.replies[0][0]
 
 
-def test_text_handler_srt_success_and_error(monkeypatch):
-    stored = []
+def test_text_handler_srt_success_and_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    stored: list[str] = []
 
-    async def store(_update, _context, text):
+    async def store(_update: Any, _context: Any, text: str) -> None:
         stored.append(text)
 
     monkeypatch.setattr(wizard, "_store_ready_srt", store)
@@ -300,7 +317,7 @@ def test_text_handler_srt_success_and_error(monkeypatch):
         _run(wizard.handle_dub_wizard_text, update, context)
     assert stored == ["ready srt"]
 
-    async def fail(_update, _context, _text):
+    async def fail(_update: Any, _context: Any, _text: str) -> None:
         raise RuntimeError("<" + "x" * 1800)
 
     monkeypatch.setattr(wizard, "_store_ready_srt", fail)
@@ -314,24 +331,24 @@ def test_text_handler_srt_success_and_error(monkeypatch):
 
 
 class TelegramFile:
-    def __init__(self, payload):
+    def __init__(self, payload: bytes) -> None:
         self.payload = payload
 
-    async def download_as_bytearray(self):
+    async def download_as_bytearray(self) -> bytearray:
         return bytearray(self.payload)
 
 
 class Bot:
-    def __init__(self, payload):
+    def __init__(self, payload: bytes) -> None:
         self.payload = payload
-        self.file_ids = []
+        self.file_ids: list[str] = []
 
-    async def get_file(self, file_id):
+    async def get_file(self, file_id: str) -> TelegramFile:
         self.file_ids.append(file_id)
         return TelegramFile(self.payload)
 
 
-def test_document_handler_noop_and_admin_guards(monkeypatch):
+def test_document_handler_noop_and_admin_guards(monkeypatch: pytest.MonkeyPatch) -> None:
     update, _ = _update(with_user=False)
     _run(wizard.handle_dub_wizard_document, update, _context(state=None))
 
@@ -352,7 +369,7 @@ def test_document_handler_noop_and_admin_guards(monkeypatch):
     _run(wizard.handle_dub_wizard_document, update, _context())
 
 
-def test_document_handler_rejects_non_admin_and_wrong_suffix():
+def test_document_handler_rejects_non_admin_and_wrong_suffix() -> None:
     state = {wizard._WIZARD_KEY: {"awaiting": "srt", "project_id": "p"}}
     document = SimpleNamespace(file_name="ready.srt", file_id="file")
     update, _message = _update(user_id=2, document=document)
@@ -366,11 +383,11 @@ def test_document_handler_rejects_non_admin_and_wrong_suffix():
     assert "Нужен именно" in message.replies[0][0]
 
 
-def test_document_handler_auto_binds_draft_and_stores_srt(monkeypatch):
+def test_document_handler_auto_binds_draft_and_stores_srt(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(wizard, "_latest_direct_draft", lambda _user_id: {"id": "p"})
     stored = []
 
-    async def store(_update, context, text):
+    async def store(_update: Any, context: Any, text: str) -> None:
         stored.append((context.user_data[wizard._WIZARD_KEY], text))
 
     monkeypatch.setattr(wizard, "_store_ready_srt", store)
@@ -392,8 +409,8 @@ def test_document_handler_auto_binds_draft_and_stores_srt(monkeypatch):
     ]
 
 
-def test_document_handler_rejects_oversize_file(monkeypatch):
-    def decode_must_not_run(_payload):
+def test_document_handler_rejects_oversize_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    def decode_must_not_run(_payload: bytes) -> None:
         raise AssertionError("oversize payload must not be decoded")
 
     monkeypatch.setattr(wizard, "_decode_text_file", decode_must_not_run)
@@ -411,13 +428,13 @@ def test_document_handler_rejects_oversize_file(monkeypatch):
     assert "максимум 2 МБ" in message.replies[0][0]
 
 
-def test_wizard_registration_is_idempotent_and_ordered():
+def test_wizard_registration_is_idempotent_and_ordered() -> None:
     class Application:
-        def __init__(self):
-            self.bot_data = {}
-            self.registrations = []
+        def __init__(self) -> None:
+            self.bot_data: dict[str, Any] = {}
+            self.registrations: list[tuple[Any, int]] = []
 
-        def add_handler(self, handler, group):
+        def add_handler(self, handler: Any, group: int) -> None:
             self.registrations.append((handler, group))
 
     application = Application()

@@ -23,7 +23,7 @@ import math
 import os
 import re
 import shutil
-import subprocess
+import subprocess as subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -105,15 +105,16 @@ def _probe(path: Path) -> dict[str, Any]:
     streams = data.get("streams")
     if not isinstance(streams, list):
         streams = []
-    video = next(
+    video: dict[str, Any] = next(
         (row for row in streams if isinstance(row, dict) and row.get("codec_type") == "video"),
         {},
     )
-    audio = next(
+    audio: dict[str, Any] = next(
         (row for row in streams if isinstance(row, dict) and row.get("codec_type") == "audio"),
         {},
     )
-    fmt = data.get("format") if isinstance(data.get("format"), dict) else {}
+    fmt_value: object = data.get("format")
+    fmt = fmt_value if isinstance(fmt_value, dict) else {}
     try:
         duration = float(fmt.get("duration") or 0.0)
     except (TypeError, ValueError):

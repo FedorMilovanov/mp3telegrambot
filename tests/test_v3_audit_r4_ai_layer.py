@@ -11,33 +11,33 @@ from core.source_titles import is_disallowed_source_author, normalize_source_car
 from core.text_utils import _scrub_inline
 
 
-def test_git_scrub_keeps_english_scripture_quotes():
+def test_git_scrub_keeps_english_scripture_quotes() -> None:
     assert _scrub_inline("Commit your way to the LORD; trust in him") == "Commit your way to the LORD; trust in him"
     assert "Branch" in _scrub_inline("I will raise up for David a righteous Branch")
     assert "commit" in _scrub_inline("You shall not commit adultery")
 
 
-def test_git_scrub_still_cleans_russian_context():
+def test_git_scrub_still_cleans_russian_context() -> None:
     assert "commit" not in _scrub_inline("опубли commit вавшего серию")
     assert "push" not in _scrub_inline("опубликовал push серию статей")
     assert "merge" not in _scrub_inline("merge конфликт")
     assert "опубликовал серию" in _scrub_inline("опубликовал push серию статей")
 
 
-def test_english_prose_not_rewritten_into_source_card():
+def test_english_prose_not_rewritten_into_source_card() -> None:
     r = _scrub_inline("Behold, I stand at the door and knock.")
     assert "**" not in r and "Behold" in r
     r2 = _scrub_inline("Truly, truly, I say to you, whoever believes has eternal life.")
     assert "**" not in r2
 
 
-def test_known_author_card_still_normalized():
+def test_known_author_card_still_normalized() -> None:
     r = normalize_source_card_line("• John Owen, The Mortification of Sin")
     assert "Джон Оуэн" in r and "**Об умерщвлении греха в верующих**" in r
     assert "The Mortification of Sin" in r
 
 
-def test_keller_denylist_scoped_to_source_cards():
+def test_keller_denylist_scoped_to_source_cards() -> None:
     assert normalize_source_card_line("• Tim Keller, Center Church") == ""
     assert is_disallowed_source_author("Tim Keller")
     assert is_disallowed_source_author("Тимоти Келлером")
@@ -50,7 +50,7 @@ def test_keller_denylist_scoped_to_source_cards():
     assert card != ""
 
 
-def test_gemini_reuses_upload_and_has_no_second_full_retry_circle():
+def test_gemini_reuses_upload_and_has_no_second_full_retry_circle() -> None:
     src = Path("services/gemini_analyze.py").read_text(encoding="utf-8")
     assert "if audio_part is None:" in src
     assert "на уже загруженном аудио" in src
@@ -59,13 +59,13 @@ def test_gemini_reuses_upload_and_has_no_second_full_retry_circle():
     assert "await asyncio.sleep(60)" not in src
 
 
-def test_gemini_timeout_rotates_to_next_key():
+def test_gemini_timeout_rotates_to_next_key() -> None:
     src = Path("services/gemini_analyze.py").read_text(encoding="utf-8")
     assert "_is_timeout" in src
     assert "if _is_timeout:" in src
 
 
-def test_verse_refs_not_counted_as_inline_anchors():
+def test_verse_refs_not_counted_as_inline_anchors() -> None:
     from core.synopsis_quality import _section_inline_timestamp_count
 
     section = {"title": "S", "time": "0:00", "content": "Ин 3:16 говорит о любви. Рим 8:28 напоминает о промысле." * 3}
@@ -85,12 +85,13 @@ def test_verse_refs_not_counted_as_inline_anchors():
     assert _section_inline_timestamp_count(blk) == 1
 
 
-def test_timestamp_cap_keeps_tail():
+def test_timestamp_cap_keeps_tail() -> None:
     from core.json_parser import _parse_gemini_response
 
     ts = [{"time": f"{i}:00", "topic": f"Тема номер {i} содержательная"} for i in range(60)]
     data = "{" + '"real_author": "A", "real_title": "T", "timestamps": ' + str(ts).replace("'", '"') + "}"
     parsed = _parse_gemini_response(data, duration=4000)
+    assert parsed is not None
     lines = parsed["timestamps"].splitlines()
     assert any(ln.startswith("59:00") for ln in lines), "последний таймкод обязан выжить"
     assert len(lines) == 50

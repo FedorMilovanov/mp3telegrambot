@@ -1,5 +1,7 @@
 """Regression contracts for the project-wide quality/cost policy."""
 
+import pytest
+
 from core.model_catalog import MODEL_PRIMARY
 
 from pathlib import Path
@@ -10,7 +12,7 @@ from services import gemini_max_quality as quality
 from services import shorts_factory_capacity_runtime as capacity_runtime
 
 
-def test_heavy_quality_policy_forces_38_high_and_large_v3(monkeypatch):
+def test_heavy_quality_policy_forces_38_high_and_large_v3(monkeypatch: pytest.MonkeyPatch) -> None:
     """Политика форсирует только те имена, которые кто-то читает.
 
     Удалены `GEMINI_MAX_MODEL`, `GEMINI_FORCE_THINKING_LEVEL`,
@@ -61,7 +63,7 @@ def test_heavy_quality_policy_forces_38_high_and_large_v3(monkeypatch):
     assert f"semantic={MODEL_PRIMARY}/high" in diagnostic
 
 
-def test_model_aware_thinking_preserves_supported_38_recovery_levels():
+def test_model_aware_thinking_preserves_supported_38_recovery_levels() -> None:
     from core.globals import _effective_thinking_level
 
     # 3.8 supports low/medium/high. Production defaults remain HIGH, but an
@@ -79,7 +81,7 @@ def test_model_aware_thinking_preserves_supported_38_recovery_levels():
     assert _effective_thinking_level("gemini-custom-audio-model", "medium") == "medium"
 
 
-def test_utility_work_uses_lite_only_without_fallback(monkeypatch):
+def test_utility_work_uses_lite_only_without_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     """Behaviour, not source text: the fallback knobs end up empty.
 
     The old version grepped for `os.environ["..."] = ""`. Forcing now goes
@@ -106,7 +108,7 @@ def test_utility_work_uses_lite_only_without_fallback(monkeypatch):
     assert os.environ["LIVEDUB_INFO_FALLBACK_MODELS"] == ""
 
 
-def test_publication_metadata_directly_owns_38_high_quality_route():
+def test_publication_metadata_directly_owns_38_high_quality_route() -> None:
     publication = Path("services/livedub_publication_core.py").read_text(encoding="utf-8")
     assert "MODEL_PRIMARY as _PUBLICATION_MODEL" in publication
     assert 'thinking_level="high"' in publication
@@ -115,7 +117,7 @@ def test_publication_metadata_directly_owns_38_high_quality_route():
     assert "gemini36_factory_resilience" not in publication
 
 
-def test_factory_resilience_is_owned_by_real_sources_not_runtime_installer():
+def test_factory_resilience_is_owned_by_real_sources_not_runtime_installer() -> None:
     source = Path("services/shorts_factory_source.py").read_text(encoding="utf-8")
     globals_src = Path("core/globals.py").read_text(encoding="utf-8")
 
@@ -143,7 +145,7 @@ def test_factory_resilience_is_owned_by_real_sources_not_runtime_installer():
     assert "sys.modules" not in globals_src
 
 
-def test_pre_main_manifest_owns_quality_before_core_clients():
+def test_pre_main_manifest_owns_quality_before_core_clients() -> None:
     package = Path("services/__init__.py").read_text(encoding="utf-8")
     manifest = Path("services/runtime_manifest.py").read_text(encoding="utf-8")
     owner = Path("services/pre_main_policy.py").read_text(encoding="utf-8")
@@ -156,7 +158,7 @@ def test_pre_main_manifest_owns_quality_before_core_clients():
     assert "import core.globals" not in owner
 
 
-def test_env_migration_preserves_semantic_38_utility_lite_split():
+def test_env_migration_preserves_semantic_38_utility_lite_split() -> None:
     src = Path("scripts/migrate-gemini-38.ps1").read_text(encoding="utf-8")
     # The migration script is generated; assert it follows the catalog, not a literal.
     assert f'GEMINI_MODEL" -Value "{MODEL_PRIMARY}"' in src

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import zipfile
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -33,7 +34,13 @@ def _current_pack(tmp_path: Path) -> Path:
     )
 
 
-def _rewrite_zip(source: Path, target: Path, *, mutate, extra: tuple[str, bytes] | None = None) -> None:
+def _rewrite_zip(
+    source: Path,
+    target: Path,
+    *,
+    mutate: Callable[[str, bytes], bytes],
+    extra: tuple[str, bytes] | None = None,
+) -> None:
     with zipfile.ZipFile(source, "r") as input_zip, zipfile.ZipFile(target, "w") as output_zip:
         for info in input_zip.infolist():
             output_zip.writestr(info, mutate(info.filename, input_zip.read(info.filename)))
@@ -79,7 +86,7 @@ def test_zip_preflight_bounds_member_before_manifest_reader_runs(
     pack = _current_pack(tmp_path)
     monkeypatch.setitem(pack_contract._MEMBER_LIMITS, "original.srt", 1)
 
-    def forbidden_reader(_path: Path):
+    def forbidden_reader(_path: Path) -> None:
         raise AssertionError("manifest reader must not run before ZIP size preflight")
 
     monkeypatch.setattr(pack_contract, "load_pack_manifest", forbidden_reader)
@@ -167,7 +174,7 @@ def test_legacy_pr113_pack_contract_remains_supported(tmp_path: Path) -> None:
     source_video.write_bytes(b"legacy-source")
     original = b"1\n00:00:00,000 --> 00:00:01,000\nSource\n"
     russian = b"1\n00:00:00,000 --> 00:00:01,000\nRussian\n"
-    candidates = {"shorts": [], "long_clips": []}
+    candidates: dict[str, list[object]] = {"shorts": [], "long_clips": []}
     source = {
         "url": "",
         "media_id": "legacy",

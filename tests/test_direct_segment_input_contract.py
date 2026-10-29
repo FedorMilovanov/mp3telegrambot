@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from tools.voxcpm2.direct_max_quality_io import read_segments
 
 
-def _write(tmp_path: Path, segments: list[dict]) -> Path:
+def _write(tmp_path: Path, segments: list[dict[str, Any]]) -> Path:
     path = tmp_path / "segments.json"
     path.write_text(
         json.dumps(segments, ensure_ascii=False, allow_nan=True),
@@ -17,8 +18,8 @@ def _write(tmp_path: Path, segments: list[dict]) -> Path:
     return path
 
 
-def _segment(**changes):
-    item = {
+def _segment(**changes: Any) -> dict[str, Any]:
+    item: dict[str, Any] = {
         "id": 1,
         "start": 0.0,
         "end": 2.0,

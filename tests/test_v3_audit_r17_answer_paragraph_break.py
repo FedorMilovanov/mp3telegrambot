@@ -21,6 +21,9 @@ Gemini приклеил «:» сразу после «?» в конце вопр
 используется в других разделах. После «?» двоеточие всегда лишнее.
 """
 
+from collections.abc import Iterable
+from typing import Any
+
 from converters.md_telegraph import _postprocess_telegraph_nodes, _section_to_nodes_v2
 
 GLUED_CONTENT = (
@@ -34,7 +37,7 @@ GLUED_CONTENT = (
 )
 
 
-def _walk_collect(node, parts):
+def _walk_collect(node: Any, parts: list[str]) -> None:
     if isinstance(node, str):
         parts.append(node)
     elif isinstance(node, dict):
@@ -42,18 +45,18 @@ def _walk_collect(node, parts):
             _walk_collect(c, parts)
 
 
-def _flat_paragraphs(nodes):
+def _flat_paragraphs(nodes: Iterable[dict[str, Any]]) -> list[str]:
     paras = []
     for n in nodes:
         if isinstance(n, dict) and n.get("tag") == "p":
-            parts = []
+            parts: list[str] = []
             for c in n.get("children", []) or []:
                 _walk_collect(c, parts)
             paras.append("".join(parts))
     return paras
 
 
-def test_glued_answer_marker_gets_own_paragraph():
+def test_glued_answer_marker_gets_own_paragraph() -> None:
     nodes = _section_to_nodes_v2(
         {"title": "Заблуждения и ответ ортодоксии", "time": "", "content": GLUED_CONTENT},
     )
@@ -67,7 +70,7 @@ def test_glued_answer_marker_gets_own_paragraph():
     assert not any("Духа. ✅" in p for p in paras), "склейка не устранена"
 
 
-def test_theme_cross_replacement_pattern_untouched():
+def test_theme_cross_replacement_pattern_untouched() -> None:
     """Не должны ломать соседний паттерн «**Тема** ❌ **Подмена: ...**» —
     там ❌ не следует за концом предложения, регэксп его не трогает."""
     nodes = _section_to_nodes_v2(
@@ -77,7 +80,7 @@ def test_theme_cross_replacement_pattern_untouched():
     assert len(paras) == 1, f"не должно появиться лишних абзацев: {paras}"
 
 
-def test_fix_present_in_source():
+def test_fix_present_in_source() -> None:
     from pathlib import Path
 
     src = Path(__file__).resolve().parents[1].joinpath("converters/md_telegraph.py").read_text(encoding="utf-8")
@@ -87,7 +90,7 @@ def test_fix_present_in_source():
 # ── «?:» приклеенное двоеточие после вопроса-триггера ────────────
 
 
-def test_question_mark_colon_glue_stripped():
+def test_question_mark_colon_glue_stripped() -> None:
     """Живой баг из дампа Reflection: приклеенное «?:» не только лишний
     символ — оно ЕЩЁ И глушит существующую эвристику "make standalone
     question paragraphs visually explicit" (plain.endswith('?')), поэтому
@@ -95,7 +98,7 @@ def test_question_mark_colon_glue_stripped():
     text = "Удерживает ли тебя от греха реальный страх перед Богом или просто боязнь потерять репутацию?:"
     out = _postprocess_telegraph_nodes([{"tag": "p", "children": [text]}])
     node = out[0]
-    parts = []
+    parts: list[str] = []
     _walk_collect(node, parts)
     fixed = "".join(parts)
     assert fixed.endswith("репутацию?"), f"двоеточие после «?» не убрано: {fixed!r}"
@@ -105,11 +108,11 @@ def test_question_mark_colon_glue_stripped():
     )
 
 
-def test_question_mark_colon_glue_not_touched_mid_sentence():
+def test_question_mark_colon_glue_not_touched_mid_sentence() -> None:
     """Только в конце строки/абзаца — не трогаем гипотетический «?:» внутри
     текста (например, диалоговую разметку), если он не на границе абзаца."""
     text = "Он спросил: «Готов?» — и замолчал."
     out = _postprocess_telegraph_nodes([{"tag": "p", "children": [text]}])
-    parts = []
+    parts: list[str] = []
     _walk_collect(out[0], parts)
     assert "".join(parts) == text

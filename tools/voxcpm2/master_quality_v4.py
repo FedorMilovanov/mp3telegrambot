@@ -12,7 +12,7 @@ import argparse
 import json
 import re
 import shutil
-import subprocess
+import subprocess as subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -123,8 +123,8 @@ def main() -> None:
     args = parser.parse_args()
 
     if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        getattr(sys.stdout, "reconfigure")(encoding="utf-8", errors="replace")
+        getattr(sys.stderr, "reconfigure")(encoding="utf-8", errors="replace")
     if not shutil.which("ffmpeg"):
         raise RuntimeError("FFmpeg не найден в PATH.")
     if not 0.0 <= args.original_level <= 1.0:

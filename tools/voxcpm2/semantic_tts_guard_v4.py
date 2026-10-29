@@ -251,7 +251,7 @@ def verify_timeline_v4(
     failed, report = legacy.verify_timeline(timeline, segments, report_path)
     failed_set = {int(value) for value in failed}
     checks_by_id = {
-        int(item.get("id")): item
+        int(item["id"]): item
         for item in report.get("segments", [])
         if isinstance(item, dict) and str(item.get("id", "")).isdigit()
     }
@@ -387,6 +387,7 @@ def _run_quality_master(command: Sequence[str], *args: Any, **kwargs: Any) -> An
 
 
 __all__ = [
+    "legacy",
     "measure_timing_quality",
     "verify_timeline_v4",
 ]

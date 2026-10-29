@@ -57,7 +57,8 @@ def enforce_fail_closed_identity(
             transition["absolute_gate_override_allowed"] = False
             transition["role"] = "ranking_and_diagnostics_only"
 
-        pitch = row.get("pitch") if isinstance(row.get("pitch"), dict) else {}
+        pitch_value: object = row.get("pitch")
+        pitch = pitch_value if isinstance(pitch_value, dict) else {}
         global_jump = _semitones(_finite(pitch.get("f0_median")), baseline)
         row["fail_closed_global_f0_jump_st"] = global_jump
         row["fail_closed_global_f0_limit_st"] = ABSOLUTE_GLOBAL_F0_LIMIT_ST
@@ -66,7 +67,8 @@ def enforce_fail_closed_identity(
 
         if index == 0:
             continue
-        previous_pitch = rows[index - 1].get("pitch") if isinstance(rows[index - 1].get("pitch"), dict) else {}
+        previous_pitch_value: object = rows[index - 1].get("pitch")
+        previous_pitch = previous_pitch_value if isinstance(previous_pitch_value, dict) else {}
         median_ratio = _ratio(
             _finite(pitch.get("f0_median")),
             _finite(previous_pitch.get("f0_median")),

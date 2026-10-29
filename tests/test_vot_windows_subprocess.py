@@ -46,7 +46,7 @@ def test_windows_batch_rejects_command_line_control_characters(bad: str) -> None
 def test_windows_wrapper_uses_placeholders_and_never_shell(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     captured: dict[str, object] = {}
 
-    def fake_run(command, **kwargs):
+    def fake_run(command: str, **kwargs: object) -> subprocess.CompletedProcess[str]:
         captured["command"] = command
         captured["kwargs"] = kwargs
         return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")

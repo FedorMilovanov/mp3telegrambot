@@ -14,8 +14,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import subprocess
+import subprocess as subprocess
 from pathlib import Path
+from typing import Any
 
 from services.process_executables import resolve_required_executable
 from tools.verify_factory_media_quality import verify
@@ -69,7 +70,7 @@ def _generate_source(path: Path) -> None:
         raise RuntimeError("benchmark source was not created")
 
 
-def _compact(report: dict) -> dict:
+def _compact(report: dict[str, Any]) -> dict[str, Any]:
     return {
         "source": "deterministic FFmpeg testsrc2 1920x1080/30 + AAC",
         "source_resolution": [report["source"]["width"], report["source"]["height"]],

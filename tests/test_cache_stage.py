@@ -14,6 +14,7 @@ import pytest
 from pipelines.cache_stage import (
     DIRTY_AI_FIELDS,
     CacheDeps,
+    CacheDecision,
     evaluate_cache,
     load_cache,
 )
@@ -42,7 +43,7 @@ def _evaluate(
     valid: bool = True,
     reason: str = "ok",
     is_dirty: Any = None,
-):
+) -> CacheDecision:
     return evaluate_cache(
         cached,
         validate=lambda _cached: (valid, reason),

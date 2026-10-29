@@ -39,7 +39,7 @@ from core.person_names import (
 from core.utils import parse_title
 
 
-def test_parse_title_fixes_description_that_merely_mentions_author():
+def test_parse_title_fixes_description_that_merely_mentions_author() -> None:
     """Живой баг: длинная сторона содержит имя автора внутри фразы —
     раньше эвристика по числу слов принимала её за title."""
     performer, title = parse_title("How to Pray: Prayer with R.C. Sproul", "Ligonier Ministries")
@@ -47,7 +47,7 @@ def test_parse_title_fixes_description_that_merely_mentions_author():
     assert title == "How to Pray"
 
 
-def test_parse_title_fixes_generic_session_label_mistaken_for_title():
+def test_parse_title_fixes_generic_session_label_mistaken_for_title() -> None:
     """Живой баг: короткая сторона — общее название формата («Questions and
     Answers»), а не имя, но длинная сторона (список фамилий) была короче
     по словам и потому раньше ошибочно становилась title."""
@@ -60,7 +60,7 @@ def test_parse_title_fixes_generic_session_label_mistaken_for_title():
     assert "Лоусон" not in title and "Lawson" not in title
 
 
-def test_parse_title_no_word_count_swap_when_author_known():
+def test_parse_title_no_word_count_swap_when_author_known() -> None:
     """Регрессия базового кейса из существующей практики: явный author-first
     формат «Автор - Название» продолжает работать как раньше."""
     performer, title = parse_title("John MacArthur - The Gospel According to Jesus", "Grace to You")
@@ -68,7 +68,7 @@ def test_parse_title_no_word_count_swap_when_author_known():
     assert title == "The Gospel According to Jesus"
 
 
-def test_parse_title_falls_back_to_word_count_when_no_known_author():
+def test_parse_title_falls_back_to_word_count_when_no_known_author() -> None:
     """Когда ни одна сторона не содержит распознанного имени — поведение
     не меняется, работает старый подсчёт слов (пример из реального прогона
     сессии, автор ещё не в реестре под этим именем)."""
@@ -77,13 +77,13 @@ def test_parse_title_falls_back_to_word_count_when_no_known_author():
     assert title == "Разве Константин придумал Троицу?"
 
 
-def test_known_author_from_text_finds_surname_embedded_in_longer_phrase():
+def test_known_author_from_text_finds_surname_embedded_in_longer_phrase() -> None:
     assert known_author_from_text("Prayer with R.C. Sproul") == "Р. Ч. Спроул"
     assert known_author_from_text("**MacArthur, Mohler, and Sproul**") == "Джон МакАртур"
     assert known_author_from_text("Questions and Answers") == ""
 
 
-def test_known_registries_shared_between_parse_title_and_livedub_caption():
+def test_known_registries_shared_between_parse_title_and_livedub_caption() -> None:
     """Реестр должен жить в одном месте (core/person_names.py) — LiveDub title
     helpers импортируют его, а не держат вторую независимую копию."""
     from pathlib import Path
@@ -95,13 +95,13 @@ def test_known_registries_shared_between_parse_title_and_livedub_caption():
     assert src.count('"MacArthur": "Джон МакАртур"') == 0
 
 
-def test_registries_non_empty_and_ru_lookup_works():
+def test_registries_non_empty_and_ru_lookup_works() -> None:
     assert KNOWN_AUTHOR_RU.get("MacArthur") == "Джон МакАртур"
     assert KNOWN_CHANNEL_AUTHOR_RU.get("ligonier") == "Р. Ч. Спроул"
     assert known_ru_author_from_text("проповедь: Джон МакАртур, часть 1") == "Джон МакАртур"
 
 
-def test_looks_like_author_list_still_reexported():
+def test_looks_like_author_list_still_reexported() -> None:
     """Проверяем только реэкспорт/доступность — сама эвристика не менялась,
     у неё есть свои слабые места (например, «Questions and Answers» тоже
     считает похожим на список имён из-за двух заглавных слов), поэтому для

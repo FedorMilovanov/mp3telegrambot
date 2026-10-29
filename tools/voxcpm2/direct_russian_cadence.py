@@ -284,7 +284,7 @@ def _shape_distance(left: Any, right: Any) -> float | None:
     return float(np.mean(np.abs(a / scale_a - b / scale_b)))
 
 
-def evaluate_candidate_cadence(
+def _legacy_evaluate_candidate_cadence_impl(
     candidate: dict[str, Any],
     segment: dict[str, Any],
 ) -> dict[str, Any]:
@@ -412,7 +412,7 @@ _STRONG_TIERS = {"emphatic", "passionate"}
 
 _SOURCE_PEAK_MIN_DOMINANCE = 0.18
 
-_legacy_evaluate_candidate_cadence = evaluate_candidate_cadence
+_legacy_evaluate_candidate_cadence = _legacy_evaluate_candidate_cadence_impl
 
 
 def _finite(value: Any, default: float = 0.0) -> float:
@@ -432,7 +432,7 @@ def _source_peak_evidence(segment: dict[str, Any]) -> tuple[int | None, float]:
     if not isinstance(contour, dict):
         return None, 0.0
     value = contour.get("peak_energy_bin")
-    if isinstance(value, bool):
+    if value is None or isinstance(value, bool):
         return None, 0.0
     try:
         peak = int(value)

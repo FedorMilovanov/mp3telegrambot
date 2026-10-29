@@ -1,4 +1,5 @@
 import asyncio
+from typing import Any
 
 import pytest
 import requests
@@ -46,12 +47,12 @@ async def test_one_shot_edit_returns_api_error_without_sleeping() -> None:
         status_code = 200
 
         @staticmethod
-        def json():
+        def json() -> dict[str, Any]:
             return {"ok": False, "error": "CONTENT_TOO_BIG"}
 
-    calls = []
+    calls: list[tuple[str, dict[str, Any]]] = []
 
-    def post(url, **kwargs):
+    def post(url: str, **kwargs: Any) -> Response:
         calls.append((url, kwargs))
         return Response()
 
@@ -76,12 +77,12 @@ async def test_one_shot_edit_clamps_composed_title_at_transport_boundary() -> No
         status_code = 200
 
         @staticmethod
-        def json():
+        def json() -> dict[str, Any]:
             return {"ok": True, "result": {"path": "Page"}}
 
-    payloads = []
+    payloads: list[dict[str, Any]] = []
 
-    def post(_url, **kwargs):
+    def post(_url: str, **kwargs: Any) -> Response:
         payloads.append(kwargs["json"])
         return Response()
 
@@ -104,7 +105,7 @@ async def test_one_shot_edit_clamps_composed_title_at_transport_boundary() -> No
 
 @pytest.mark.asyncio
 async def test_network_timeout_is_retryable() -> None:
-    def post(_url, **_kwargs):
+    def post(_url: str, **_kwargs: Any) -> None:
         raise requests.Timeout("slow")
 
     result = await edit_telegraph_page_once(

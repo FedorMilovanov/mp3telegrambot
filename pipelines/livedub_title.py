@@ -16,7 +16,7 @@ import re
 from typing import Any, cast
 
 from core.bounded_cache import BoundedLRUDict
-from core.database import GEMINI_MODEL
+from core.database import GEMINI_MODEL as GEMINI_MODEL
 from core.globals import GEMINI_CLIENTS
 from core.person_names import (
     KNOWN_AUTHOR_RU as _KNOWN_AUTHOR_RU,
@@ -46,7 +46,7 @@ _LIVEDUB_TITLE_CACHE_MAX = _cache_max_entries(os.getenv("LIVEDUB_TITLE_CACHE_MAX
 _LIVEDUB_TITLE_CACHE: BoundedLRUDict = BoundedLRUDict(max_entries=_LIVEDUB_TITLE_CACHE_MAX)
 
 
-def _clean_livedub_meta_text(text: str) -> str:
+def _clean_livedub_meta_text(text: str | None) -> str:
     text = str(text or "")
     text = re.sub(r"(?i)#\s*(shorts?|ytshorts|youtube|sermon|preaching)\b", "", text)
     text = re.sub(r"(?i)\b(shorts?|youtube shorts?)\b", "", text)

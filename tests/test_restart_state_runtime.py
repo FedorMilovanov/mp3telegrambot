@@ -3,7 +3,9 @@ from __future__ import annotations
 import os
 from concurrent.futures import Future
 from pathlib import Path
-from types import SimpleNamespace
+
+import pytest
+from types import ModuleType
 
 from services import bot_lifecycle
 from services import livedub_delivery_coordinator as delivery
@@ -11,7 +13,7 @@ from services import restart_state_runtime as restart
 
 
 def test_reset_releases_inflight_but_preserves_confirmed_success() -> None:
-    pending = Future()
+    pending = Future[object]()
     pending_key = ("new", "chat", "reply", "pending")
     success_key = ("new", "chat", "reply", "success")
     with delivery._COMPANION_LOCK:
@@ -45,22 +47,21 @@ def test_process_crash_cleanup_deletes_only_stale_deferred_files(tmp_path: Path)
     assert recent.exists()
 
 
-def test_process_lifecycle_resets_before_async_runner(monkeypatch) -> None:
+def test_process_lifecycle_resets_before_async_runner(monkeypatch: pytest.MonkeyPatch) -> None:
     order: list[str] = []
 
-    async def runner():
+    async def runner() -> None:
         order.append("run")
         return None
 
-    stub = SimpleNamespace(run_bot_async=runner)
+    stub = ModuleType("test_main")
+    setattr(stub, "run_bot_async", runner)
     monkeypatch.setattr(bot_lifecycle, "_start_health_thread", lambda _module: None)
-    monkeypatch.setattr(
-        restart,
-        "reset_cross_loop_state",
-        lambda: (
-            order.append("reset")
-            or {"audio_inflight": 0, "deferred_source": 0, "companion_marks": 0, "orphan_files": 0}
-        ),
-    )
+
+    def reset() -> dict[str, int]:
+        order.append("reset")
+        return {"audio_inflight": 0, "deferred_source": 0, "companion_marks": 0, "orphan_files": 0}
+
+    monkeypatch.setattr(restart, "reset_cross_loop_state", reset)
     assert bot_lifecycle.run_bot_process(stub) == 0
     assert order == ["reset", "run"]

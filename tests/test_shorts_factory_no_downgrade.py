@@ -11,7 +11,7 @@ from core.model_catalog import MODEL_PRIMARY
 from services.shorts_transcription import factory_subtitle_profile
 
 
-def test_factory_model_floor_accepts_only_gemini_38_flash(monkeypatch):
+def test_factory_model_floor_accepts_only_gemini_38_flash(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SHORTS_FACTORY_MODEL", raising=False)
     assert candidates.DEFAULT_SHORTS_FACTORY_MODEL == MODEL_PRIMARY
     assert candidates.shorts_factory_model() == MODEL_PRIMARY
@@ -30,7 +30,7 @@ def test_factory_model_floor_accepts_only_gemini_38_flash(monkeypatch):
             candidates.shorts_factory_model()
 
 
-def test_factory_timestamps_preserve_millisecond_precision():
+def test_factory_timestamps_preserve_millisecond_precision() -> None:
     assert candidates._seconds(10.3754) == 10.375
     assert candidates._seconds("10.3754") == 10.375
     assert candidates._seconds("1:40.625") == 100.625
@@ -41,7 +41,7 @@ def test_factory_timestamps_preserve_millisecond_precision():
     assert candidates._seconds("broken") == 0.0
 
 
-def test_factory_score_floors_can_only_be_tightened(monkeypatch):
+def test_factory_score_floors_can_only_be_tightened(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SHORTS_FACTORY_MIN_SHORT_SCORE", "70")
     monkeypatch.setenv("SHORTS_FACTORY_MIN_LONG_SCORE", "10")
     assert (
@@ -69,7 +69,7 @@ def test_factory_score_floors_can_only_be_tightened(monkeypatch):
     )
 
 
-def test_factory_subtitle_profile_requires_exact_large_v3(monkeypatch):
+def test_factory_subtitle_profile_requires_exact_large_v3(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SHORTS_FACTORY_WHISPER_MODEL", raising=False)
     assert factory_subtitle_profile() == {
         "model_name": "large-v3",
@@ -85,7 +85,7 @@ def test_factory_subtitle_profile_requires_exact_large_v3(monkeypatch):
             factory_subtitle_profile()
 
 
-def test_factory_disk_floor_cannot_be_lowered(monkeypatch):
+def test_factory_disk_floor_cannot_be_lowered(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SHORTS_FACTORY_MIN_FREE_GB", "0.5")
     assert execution.MIN_FACTORY_FREE_GB == 2.0
     assert execution._min_free_gb() == 2.0
@@ -93,14 +93,14 @@ def test_factory_disk_floor_cannot_be_lowered(monkeypatch):
     assert execution._min_free_gb() == 4.5
 
 
-def test_factory_livedub_timeout_cannot_be_lowered(monkeypatch):
+def test_factory_livedub_timeout_cannot_be_lowered(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SHORTS_FACTORY_LIVEDUB_TIMEOUT_SEC", "60")
     assert factory_source._factory_livedub_timeout_seconds() == 1800
     monkeypatch.setenv("SHORTS_FACTORY_LIVEDUB_TIMEOUT_SEC", "2400")
     assert factory_source._factory_livedub_timeout_seconds() == 2400
 
 
-def test_factory_timing_quality_bounds_are_direction_aware(monkeypatch):
+def test_factory_timing_quality_bounds_are_direction_aware(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SHORTS_FACTORY_RU_MIN_SILENCE_SEC", "0.05")
     assert (
         timing._env_float(
@@ -155,7 +155,7 @@ def test_factory_timing_quality_bounds_are_direction_aware(monkeypatch):
     )
 
 
-def test_factory_exact_audited_ends_are_explicit_not_ambient():
+def test_factory_exact_audited_ends_are_explicit_not_ambient() -> None:
     short_delivery = Path("pipelines/factory_short_delivery.py").read_text(encoding="utf-8")
     factory_pipeline = Path("pipelines/shorts_factory.py").read_text(encoding="utf-8")
     short_renderer = Path("services/shorts_video.py").read_text(encoding="utf-8")
@@ -169,7 +169,7 @@ def test_factory_exact_audited_ends_are_explicit_not_ambient():
     assert "_FACTORY_SETTINGS" not in clip_renderer
 
 
-def test_no_downgrade_is_not_a_runtime_installer_stack():
+def test_no_downgrade_is_not_a_runtime_installer_stack() -> None:
     assert not Path("services/shorts_factory_no_downgrade.py").exists()
     quality = Path("services/shorts_factory_quality_gate.py").read_text(encoding="utf-8")
     execution_source = Path("services/shorts_factory_execution_guard.py").read_text(encoding="utf-8")
@@ -179,7 +179,7 @@ def test_no_downgrade_is_not_a_runtime_installer_stack():
     assert "shorts_factory_no_downgrade" not in manifest
 
 
-def test_source_owned_dispatcher_has_no_deleted_factory_runtime():
+def test_source_owned_dispatcher_has_no_deleted_factory_runtime() -> None:
     dispatcher = Path("pipelines/video_dispatch.py").read_text(encoding="utf-8")
     assert 'if mode == "shorts_max":' in dispatcher
     assert "from pipelines.shorts_factory import process_shorts_factory" in dispatcher

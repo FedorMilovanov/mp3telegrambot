@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Any
 
 import json
 from pathlib import Path
@@ -8,7 +9,7 @@ import pytest
 from tools.voxcpm2 import clean_source_download as source_download
 
 
-def test_project_url_mismatch_fails_before_metadata(monkeypatch, tmp_path: Path) -> None:
+def test_project_url_mismatch_fails_before_metadata(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     root = tmp_path / "project"
     source = root / "source" / "source.mp4"
     source.parent.mkdir(parents=True)
@@ -18,7 +19,7 @@ def test_project_url_mismatch_fails_before_metadata(monkeypatch, tmp_path: Path)
     )
     calls = 0
 
-    def forbidden_download(*_args, **_kwargs):
+    def forbidden_download(*_args: Any, **_kwargs: Any) -> None:
         nonlocal calls
         calls += 1
         raise AssertionError("legacy downloader/yt-dlp must not run")
@@ -33,7 +34,7 @@ def test_project_url_mismatch_fails_before_metadata(monkeypatch, tmp_path: Path)
 
 
 def test_matching_project_identity_delegates_to_verified_downloader(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "project"
@@ -45,7 +46,7 @@ def test_matching_project_identity_delegates_to_verified_downloader(
     )
     calls: list[tuple[str, Path]] = []
 
-    def fake_download(url: str, path: Path):
+    def fake_download(url: str, path: Path) -> dict[str, str]:
         calls.append((url, Path(path)))
         return {"id": "AbCdEf12345"}
 

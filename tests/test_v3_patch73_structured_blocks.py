@@ -6,7 +6,7 @@ from core.content_audit import audit_expanded_sections
 from core.code_health import collect_code_health, format_code_health_report
 
 
-def _flat(node):
+def _flat(node: object) -> str:
     if isinstance(node, str):
         return node
     if isinstance(node, dict):
@@ -16,7 +16,7 @@ def _flat(node):
     return ""
 
 
-def test_expanded_page_schema_allows_structured_blocks_with_content_fallback():
+def test_expanded_page_schema_allows_structured_blocks_with_content_fallback() -> None:
     schema = expanded_page_response_schema()
     section_props = schema["properties"]["sections"]["items"]["properties"]
     assert "content" in section_props
@@ -28,7 +28,7 @@ def test_expanded_page_schema_allows_structured_blocks_with_content_fallback():
     assert "content" in schema["properties"]["sections"]["items"]["required"]
 
 
-def test_section_to_nodes_prefers_blocks_and_preserves_boundaries():
+def test_section_to_nodes_prefers_blocks_and_preserves_boundaries() -> None:
     section = {
         "title": "Ключевые тексты",
         "time": "",
@@ -64,7 +64,7 @@ def test_section_to_nodes_prefers_blocks_and_preserves_boundaries():
     assert len([n for n in nodes if isinstance(n, dict) and n.get("tag") in {"p", "h3"}]) >= 6
 
 
-def test_content_audit_normalizes_block_text_without_dropping_blocks():
+def test_content_audit_normalizes_block_text_without_dropping_blocks() -> None:
     sections = [
         {
             "title": "T",
@@ -89,7 +89,7 @@ def test_content_audit_normalizes_block_text_without_dropping_blocks():
     assert any(i.code == "separator_fixed" for i in issues)
 
 
-def test_code_health_reports_regex_soft_threshold():
+def test_code_health_reports_regex_soft_threshold() -> None:
     report = collect_code_health(".")
     assert report.regex_threshold == 300
     text = format_code_health_report(".")

@@ -7,8 +7,8 @@ import html
 import os
 import platform
 import re
-import shutil
-import subprocess
+import shutil as shutil
+import subprocess as subprocess
 from importlib import metadata
 from pathlib import Path
 from typing import Any, Mapping

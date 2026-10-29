@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME_PATH = ROOT / "services" / "study_synthesis_runtime.py"
 
 
-def _load_runtime():
+def _load_runtime() -> Any:
     spec = importlib.util.spec_from_file_location("study_synthesis_runtime_test", RUNTIME_PATH)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

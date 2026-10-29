@@ -32,7 +32,7 @@ def _send_livedub_result_body() -> str:
     return SRC[start:end]
 
 
-def test_cover_retry_does_not_blindly_swallow_size_errors():
+def test_cover_retry_does_not_blindly_swallow_size_errors() -> None:
     body = _send_livedub_result_body()
     assert "send_livedub_video_with_cover(" in body
     idx = DELIVERY_STAGE_SRC.find("except Exception as cover_error:")
@@ -45,7 +45,7 @@ def test_cover_retry_does_not_blindly_swallow_size_errors():
     assert "if cover is None:\n            raise" in window
 
 
-def test_send_failure_notifies_user_instead_of_silent_false():
+def test_send_failure_notifies_user_instead_of_silent_false() -> None:
     body = _send_livedub_result_body()
     idx = body.rfind("except Exception as e:")
     assert idx != -1, "финальный catch-all не найден"
@@ -57,7 +57,7 @@ def test_send_failure_notifies_user_instead_of_silent_false():
     assert "return False" in window
 
 
-def test_send_failure_notice_hints_at_local_bot_api_when_size_related():
+def test_send_failure_notice_hints_at_local_bot_api_when_size_related() -> None:
     body = _send_livedub_result_body()
     idx = body.rfind("except Exception as e:")
     window = body[idx : idx + 2000]

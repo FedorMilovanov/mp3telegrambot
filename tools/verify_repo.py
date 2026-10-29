@@ -10,7 +10,7 @@ Runs the same non-negotiable checks we use before patch handoff:
 5. pytest
 6. ruff fatal lint subset from pyproject
 7. ruff formatting is clean repository-wide
-8. mypy strict for the declared type slice (``tools/check_types.py``)
+8. mypy strict for the entire repository (``tools/check_types.py``)
 9. production import layers (``tools/check_import_layers.py``)
 10. git diff --check, when inside a git checkout
 
@@ -20,8 +20,8 @@ The script is intentionally dependency-light and works on Windows/Linux/macOS.
 from __future__ import annotations
 
 import argparse
-import subprocess
-import sys
+import subprocess as subprocess
+import sys as sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -76,7 +76,7 @@ def run_checks(
             ]
         )
     if not skip_typecheck:
-        # Тот же гейт, что в CI: объявленный срез типов (см. tools/check_types.py).
+        # Тот же гейт, что в CI: strict-проверка всего репозитория.
         checks.append(("typecheck", [py, "tools/check_types.py"]))
     checks.append(("import layers", [py, "tools/check_import_layers.py"]))
     if _is_git_checkout(root):

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -19,20 +20,20 @@ CLI = ROOT / "tools" / "voxcpm2" / "direct_max_quality_cli.py"
 
 class _FakeModel:
     def __init__(self) -> None:
-        self.kwargs = None
+        self.kwargs: dict[str, Any] | None = None
 
     def generate(
         self,
-        text,
-        reference_wav_path,
-        cfg_value,
-        inference_timesteps,
-        min_len,
-        max_len,
-        normalize,
-        denoise,
-        seed=None,
-    ):
+        text: str,
+        reference_wav_path: str,
+        cfg_value: float,
+        inference_timesteps: int,
+        min_len: int,
+        max_len: int,
+        normalize: bool,
+        denoise: bool,
+        seed: int | None = None,
+    ) -> str:
         self.kwargs = locals().copy()
         return "wav"
 
@@ -86,7 +87,7 @@ def test_production_candidate_hook_builds_neutral_request() -> None:
     class CapturingSession:
         supports_continuation_context = False
 
-        def generate(self, request: BackendGenerationRequest):
+        def generate(self, request: BackendGenerationRequest) -> str:
             captured.append(request)
             return "wav"
 

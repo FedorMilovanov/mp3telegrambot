@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from typing import Any
 import sys
 
 import pytest
@@ -44,7 +45,7 @@ __all__=[]
 """
 
 
-def load_wrapper(tmp_path: Path):
+def load_wrapper(tmp_path: Path) -> Any:
     package = tmp_path / "tools" / "voxcpm2"
     package.mkdir(parents=True)
     (tmp_path / "tools" / "__init__.py").write_text("", encoding="utf-8")
@@ -60,8 +61,8 @@ def load_wrapper(tmp_path: Path):
             name,
             package / "direct_retry_epoch.py",
         )
+        assert spec is not None and spec.loader is not None
         module = importlib.util.module_from_spec(spec)
-        assert spec.loader is not None
         sys.modules[name] = module
         spec.loader.exec_module(module)
         return module

@@ -32,7 +32,7 @@ def test_clean_selector_rejects_qa_and_original_audio(tmp_path: Path) -> None:
     assert guard.select_clean_translation_mp3(tmp_path) is None
 
 
-def test_dual_delivery_fails_closed_when_clean_track_missing(monkeypatch, tmp_path: Path) -> None:
+def test_dual_delivery_fails_closed_when_clean_track_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     video = tmp_path / "final.mp4"
     video.write_bytes(b"video" * 400)
     mixed = tmp_path / "final.final-mix.mp3"
@@ -55,7 +55,9 @@ def test_dual_delivery_fails_closed_when_clean_track_missing(monkeypatch, tmp_pa
         )
 
 
-def test_dual_delivery_rejects_same_physical_file_for_both_roles(monkeypatch, tmp_path: Path) -> None:
+def test_dual_delivery_rejects_same_physical_file_for_both_roles(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     video = tmp_path / "final.mp4"
     video.write_bytes(b"video" * 400)
     shared = tmp_path / "translation.live.mp3"

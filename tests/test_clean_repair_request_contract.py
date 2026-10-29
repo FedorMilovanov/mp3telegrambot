@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from tools.voxcpm2 import generic_clean_audio_repair_runtime as repair
 
 
-def _root(tmp_path: Path, request: dict, *, segment_ids=(1, 2)) -> Path:
+def _root(tmp_path: Path, request: dict[str, Any], *, segment_ids: Iterable[int] = (1, 2)) -> Path:
     root = tmp_path / "project"
     (root / "input").mkdir(parents=True)
     (root / "source").mkdir(parents=True)
@@ -56,7 +58,7 @@ def _refresh_request_hash(root: Path) -> None:
 
 
 def test_valid_partial_and_full_repair_scopes_are_accepted(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     monkeypatch.setattr(repair.pipeline, "ffprobe_duration", lambda _path: 3.0)
@@ -85,7 +87,7 @@ def test_valid_partial_and_full_repair_scopes_are_accepted(
         {"segments_sha256": "bad"},
     ],
 )
-def test_ambiguous_repair_scope_fails_closed(tmp_path: Path, override: dict) -> None:
+def test_ambiguous_repair_scope_fails_closed(tmp_path: Path, override: dict[str, Any]) -> None:
     root = _root(tmp_path, override)
     with pytest.raises(RuntimeError):
         repair._validate_repair_request(root, "project-1")
@@ -102,9 +104,9 @@ def test_ambiguous_repair_scope_fails_closed(tmp_path: Path, override: dict) -> 
     ],
 )
 def test_ambiguous_repair_seed_fields_fail_closed(
-    request_payload: dict,
-    marker: dict,
-    manifest: dict,
+    request_payload: dict[str, Any],
+    marker: dict[str, Any],
+    manifest: dict[str, Any],
 ) -> None:
     with pytest.raises(RuntimeError):
         repair._next_seed(request_payload, marker, manifest)
@@ -156,7 +158,7 @@ def test_ambiguous_checkpoint_report_id_fails_closed(tmp_path: Path) -> None:
     assert "bool" in detail
 
 
-def test_invalid_request_stops_before_legacy_main(monkeypatch, tmp_path: Path) -> None:
+def test_invalid_request_stops_before_legacy_main(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     root = _root(tmp_path, {"repair_all": "false"})
     calls = 0
 

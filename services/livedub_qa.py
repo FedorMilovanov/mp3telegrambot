@@ -13,14 +13,14 @@ domain. API-key count therefore cannot multiply one 503 event.
 
 from __future__ import annotations
 
-import asyncio
+import asyncio as asyncio
 import contextlib
 import html as html_mod
 import json
 import logging
 import re
-import shutil
-import subprocess
+import shutil as shutil
+import subprocess as subprocess
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -32,7 +32,9 @@ from core.globals import (
     is_overload_error,
     is_quota_error,
 )
-from services import gemini_capacity_control as capacity_control
+from services import gemini_capacity_control as _capacity_control
+
+capacity_control = _capacity_control
 from services.gemini_quota_domains import ProjectQuotaDomainTracker
 
 _genai_types: Any = None

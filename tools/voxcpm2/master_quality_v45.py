@@ -10,7 +10,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from tools.voxcpm2 import master_quality_v4 as base  # noqa: E402 -- repo-root bootstrap must precede absolute project imports
+from tools.voxcpm2 import master_quality_v4 as master_quality_v4  # noqa: E402 -- repo-root bootstrap must precede absolute project imports
+
+base = master_quality_v4
 
 
 def _replace(flag: str, value: str) -> None:

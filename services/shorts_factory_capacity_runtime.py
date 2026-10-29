@@ -8,7 +8,7 @@ runtime rebinding is used.
 
 from __future__ import annotations
 
-import asyncio
+import asyncio as asyncio
 import contextlib
 import logging
 from pathlib import Path

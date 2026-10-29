@@ -6,7 +6,7 @@ from core.archive_quality import collect_archive_quality_summary, format_archive
 from core.generated_pages import build_generated_page_record, save_generated_page_record
 
 
-def test_archive_quality_summary_groups_warnings_and_prompt_variants(tmp_path):
+def test_archive_quality_summary_groups_warnings_and_prompt_variants(tmp_path: Path) -> None:
     save_generated_page_record(
         build_generated_page_record(
             video_id="a1",
@@ -49,7 +49,7 @@ def test_archive_quality_summary_groups_warnings_and_prompt_variants(tmp_path):
     assert summary.caption_trimmed == 1
 
 
-def test_archive_quality_report_is_admin_html_readout(tmp_path):
+def test_archive_quality_report_is_admin_html_readout(tmp_path: Path) -> None:
     save_generated_page_record(
         build_generated_page_record(
             video_id="b1",
@@ -70,7 +70,7 @@ def test_archive_quality_report_is_admin_html_readout(tmp_path):
     assert "PROMPT_EXPERIMENT_TAG" in text
 
 
-def test_archivequality_command_is_registered():
+def test_archivequality_command_is_registered() -> None:
     commands = Path("handlers/commands.py").read_text(encoding="utf-8")
     main = Path("main.py").read_text(encoding="utf-8")
     assert "from core.archive_quality import format_archive_quality_report" in commands
@@ -79,7 +79,7 @@ def test_archivequality_command_is_registered():
     assert 'CommandHandler("archivequality"' in main
 
 
-def test_prompt_variant_quality_scores_and_author_profiles(tmp_path):
+def test_prompt_variant_quality_scores_and_author_profiles(tmp_path: Path) -> None:
     from core.archive_quality import collect_author_quality_profiles, collect_prompt_variant_quality
 
     save_generated_page_record(
@@ -128,7 +128,7 @@ def test_prompt_variant_quality_scores_and_author_profiles(tmp_path):
     assert "good-v1" in report and "bad-v1" in report
 
 
-def test_prompt_variant_comparison_and_payload(tmp_path):
+def test_prompt_variant_comparison_and_payload(tmp_path: Path) -> None:
     from core.archive_quality import archive_quality_payload, compare_prompt_variants, format_prompt_variant_comparison
 
     save_generated_page_record(
@@ -173,7 +173,7 @@ def test_prompt_variant_comparison_and_payload(tmp_path):
     assert any(item["author"] == "B" for item in payload["author_profiles"])
 
 
-def test_comparevariants_command_is_registered():
+def test_comparevariants_command_is_registered() -> None:
     commands = Path("handlers/commands.py").read_text(encoding="utf-8")
     main = Path("main.py").read_text(encoding="utf-8")
     assert "format_prompt_variant_comparison" in commands
@@ -182,7 +182,7 @@ def test_comparevariants_command_is_registered():
     assert 'BotCommand("comparevariants"' in main
 
 
-def test_archive_quality_exports_markdown_and_json(tmp_path):
+def test_archive_quality_exports_markdown_and_json(tmp_path: Path) -> None:
     from core.archive_quality import archive_quality_payload, write_archive_quality_exports
 
     save_generated_page_record(
@@ -209,7 +209,7 @@ def test_archive_quality_exports_markdown_and_json(tmp_path):
     assert "prompt_variants" in js.read_text(encoding="utf-8")
 
 
-def test_archive_quality_html_escapes_archive_fields(tmp_path):
+def test_archive_quality_html_escapes_archive_fields(tmp_path: Path) -> None:
     from core.archive_quality import format_prompt_variant_comparison, format_quality_records_report
 
     save_generated_page_record(
@@ -244,7 +244,7 @@ def test_archive_quality_html_escapes_archive_fields(tmp_path):
     assert 'href="https://telegra.ph/html?x=&lt;bad&gt;&amp;y=1"' in combined
 
 
-def test_archivequalityfile_command_is_registered():
+def test_archivequalityfile_command_is_registered() -> None:
     commands = Path("handlers/commands.py").read_text(encoding="utf-8")
     main = Path("main.py").read_text(encoding="utf-8")
     assert "awrite_archive_quality_exports" in commands
@@ -253,7 +253,7 @@ def test_archivequalityfile_command_is_registered():
     assert 'BotCommand("archivequalityfile"' in main
 
 
-def test_quality_records_and_prompt_recommendation(tmp_path):
+def test_quality_records_and_prompt_recommendation(tmp_path: Path) -> None:
     from core.archive_quality import collect_quality_records, format_quality_records_report, recommend_prompt_variant
 
     save_generated_page_record(
@@ -308,7 +308,7 @@ def test_quality_records_and_prompt_recommendation(tmp_path):
     assert "stable-v1" in recommendation
 
 
-def test_qualityrecords_and_promptrecommend_commands_are_registered():
+def test_qualityrecords_and_promptrecommend_commands_are_registered() -> None:
     commands = Path("handlers/commands.py").read_text(encoding="utf-8")
     main = Path("main.py").read_text(encoding="utf-8")
     assert "format_quality_records_report" in commands

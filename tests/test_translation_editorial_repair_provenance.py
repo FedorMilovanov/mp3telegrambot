@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -17,7 +18,7 @@ from services.translation_editorial_repair_provenance import (
 )
 
 
-def _document(tmp_path: Path) -> tuple[Path, dict]:
+def _document(tmp_path: Path) -> tuple[Path, dict[str, Any]]:
     output = tmp_path / "clean.mp4"
     output.write_bytes(b"clean-output" * 300)
     review = tmp_path / "review.json"
@@ -102,7 +103,7 @@ async def test_verify_repair_provenance_accepts_explicit_relocated_identical_out
     relocated.write_bytes(output.read_bytes())
     output.unlink()
 
-    async def fake_probe(path: Path):
+    async def fake_probe(path: Path) -> SimpleNamespace:
         assert Path(path) == relocated.resolve(strict=False)
         return SimpleNamespace(duration=97.0)
 
@@ -126,7 +127,7 @@ async def test_verify_repair_provenance_rehashes_and_rejects_tampered_output(
     sidecar = tmp_path / "clean.editorial-repair.json"
     write_repair_provenance(sidecar, document)
 
-    async def fake_probe(path: Path):
+    async def fake_probe(path: Path) -> SimpleNamespace:
         assert Path(path) == output.resolve(strict=False)
         return SimpleNamespace(duration=97.0)
 

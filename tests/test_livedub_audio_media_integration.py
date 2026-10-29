@@ -34,7 +34,7 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def test_clean_ru_and_final_mix_are_valid_distinct_mp3_files(tmp_path: Path):
+def test_clean_ru_and_final_mix_are_valid_distinct_mp3_files(tmp_path: Path) -> None:
     ffmpeg = shutil.which("ffmpeg")
     assert ffmpeg is not None
 

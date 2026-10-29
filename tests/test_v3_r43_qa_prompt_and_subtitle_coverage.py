@@ -20,7 +20,7 @@ from services.livedub_qa import format_qa_report, _QA_PROMPT
 
 
 # ── 1. Splice example removed ────────────────────────────────────────────────
-def test_r43_qa_prompt_no_longer_contains_splice_example():
+def test_r43_qa_prompt_no_longer_contains_splice_example() -> None:
     assert "fools bring grief to their parents" not in _QA_PROMPT
     assert "fools commit sexual" not in _QA_PROMPT
     assert "родителями" not in _QA_PROMPT
@@ -32,7 +32,7 @@ def test_r43_qa_prompt_no_longer_contains_splice_example():
 
 
 # ── 2. reference_block accounts for reused audio_part ────────────────────────
-def test_r43_reference_block_considers_existing_audio_part():
+def test_r43_reference_block_considers_existing_audio_part() -> None:
     src = Path("services/livedub_qa.py").read_text(encoding="utf-8")
     assert "_will_attach_original" in src
     compact_src = "".join(src.split())
@@ -42,31 +42,31 @@ def test_r43_reference_block_considers_existing_audio_part():
 
 
 # ── 3. Low-confidence caveat surfaces in the report ──────────────────────────
-def test_r43_format_qa_report_shows_low_confidence_caveat():
+def test_r43_format_qa_report_shows_low_confidence_caveat() -> None:
     out = format_qa_report({"score": 80, "verdict": "точность приемлемая", "issues": [], "_low_confidence": True})
     assert "конспекту" in out
     assert "⚠️" in out
 
 
-def test_r43_format_qa_report_no_caveat_when_full_audio_used():
+def test_r43_format_qa_report_no_caveat_when_full_audio_used() -> None:
     out = format_qa_report({"score": 98, "verdict": "перевод точный", "issues": []})
     assert "конспекту" not in out
 
 
-def test_r43_qa_marks_low_confidence_only_without_original_audio():
+def test_r43_qa_marks_low_confidence_only_without_original_audio() -> None:
     src = Path("services/livedub_qa.py").read_text(encoding="utf-8")
     assert 'result.setdefault("_low_confidence", True)' in src
     assert "if not _will_attach_original:" in src
 
 
 # ── 4. Subtitle ID coverage: no silent English fallback ──────────────────────
-def test_r43_subtitle_prompt_forbids_cross_id_merging():
+def test_r43_subtitle_prompt_forbids_cross_id_merging() -> None:
     src = Path("services/eng_subtitles.py").read_text(encoding="utf-8")
     assert "never merge two IDs into one" in src
     assert "never by dropping or merging a neighboring ID" in src
 
 
-def test_r43_subtitle_translation_retries_missing_ids():
+def test_r43_subtitle_translation_retries_missing_ids() -> None:
     src = Path("services/eng_subtitles.py").read_text(encoding="utf-8")
     assert "_missing = [(sid, text) for sid, text in chunk if str(sid) not in translated_segments]" in src
     assert "остались непереведёнными" in src

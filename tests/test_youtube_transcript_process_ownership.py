@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Any
 
 import asyncio
 import subprocess
@@ -19,7 +20,7 @@ async def test_transcript_uses_owned_ytdlp_and_preserves_manual_then_auto_fallba
     monkeypatch.setattr(ffmpeg, "YTDLP_BASE_ARGS", base_args)
     calls: list[tuple[list[str], dict[str, object]]] = []
 
-    async def fake_owned(command, **kwargs):
+    async def fake_owned(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         argv = list(command)
         calls.append((argv, dict(kwargs)))
         if "--write-auto-subs" in argv:
@@ -62,7 +63,7 @@ async def test_transcript_cancellation_propagates_from_process_owner(
 ) -> None:
     monkeypatch.setattr(ffmpeg, "YTDLP_BASE_ARGS", ["python", "-m", "yt_dlp"])
 
-    async def cancelled(*_args, **_kwargs):
+    async def cancelled(*_args: Any, **_kwargs: Any) -> None:
         raise asyncio.CancelledError
 
     monkeypatch.setattr(transcript, "run_cancellable_process", cancelled)

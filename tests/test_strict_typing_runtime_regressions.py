@@ -9,7 +9,7 @@ from services import eng_subtitles, render_clips_montage, shorts_video
 
 
 @pytest.mark.asyncio
-async def test_reset_cache_callback_executes_delete_in_worker(monkeypatch) -> None:
+async def test_reset_cache_callback_executes_delete_in_worker(monkeypatch: pytest.MonkeyPatch) -> None:
     connection = MagicMock()
     connection.__enter__.return_value = connection
     connection.execute.return_value = SimpleNamespace(rowcount=7)
@@ -35,7 +35,7 @@ async def test_reset_cache_callback_executes_delete_in_worker(monkeypatch) -> No
 
 @pytest.mark.asyncio
 async def test_eng_subtitles_gemini_path_writes_translated_srt(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     (tmp_path / "original_audio.m4a").write_bytes(b"audio")
@@ -65,7 +65,7 @@ async def test_eng_subtitles_gemini_path_writes_translated_srt(
 
 
 @pytest.mark.asyncio
-async def test_extras_empty_gemini_response_uses_typed_callback_route(monkeypatch) -> None:
+async def test_extras_empty_gemini_response_uses_typed_callback_route(monkeypatch: pytest.MonkeyPatch) -> None:
     client = object()
     monkeypatch.setattr(render_clips_montage, "GEMINI_CLIENTS", [client])
     monkeypatch.setattr(render_clips_montage, "HAS_GEMINI", True)
@@ -82,12 +82,16 @@ async def test_extras_empty_gemini_response_uses_typed_callback_route(monkeypatc
     )
 
     assert result == {"montage_candidates": [], "highlights_candidates": []}
-    assert generate.await_args.args[0] == [client]
-    assert callable(generate.await_args.args[1])
+    await_args = generate.await_args
+    assert await_args is not None
+    assert await_args.args[0] == [client]
+    assert callable(await_args.args[1])
 
 
 @pytest.mark.asyncio
-async def test_shorts_download_wrapper_returns_owned_legacy_path(monkeypatch, tmp_path: Path) -> None:
+async def test_shorts_download_wrapper_returns_owned_legacy_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     expected = tmp_path / "source.mp4"
     legacy_download = AsyncMock(return_value=expected)
     monkeypatch.setattr(shorts_video, "_LEGACY_DOWNLOAD_VIDEO", legacy_download)

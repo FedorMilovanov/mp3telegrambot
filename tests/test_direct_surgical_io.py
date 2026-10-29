@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 from tools.voxcpm2 import direct_surgical_io as io
 
@@ -13,7 +14,7 @@ def digest(path: Path) -> str:
 
 
 def test_lazy_session_opens_only_for_length_planning() -> None:
-    calls = []
+    calls: list[str] = []
 
     class Spec:
         encode_sample_rate = 16000
@@ -24,23 +25,23 @@ def test_lazy_session_opens_only_for_length_planning() -> None:
     class Session:
         audio_spec = Spec()
 
-        def generate(self, request):
+        def generate(self, request: Any) -> Any:
             return request
 
     class Backend:
         backend_id = "voxcpm2"
 
-        def capabilities(self):
+        def capabilities(self) -> SimpleNamespace:
             return SimpleNamespace(continuation_context=True)
 
-        def open_session(self, config):
+        def open_session(self, config: Any) -> Session:
             calls.append("open")
             return Session()
 
-        def plan_generation_length(self, spec, request):
+        def plan_generation_length(self, spec: Any, request: Any) -> Any:
             return spec.seconds_per_step
 
-        def plan_generation_profile(self, request):
+        def plan_generation_profile(self, request: Any) -> Any:
             return request
 
     backend = io.LazyBackend(Backend(), encode=16000, output=48000, log=lambda x: None)

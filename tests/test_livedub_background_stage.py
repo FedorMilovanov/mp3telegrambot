@@ -1,40 +1,45 @@
 """Behavior contracts for the parallel LiveDub background coordinator."""
 
+from collections.abc import Awaitable, Callable, Coroutine
+from typing import Any, cast
+
+import pathlib
+
 import asyncio
 
 import pytest
 
-from pipelines.livedub_background_stage import run_livedub_background
+from pipelines.livedub_background_stage import BackgroundResult, run_livedub_background
 
 
-async def _wait_video(task, _workdir):
+async def _wait_video(task: Awaitable[pathlib.Path | None], _workdir: pathlib.Path) -> pathlib.Path | None:
     return await task
 
 
 def _run(
-    tmp_path,
+    tmp_path: pathlib.Path,
     *,
-    subtitles_enabled=False,
-    translation_subtitles_enabled=False,
-    create_subtitles=None,
-    make_video=None,
-    wait_video=None,
-    merge_subtitles=None,
-    download_original=None,
-):
+    subtitles_enabled: bool = False,
+    translation_subtitles_enabled: bool = False,
+    create_subtitles: Callable[..., Coroutine[Any, Any, pathlib.Path | None]] | None = None,
+    make_video: Callable[..., Coroutine[Any, Any, pathlib.Path | None]] | None = None,
+    wait_video: Callable[[Awaitable[pathlib.Path | None], pathlib.Path], Awaitable[pathlib.Path | None]] | None = None,
+    merge_subtitles: Callable[..., Awaitable[pathlib.Path]] | None = None,
+    download_original: Callable[..., Awaitable[pathlib.Path]] | None = None,
+) -> BackgroundResult:
     dub_path = tmp_path / "dub.mp4"
     dub_path.write_bytes(b"dub")
 
-    async def default_make(*_args, **_kwargs):
+    async def default_make(*_args: Any, **_kwargs: Any) -> pathlib.Path:
         return dub_path
 
-    async def default_create(*_args, **_kwargs):
+    async def default_create(*_args: Any, **_kwargs: Any) -> None:
         return None
 
-    async def default_merge(video, _srt, *, is_fallback):
+    async def default_merge(video: pathlib.Path, _srt: pathlib.Path, *, is_fallback: bool) -> pathlib.Path:
         return tmp_path / ("fallback.mp4" if is_fallback else "merged.mp4")
 
-    async def default_download(*_args):
+    async def default_download(*_args: Any) -> pathlib.Path:
         original = tmp_path / "original.mp4"
         original.write_bytes(b"original")
         return original
@@ -57,10 +62,10 @@ def _run(
     )
 
 
-def test_dub_without_subtitles_returns_plain_video_and_threads_arguments(tmp_path):
-    calls = []
+def test_dub_without_subtitles_returns_plain_video_and_threads_arguments(tmp_path: pathlib.Path) -> None:
+    calls: list[Any] = []
 
-    async def make_video(*args, **kwargs):
+    async def make_video(*args: Any, **kwargs: Any) -> pathlib.Path:
         calls.append((args, kwargs))
         path = tmp_path / "plain.mp4"
         path.write_bytes(b"video")
@@ -77,16 +82,18 @@ def test_dub_without_subtitles_returns_plain_video_and_threads_arguments(tmp_pat
     ]
 
 
-def test_dub_and_subtitles_are_merged_after_translation_subtitles_finish(tmp_path, monkeypatch):
+def test_dub_and_subtitles_are_merged_after_translation_subtitles_finish(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     srt = tmp_path / "gemini.srt"
     srt.write_text("subtitle", encoding="utf-8")
-    calls = []
+    calls: list[Any] = []
 
-    async def create_subtitles(*args, **kwargs):
+    async def create_subtitles(*args: Any, **kwargs: Any) -> pathlib.Path:
         calls.append(("create", args, kwargs))
         return srt
 
-    async def merge_subtitles(video, subtitle_path, *, is_fallback):
+    async def merge_subtitles(video: pathlib.Path, subtitle_path: pathlib.Path, *, is_fallback: bool) -> pathlib.Path:
         calls.append(("merge", video, subtitle_path, is_fallback))
         merged = tmp_path / "with-subs.mp4"
         merged.write_bytes(b"merged")
@@ -94,7 +101,7 @@ def test_dub_and_subtitles_are_merged_after_translation_subtitles_finish(tmp_pat
 
     translation_finished = False
 
-    async def translation_subtitles(url, workdir):
+    async def translation_subtitles(url: str, workdir: pathlib.Path) -> None:
         nonlocal translation_finished
         translation_finished = True
         assert (url, workdir) == ("https://example.test/video", tmp_path)
@@ -123,8 +130,8 @@ def test_dub_and_subtitles_are_merged_after_translation_subtitles_finish(tmp_pat
     assert calls[1][2:] == (srt, False)
 
 
-def test_subtitle_failure_is_noncritical(tmp_path, caplog):
-    async def create_subtitles(*_args, **_kwargs):
+def test_subtitle_failure_is_noncritical(tmp_path: pathlib.Path, caplog: pytest.LogCaptureFixture) -> None:
+    async def create_subtitles(*_args: Any, **_kwargs: Any) -> None:
         raise RuntimeError("subtitle unavailable")
 
     result = _run(
@@ -137,8 +144,10 @@ def test_subtitle_failure_is_noncritical(tmp_path, caplog):
     assert "subtitle unavailable" in caplog.text
 
 
-def test_translation_subtitle_failure_is_noncritical(tmp_path, monkeypatch, caplog):
-    async def translation_subtitles(*_args):
+def test_translation_subtitle_failure_is_noncritical(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    async def translation_subtitles(*_args: Any) -> None:
         raise RuntimeError("translation subtitles unavailable")
 
     monkeypatch.setattr(
@@ -151,24 +160,24 @@ def test_translation_subtitle_failure_is_noncritical(tmp_path, monkeypatch, capl
     assert "translation subtitles unavailable" in caplog.text
 
 
-def test_missing_dub_with_subtitles_downloads_original_and_marks_fallback(tmp_path):
+def test_missing_dub_with_subtitles_downloads_original_and_marks_fallback(tmp_path: pathlib.Path) -> None:
     srt = tmp_path / "gemini.srt"
     srt.write_text("subtitle", encoding="utf-8")
     original = tmp_path / "source.mp4"
     original.write_bytes(b"source")
-    calls = []
+    calls: list[Any] = []
 
-    async def make_video(*_args, **_kwargs):
+    async def make_video(*_args: Any, **_kwargs: Any) -> None:
         return None
 
-    async def create_subtitles(*_args, **_kwargs):
+    async def create_subtitles(*_args: Any, **_kwargs: Any) -> pathlib.Path:
         return srt
 
-    async def download_original(*args):
+    async def download_original(*args: Any) -> pathlib.Path:
         calls.append(("download", args))
         return original
 
-    async def merge_subtitles(video, subtitle_path, *, is_fallback):
+    async def merge_subtitles(video: pathlib.Path, subtitle_path: pathlib.Path, *, is_fallback: bool) -> pathlib.Path:
         calls.append(("merge", video, subtitle_path, is_fallback))
         fallback = tmp_path / "fallback-result.mp4"
         fallback.write_bytes(b"fallback")
@@ -190,11 +199,11 @@ def test_missing_dub_with_subtitles_downloads_original_and_marks_fallback(tmp_pa
     ]
 
 
-def test_missing_dub_without_subtitles_returns_no_result(tmp_path):
-    async def make_video(*_args, **_kwargs):
+def test_missing_dub_without_subtitles_returns_no_result(tmp_path: pathlib.Path) -> None:
+    async def make_video(*_args: Any, **_kwargs: Any) -> None:
         return None
 
-    async def unexpected_download(*_args):
+    async def unexpected_download(*_args: Any) -> pathlib.Path:
         raise AssertionError("original download must not run without subtitles")
 
     result = _run(
@@ -206,8 +215,8 @@ def test_missing_dub_without_subtitles_returns_no_result(tmp_path):
     assert result == (None, False, False)
 
 
-def test_background_error_is_logged_and_normalized(tmp_path, caplog):
-    async def wait_video(_task, _workdir):
+def test_background_error_is_logged_and_normalized(tmp_path: pathlib.Path, caplog: pytest.LogCaptureFixture) -> None:
+    async def wait_video(_task: Awaitable[pathlib.Path | None], _workdir: pathlib.Path) -> None:
         raise RuntimeError("dub failed")
 
     result = _run(tmp_path, wait_video=wait_video)
@@ -216,31 +225,31 @@ def test_background_error_is_logged_and_normalized(tmp_path, caplog):
     assert "[LiveDub Background] Ошибка: dub failed" in caplog.text
 
 
-def test_parent_cancellation_cancels_every_pending_child(tmp_path):
-    async def scenario():
+def test_parent_cancellation_cancels_every_pending_child(tmp_path: pathlib.Path) -> None:
+    async def scenario() -> None:
         started = [asyncio.Event() for _ in range(3)]
-        cancelled = []
+        cancelled: list[int] = []
 
-        async def blocking_child(index):
+        async def blocking_child(index: int) -> None:
             started[index].set()
             try:
                 await asyncio.Event().wait()
             finally:
                 cancelled.append(index)
 
-        async def create_subtitles(*_args, **_kwargs):
+        async def create_subtitles(*_args: Any, **_kwargs: Any) -> None:
             return await blocking_child(0)
 
-        async def make_video(*_args, **_kwargs):
+        async def make_video(*_args: Any, **_kwargs: Any) -> None:
             return await blocking_child(1)
 
-        async def translation_subtitles(*_args):
+        async def translation_subtitles(*_args: Any) -> None:
             return await blocking_child(2)
 
         import services.yandex_live_dub as yandex_live_dub
 
         original = yandex_live_dub.get_translation_subtitles
-        yandex_live_dub.get_translation_subtitles = translation_subtitles
+        yandex_live_dub.get_translation_subtitles = cast(Any, translation_subtitles)
         try:
             parent = asyncio.create_task(
                 run_livedub_background(
@@ -254,8 +263,8 @@ def test_parent_cancellation_cancels_every_pending_child(tmp_path):
                     create_subtitles=create_subtitles,
                     make_video=make_video,
                     wait_video=_wait_video,
-                    merge_subtitles=None,
-                    download_original=None,
+                    merge_subtitles=cast(Any, None),
+                    download_original=cast(Any, None),
                 )
             )
             await asyncio.gather(*(event.wait() for event in started))
@@ -270,12 +279,14 @@ def test_parent_cancellation_cancels_every_pending_child(tmp_path):
     asyncio.run(scenario())
 
 
-def test_teardown_base_exception_does_not_replace_result(tmp_path, monkeypatch):
-    async def scenario():
+def test_teardown_base_exception_does_not_replace_result(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def scenario() -> None:
         started = asyncio.Event()
         cancelled = False
 
-        async def translation_subtitles(*_args):
+        async def translation_subtitles(*_args: Any) -> None:
             nonlocal cancelled
             started.set()
             try:
@@ -283,14 +294,14 @@ def test_teardown_base_exception_does_not_replace_result(tmp_path, monkeypatch):
             finally:
                 cancelled = True
 
-        async def make_video(*_args, **_kwargs):
+        async def make_video(*_args: Any, **_kwargs: Any) -> None:
             return None
 
-        async def fail_wait(_task, _workdir):
+        async def fail_wait(_task: Awaitable[pathlib.Path | None], _workdir: pathlib.Path) -> None:
             await started.wait()
             raise RuntimeError("primary failure")
 
-        async def broken_gather(*_args, **_kwargs):
+        async def broken_gather(*_args: Any, **_kwargs: Any) -> None:
             raise BaseException("teardown failure")
 
         monkeypatch.setattr(
@@ -306,11 +317,11 @@ def test_teardown_base_exception_does_not_replace_result(tmp_path, monkeypatch):
             subtitles_enabled=False,
             translation_subtitles_enabled=True,
             pro_mix=False,
-            create_subtitles=None,
+            create_subtitles=cast(Any, None),
             make_video=make_video,
             wait_video=fail_wait,
-            merge_subtitles=None,
-            download_original=None,
+            merge_subtitles=cast(Any, None),
+            download_original=cast(Any, None),
         )
 
         assert result == (None, False, False)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -16,8 +17,8 @@ def _fingerprints() -> dict[str, str]:
     }
 
 
-def _marker(**changes):
-    value = {
+def _marker(**changes: Any) -> dict[str, Any]:
+    value: dict[str, Any] = {
         "policy": clean.POLICY,
         "runtime_contract_policy": contract.POLICY,
         "render_contract_sha256": "render-current",

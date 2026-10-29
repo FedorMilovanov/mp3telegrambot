@@ -55,7 +55,7 @@ def _make_cache_db(path: Path) -> None:
         conn.commit()
 
 
-def test_export_public_archive_allowlists_links_and_dedupes_urls(tmp_path):
+def test_export_public_archive_allowlists_links_and_dedupes_urls(tmp_path: Path) -> None:
     db = tmp_path / "bot_cache.db"
     _make_cache_db(db)
 

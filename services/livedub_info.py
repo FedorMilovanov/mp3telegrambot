@@ -18,7 +18,8 @@ import re
 from pathlib import Path
 from typing import Any
 
-from core.globals import GEMINI_CLIENTS, make_text_config_smart
+from core.globals import GEMINI_CLIENTS as GEMINI_CLIENTS
+from core.globals import make_text_config_smart
 from services.gemini_router import gemini_generate
 from core.model_catalog import MODEL_PRIMARY as DEFAULT_INFO_MODEL
 from core.text_utils import (

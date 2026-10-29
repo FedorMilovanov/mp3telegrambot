@@ -14,11 +14,12 @@ import errno
 import json
 import math
 import os
-import shutil
+import shutil as shutil
 import subprocess
 import sys
 import time
 import uuid
+from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 from pathlib import Path
 
@@ -30,12 +31,12 @@ if str(PROJECT_ROOT) not in sys.path:
 from services.async_process import run_cancellable_process  # noqa: E402
 
 from core.bgutil_pin import (  # noqa: E402
-    BGUTIL_COMMIT,
+    BGUTIL_COMMIT as BGUTIL_COMMIT,
     BGUTIL_MIN_NODE_MAJOR,
     BGUTIL_MIN_NPM_MAJOR,
     BGUTIL_REPOSITORY,
     BGUTIL_SECURITY_ADVISORY,
-    BGUTIL_VERSION,
+    BGUTIL_VERSION as BGUTIL_VERSION,
     bgutil_pin_problems,
     marker_text,
 )
@@ -320,7 +321,7 @@ def _try_acquire_lock(fd: int) -> bool:
 
         os.lseek(fd, 0, os.SEEK_SET)
         try:
-            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+            getattr(msvcrt, "locking")(fd, getattr(msvcrt, "LK_NBLCK"), 1)
         except OSError as exc:
             if _lock_contention_errno(exc):
                 return False
@@ -343,7 +344,7 @@ def _release_lock(fd: int) -> None:
         import msvcrt
 
         os.lseek(fd, 0, os.SEEK_SET)
-        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        getattr(msvcrt, "locking")(fd, getattr(msvcrt, "LK_UNLCK"), 1)
         return
 
     import fcntl
@@ -352,7 +353,7 @@ def _release_lock(fd: int) -> None:
 
 
 @contextmanager
-def _provision_lock(*, wait_seconds: float = _LOCK_WAIT_SEC):
+def _provision_lock(*, wait_seconds: float = _LOCK_WAIT_SEC) -> Iterator[None]:
     """Serialize rebuilds with an OS-owned lock released on process death."""
     try:
         wait = float(wait_seconds)

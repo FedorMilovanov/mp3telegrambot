@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Any
 
 import asyncio
 import subprocess
@@ -14,7 +15,7 @@ async def test_probe_timeout_becomes_structured_fail_closed_report(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    async def _timeout(*args, **kwargs):
+    async def _timeout(*args: Any, **kwargs: Any) -> None:
         raise subprocess.TimeoutExpired(["ffmpeg", "probe"], timeout=90)
 
     monkeypatch.setattr(gate, "refine_highlights_candidate", _timeout)
@@ -35,7 +36,7 @@ async def test_unreaped_child_becomes_distinct_structured_reason(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    async def _unreaped(*args, **kwargs):
+    async def _unreaped(*args: Any, **kwargs: Any) -> None:
         raise RuntimeError("child process did not stop after terminate/kill")
 
     monkeypatch.setattr(gate, "refine_highlights_candidate", _unreaped)
@@ -55,7 +56,7 @@ async def test_unrelated_runtime_error_is_not_mislabelled_as_process_ownership(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    async def _runtime_error(*args, **kwargs):
+    async def _runtime_error(*args: Any, **kwargs: Any) -> None:
         raise RuntimeError("resource scheduler unavailable")
 
     monkeypatch.setattr(gate, "refine_highlights_candidate", _runtime_error)
@@ -75,7 +76,7 @@ async def test_unexpected_quality_failure_is_structured(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    async def _broken(*args, **kwargs):
+    async def _broken(*args: Any, **kwargs: Any) -> None:
         raise OSError("temporary storage unavailable")
 
     monkeypatch.setattr(gate, "refine_highlights_candidate", _broken)
@@ -95,7 +96,7 @@ async def test_cancellation_is_never_converted_to_quality_rejection(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    async def _cancel(*args, **kwargs):
+    async def _cancel(*args: Any, **kwargs: Any) -> None:
         raise asyncio.CancelledError
 
     monkeypatch.setattr(gate, "refine_highlights_candidate", _cancel)
@@ -115,7 +116,7 @@ async def test_normal_quality_result_passes_through_unchanged(
     expected_candidate = {"title": "verified"}
     expected_report = {"accepted": True, "reason": "accepted"}
 
-    async def _accepted(*args, **kwargs):
+    async def _accepted(*args: Any, **kwargs: Any) -> tuple[dict[str, Any], dict[str, Any]]:
         return expected_candidate, expected_report
 
     monkeypatch.setattr(gate, "refine_highlights_candidate", _accepted)

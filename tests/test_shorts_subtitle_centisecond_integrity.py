@@ -3,7 +3,7 @@
 from services.shorts_subtitle_integrity import validate_ass_document
 
 
-def test_one_centisecond_overlap_is_rejected():
+def test_one_centisecond_overlap_is_rejected() -> None:
     ass = "\n".join(
         [
             "[Events]",
@@ -18,7 +18,7 @@ def test_one_centisecond_overlap_is_rejected():
     assert any("overlaps previous event" in issue for issue in issues)
 
 
-def test_touching_centisecond_boundaries_are_valid():
+def test_touching_centisecond_boundaries_are_valid() -> None:
     ass = "\n".join(
         [
             "[Events]",

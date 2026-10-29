@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -78,7 +78,7 @@ def test_cancel_before_preflight_never_runs_probe_or_runner(
         lambda *_args, **_kwargs: calls.append("runner"),
     )
 
-    worker.execute_job(store, "worker-1", _job())
+    worker.execute_job(cast(worker.WorkerDubStore, store), "worker-1", _job())
 
     assert calls == []
     assert store.finished == [
@@ -110,7 +110,7 @@ def test_cancel_during_preflight_never_starts_runner(
         lambda *_args, **_kwargs: calls.append("runner"),
     )
 
-    worker.execute_job(store, "worker-1", _job())
+    worker.execute_job(cast(worker.WorkerDubStore, store), "worker-1", _job())
 
     assert calls == ["preflight"]
     assert store.finished[-1]["status"] == "cancelled"
@@ -126,7 +126,7 @@ def test_normal_preflight_passes_explicit_store_root_and_starts_runner_once(
     seen_studio: list[Path] = []
     worker._STOP.clear()
 
-    def fake_preflight(_project: dict[str, Any], _action: str, *, studio: Path):
+    def fake_preflight(_project: dict[str, Any], _action: str, *, studio: Path) -> dict[str, Any]:
         seen_studio.append(Path(studio))
         return {"passed": True, "skipped": False}
 
@@ -137,7 +137,7 @@ def test_normal_preflight_passes_explicit_store_root_and_starts_runner_once(
         lambda _store, worker_id, job, _project: calls.append(f"runner:{worker_id}:{job['id']}"),
     )
 
-    worker.execute_job(store, "worker-1", _job())
+    worker.execute_job(cast(worker.WorkerDubStore, store), "worker-1", _job())
 
     assert seen_studio == [store.root]
     assert calls == ["runner:worker-1:17"]
@@ -166,7 +166,7 @@ def test_real_preflight_failure_is_failed_and_logged(
         lambda *_args, **_kwargs: calls.append("runner"),
     )
 
-    worker.execute_job(store, "worker-1", _job())
+    worker.execute_job(cast(worker.WorkerDubStore, store), "worker-1", _job())
 
     assert calls == []
     assert store.finished[-1]["status"] == "failed"

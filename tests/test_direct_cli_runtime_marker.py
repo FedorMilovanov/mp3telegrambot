@@ -22,7 +22,7 @@ def _arguments(tmp_path: Path, *, cache_length: str = "4096") -> list[str]:
     ]
 
 
-def _patch_contract(monkeypatch, tmp_path: Path, *, fingerprint: str = "render-current") -> None:
+def _patch_contract(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, fingerprint: str = "render-current") -> None:
     monkeypatch.setattr(entrypoint.sys, "argv", _arguments(tmp_path))
     monkeypatch.setattr(entrypoint.sys, "executable", str(tmp_path / "python.exe"))
     monkeypatch.setattr(
@@ -32,7 +32,7 @@ def _patch_contract(monkeypatch, tmp_path: Path, *, fingerprint: str = "render-c
     )
 
 
-def test_stale_compatibility_marker_clears_checkpoint_state(monkeypatch, tmp_path: Path) -> None:
+def test_stale_compatibility_marker_clears_checkpoint_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _patch_contract(monkeypatch, tmp_path)
     work = tmp_path / "work"
     for name in ("checkpoints", "segments_clean", "segments_fitted", "attempts"):
@@ -57,7 +57,7 @@ def test_stale_compatibility_marker_clears_checkpoint_state(monkeypatch, tmp_pat
         assert not (work / name).exists()
 
 
-def test_current_compatibility_marker_keeps_checkpoint_state(monkeypatch, tmp_path: Path) -> None:
+def test_current_compatibility_marker_keeps_checkpoint_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _patch_contract(monkeypatch, tmp_path)
     work, expected = entrypoint._runtime_contract()
     checkpoint = work / "checkpoints" / "segment_01.json"
@@ -72,7 +72,7 @@ def test_current_compatibility_marker_keeps_checkpoint_state(monkeypatch, tmp_pa
     assert json.loads(marker.read_text(encoding="utf-8")) == expected
 
 
-def test_failed_render_keeps_compatibility_but_not_success(monkeypatch, tmp_path: Path) -> None:
+def test_failed_render_keeps_compatibility_but_not_success(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _patch_contract(monkeypatch, tmp_path)
 
     def fail() -> None:
@@ -89,7 +89,7 @@ def test_failed_render_keeps_compatibility_but_not_success(monkeypatch, tmp_path
     assert report["message"] == "render failed"
 
 
-def test_successful_render_commits_separate_success_marker(monkeypatch, tmp_path: Path) -> None:
+def test_successful_render_commits_separate_success_marker(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _patch_contract(monkeypatch, tmp_path)
     entrypoint.run(lambda: "done")
 
@@ -103,7 +103,7 @@ def test_successful_render_commits_separate_success_marker(monkeypatch, tmp_path
 
 @pytest.mark.parametrize("cache_length", ["0", "2047", "131073", "nan"])
 def test_manual_cache_length_contract_rejects_invalid_values(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     cache_length: str,
 ) -> None:

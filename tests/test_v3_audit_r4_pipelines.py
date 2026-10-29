@@ -10,7 +10,7 @@ import asyncio
 from pathlib import Path
 
 
-def test_timestamps_to_chapter_list_parses_pipeline_string():
+def test_timestamps_to_chapter_list_parses_pipeline_string() -> None:
     """ai_data['timestamps'] — строка "M:SS тема\\n…"; старый isinstance-гейт
     делал вшивание ID3-глав мёртвым для всех mp3."""
     from services.mp3_chapters import timestamps_to_chapter_list
@@ -29,7 +29,7 @@ def test_timestamps_to_chapter_list_parses_pipeline_string():
     assert timestamps_to_chapter_list("мусор без таймкода") == []
 
 
-def test_pipeline_embeds_chapters_from_string_timestamps():
+def test_pipeline_embeds_chapters_from_string_timestamps() -> None:
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     stage = Path("pipelines/delivery_stage.py").read_text(encoding="utf-8")
     cache_stage = Path("pipelines/cache_hit_delivery_stage.py").read_text(encoding="utf-8")
@@ -42,7 +42,7 @@ def test_pipeline_embeds_chapters_from_string_timestamps():
     assert "isinstance(_ts_chap_c, list)" not in src + stage
 
 
-def test_montage_does_not_own_borrowed_livedub_video():
+def test_montage_does_not_own_borrowed_livedub_video() -> None:
     """owned_video=True на LiveDub-видео удалял переведённое видео, и
     highlights молча рендерился из английского оригинала."""
     src = Path("pipelines/montage.py").read_text(encoding="utf-8")
@@ -54,14 +54,14 @@ def test_montage_does_not_own_borrowed_livedub_video():
         assert "owned_video = True" not in before_else, "owned_video нельзя ставить в LiveDub-ветке"
 
 
-def test_shorts_keeps_video_for_clips_and_never_deletes_borrowed():
+def test_shorts_keeps_video_for_clips_and_never_deletes_borrowed() -> None:
     src = Path("pipelines/shorts.py").read_text(encoding="utf-8")
     assert 'asettings_get("clips")' in src
     assert "borrowed = livedub_source is not None and video_path == livedub_source" in src
     assert "if not keep_for_montage and not borrowed:" in src
 
 
-def test_livedub_bg_cancels_inner_tasks_on_teardown():
+def test_livedub_bg_cancels_inner_tasks_on_teardown() -> None:
     """cancel() родителя оставлял vot-cli/ffmpeg/Whisper качать сотни МБ в
     уже удалённый rmtree каталог."""
     main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
@@ -71,7 +71,7 @@ def test_livedub_bg_cancels_inner_tasks_on_teardown():
     assert "asyncio.gather(*inner, return_exceptions=True)" in stage
 
 
-def test_too_big_early_return_still_sends_livedub():
+def test_too_big_early_return_still_sends_livedub() -> None:
     """Обе ветки используют общий early return, который отправляет LiveDub."""
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     assert src.count("except AudioTooLarge") == 2
@@ -85,7 +85,7 @@ def test_too_big_early_return_still_sends_livedub():
     assert "даже после сжатия до 64 kbps" in stage
 
 
-def test_playlist_status_edits_are_guarded():
+def test_playlist_status_edits_are_guarded() -> None:
     src = Path("pipelines/playlist.py").read_text(encoding="utf-8")
     # оставшиеся raw edit_text обязаны быть внутри try с reply_text-fallback
     for i, line in enumerate(src.splitlines(), 1):
@@ -94,21 +94,21 @@ def test_playlist_status_edits_are_guarded():
             assert "except" in context, f"строка {i}: незащищённый edit_text"
 
 
-def test_progress_dedup_key_includes_chat_id():
+def test_progress_dedup_key_includes_chat_id() -> None:
     from core.progress import _last_text_cache, set_progress
 
     _last_text_cache.clear()
 
     class _FakeMsg:
-        def __init__(self, chat_id, message_id):
+        def __init__(self, chat_id: int, message_id: int) -> None:
             self.chat_id = chat_id
             self.message_id = message_id
-            self.edits = []
+            self.edits: list[str] = []
 
-        async def edit_text(self, text):
+        async def edit_text(self, text: str) -> None:
             self.edits.append(text)
 
-    async def _run():
+    async def _run() -> tuple[_FakeMsg, _FakeMsg]:
         m1 = _FakeMsg(chat_id=111, message_id=42)
         m2 = _FakeMsg(chat_id=222, message_id=42)  # тот же message_id, другой чат
         await set_progress(m1, 1)
@@ -120,7 +120,7 @@ def test_progress_dedup_key_includes_chat_id():
     assert len(m2.edits) == 1, "второй чат не должен «наследовать» кэш первого"
 
 
-def test_eng_quick_returns_delivery_status_and_respects_silent_errors():
+def test_eng_quick_returns_delivery_status_and_respects_silent_errors() -> None:
     main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     stage = Path("pipelines/livedub_quick_stage.py").read_text(encoding="utf-8")
     assert "return await finish_livedub_quick(" in main
@@ -130,7 +130,7 @@ def test_eng_quick_returns_delivery_status_and_respects_silent_errors():
     assert "if silent_errors:" in stage
 
 
-def test_livedub_qa_cached_analysis_must_pass_normal_cache_validity():
+def test_livedub_qa_cached_analysis_must_pass_normal_cache_validity() -> None:
     src = Path("pipelines/livedub_full_qa_stage.py").read_text(encoding="utf-8")
     start = src.index("qa_ai_data = None")
     end = src.index("dub_srt = None", start)
@@ -142,7 +142,7 @@ def test_livedub_qa_cached_analysis_must_pass_normal_cache_validity():
     assert "stale cached analysis ignored" in block
 
 
-def test_cache_hit_reuses_existing_compressed_mp3():
+def test_cache_hit_reuses_existing_compressed_mp3() -> None:
     """Кэш-хит не перекачивает аудио, если остался только `_64.mp3`.
 
     Поведение проверяется в `tests/test_audio_stage.py::test_compressed_variant_is_reused`,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -12,7 +13,7 @@ from services.speech_backends import (
 from tools.voxcpm2 import generic_project_runtime as runtime
 
 
-def _request(**overrides):
+def _request(**overrides: Any) -> dict[str, Any]:
     return {
         "schema_version": 1,
         "video_id": "AbCdEf12345",
@@ -22,7 +23,7 @@ def _request(**overrides):
     }
 
 
-def test_project_root_requires_canonical_project_id(monkeypatch, tmp_path: Path) -> None:
+def test_project_root_requires_canonical_project_id(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(runtime, "studio_root", lambda: tmp_path)
     valid = runtime.project_root("dub-0123456789")
     assert valid == (tmp_path / "projects" / "dub-0123456789").resolve()

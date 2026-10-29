@@ -15,7 +15,7 @@ from services.shorts_factory_media import (
 )
 
 
-def test_livedub_envelope_uses_full_mix_tail(monkeypatch):
+def test_livedub_envelope_uses_full_mix_tail(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LIVEDUB_DELAY_MS", "600")
     monkeypatch.setenv("LIVEDUB_TAIL_MARGIN_MS", "1000")
     monkeypatch.setenv("LIVEDUB_DOWNSTREAM_PREROLL_SEC", "0.25")
@@ -30,7 +30,7 @@ def test_livedub_envelope_uses_full_mix_tail(monkeypatch):
     ) == (9.75, 101.75)
 
 
-def test_livedub_short_rejects_interval_without_room_for_required_tail(monkeypatch):
+def test_livedub_short_rejects_interval_without_room_for_required_tail(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LIVEDUB_DELAY_MS", "600")
     monkeypatch.setenv("LIVEDUB_TAIL_MARGIN_MS", "1000")
 
@@ -45,7 +45,7 @@ def test_livedub_short_rejects_interval_without_room_for_required_tail(monkeypat
     )
 
 
-def test_livedub_candidate_keeps_public_labels_but_changes_render_numbers(monkeypatch):
+def test_livedub_candidate_keeps_public_labels_but_changes_render_numbers(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LIVEDUB_DELAY_MS", "600")
     monkeypatch.setenv("LIVEDUB_TAIL_MARGIN_MS", "1000")
     candidate = {
@@ -73,7 +73,7 @@ def test_livedub_candidate_keeps_public_labels_but_changes_render_numbers(monkey
     assert candidate["start_seconds"] == 10
 
 
-def test_livedub_montage_expands_every_fragment_and_recalculates_total(monkeypatch):
+def test_livedub_montage_expands_every_fragment_and_recalculates_total(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LIVEDUB_DELAY_MS", "600")
     monkeypatch.setenv("LIVEDUB_TAIL_MARGIN_MS", "1000")
     candidates = [
@@ -98,12 +98,14 @@ def test_livedub_montage_expands_every_fragment_and_recalculates_total(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_livedub_source_duration_uses_exact_deliverable_probe(monkeypatch, tmp_path):
+async def test_livedub_source_duration_uses_exact_deliverable_probe(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     source = tmp_path / "livedub.mp4"
     source.write_bytes(b"x" * 2048)
     probe = SimpleNamespace(duration=901.234)
 
-    async def fake_probe(path):
+    async def fake_probe(path: Path) -> SimpleNamespace:
         assert path == source
         return probe
 
@@ -120,11 +122,11 @@ async def test_livedub_source_duration_uses_exact_deliverable_probe(monkeypatch,
 
 
 @pytest.mark.asyncio
-async def test_livedub_source_probe_is_fail_closed_by_default(monkeypatch, tmp_path):
+async def test_livedub_source_probe_is_fail_closed_by_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     source = tmp_path / "broken.mp4"
     source.write_bytes(b"x" * 2048)
 
-    async def fake_probe(_path):
+    async def fake_probe(_path: Path) -> None:
         return None
 
     monkeypatch.delenv("LIVEDUB_DOWNSTREAM_REQUIRE_PROBE", raising=False)
@@ -137,13 +139,13 @@ async def test_livedub_source_probe_is_fail_closed_by_default(monkeypatch, tmp_p
 
 @pytest.mark.asyncio
 async def test_livedub_probe_fallback_requires_explicit_degraded_opt_out(
-    monkeypatch,
-    tmp_path,
-):
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     source = tmp_path / "broken.mp4"
     source.write_bytes(b"x" * 2048)
 
-    async def fake_probe(_path):
+    async def fake_probe(_path: Path) -> None:
         return None
 
     monkeypatch.setenv("LIVEDUB_DOWNSTREAM_REQUIRE_PROBE", "0")
@@ -160,7 +162,9 @@ async def test_livedub_probe_fallback_requires_explicit_degraded_opt_out(
 
 
 @pytest.mark.asyncio
-async def test_montage_probes_existing_livedub_before_empty_candidate_return(monkeypatch, tmp_path):
+async def test_montage_probes_existing_livedub_before_empty_candidate_return(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     source = tmp_path / "livedub.mp4"
     source.write_bytes(b"borrowed-livedub")
     probe = AsyncMock(return_value=602.4)
@@ -186,7 +190,9 @@ async def test_montage_probes_existing_livedub_before_empty_candidate_return(mon
 
 
 @pytest.mark.asyncio
-async def test_highlights_uses_borrowed_livedub_before_invalid_candidate_return(monkeypatch, tmp_path):
+async def test_highlights_uses_borrowed_livedub_before_invalid_candidate_return(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     source = tmp_path / "livedub.mp4"
     source.write_bytes(b"borrowed-livedub")
     probe = AsyncMock(return_value=602.4)
@@ -214,7 +220,7 @@ async def test_highlights_uses_borrowed_livedub_before_invalid_candidate_return(
     assert source.read_bytes() == b"borrowed-livedub"
 
 
-def test_livedub_cut_owners_are_source_owned_without_runtime_rebinding():
+def test_livedub_cut_owners_are_source_owned_without_runtime_rebinding() -> None:
     media_source = Path("services/shorts_factory_media.py").read_text(encoding="utf-8")
     shorts_source = Path("pipelines/shorts.py").read_text(encoding="utf-8")
     clips_source = Path("pipelines/clips.py").read_text(encoding="utf-8")

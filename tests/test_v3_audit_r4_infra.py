@@ -5,12 +5,14 @@ and tracebacks, tzdata for Moscow-midnight limits, SIGTERM in health-check
 mode, /stop process exit, guarded env parsing, Start Bot.bat launcher.
 """
 
+import pytest
+
 import logging
 import sys
 from pathlib import Path
 
 
-def test_restart_uses_source_owned_cross_loop_cleanup():
+def test_restart_uses_source_owned_cross_loop_cleanup() -> None:
     main = Path("main.py").read_text(encoding="utf-8")
     owner = Path("services/restart_state_runtime.py").read_text(encoding="utf-8")
     run_block = main[main.index("def run_bot():") : main.index("def main():")]
@@ -20,14 +22,14 @@ def test_restart_uses_source_owned_cross_loop_cleanup():
     assert "ContextVar" not in owner
 
 
-def test_token_mask_filter_attached_to_handlers():
+def test_token_mask_filter_attached_to_handlers() -> None:
     """Фильтры логгера НЕ выполняются для записей дочерних логгеров при
     propagation — маскирование обязано висеть на хендлерах."""
     src = Path("core/globals.py").read_text(encoding="utf-8")
     assert "_h.addFilter(_token_filter)" in src
 
 
-def test_token_mask_filter_masks_child_logger_record(monkeypatch):
+def test_token_mask_filter_masks_child_logger_record(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("VK_API_TOKEN", "vk1.a.SECRETSECRETSECRET")
     from core.globals import _TokenMaskFilter
 
@@ -46,7 +48,7 @@ def test_token_mask_filter_masks_child_logger_record(monkeypatch):
     assert "***" in rec.getMessage()
 
 
-def test_token_mask_filter_withholds_record_when_masking_fails(monkeypatch):
+def test_token_mask_filter_withholds_record_when_masking_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     from core.globals import _TokenMaskFilter
 
     f = _TokenMaskFilter()
@@ -75,7 +77,7 @@ def test_token_mask_filter_withholds_record_when_masking_fails(monkeypatch):
     assert rec.stack_info is None
 
 
-def test_token_mask_filter_masks_exception_traceback(monkeypatch):
+def test_token_mask_filter_masks_exception_traceback(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("BOT_TOKEN", "1234567890:AAASECRETTOKENVALUE")
     from core.globals import _TokenMaskFilter
 
@@ -99,14 +101,14 @@ def test_token_mask_filter_masks_exception_traceback(monkeypatch):
     assert "***" in rec.exc_text
 
 
-def test_tzdata_declared_for_moscow_limit_reset():
+def test_tzdata_declared_for_moscow_limit_reset() -> None:
     """Windows не имеет IANA tz-базы: без tzdata ZoneInfo("Europe/Moscow")
     падает и дневной лимит тихо сбрасывается по времени сервера."""
     req = Path("requirements.txt").read_text(encoding="utf-8")
     assert "tzdata" in req
 
 
-def test_sigterm_registered_in_main_thread_for_health_check_mode():
+def test_sigterm_registered_in_main_thread_for_health_check_mode() -> None:
     """В режиме health-check run_bot живёт в daemon-потоке, где signal.signal
     не работает. SIGTERM обязан регистрироваться в main() (main thread)."""
     src = Path("main.py").read_text(encoding="utf-8")
@@ -116,7 +118,7 @@ def test_sigterm_registered_in_main_thread_for_health_check_mode():
     assert 'app.bot_data.get("stop_requested") or _STOP_EVENT.is_set()' in src
 
 
-def test_stop_terminates_process_in_health_check_mode():
+def test_stop_terminates_process_in_health_check_mode() -> None:
     """После /stop waitress в main thread жил бы вечно, а Render перезапускал
     бы контейнер по STALE health-check, тихо отменяя /stop."""
     src = Path("main.py").read_text(encoding="utf-8")
@@ -124,7 +126,7 @@ def test_stop_terminates_process_in_health_check_mode():
     assert "os._exit(0)" in src
 
 
-def test_default_scope_set_my_commands_guarded():
+def test_default_scope_set_my_commands_guarded() -> None:
     """Сбой косметической регистрации меню не должен ронять запущенный
     polling в полный restart-цикл."""
     src = Path("main.py").read_text(encoding="utf-8")
@@ -133,7 +135,7 @@ def test_default_scope_set_my_commands_guarded():
     assert "try:" in src[idx - 120 : idx]
 
 
-def test_env_int_parsing_guarded():
+def test_env_int_parsing_guarded() -> None:
     """Пустое/нечисловое значение в .env не должно валить импорт трейсбеком —
     паттерн MAX_FILE_SIZE_MB (try/except с дефолтом) обязателен для всех."""
     db = Path("core/database.py").read_text(encoding="utf-8")
@@ -151,7 +153,7 @@ def test_env_int_parsing_guarded():
     assert 'int(os.environ.get("PORT", "10000").strip() or "10000")' in m
 
 
-def test_start_bat_accepts_every_supported_python_without_single_version_pin():
+def test_start_bat_accepts_every_supported_python_without_single_version_pin() -> None:
     """Bootstrap may prefer newer supported Python, but must fall through
     3.13 -> 3.12 instead of requiring one exact installation."""
     bat = Path("Start Bot.bat").read_text(encoding="utf-8")

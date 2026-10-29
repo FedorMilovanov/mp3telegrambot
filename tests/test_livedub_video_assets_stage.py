@@ -1,6 +1,8 @@
 """Behavior contract for LiveDub video metadata, thumbnail, and cover assets."""
 
 from __future__ import annotations
+from typing import Any
+import pytest
 
 import asyncio
 import logging
@@ -14,7 +16,7 @@ from pipelines.livedub_video_assets_stage import (
 )
 
 
-def _prepare(video: Path, media_id: str = "media1", thumbs_dir: Path | None = None):
+def _prepare(video: Path, media_id: str = "media1", thumbs_dir: Path | None = None) -> tuple[Any, Any, Path | None]:
     return asyncio.run(
         prepare_livedub_video_assets(
             video,
@@ -24,7 +26,7 @@ def _prepare(video: Path, media_id: str = "media1", thumbs_dir: Path | None = No
     )
 
 
-def _technical_warnings(video: Path, *, is_fallback: bool = False):
+def _technical_warnings(video: Path, *, is_fallback: bool = False) -> list[str]:
     return asyncio.run(
         get_livedub_technical_warnings(
             video,
@@ -34,8 +36,8 @@ def _technical_warnings(video: Path, *, is_fallback: bool = False):
     )
 
 
-def test_technical_check_is_skipped_for_original_fallback(monkeypatch, tmp_path):
-    def unexpected_call(*_args):
+def test_technical_check_is_skipped_for_original_fallback(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def unexpected_call(*_args: Any) -> None:
         raise AssertionError("technical_check must not run for fallback")
 
     monkeypatch.setattr(qa, "technical_check", unexpected_call)
@@ -43,11 +45,13 @@ def test_technical_check_is_skipped_for_original_fallback(monkeypatch, tmp_path)
     assert _technical_warnings(tmp_path / "original.mp4", is_fallback=True) == []
 
 
-def test_technical_check_returns_and_logs_each_warning(monkeypatch, tmp_path, caplog):
+def test_technical_check_returns_and_logs_each_warning(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     video = tmp_path / "dub.mp4"
-    calls = []
+    calls: list[tuple[Path, int]] = []
 
-    def check(path, expected_duration):
+    def check(path: Path, expected_duration: int) -> list[str]:
         calls.append((path, expected_duration))
         return ["short", "silent"]
 
@@ -60,8 +64,10 @@ def test_technical_check_returns_and_logs_each_warning(monkeypatch, tmp_path, ca
     assert "[LiveDubQA] tech: silent" in caplog.text
 
 
-def test_technical_check_failure_is_nonfatal(monkeypatch, tmp_path, caplog):
-    def fail(*_args):
+def test_technical_check_failure_is_nonfatal(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    def fail(*_args: Any) -> None:
         raise RuntimeError("probe failed")
 
     monkeypatch.setattr(qa, "technical_check", fail)
@@ -71,19 +77,19 @@ def test_technical_check_failure_is_nonfatal(monkeypatch, tmp_path, caplog):
     assert "[LiveDubQA] technical_check сбой: probe failed" in caplog.text
 
 
-def test_assets_probe_in_executor_and_select_real_cover(monkeypatch, tmp_path):
+def test_assets_probe_in_executor_and_select_real_cover(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     video = tmp_path / "dub.mp4"
     video.write_bytes(b"video")
     cover = tmp_path / "media1_thumb.jpg"
     cover.write_bytes(b"x" * 1025)
     thumbnail = object()
-    calls = []
+    calls: list[tuple[str, Path]] = []
 
-    def probe(path):
+    def probe(path: Path) -> dict[str, Any]:
         calls.append(("probe", path))
         return {"width": 640, "height": 360, "duration": 12.5}
 
-    def make_thumbnail(path):
+    def make_thumbnail(path: Path) -> object:
         calls.append(("thumbnail", path))
         return thumbnail
 
@@ -98,13 +104,15 @@ def test_assets_probe_in_executor_and_select_real_cover(monkeypatch, tmp_path):
     assert calls == [("probe", video), ("thumbnail", video)]
 
 
-def test_probe_failure_uses_empty_assets_but_still_selects_cover(monkeypatch, tmp_path, caplog):
+def test_probe_failure_uses_empty_assets_but_still_selects_cover(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     video = tmp_path / "dub.mp4"
     cover = tmp_path / "media1_thumb.jpg"
     cover.write_bytes(b"x" * 1025)
-    thumbnail_calls = []
+    thumbnail_calls: list[Path] = []
 
-    def probe(_path):
+    def probe(_path: Path) -> None:
         raise RuntimeError("ffprobe failed")
 
     monkeypatch.setattr(mix, "probe_video_meta", probe)
@@ -116,12 +124,14 @@ def test_probe_failure_uses_empty_assets_but_still_selects_cover(monkeypatch, tm
     assert "[LiveDub] video meta: ffprobe failed" in caplog.text
 
 
-def test_thumbnail_failure_preserves_legacy_all_or_nothing_assignment(monkeypatch, tmp_path):
+def test_thumbnail_failure_preserves_legacy_all_or_nothing_assignment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     video = tmp_path / "dub.mp4"
 
     monkeypatch.setattr(mix, "probe_video_meta", lambda _path: {"width": 640})
 
-    def fail_thumbnail(_path):
+    def fail_thumbnail(_path: Path) -> None:
         raise RuntimeError("thumbnail failed")
 
     monkeypatch.setattr(mix, "make_video_thumbnail", fail_thumbnail)
@@ -129,7 +139,7 @@ def test_thumbnail_failure_preserves_legacy_all_or_nothing_assignment(monkeypatc
     assert _prepare(video) == ({}, None, None)
 
 
-def test_only_first_sorted_cover_candidate_controls_selection(monkeypatch, tmp_path):
+def test_only_first_sorted_cover_candidate_controls_selection(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     video = tmp_path / "dub.mp4"
     (tmp_path / "media1_thumb_a.jpg").write_bytes(b"small")
     (tmp_path / "media1_thumb_b.jpg").write_bytes(b"x" * 2048)
@@ -139,7 +149,7 @@ def test_only_first_sorted_cover_candidate_controls_selection(monkeypatch, tmp_p
     assert _prepare(video)[2] is None
 
 
-def test_cover_exactly_1024_bytes_is_rejected(monkeypatch, tmp_path):
+def test_cover_exactly_1024_bytes_is_rejected(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     video = tmp_path / "dub.mp4"
     (tmp_path / "media1_thumb.jpg").write_bytes(b"x" * 1024)
     monkeypatch.setattr(mix, "probe_video_meta", lambda _path: {})
@@ -148,7 +158,7 @@ def test_cover_exactly_1024_bytes_is_rejected(monkeypatch, tmp_path):
     assert _prepare(video)[2] is None
 
 
-def test_cover_stat_error_is_nonfatal(monkeypatch, tmp_path):
+def test_cover_stat_error_is_nonfatal(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     video = tmp_path / "dub.mp4"
     cover = tmp_path / "media1_thumb.jpg"
     cover.write_bytes(b"x" * 1025)
@@ -156,7 +166,7 @@ def test_cover_stat_error_is_nonfatal(monkeypatch, tmp_path):
     monkeypatch.setattr(mix, "make_video_thumbnail", lambda _path: None)
     real_stat = Path.stat
 
-    def broken_stat(path, *args, **kwargs):
+    def broken_stat(path: Path, *args: Any, **kwargs: Any) -> Any:
         if path == cover:
             raise OSError("stat failed")
         return real_stat(path, *args, **kwargs)

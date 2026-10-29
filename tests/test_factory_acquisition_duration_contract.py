@@ -4,7 +4,7 @@ import ast
 from pathlib import Path
 
 
-def _calls_in_process_factory():
+def _calls_in_process_factory() -> list[ast.Call]:
     tree = ast.parse(Path("pipelines/shorts_factory.py").read_text(encoding="utf-8"))
     process = next(
         node
@@ -18,7 +18,7 @@ def _name(call: ast.Call) -> str:
     return call.func.id if isinstance(call.func, ast.Name) else ""
 
 
-def test_factory_audio_and_video_acquisition_receive_expected_duration():
+def test_factory_audio_and_video_acquisition_receive_expected_duration() -> None:
     calls = _calls_in_process_factory()
     for target in ("_download_factory_audio", "download_video_for_shorts"):
         matching = [call for call in calls if _name(call) == target]

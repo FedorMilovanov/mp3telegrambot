@@ -12,6 +12,7 @@
 """
 
 from pathlib import Path
+from typing import Any, cast
 
 from converters.md_telegraph import _postprocess_telegraph_nodes
 
@@ -20,26 +21,26 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _fix(text: str) -> str:
     out = _postprocess_telegraph_nodes([{"tag": "p", "children": [text]}])
-    return out[0]["children"][0]
+    return cast(str, out[0]["children"][0])
 
 
 # ── 1. Точка только ПОСЛЕ таймкода, одна ────────────────────────
 
 
-def test_double_period_around_timestamp_collapsed():
+def test_double_period_around_timestamp_collapsed() -> None:
     assert _fix("к свободе. ⏱ 12:15.") == "к свободе ⏱ 12:15."
 
 
-def test_mid_paragraph_period_before_timestamp_moved():
+def test_mid_paragraph_period_before_timestamp_moved() -> None:
     got = _fix("духовная тьма. ⏱ 24:00. Новая мысль началась")
     assert got.startswith("духовная тьма ⏱ 24:00. Новая мысль")
 
 
-def test_trailing_period_before_timestamp_moved():
+def test_trailing_period_before_timestamp_moved() -> None:
     assert _fix("крушение рамок. ⏱ 6:16") == "крушение рамок ⏱ 6:16."
 
 
-def test_period_before_timestamp_next_sentence():
+def test_period_before_timestamp_next_sentence() -> None:
     got = _fix("итог пути. ⏱ 40:40 Христос реален")
     assert "пути ⏱ 40:40. Христос реален" in got
 
@@ -56,28 +57,28 @@ def _flat(text: str) -> str:
     return "".join(parts)
 
 
-def test_bold_timestamp_double_period():
+def test_bold_timestamp_double_period() -> None:
     # bold разворачивается в <b>-узел; проверяем итоговый порядок символов
     assert _flat("сокрушение. ⏱ **11:29**.") == "сокрушение ⏱ 11:29."
 
 
-def test_emoji_variation_selector_normalized():
+def test_emoji_variation_selector_normalized() -> None:
     # ⏱️ (с U+FE0F) ломал все регэкспы — селектор не пробел и не цифра
     assert _fix("Духа. ⏱️ 11:29.") == "Духа ⏱ 11:29."
 
 
-def test_correct_timestamp_untouched():
+def test_correct_timestamp_untouched() -> None:
     assert _fix("Духа ⏱ 11:29. Дальше текст") == "Духа ⏱ 11:29. Дальше текст"
 
 
 # ── 2-3. Литеральный \n и полировка на всех путях ───────────────
 
 
-def test_literal_backslash_n_removed():
+def test_literal_backslash_n_removed() -> None:
     assert _fix("первая мысль \\n вторая мысль") == "первая мысль вторая мысль"
 
 
-def test_final_polish_applied_on_create_and_edit_paths():
+def test_final_polish_applied_on_create_and_edit_paths() -> None:
     src = (ROOT / "converters/md_telegraph.py").read_text(encoding="utf-8")
     create_fn = src.split("async def _create_telegraph_page_single", 1)[1]
     create_head = create_fn.split("for attempt in range", 1)[0]
@@ -92,7 +93,7 @@ def test_final_polish_applied_on_create_and_edit_paths():
 # ── 4. Кружки: длинные жирные шапки и заголовки без • ───────────
 
 
-def test_bullet_stripped_from_long_bold_card_headers():
+def test_bullet_stripped_from_long_bold_card_headers() -> None:
     from converters.md_telegraph import _strip_card_bullets
 
     card = "• **От иллюзии земного благополучия к упованию.** Мы склонны"
@@ -106,7 +107,7 @@ def test_bullet_stripped_from_long_bold_card_headers():
     assert _strip_card_bullets(source) == source, "source-карточка сохраняет •"
 
 
-def test_source_map_cards_keep_their_bullet():
+def test_source_map_cards_keep_their_bullet() -> None:
     """У «Карты источников» жирный позже снимается целиком — кружок там
     единственный маркер карточки и должен остаться."""
     from converters.md_telegraph import _section_to_nodes_v2
@@ -118,7 +119,7 @@ def test_source_map_cards_keep_their_bullet():
         }
     )
 
-    def _txt(n):
+    def _txt(n: dict[str, Any]) -> str:
         return "".join(
             c if isinstance(c, str) else "".join(map(str, c.get("children", []))) for c in n.get("children", [])
         )
@@ -126,7 +127,7 @@ def test_source_map_cards_keep_their_bullet():
     assert any(isinstance(n, dict) and n.get("tag") == "p" and _txt(n).lstrip().startswith("•") for n in nodes)
 
 
-def test_section_titles_lose_leading_bullets():
+def test_section_titles_lose_leading_bullets() -> None:
     src = (ROOT / "converters/md_telegraph.py").read_text(encoding="utf-8")
     assert r"^\s*[•▪◦‣·]\s*" in src
 
@@ -134,7 +135,7 @@ def test_section_titles_lose_leading_bullets():
 # ── 5. Навигация честная: fallback + warning вместо ложного успеха ─
 
 
-def test_navigation_checks_edit_result():
+def test_navigation_checks_edit_result() -> None:
     """Результат editPage проверяется, а не логируется «успех» безусловно.
 
     После выноса навигации (P0-3) правило живёт в `pipelines/telegraph_nav.py`:
@@ -150,12 +151,12 @@ def test_navigation_checks_edit_result():
     assert "if await io.edit(" in src  # результат editPage используется
 
     pages = ["https://telegra.ph/a", "https://telegra.ph/b"]
-    edited = []
+    edited: list[tuple[str, list[Any]]] = []
 
-    async def fetch(url):
+    async def fetch(url: str) -> PageContent:
         return PageContent(url=url, title="t", author="a", nodes=[{"tag": "p", "children": ["x"]}])
 
-    async def edit(url, title, author, nodes):
+    async def edit(url: str, title: str, author: str, nodes: list[Any]) -> bool:
         ok = "Читать также" not in str(nodes)
         if ok:
             edited.append((url, nodes))
@@ -169,7 +170,7 @@ def test_navigation_checks_edit_result():
 # ── 6. Промты: плотность мысли ──────────────────────────────────
 
 
-def test_study_prompt_has_density_layer():
+def test_study_prompt_has_density_layer() -> None:
     from core.prompts import STUDY_ANALYSIS_PROMPT as p
 
     assert "ПЛОТНОСТЬ МЫСЛИ" in p
@@ -177,7 +178,7 @@ def test_study_prompt_has_density_layer():
     assert "глубинный ход" in p
 
 
-def test_reflection_prompt_has_verifiable_application_rule():
+def test_reflection_prompt_has_verifiable_application_rule() -> None:
     from core.prompts import REFLECTION_APPLICATION_PROMPT as p
 
     assert "БЕЗ СЛОВ РАДИ СЛОВ" in p

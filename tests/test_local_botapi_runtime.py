@@ -1,4 +1,7 @@
 from __future__ import annotations
+from typing import Any
+import pathlib
+import pytest
 
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -6,7 +9,7 @@ from unittest.mock import Mock
 import services.local_botapi_runtime as runtime
 
 
-def _base_env(monkeypatch):
+def _base_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LOCAL_BOT_API_URL", "http://127.0.0.1:8081")
     monkeypatch.setenv("BOT_TOKEN", "123456:secret-token")
     monkeypatch.setenv("TELEGRAM_PROXY_URL", "socks5h://127.0.0.1:10808")
@@ -19,15 +22,22 @@ def test_proxy_args_accept_only_supported_http_proxy() -> None:
     assert runtime._proxy_args("socks5://127.0.0.1:10808") == []
 
 
-def test_targeted_termination_ignores_unrelated_listener(tmp_path, monkeypatch):
+def test_targeted_termination_ignores_unrelated_listener(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _base_env(monkeypatch)
     monkeypatch.setenv("LOCAL_BOT_API_DATA_DIR", str(tmp_path / "data"))
     data_dir = runtime._writable_data_dir()
     runtime._write_pid(runtime._pid_path(data_dir), 101)
     monkeypatch.setattr(runtime, "_windows_listener_pids", lambda _port: {101, 202})
     monkeypatch.setattr(runtime, "_is_botapi", lambda pid: pid == 101)
-    killed = []
-    monkeypatch.setattr(runtime, "_kill_pid", lambda pid: killed.append(pid) or True)
+    killed: list[int] = []
+
+    def kill(pid: int) -> bool:
+        killed.append(pid)
+        return True
+
+    monkeypatch.setattr(runtime, "_kill_pid", kill)
 
     result = runtime._terminate_managed_server()
 
@@ -36,13 +46,15 @@ def test_targeted_termination_ignores_unrelated_listener(tmp_path, monkeypatch):
     assert not runtime._pid_path(data_dir).exists()
 
 
-def test_global_termination_failure_returns_empty_result(tmp_path, monkeypatch):
+def test_global_termination_failure_returns_empty_result(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _base_env(monkeypatch)
     monkeypatch.setenv("LOCAL_BOT_API_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("LOCAL_BOT_API_ALLOW_GLOBAL_KILL", "1")
     monkeypatch.setattr(runtime, "_windows_listener_pids", lambda _port: set())
 
-    def fail_run(*_args, **_kwargs):
+    def fail_run(*_args: Any, **_kwargs: Any) -> None:
         raise RuntimeError("task manager unavailable")
 
     monkeypatch.setattr(runtime.subprocess, "run", fail_run)
@@ -50,7 +62,7 @@ def test_global_termination_failure_returns_empty_result(tmp_path, monkeypatch):
     assert runtime._terminate_managed_server() == []
 
 
-def test_windows_listener_probe_uses_resolved_netstat(monkeypatch):
+def test_windows_listener_probe_uses_resolved_netstat(monkeypatch: pytest.MonkeyPatch) -> None:
     run = Mock(
         return_value=SimpleNamespace(
             returncode=0,
@@ -64,7 +76,7 @@ def test_windows_listener_probe_uses_resolved_netstat(monkeypatch):
     assert run.call_args.args[0] == ["/resolved/netstat", "-ano", "-p", "tcp"]
 
 
-def test_windows_name_probe_uses_resolved_tasklist(monkeypatch):
+def test_windows_name_probe_uses_resolved_tasklist(monkeypatch: pytest.MonkeyPatch) -> None:
     run = Mock(return_value=SimpleNamespace(returncode=0, stdout='"Telegram-Bot-API.exe","4242"\r\n'))
     monkeypatch.setattr(runtime, "resolve_required_executable", lambda name: f"/resolved/{name}")
     monkeypatch.setattr(runtime.subprocess, "run", run)
@@ -80,7 +92,7 @@ def test_windows_name_probe_uses_resolved_tasklist(monkeypatch):
     ]
 
 
-def test_posix_name_probe_uses_resolved_ps(monkeypatch):
+def test_posix_name_probe_uses_resolved_ps(monkeypatch: pytest.MonkeyPatch) -> None:
     run = Mock(return_value=SimpleNamespace(returncode=0, stdout="telegram-bot-api\n"))
     monkeypatch.setattr(runtime, "resolve_required_executable", lambda name: f"/resolved/{name}")
     monkeypatch.setattr(runtime.subprocess, "run", run)
@@ -89,7 +101,7 @@ def test_posix_name_probe_uses_resolved_ps(monkeypatch):
     assert run.call_args.args[0] == ["/resolved/ps", "-p", "4242", "-o", "comm="]
 
 
-def test_targeted_kill_uses_resolved_platform_executable(monkeypatch):
+def test_targeted_kill_uses_resolved_platform_executable(monkeypatch: pytest.MonkeyPatch) -> None:
     run = Mock(return_value=SimpleNamespace(returncode=0))
     monkeypatch.setattr(runtime, "os", SimpleNamespace(name="nt"))
     monkeypatch.setattr(runtime, "resolve_required_executable", lambda name: f"/resolved/{name}")
@@ -99,7 +111,7 @@ def test_targeted_kill_uses_resolved_platform_executable(monkeypatch):
     assert run.call_args.args[0] == ["/resolved/taskkill", "/F", "/T", "/PID", "4242"]
 
 
-def test_posix_targeted_kill_uses_resolved_executable(monkeypatch):
+def test_posix_targeted_kill_uses_resolved_executable(monkeypatch: pytest.MonkeyPatch) -> None:
     run = Mock(return_value=SimpleNamespace(returncode=0))
     monkeypatch.setattr(runtime, "os", SimpleNamespace(name="posix"))
     monkeypatch.setattr(runtime, "resolve_required_executable", lambda name: f"/resolved/{name}")
@@ -109,7 +121,9 @@ def test_posix_targeted_kill_uses_resolved_executable(monkeypatch):
     assert run.call_args.args[0] == ["/resolved/kill", "-TERM", "4242"]
 
 
-def test_start_server_uses_configured_file_with_argv_and_persists_pid(tmp_path, monkeypatch):
+def test_start_server_uses_configured_file_with_argv_and_persists_pid(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     executable = tmp_path / "telegram-bot-api.exe"
     executable.write_bytes(b"test-double")
     data_dir = tmp_path / "data"
@@ -140,7 +154,9 @@ def test_start_server_uses_configured_file_with_argv_and_persists_pid(tmp_path, 
     assert runtime._read_pid(runtime._pid_path(data_dir)) == 4242
 
 
-def test_log_tail_redacts_token_hash_and_explicit_proxy_password(tmp_path, monkeypatch):
+def test_log_tail_redacts_token_hash_and_explicit_proxy_password(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _base_env(monkeypatch)
     monkeypatch.setenv("TELEGRAM_API_HASH", "private-api-hash")
     proxy = "http://user:proxy-secret@127.0.0.1:8080"

@@ -1,4 +1,5 @@
 from __future__ import annotations
+import pytest
 
 from pathlib import Path
 
@@ -6,7 +7,7 @@ from services.speech_backends import get_backend
 from tools.voxcpm2 import master_direct_russian_only as master
 
 
-def test_russian_only_mix_never_uses_source_audio(monkeypatch, tmp_path: Path) -> None:
+def test_russian_only_mix_never_uses_source_audio(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     commands: list[list[str]] = []
     monkeypatch.setattr(master.base, "run", lambda command: commands.append(list(command)))
     source = tmp_path / "source.mp4"

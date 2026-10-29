@@ -4,7 +4,7 @@ from core.content_audit import audit_expanded_sections
 from core.prompts import SYNOPSIS_PROMPT_QA, STUDY_ANALYSIS_PROMPT
 
 
-def test_study_prompt_source_cards_match_title_first_renderer_policy():
+def test_study_prompt_source_cards_match_title_first_renderer_policy() -> None:
     assert "title-first" in STUDY_ANALYSIS_PROMPT
     assert "**Об умерщвлении греха**, Джон Оуэн" in STUDY_ANALYSIS_PROMPT
     assert "**Религиозные чувства**, Джонатан Эдвардс" in STUDY_ANALYSIS_PROMPT
@@ -13,13 +13,13 @@ def test_study_prompt_source_cards_match_title_first_renderer_policy():
     assert "НЕ жирным" not in STUDY_ANALYSIS_PROMPT.split("Карта источников", 1)[-1][:500]
 
 
-def test_study_prompt_private_guidance_never_publish_channel_position():
+def test_study_prompt_private_guidance_never_publish_channel_position() -> None:
     assert "PRIVATE GUIDANCE — НЕ ДЛЯ ПУБЛИКАЦИИ" in STUDY_ANALYSIS_PROMPT
     assert "Никогда не пересказывай её в публичном тексте" in STUDY_ANALYSIS_PROMPT
     assert "не к внутренней инструкции" in STUDY_ANALYSIS_PROMPT
 
 
-def test_qa_synopsis_prompt_is_transcript_like_not_summary():
+def test_qa_synopsis_prompt_is_transcript_like_not_summary() -> None:
     rendered = SYNOPSIS_PROMPT_QA.format(
         title="Q&A",
         duration="1:00:00",
@@ -31,7 +31,7 @@ def test_qa_synopsis_prompt_is_transcript_like_not_summary():
     assert "1–2 короткие дословные фразы автора" in rendered
 
 
-def test_content_audit_removes_editorial_position_leak_variants():
+def test_content_audit_removes_editorial_position_leak_variants() -> None:
     sections = [
         {
             "title": "T",
@@ -49,13 +49,13 @@ def test_content_audit_removes_editorial_position_leak_variants():
     assert any(i.code == "prompt_context_leak_fixed" for i in issues)
 
 
-def test_study_prompt_does_not_teach_third_person_wrappers():
+def test_study_prompt_does_not_teach_third_person_wrappers() -> None:
     assert "Лоусон показывает" not in STUDY_ANALYSIS_PROMPT
     assert "Бузениц доказывает" not in STUDY_ANALYSIS_PROMPT
     assert "без описания действий автора" in STUDY_ANALYSIS_PROMPT
 
 
-def test_study_prompt_forbids_unregistered_russian_source_titles():
+def test_study_prompt_forbids_unregistered_russian_source_titles() -> None:
     assert (
         "если не знаешь устойчивого признанного русского названия" in STUDY_ANALYSIS_PROMPT.lower()
         or "registry" in STUDY_ANALYSIS_PROMPT
@@ -63,7 +63,7 @@ def test_study_prompt_forbids_unregistered_russian_source_titles():
     assert "**Об умерщвлении греха**, Джон Оуэн" in STUDY_ANALYSIS_PROMPT
 
 
-def test_study_prompt_source_and_guardrail_wording_avoids_leaky_patterns():
+def test_study_prompt_source_and_guardrail_wording_avoids_leaky_patterns() -> None:
     assert "ПОЗИЦИЯ КАНАЛА" not in STUDY_ANALYSIS_PROMPT
     assert "В работе X автор Y" not in STUDY_ANALYSIS_PROMPT
     assert "Y в «X»" not in STUDY_ANALYSIS_PROMPT
@@ -73,7 +73,7 @@ def test_study_prompt_source_and_guardrail_wording_avoids_leaky_patterns():
     assert "не публиковать как редакционную позицию" in STUDY_ANALYSIS_PROMPT
 
 
-def test_prompts_do_not_repeat_literal_third_person_bad_examples():
+def test_prompts_do_not_repeat_literal_third_person_bad_examples() -> None:
     from core.prompt_rules import THIRD_PERSON_BAN
 
     assert "МакАртур показывает" not in THIRD_PERSON_BAN
@@ -81,13 +81,13 @@ def test_prompts_do_not_repeat_literal_third_person_bad_examples():
     assert "фамилия автора + показывает" in THIRD_PERSON_BAN
 
 
-def test_study_prompt_removes_literal_channel_position_leaks():
+def test_study_prompt_removes_literal_channel_position_leaks() -> None:
     assert "позиция канала" not in STUDY_ANALYSIS_PROMPT.lower()
     assert "КОНФЕССИОНАЛЬНАЯ РАМКА КАНАЛА" not in STUDY_ANALYSIS_PROMPT
     assert "ВНУТРЕННЯЯ КОНФЕССИОНАЛЬНАЯ РАМКА" in STUDY_ANALYSIS_PROMPT
 
 
-def test_study_prompt_lexicon_guidance_does_not_teach_author_action_wrappers():
+def test_study_prompt_lexicon_guidance_does_not_teach_author_action_wrappers() -> None:
     bad = [
         "Вошер разворачивает",
         "Эдвардс настаивает",
@@ -101,12 +101,12 @@ def test_study_prompt_lexicon_guidance_does_not_teach_author_action_wrappers():
     assert "В ключевой сцене это понятие становится диагнозом" in STUDY_ANALYSIS_PROMPT
 
 
-def test_study_prompt_does_not_recommend_tim_keller():
+def test_study_prompt_does_not_recommend_tim_keller() -> None:
     assert "Tim Keller" not in STUDY_ANALYSIS_PROMPT
     assert "Тим Келлер" not in STUDY_ANALYSIS_PROMPT
 
 
-def test_content_audit_retry_prompt_avoids_literal_author_shows_phrase():
+def test_content_audit_retry_prompt_avoids_literal_author_shows_phrase() -> None:
     src = __import__("pathlib").Path("services/telegraph_pages.py").read_text(encoding="utf-8")
     assert "без 'автор показывает'" not in src
     assert "роль/имя автора + показывает/объясняет" in src

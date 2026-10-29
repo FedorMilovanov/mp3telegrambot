@@ -1,4 +1,7 @@
 from __future__ import annotations
+import pathlib
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 import asyncio
 from types import SimpleNamespace
@@ -16,12 +19,15 @@ class _ServiceError(RuntimeError):
         self.status_code = status_code
 
 
-def _install_fake_factory_modules(monkeypatch, run_pass):
+def _install_fake_factory_modules(
+    monkeypatch: pytest.MonkeyPatch,
+    run_pass: Callable[..., Awaitable[dict[str, Any]]],
+) -> None:
     import services.shorts_factory_candidates as candidates
     import services.shorts_factory_quality_gate as quality_gate
     import services.shorts_factory_source as source
 
-    async def verified_duration(_path):
+    async def verified_duration(_path: pathlib.Path) -> float:
         return 120.0
 
     monkeypatch.setattr(
@@ -78,7 +84,9 @@ def test_retry_action_separates_capacity_quota_and_other_transients() -> None:
     assert capacity_runtime.factory_client_retry_action(_ServiceError(500, "INTERNAL")) == "rotate"
 
 
-def test_503_x4_then_429_rotates_even_when_stage_budget_is_exhausted(monkeypatch, tmp_path):
+def test_503_x4_then_429_rotates_even_when_stage_budget_is_exhausted(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     """Regression for the live failure that stopped at client 1/4.
 
     Backend overload consumes four calls, the fifth changes failure domain to
@@ -92,7 +100,7 @@ def test_503_x4_then_429_rotates_even_when_stage_budget_is_exhausted(monkeypatch
     calls: list[str] = []
     first_calls = 0
 
-    async def run_pass(client, **kwargs):
+    async def run_pass(client: Any, **kwargs: Any) -> dict[str, Any]:
         nonlocal first_calls
         calls.append(client.name)
         if client is first:
@@ -132,7 +140,9 @@ def test_503_x4_then_429_rotates_even_when_stage_budget_is_exhausted(monkeypatch
     assert plan["strict_quality"] is True
 
 
-def test_late_429_allows_only_one_remaining_capacity_probe(monkeypatch, tmp_path):
+def test_late_429_allows_only_one_remaining_capacity_probe(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     """Quota failover must not create a fresh five-call 503 window."""
     audio = tmp_path / "factory.flac"
     audio.write_bytes(b"x" * 2048)
@@ -142,7 +152,7 @@ def test_late_429_allows_only_one_remaining_capacity_probe(monkeypatch, tmp_path
     calls: list[str] = []
     first_calls = 0
 
-    async def run_pass(client, **kwargs):
+    async def run_pass(client: Any, **kwargs: Any) -> dict[str, Any]:
         nonlocal first_calls
         calls.append(client.name)
         if client is first:
@@ -187,14 +197,16 @@ def test_late_429_allows_only_one_remaining_capacity_probe(monkeypatch, tmp_path
     assert "third" not in calls
 
 
-def test_persistent_503_still_does_not_multiply_across_clients(monkeypatch, tmp_path):
+def test_persistent_503_still_does_not_multiply_across_clients(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     audio = tmp_path / "factory.flac"
     audio.write_bytes(b"x" * 2048)
     first = SimpleNamespace(name="first")
     second = SimpleNamespace(name="second")
     calls: list[str] = []
 
-    async def run_pass(client, **kwargs):
+    async def run_pass(client: Any, **kwargs: Any) -> dict[str, Any]:
         calls.append(client.name)
         raise _ServiceError(503, "UNAVAILABLE: high demand")
 

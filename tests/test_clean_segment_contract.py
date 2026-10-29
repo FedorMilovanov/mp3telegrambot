@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import copy
+from typing import Any
 
 import pytest
 
 from tools.voxcpm2 import clean_production_core as core
 
 
-def _valid_segments() -> list[dict]:
+def _valid_segments() -> list[dict[str, Any]]:
     return [
         {
             "id": "1",
@@ -47,7 +48,7 @@ def test_valid_segment_fields_are_canonicalized_before_render() -> None:
         ("start_delay_ms", 1501),
     ],
 )
-def test_ambiguous_segment_numbers_fail_closed(field: str, value) -> None:
+def test_ambiguous_segment_numbers_fail_closed(field: str, value: object) -> None:
     segments = _valid_segments()
     segments[0][field] = value
     with pytest.raises(RuntimeError):

@@ -19,15 +19,15 @@ class _CompletedProcess:
     pid = 43210
     returncode = 0
 
-    async def communicate(self):
+    async def communicate(self) -> tuple[bytes, bytes]:
         return b"out", b"err"
 
 
 @pytest.mark.asyncio
-async def test_posix_spawn_starts_new_session(monkeypatch) -> None:
+async def test_posix_spawn_starts_new_session(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
-    async def fake_create(*args, **kwargs):
+    async def fake_create(*args: str, **kwargs: object) -> _CompletedProcess:
         captured.update(kwargs)
         return _CompletedProcess()
 
@@ -45,10 +45,12 @@ async def test_posix_spawn_starts_new_session(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_windows_spawn_uses_new_process_group(monkeypatch) -> None:
+async def test_windows_spawn_uses_new_process_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     captured: dict[str, object] = {}
 
-    async def fake_create(*args, **kwargs):
+    async def fake_create(*args: str, **kwargs: object) -> _CompletedProcess:
         captured.update(kwargs)
         return _CompletedProcess()
 
@@ -69,7 +71,7 @@ def _pid_is_running(pid: int) -> bool:
     if os.name == "nt":
         process_query_limited_information = 0x1000
         still_active = 259
-        kernel32 = ctypes.windll.kernel32
+        kernel32 = getattr(ctypes, "windll").kernel32
         handle = kernel32.OpenProcess(
             process_query_limited_information,
             False,

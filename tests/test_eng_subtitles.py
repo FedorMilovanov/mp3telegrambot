@@ -5,7 +5,7 @@ from services.eng_subtitles import _translate_chunk_with_retry
 
 
 @pytest.mark.asyncio
-async def test_translate_chunk_with_retry_json_parsing(monkeypatch):
+async def test_translate_chunk_with_retry_json_parsing(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test that the json parsing correctly strips markdown wrappers from Gemini."""
 
     mock_response = MagicMock()
@@ -33,7 +33,7 @@ async def test_translate_chunk_with_retry_json_parsing(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_translate_chunk_with_retry_plain_json(monkeypatch):
+async def test_translate_chunk_with_retry_plain_json(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test standard JSON without markdown wrapper."""
     mock_response = MagicMock()
     mock_response.text = '{"1": "Привет"}'

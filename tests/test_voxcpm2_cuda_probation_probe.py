@@ -1,15 +1,17 @@
 from __future__ import annotations
+import pytest
 
 import importlib.util
 import json
 from pathlib import Path
+from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / "tools" / "voxcpm2" / "cuda_probation_probe.py"
 
 
-def _load_module():
+def _load_module() -> Any:
     spec = importlib.util.spec_from_file_location(
         "voxcpm2_cuda_probation_probe",
         MODULE_PATH,
@@ -23,7 +25,7 @@ def _load_module():
 probe = _load_module()
 
 
-def test_base_report_records_stage_and_debug_environment(monkeypatch) -> None:
+def test_base_report_records_stage_and_debug_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0")
     monkeypatch.setenv("CUDA_LAUNCH_BLOCKING", "1")
     monkeypatch.setenv("PYTORCH_NO_CUDA_MEMORY_CACHING", "1")

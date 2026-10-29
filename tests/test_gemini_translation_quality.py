@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Any
 
 from core.model_catalog import MODEL_PRIMARY, MODEL_UTILITY
 import ast
@@ -21,7 +22,7 @@ def _source(path: Path) -> str:
     return source
 
 
-def test_current_stable_models_have_separate_roles(monkeypatch) -> None:
+def test_current_stable_models_have_separate_roles(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("DUB_TRANSLATION_MODEL", raising=False)
     monkeypatch.delenv("DUB_TITLE_MODEL", raising=False)
     payload = dub_wizard._request_payload(
@@ -39,7 +40,9 @@ def test_current_stable_models_have_separate_roles(monkeypatch) -> None:
     assert overridden["title_model"] == "title-fixture"
 
 
-def test_bounded_gemini_request_fails_over_to_next_key(monkeypatch) -> None:
+def test_bounded_gemini_request_fails_over_to_next_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(generic_short_runtime, "_load_dotenv_for_manual_run", lambda: None)
     monkeypatch.setenv("GEMINI_API_KEY", "key-one")
     monkeypatch.setenv("GEMINI_API_KEY_2", "key-two")
@@ -55,7 +58,7 @@ def test_bounded_gemini_request_fails_over_to_next_key(monkeypatch) -> None:
         def __init__(self, key: str) -> None:
             self.key = key
 
-        def generate_content(self, **_kwargs):
+        def generate_content(self, **_kwargs: Any) -> SimpleNamespace:
             if self.key == "key-one":
                 raise TimeoutError("route stalled")
             return SimpleNamespace(text=json.dumps({"segments": [{"id": 1, "russian": "Готово"}]}))
@@ -68,7 +71,7 @@ def test_bounded_gemini_request_fails_over_to_next_key(monkeypatch) -> None:
         def close(self) -> None:
             closed.append(self.key)
 
-    def fake_client(key: str, timeout_ms: int):
+    def fake_client(key: str, timeout_ms: int) -> FakeClient:
         created.append((key, timeout_ms))
         return FakeClient(key)
 
@@ -86,13 +89,15 @@ def test_bounded_gemini_request_fails_over_to_next_key(monkeypatch) -> None:
     assert any(("завершён ключом 2/2" in line for line in logs))
 
 
-def test_gemini_does_not_start_key_beyond_pass_budget(monkeypatch) -> None:
+def test_gemini_does_not_start_key_beyond_pass_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     created: list[str] = []
     closed: list[str] = []
     monotonic_values = iter([0.0, 0.0, 0.0, 40.0, 40.0])
 
     class FailingModels:
-        def generate_content(self, **_kwargs):
+        def generate_content(self, **_kwargs: Any) -> None:
             raise TimeoutError("first key consumed forty seconds")
 
     class FakeClient:
@@ -104,7 +109,7 @@ def test_gemini_does_not_start_key_beyond_pass_budget(monkeypatch) -> None:
         def close(self) -> None:
             closed.append(self.key)
 
-    def fake_client(key: str, _timeout_ms: int):
+    def fake_client(key: str, _timeout_ms: int) -> FakeClient:
         created.append(key)
         return FakeClient(key)
 
@@ -120,7 +125,7 @@ def test_gemini_does_not_start_key_beyond_pass_budget(monkeypatch) -> None:
     assert closed == ["key-one"]
 
 
-def test_translation_timeout_environment_is_bounded(monkeypatch) -> None:
+def test_translation_timeout_environment_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DUB_GEMINI_REQUEST_TIMEOUT_SEC", "1")
     monkeypatch.setenv("DUB_GEMINI_PASS_TIMEOUT_SEC", "10")
     request_timeout, pass_timeout = generic_short_runtime._translation_timeouts()
@@ -133,7 +138,7 @@ def test_translation_timeout_environment_is_bounded(monkeypatch) -> None:
     assert pass_timeout == 300.0
 
 
-def test_translation_keys_load_dotenv_without_overriding_env(monkeypatch) -> None:
+def test_translation_keys_load_dotenv_without_overriding_env(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[bool] = []
 
     def fake_load() -> None:
@@ -149,7 +154,7 @@ def test_translation_keys_load_dotenv_without_overriding_env(monkeypatch) -> Non
     assert calls == [True]
 
 
-def test_gemini_request_requires_a_real_key(monkeypatch) -> None:
+def test_gemini_request_requires_a_real_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(generic_short_runtime, "_load_dotenv_for_manual_run", lambda: None)
     for name in generic_short_runtime._GEMINI_KEY_NAMES:
         monkeypatch.delenv(name, raising=False)
@@ -157,7 +162,9 @@ def test_gemini_request_requires_a_real_key(monkeypatch) -> None:
         generic_short_runtime.gemini_json("prompt", model_name="gemini-3.7-flash")
 
 
-def test_expressive_translation_really_runs_three_visible_editorial_passes(monkeypatch) -> None:
+def test_expressive_translation_really_runs_three_visible_editorial_passes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     source = _source(EXPRESSIVE)
     assert "draft = _validate(_gemini(draft_prompt, model_name), groups)" in source
     assert "faithful = _validate(_gemini(fidelity_prompt, model_name), groups)" in source
@@ -169,7 +176,7 @@ def test_expressive_translation_really_runs_three_visible_editorial_passes(monke
     calls: list[str] = []
     logs: list[str] = []
 
-    def fake_gemini(prompt: str, _model_name: str):
+    def fake_gemini(prompt: str, _model_name: str) -> dict[str, Any]:
         calls.append(prompt)
         return {"segments": [{"id": 1, "russian": "Она смеётся над грядущим."}]}
 

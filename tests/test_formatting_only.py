@@ -39,10 +39,12 @@ def _repository(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def test_git_helpers_require_and_use_a_resolved_executable(monkeypatch) -> None:
-    commands = []
+def test_git_helpers_require_and_use_a_resolved_executable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    commands: list[list[str]] = []
 
-    def run(command, **kwargs):
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
         commands.append(command)
         return subprocess.CompletedProcess(command, 0, stdout=b"M\0services/example.py\0", stderr=b"")
 
@@ -116,7 +118,7 @@ def test_semantic_and_configuration_changes_use_ordinary_diff_cover(tmp_path: Pa
     assert "services/new.py: Python status A is not modification" in reasons
 
 
-def test_cli_emits_only_the_action_output_on_stdout(tmp_path: Path, capsys) -> None:
+def test_cli_emits_only_the_action_output_on_stdout(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     repo = _repository(tmp_path)
     assert main(["--root", str(repo), "--compare-ref", "HEAD"]) == 0
     captured = capsys.readouterr()

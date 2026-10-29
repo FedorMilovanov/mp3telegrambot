@@ -1,15 +1,17 @@
 """Behavioral contracts for the post-analysis publication context."""
 
 from __future__ import annotations
+import pytest
 
 import asyncio
 import logging
+from typing import cast
 from unittest.mock import AsyncMock
 
 from pipelines.publication_context_stage import prepare_publication_context
 
 
-def test_analysis_context_preserves_batch_plan_metrics_and_diagnostics(caplog):
+def test_analysis_context_preserves_batch_plan_metrics_and_diagnostics(caplog: pytest.LogCaptureFixture) -> None:
     settings = {
         "analytics": True,
         "questions": True,
@@ -41,7 +43,7 @@ def test_analysis_context_preserves_batch_plan_metrics_and_diagnostics(caplog):
                 ai_data=ai_data,
                 degraded={"format": "sermon", "timestamps": "ignored"},
                 full_title="Fallback title",
-                performer=None,
+                performer=cast(str, None),  # Deliberately exercise the real-author fallback.
                 media_id="media-id",
                 telegraph_url="",
                 settings_get_all=settings_get_all,
@@ -69,7 +71,7 @@ def test_analysis_context_preserves_batch_plan_metrics_and_diagnostics(caplog):
     assert "AI analysis is missing/invalid" not in caplog.text
 
 
-def test_degraded_metrics_do_not_become_ai_pages_or_analysis_sections(caplog):
+def test_degraded_metrics_do_not_become_ai_pages_or_analysis_sections(caplog: pytest.LogCaptureFixture) -> None:
     settings_get_all = AsyncMock(
         return_value={
             "analytics": True,

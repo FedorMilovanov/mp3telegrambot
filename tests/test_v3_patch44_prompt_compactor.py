@@ -5,7 +5,7 @@ from pathlib import Path
 from core.prompt_compactor import compact_prompt_for_generation
 
 
-def test_prompt_compactor_dedupes_only_allowlisted_boilerplate():
+def test_prompt_compactor_dedupes_only_allowlisted_boilerplate() -> None:
     prompt = """
 A
 
@@ -24,13 +24,13 @@ Keep this instruction.
     assert result.text.count("Keep this instruction.") == 2
 
 
-def test_prompt_compactor_is_wired_into_audio_synopsis_and_expanded_requests():
+def test_prompt_compactor_is_wired_into_audio_synopsis_and_expanded_requests() -> None:
     assert "compact_prompt_for_generation(prompt)" in Path("services/gemini_analyze.py").read_text(encoding="utf-8")
     assert "compact_prompt_for_generation(prompt)" in Path("services/telegraph.py").read_text(encoding="utf-8")
     assert "compact_prompt_for_generation(prompt)" in Path("services/telegraph_pages.py").read_text(encoding="utf-8")
 
 
-def test_prompt_compactor_does_not_remove_reasoning_guidance():
+def test_prompt_compactor_does_not_remove_reasoning_guidance() -> None:
     prompt = "РАЗРЕШЕНО И ЖЕЛАТЕЛЬНО — REASONING-FIRST\nПроверенный контекст разрешён.\n"
     result = compact_prompt_for_generation(prompt)
     assert "РАЗРЕШЕНО И ЖЕЛАТЕЛЬНО" in result.text

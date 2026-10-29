@@ -13,7 +13,9 @@ import json
 import re
 from typing import Any
 
-from tools.voxcpm2 import generic_short_production as pipeline
+from tools.voxcpm2 import generic_short_production as generic_short_production
+
+pipeline = generic_short_production
 from tools.voxcpm2 import strict_translation_payload
 
 POLICY = "expressive-spoken-translation-v2"

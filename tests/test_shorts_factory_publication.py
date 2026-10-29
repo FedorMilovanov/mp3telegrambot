@@ -1,13 +1,15 @@
 from __future__ import annotations
+import pytest
 
 import asyncio
 import json
 from types import SimpleNamespace
+from typing import Any
 
 import services.shorts_factory_publication as publication
 
 
-def test_canonical_public_hashtags_follow_repository_rule():
+def test_canonical_public_hashtags_follow_repository_rule() -> None:
     assert publication.canonical_public_hashtags(["евангелие", "#бытие", "искупление", "спроул"]) == [
         "#Евангелие",
         "#Бытие",
@@ -16,7 +18,7 @@ def test_canonical_public_hashtags_follow_repository_rule():
     ]
 
 
-def test_light_model_route_is_exact_lite_only_and_not_env_driven(monkeypatch):
+def test_light_model_route_is_exact_lite_only_and_not_env_driven(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GEMINI_LIGHT_MODEL", "gemini-3.7-flash")
     monkeypatch.setenv(
         "GEMINI_LIGHT_FALLBACK_MODELS",
@@ -26,8 +28,8 @@ def test_light_model_route_is_exact_lite_only_and_not_env_driven(monkeypatch):
     assert publication.FACTORY_PUBLICATION_LIGHT_MODELS == ("gemini-3.5-flash-lite",)
 
 
-def test_caption_wrapper_inserts_human_paragraph_before_links_and_normalizes_tags():
-    def original(*, candidate, **_kwargs):
+def test_caption_wrapper_inserts_human_paragraph_before_links_and_normalizes_tags() -> None:
+    def original(*, candidate: dict[str, Any], **_kwargs: Any) -> str:
         tags = " ".join(candidate["hashtags"])
         return f"Заголовок - Автор\n\nПолное видео:\nYouTube\n\n{tags}"
 
@@ -48,10 +50,10 @@ def test_caption_wrapper_inserts_human_paragraph_before_links_and_normalizes_tag
     assert "#евангелие" not in caption
 
 
-def test_caption_wrapper_is_true_noop_for_non_factory_candidate():
+def test_caption_wrapper_is_true_noop_for_non_factory_candidate() -> None:
     source = {"hashtags": ["обычный_тег"], "publication_description": "чужое поле"}
 
-    def original(*, candidate, **_kwargs):
+    def original(*, candidate: dict[str, Any], **_kwargs: Any) -> str:
         return "|".join(candidate["hashtags"])
 
     wrapped = publication.wrap_factory_caption_builder(original)
@@ -59,8 +61,8 @@ def test_caption_wrapper_is_true_noop_for_non_factory_candidate():
     assert source == {"hashtags": ["обычный_тег"], "publication_description": "чужое поле"}
 
 
-def test_caption_wrapper_html_escapes_generated_description():
-    def original(*, candidate, **_kwargs):
+def test_caption_wrapper_html_escapes_generated_description() -> None:
+    def original(*, candidate: dict[str, Any], **_kwargs: Any) -> str:
         return "Заголовок - Автор\n\nПолное видео:\nYouTube"
 
     wrapped = publication.wrap_factory_caption_builder(original)
@@ -77,8 +79,10 @@ def test_caption_wrapper_html_escapes_generated_description():
     assert "1 & 1" not in caption
 
 
-def test_enrichment_fails_open_when_light_description_is_unavailable(monkeypatch):
-    async def no_description(*_args, **_kwargs):
+def test_enrichment_fails_open_when_light_description_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def no_description(*_args: Any, **_kwargs: Any) -> dict[int, str]:
         return {}
 
     monkeypatch.setattr(publication, "_generate_descriptions", no_description)
@@ -90,8 +94,10 @@ def test_enrichment_fails_open_when_light_description_is_unavailable(monkeypatch
     assert source[0]["hashtags"] == ["евангелие", "бытие"]
 
 
-def test_enrichment_sets_only_private_factory_description_field(monkeypatch):
-    async def one_description(*_args, **_kwargs):
+def test_enrichment_sets_only_private_factory_description_field(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def one_description(*_args: Any, **_kwargs: Any) -> dict[int, str]:
         return {
             0: (
                 "Искупление начинается с Божьего действия, а человеческая "
@@ -106,11 +112,13 @@ def test_enrichment_sets_only_private_factory_description_field(monkeypatch):
     assert "publication_description" not in result[0]
 
 
-def test_description_generation_retries_lite_across_clients_and_pattern_prompt(monkeypatch):
+def test_description_generation_retries_lite_across_clients_and_pattern_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import core.globals as globals_module
 
     calls: list[tuple[str, str]] = []
-    configs: list[dict] = []
+    configs: list[dict[str, Any]] = []
     prompts: list[str] = []
 
     class FakeModels:
@@ -118,7 +126,7 @@ def test_description_generation_retries_lite_across_clients_and_pattern_prompt(m
             self.name = name
             self.fail = fail
 
-        async def generate_content(self, *, model, contents, config):
+        async def generate_content(self, *, model: str, contents: object, config: Any) -> SimpleNamespace:
             del config
             calls.append((self.name, model))
             prompts.append(str(contents))
@@ -141,10 +149,10 @@ def test_description_generation_retries_lite_across_clients_and_pattern_prompt(m
                 )
             )
 
-    def fake_client(name: str, fail: bool):
+    def fake_client(name: str, fail: bool) -> SimpleNamespace:
         return SimpleNamespace(aio=SimpleNamespace(models=FakeModels(name, fail)))
 
-    def fake_config(**kwargs):
+    def fake_config(**kwargs: Any) -> dict[str, Any]:
         configs.append(dict(kwargs))
         return kwargs
 
@@ -187,7 +195,7 @@ def test_description_generation_retries_lite_across_clients_and_pattern_prompt(m
     assert result[0].startswith("Искупление начинается")
 
 
-def test_description_cleaner_rejects_ai_or_provider_meta_text():
+def test_description_cleaner_rejects_ai_or_provider_meta_text() -> None:
     assert (
         publication._clean_description(
             "В этом видео нейросеть кратко объясняет содержание фрагмента и перевод Яндекса."
@@ -199,7 +207,7 @@ def test_description_cleaner_rejects_ai_or_provider_meta_text():
     ).endswith(".")
 
 
-def test_item_index_accepts_json_scalars_and_rejects_invalid_values():
+def test_item_index_accepts_json_scalars_and_rejects_invalid_values() -> None:
     assert publication._item_index({"index": "2"}) == 2
     assert publication._item_index({"index": 1.0}) == 1
     assert publication._item_index({"index": []}) is None

@@ -348,7 +348,8 @@ def _polish_base_persist_timing_block(
 
 
 def format_timing_block_message(block: Mapping[str, Any], *, repeated: bool) -> str:
-    evidence = block.get("evidence") if isinstance(block.get("evidence"), Mapping) else {}
+    evidence_value: object = block.get("evidence")
+    evidence = evidence_value if isinstance(evidence_value, Mapping) else {}
     attempts = [item for item in evidence.get("attempts") or [] if isinstance(item, Mapping)]
     tempos = [_finite(item.get("required_tempo")) for item in attempts if _finite(item.get("required_tempo")) > 0]
     tempo_text = f"{min(tempos):.2f}–{max(tempos):.2f}×" if tempos else "нет данных"
@@ -618,12 +619,12 @@ MARKER_SCHEMA_VERSION = polish.MARKER_SCHEMA_VERSION
 
 
 def run_pre_model_guard(
-    segments,
+    segments: Iterable[dict[str, Any]],
     *,
-    work_dir,
-    max_tempo,
-    signature_context,
-):
+    work_dir: Path,
+    max_tempo: float,
+    signature_context: Mapping[str, Any] | None,
+) -> dict[str, Any]:
     return _polish_base_run_pre_model_guard(
         polish._segments(segments),
         work_dir=work_dir,

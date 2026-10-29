@@ -1,5 +1,8 @@
 from __future__ import annotations
+import pathlib
 import asyncio
+from collections.abc import Awaitable, Callable
+from typing import Any
 from types import SimpleNamespace
 import pytest
 from services import gemini_capacity_control as capacity_control
@@ -19,20 +22,22 @@ class _FakeFiles:
         self.upload_calls = 0
         self.delete_calls = 0
 
-    async def upload(self, *, file, config):
+    async def upload(self, *, file: Any, config: Any) -> SimpleNamespace:
         self.upload_calls += 1
         return SimpleNamespace(name=f"files/{self.owner}")
 
-    async def delete(self, *, name):
+    async def delete(self, *, name: str) -> None:
         self.delete_calls += 1
 
 
-def _install_fake_factory_modules(monkeypatch, run_pass):
+def _install_fake_factory_modules(
+    monkeypatch: pytest.MonkeyPatch, run_pass: Callable[..., Awaitable[dict[str, Any]]]
+) -> None:
     import services.shorts_factory_candidates as candidates
     import services.shorts_factory_quality_gate as quality_gate
     import services.shorts_factory_source as source
 
-    async def verified_duration(_path):
+    async def verified_duration(_path: pathlib.Path) -> float:
         return 120.0
 
     monkeypatch.setattr(
@@ -62,11 +67,11 @@ def _install_fake_factory_modules(monkeypatch, run_pass):
     )
 
 
-def _disable_capacity_retry_delay(monkeypatch) -> None:
+def _disable_capacity_retry_delay(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(capacity_runtime, "_capacity_retry_delay", lambda attempt: 0.0)
 
 
-def test_capacity_backoff_is_exponential_and_capped(monkeypatch):
+def test_capacity_backoff_is_exponential_and_capped(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(capacity_control.random, "uniform", lambda *_args: 0.0)
     monkeypatch.delenv("GEMINI_RETRY_BASE_SECONDS", raising=False)
     monkeypatch.delenv("GEMINI_RETRY_MAX_SECONDS", raising=False)
@@ -76,14 +81,16 @@ def test_capacity_backoff_is_exponential_and_capped(monkeypatch):
     assert capacity_runtime._capacity_retry_delay(4) == 60.0
 
 
-def test_503_high_demand_has_one_global_initial_plus_four_retry_budget(monkeypatch, tmp_path):
+def test_503_high_demand_has_one_global_initial_plus_four_retry_budget(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     audio = tmp_path / "factory.flac"
     audio.write_bytes(b"x" * 2048)
     first = SimpleNamespace(name="first")
     second = SimpleNamespace(name="second")
     calls: list[str] = []
 
-    async def run_pass(client, **kwargs):
+    async def run_pass(client: Any, **kwargs: Any) -> dict[str, Any]:
         calls.append(client.name)
         raise _ServiceError(503, "UNAVAILABLE: high demand")
 
@@ -105,14 +112,14 @@ def test_503_high_demand_has_one_global_initial_plus_four_retry_budget(monkeypat
     assert "retry-кэше" in message
 
 
-def test_429_then_503_does_not_claim_every_key_got_503(monkeypatch, tmp_path):
+def test_429_then_503_does_not_claim_every_key_got_503(monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path) -> None:
     audio = tmp_path / "factory.flac"
     audio.write_bytes(b"x" * 2048)
     first = SimpleNamespace(name="first")
     second = SimpleNamespace(name="second")
     calls: list[str] = []
 
-    async def run_pass(client, **kwargs):
+    async def run_pass(client: Any, **kwargs: Any) -> dict[str, Any]:
         calls.append(client.name)
         if client is first:
             raise _ServiceError(429, "RESOURCE_EXHAUSTED")
@@ -136,13 +143,15 @@ def test_429_then_503_does_not_claim_every_key_got_503(monkeypatch, tmp_path):
     assert "Все 2 настроенных API-клиента получили 503" not in message
 
 
-def test_duration_mismatch_fails_before_any_gemini_client(monkeypatch, tmp_path):
+def test_duration_mismatch_fails_before_any_gemini_client(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     import services.shorts_factory_source as source
 
     audio = tmp_path / "factory.flac"
     audio.write_bytes(b"x" * 2048)
 
-    async def wrong_duration(_path):
+    async def wrong_duration(_path: pathlib.Path) -> float:
         return 54.0
 
     monkeypatch.setattr(source, "measure_factory_audio_duration", wrong_duration)
@@ -154,7 +163,9 @@ def test_duration_mismatch_fails_before_any_gemini_client(monkeypatch, tmp_path)
         )
 
 
-def test_503_recovers_on_same_client_and_same_uploaded_audio(monkeypatch, tmp_path):
+def test_503_recovers_on_same_client_and_same_uploaded_audio(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     audio = tmp_path / "factory.flac"
     with audio.open("wb") as stream:
         stream.truncate(19 * 1024 * 1024)
@@ -165,7 +176,7 @@ def test_503_recovers_on_same_client_and_same_uploaded_audio(monkeypatch, tmp_pa
     calls: list[str] = []
     audio_parts: list[object] = []
 
-    async def run_pass(client, **kwargs):
+    async def run_pass(client: Any, **kwargs: Any) -> dict[str, Any]:
         calls.append(client.name)
         audio_parts.append(kwargs["audio_part"])
         if len(calls) == 1:
@@ -190,7 +201,7 @@ def test_503_recovers_on_same_client_and_same_uploaded_audio(monkeypatch, tmp_pa
     assert plan["strict_quality"] is True
 
 
-def test_persistent_503_never_reuploads_to_next_client(monkeypatch, tmp_path):
+def test_persistent_503_never_reuploads_to_next_client(monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path) -> None:
     audio = tmp_path / "factory.flac"
     with audio.open("wb") as stream:
         stream.truncate(19 * 1024 * 1024)
@@ -200,7 +211,7 @@ def test_persistent_503_never_reuploads_to_next_client(monkeypatch, tmp_path):
     second = SimpleNamespace(name="second", aio=SimpleNamespace(files=second_files))
     calls: list[str] = []
 
-    async def run_pass(client, **kwargs):
+    async def run_pass(client: Any, **kwargs: Any) -> dict[str, Any]:
         calls.append(client.name)
         raise _ServiceError(503, "UNAVAILABLE: high demand")
 
@@ -220,14 +231,16 @@ def test_persistent_503_never_reuploads_to_next_client(monkeypatch, tmp_path):
     assert second_files.delete_calls == 0
 
 
-def test_429_still_rotates_within_global_budget_and_keeps_three_pass_high_quality(monkeypatch, tmp_path):
+def test_429_still_rotates_within_global_budget_and_keeps_three_pass_high_quality(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     audio = tmp_path / "factory.flac"
     audio.write_bytes(b"x" * 2048)
     first = SimpleNamespace(name="first")
     second = SimpleNamespace(name="second")
     calls: list[str] = []
 
-    async def run_pass(client, **kwargs):
+    async def run_pass(client: Any, **kwargs: Any) -> dict[str, Any]:
         calls.append(client.name)
         if client is first:
             raise _ServiceError(429, "RESOURCE_EXHAUSTED")

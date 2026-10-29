@@ -1,12 +1,13 @@
 import importlib.util
 from pathlib import Path
+from typing import Any
 
 
-def _load_module():
+def _load_module() -> Any:
     path = Path(__file__).parents[1] / "services/livedub_qa_hardening.py"
     spec = importlib.util.spec_from_file_location("livedub_qa_focused_test", path)
-    module = importlib.util.module_from_spec(spec)
     assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
@@ -14,7 +15,7 @@ def _load_module():
 qa = _load_module()
 
 
-def test_focused_window_replaces_broad_diagnosis_and_correction():
+def test_focused_window_replaces_broad_diagnosis_and_correction() -> None:
     primary = {
         "issues": [
             {

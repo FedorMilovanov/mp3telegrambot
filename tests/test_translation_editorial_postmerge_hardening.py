@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Any
 
 from pathlib import Path
 from types import SimpleNamespace
@@ -9,7 +10,7 @@ import services.translation_editorial as editorial
 import services.translation_editorial_composition as composition
 
 
-def _composition_document(piece_ids: list[str]) -> dict:
+def _composition_document(piece_ids: list[str]) -> dict[str, Any]:
     pieces = []
     for index, piece_id in enumerate(piece_ids):
         start = float(index * 20)
@@ -122,10 +123,10 @@ async def test_apply_safe_repairs_blocks_oversized_drop_before_ffmpeg(
     output = tmp_path / "clean.mp4"
     ffmpeg_called = False
 
-    async def fake_probe(_path: Path):
+    async def fake_probe(_path: Path) -> SimpleNamespace:
         return SimpleNamespace(duration=100.0)
 
-    async def fail_if_ffmpeg_runs(*_args, **_kwargs):
+    async def fail_if_ffmpeg_runs(*_args: Any, **_kwargs: Any) -> None:
         nonlocal ffmpeg_called
         ffmpeg_called = True
         raise AssertionError("FFmpeg must not run for an unsafe drop plan")

@@ -12,8 +12,11 @@ Covers the verified fixes:
   * pipeline: outer except flushes an already-ready dub instead of cancelling it.
 """
 
+import pytest
+
 import inspect
 from pathlib import Path
+from typing import Any
 import subprocess
 
 from services.livedub_mix import (
@@ -27,7 +30,7 @@ import services.livedub_qa as lq
 
 
 # ── mix: format normalization + rnnoise escaping ─────────────────────────────
-def test_r42_mix_filter_normalizes_sample_rate_and_layout():
+def test_r42_mix_filter_normalizes_sample_rate_and_layout() -> None:
     fc = build_mix_filter(0.45, 1.3, 600, duck=True)
     # both EN and RU chains get a deterministic aformat before sidechain/amix
     assert fc.count("aformat=sample_rates=48000:channel_layouts=stereo") == 2
@@ -35,7 +38,7 @@ def test_r42_mix_filter_normalizes_sample_rate_and_layout():
     assert "sidechaincompress" in fc and "[aout]" in fc
 
 
-def test_r42_rnnoise_path_not_double_escaped(tmp_path):
+def test_r42_rnnoise_path_not_double_escaped(tmp_path: Path) -> None:
     model = tmp_path / "cb.rnnn"
     model.write_text("x", encoding="utf-8")
     fc = build_mix_filter(0.45, 1.3, 600, duck=True, rnnoise_model=str(model))
@@ -44,14 +47,14 @@ def test_r42_rnnoise_path_not_double_escaped(tmp_path):
     assert "\\:" not in fc
 
 
-def test_r42_no_colon_escape_in_code():
+def test_r42_no_colon_escape_in_code() -> None:
     # guards the Windows-only bug a Linux path can't reproduce: the rnnoise path
     # is single-quoted, so the model assignment must NOT re-escape the colon.
     src = Path("services/livedub_mix.py").read_text(encoding="utf-8")
     assert '_m = rnnoise_model.replace("\\\\", "/")\n' in src
 
 
-def test_r42_calculate_tail_pad_ms():
+def test_r42_calculate_tail_pad_ms() -> None:
     # no durations → base = delay + margin
     assert calculate_tail_pad_ms(600, 1000, None, None) == 1600
     # equal durations → still ~base
@@ -60,14 +63,14 @@ def test_r42_calculate_tail_pad_ms():
     assert calculate_tail_pad_ms(600, 1000, 100.0, 105.0) == 6600
 
 
-def test_r42_mix_rejects_truncated_ru_source():
+def test_r42_mix_rejects_truncated_ru_source() -> None:
     src = Path("services/livedub_mix.py").read_text(encoding="utf-8")
     assert "RU-дубляж усечён" in src
     assert "ru_duration < 0.5 * orig_duration" in src
 
 
 # ── extract_fix_intervals (pure) ─────────────────────────────────────────────
-def test_r42_extract_fix_intervals_major_only_and_merge(monkeypatch):
+def test_r42_extract_fix_intervals_major_only_and_merge(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LIVEDUB_DELAY_MS", "600")
     # minor is ignored; only majors become windows
     iv = extract_fix_intervals(
@@ -90,7 +93,7 @@ def test_r42_extract_fix_intervals_major_only_and_merge(monkeypatch):
 
 
 # ── QA report: HTML-safe truncation + clean pass ─────────────────────────────
-def _many_issues(n):
+def _many_issues(n: int) -> list[dict[str, Any]]:
     return [
         {
             "time": f"{i:02d}:00",
@@ -103,7 +106,7 @@ def _many_issues(n):
     ]
 
 
-def test_r42_format_qa_report_html_safe_truncation():
+def test_r42_format_qa_report_html_safe_truncation() -> None:
     qa = {"score": 55, "verdict": "оценка " * 400, "issues": _many_issues(20)}
     out = format_qa_report(qa, video_url="https://youtu.be/abc")
     assert len(out) <= 4000
@@ -115,17 +118,19 @@ def test_r42_format_qa_report_html_safe_truncation():
     assert not out.rstrip().endswith("<a") and out.count("<") == out.count(">")
 
 
-def test_r42_format_qa_report_clean_pass():
+def test_r42_format_qa_report_clean_pass() -> None:
     # a clean result (no issues) still renders a publish-ok message
     out = format_qa_report({"score": 98, "verdict": "перевод точный", "issues": []})
     assert "можно публиковать" in out
 
 
-def test_r42_run_ffmpeg_explicitly_accepts_nonzero_exit(monkeypatch):
+def test_r42_run_ffmpeg_explicitly_accepts_nonzero_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(mix.shutil, "which", lambda _name: "ffmpeg")
-    captured = {}
+    captured: dict[str, Any] = {}
 
-    def fake_run(command, **kwargs):
+    def fake_run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         captured.update(kwargs)
         return subprocess.CompletedProcess(command, 1, stderr="boom")
 
@@ -135,11 +140,13 @@ def test_r42_run_ffmpeg_explicitly_accepts_nonzero_exit(monkeypatch):
     assert captured["check"] is False
 
 
-def test_r42_ffmpeg_fallback_reads_metadata_without_ffprobe(monkeypatch):
+def test_r42_ffmpeg_fallback_reads_metadata_without_ffprobe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(mix.shutil, "which", lambda name: None if name == "ffprobe" else "ffmpeg")
-    captured = {}
+    captured: dict[str, Any] = {}
 
-    def fake_run(command, **kwargs):
+    def fake_run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         captured.update(kwargs)
         return subprocess.CompletedProcess(
             command,
@@ -152,11 +159,13 @@ def test_r42_ffmpeg_fallback_reads_metadata_without_ffprobe(monkeypatch):
     assert captured["check"] is False
 
 
-def test_r42_mean_volume_uses_non_throwing_probe(monkeypatch):
+def test_r42_mean_volume_uses_non_throwing_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(lq.shutil, "which", lambda _name: "ffmpeg")
-    captured = {}
+    captured: dict[str, Any] = {}
 
-    def fake_run(command, **kwargs):
+    def fake_run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         captured.update(kwargs)
         return subprocess.CompletedProcess(command, 0, stderr="mean_volume: -21.5 dB")
 
@@ -166,13 +175,13 @@ def test_r42_mean_volume_uses_non_throwing_probe(monkeypatch):
 
 
 # ── QA source-level guarantees (async/Gemini-bound paths) ────────────────────
-def test_r42_qa_accepts_clean_result_without_issues_key():
+def test_r42_qa_accepts_clean_result_without_issues_key() -> None:
     src = Path("services/livedub_qa.py").read_text(encoding="utf-8")
     assert 'result.setdefault("issues", [])' in src
     assert '"score" in result or "verdict" in result' in src
 
 
-def test_r42_qa_cleans_uploaded_on_parse_failure():
+def test_r42_qa_cleans_uploaded_on_parse_failure() -> None:
     src = Path("services/livedub_qa.py").read_text(encoding="utf-8")
     # the parse-failure branch (after last_err assignment) now clears uploaded
     anchor = 'last_err = RuntimeError("ответ модели не распарсился в QA-JSON")'
@@ -181,7 +190,7 @@ def test_r42_qa_cleans_uploaded_on_parse_failure():
     assert "uploaded.clear()" in after
 
 
-def test_r42_qa_uses_clean_ru_track():
+def test_r42_qa_uses_clean_ru_track() -> None:
     parameter = inspect.signature(lq.run_translation_qa).parameters["dub_audio_path"]
     assert parameter.default is None
     qa_src = Path("services/livedub_qa.py").read_text(encoding="utf-8")
@@ -195,7 +204,7 @@ def test_r42_qa_uses_clean_ru_track():
 
 
 # ── technical_check: silent dub detection ────────────────────────────────────
-def test_r42_technical_check_flags_silent_dub(monkeypatch):
+def test_r42_technical_check_flags_silent_dub(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = {
         "format": {"duration": "600"},
         "streams": [{"codec_type": "audio"}, {"codec_type": "video"}],
@@ -211,20 +220,20 @@ def test_r42_technical_check_flags_silent_dub(monkeypatch):
 
 
 # ── fetch: download integrity + subtitle isolation ───────────────────────────
-def test_r42_node_helper_rejects_tiny_download():
+def test_r42_node_helper_rejects_tiny_download() -> None:
     src = Path("vot_helper/vot_live.mjs").read_text(encoding="utf-8")
     assert "buf.length < 4096" in src
     assert "LIVEDUB_NOT_AVAILABLE" in src
 
 
-def test_r42_get_translation_subtitles_excludes_gemini_subs():
+def test_r42_get_translation_subtitles_excludes_gemini_subs() -> None:
     src = Path("services/yandex_live_dub.py").read_text(encoding="utf-8")
     # the new-files set for the Yandex dub SRT must exclude our own gemini subs
     assert 'f.name != "gemini_subs.srt"' in src
 
 
 # ── pipeline: outer except flushes a ready dub ───────────────────────────────
-def test_r42_outer_except_flushes_ready_dub():
+def test_r42_outer_except_flushes_ready_dub() -> None:
     src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     i_except = src.rindex("except Exception as e:")
     tail = src[i_except : i_except + 1300]

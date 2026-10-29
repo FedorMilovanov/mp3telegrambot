@@ -10,14 +10,17 @@ from __future__ import annotations
 
 import math
 import re
-import subprocess
+import subprocess as subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-import soundfile as sf
+import numpy as numpy
+import soundfile as soundfile
+
+np = numpy
+sf = soundfile
 
 from tools.voxcpm2.activity_quality import sustained_activity_index
 
@@ -470,7 +473,7 @@ def _words(value: Any) -> int:
     return len(re.findall(r"\w+", _normal_text(value), flags=re.UNICODE))
 
 
-def _sentence_end(value: Any) -> bool:
+def _legacy_sentence_end(value: Any) -> bool:
     return bool(re.search(r"[.!?…][\s\"'»”)]*$", _normal_text(value)))
 
 

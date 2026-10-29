@@ -1,11 +1,13 @@
 """Regression tests for v3 patch 84 — centralized structured block normalization."""
 
+from typing import Any
+
 from converters.md_telegraph import _section_to_nodes_v2
 from core.content_audit import audit_expanded_sections
 from core.structured_blocks import canonical_block_type, normalize_structured_block, normalize_structured_blocks
 
 
-def _flat(node):
+def _flat(node: Any) -> str:
     if isinstance(node, str):
         return node
     if isinstance(node, dict):
@@ -15,7 +17,7 @@ def _flat(node):
     return ""
 
 
-def test_canonical_block_type_aliases_are_centralized():
+def test_canonical_block_type_aliases_are_centralized() -> None:
     assert canonical_block_type("quote") == "pull_quote"
     assert canonical_block_type("blockquote") == "pull_quote"
     assert canonical_block_type("lexical_analysis") == "lexicon"
@@ -24,7 +26,7 @@ def test_canonical_block_type_aliases_are_centralized():
     assert canonical_block_type("unknown_model_type") == "paragraph"
 
 
-def test_normalize_scripture_text_extracts_ref_quote_and_role():
+def test_normalize_scripture_text_extracts_ref_quote_and_role() -> None:
     block = normalize_structured_block(
         {
             "type": "scripture",
@@ -34,25 +36,27 @@ def test_normalize_scripture_text_extracts_ref_quote_and_role():
             ),
         }
     )
+    assert block is not None
     assert block["type"] == "scripture"
     assert block["ref"] == "2 Тимофею 3:16–17"
     assert block["quote"] == "Всё Писание богодухновенно"
     assert "стандарт достаточности" in block["role_in_argument"]
 
 
-def test_normalize_lexicon_text_extracts_lemma_and_role():
+def test_normalize_lexicon_text_extracts_lemma_and_role() -> None:
     block = normalize_structured_block(
         {
             "type": "lexicon",
             "text": "**σάββατον** (*sabbaton*, греч.) — суббота как тень, завершённая во Христе.",
         }
     )
+    assert block is not None
     assert block["type"] == "lexicon"
     assert block["lemma"] == "σάββατον"
     assert "суббота как тень" in block["role_in_argument"]
 
 
-def test_normalize_known_source_without_author():
+def test_normalize_known_source_without_author() -> None:
     block = normalize_structured_block(
         {
             "type": "source",
@@ -60,10 +64,11 @@ def test_normalize_known_source_without_author():
             "why_relevant": "Исторический документ о семейном поклонении.",
         }
     )
+    assert block is not None
     assert block["author"] == "Вестминстерская ассамблея"
 
 
-def test_normalize_theological_line_to_renderable_bullet():
+def test_normalize_theological_line_to_renderable_bullet() -> None:
     block = normalize_structured_block(
         {
             "type": "theological_line",
@@ -71,12 +76,13 @@ def test_normalize_theological_line_to_renderable_bullet():
             "why_relevant": "Показывает, как Лоусон противопоставляет Писание субъективизму.",
         }
     )
+    assert block is not None
     assert block["type"] == "bullet"
     assert "**Sola Scriptura" in block["text"]
     assert "субъективизму" in block["text"]
 
 
-def test_audit_uses_normalized_blocks_before_schema_warnings():
+def test_audit_uses_normalized_blocks_before_schema_warnings() -> None:
     sections = [
         {
             "title": "Ключевые тексты",
@@ -104,7 +110,7 @@ def test_audit_uses_normalized_blocks_before_schema_warnings():
     assert not any(i.code == "block_schema_warning" for i in issues)
 
 
-def test_renderer_uses_normalized_blocks_for_aliases():
+def test_renderer_uses_normalized_blocks_for_aliases() -> None:
     section = {
         "title": "T",
         "content": "fallback",

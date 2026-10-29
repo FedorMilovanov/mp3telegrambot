@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -38,7 +39,7 @@ def _candidate(
     p90: float,
     active: float,
     gap: float,
-) -> dict:
+) -> dict[str, Any]:
     sample_rate = 16_000
     time = np.arange(max(1, int(duration * sample_rate)), dtype=np.float32) / sample_rate
     return {
@@ -56,7 +57,7 @@ def _candidate(
     }
 
 
-def _complete_voice_match(candidate: dict) -> dict:
+def _complete_voice_match(candidate: dict[str, Any]) -> dict[str, Any]:
     candidate["voice_match"] = {
         "f0_median_ratio": 1.0,
         "f0_p90_ratio": 1.0,
@@ -85,7 +86,7 @@ def test_48khz_pitch_diagnostic_keeps_male_f0() -> None:
 
 
 def test_nonsense_high_register_candidate_cannot_win() -> None:
-    reference = {"f0_median": 105.0, "f0_p90": 145.0}
+    reference: dict[str, Any] = {"f0_median": 105.0, "f0_p90": 145.0}
     good = _complete_voice_match(
         _candidate(
             duration=3.5,
@@ -159,7 +160,7 @@ def test_bad_candidate_diagnostics_are_actionable() -> None:
 def test_generation_preserves_final_word_headroom_and_supported_retries() -> None:
     class FakeModel:
         def __init__(self) -> None:
-            self.kwargs: dict = {}
+            self.kwargs: dict[str, Any] = {}
 
         def generate(
             self,
@@ -168,8 +169,8 @@ def test_generation_preserves_final_word_headroom_and_supported_retries() -> Non
             retry_badcase_max_times: int,
             retry_badcase_ratio_threshold: float,
             seed: int,
-            **kwargs,
-        ):
+            **kwargs: Any,
+        ) -> np.ndarray:
             self.kwargs = {
                 **kwargs,
                 "retry_badcase": retry_badcase,

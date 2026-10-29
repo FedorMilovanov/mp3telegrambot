@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+from typing import Any
 
 from tools.voxcpm2 import clean_runtime_contract
 from tools.voxcpm2.direct_max_quality_io import POLICY
@@ -21,7 +22,7 @@ def _checkpoint(
     policy: str = POLICY,
     profile: str = "extended",
     report_id: int | None = None,
-    voice_match: dict | None = None,
+    voice_match: dict[str, Any] | None = None,
     fitted_bytes: bytes = b"wav",
 ) -> Path:
     path = root / "checkpoints" / f"segment_{segment_id:02d}.json"

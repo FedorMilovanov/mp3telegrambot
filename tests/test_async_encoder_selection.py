@@ -63,7 +63,7 @@ def test_whisper_owned_worker_format_is_readable() -> None:
 
 @pytest.mark.asyncio
 async def test_slow_encoder_probe_does_not_block_event_loop(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     source_path = tmp_path / "source.mp4"
@@ -73,15 +73,15 @@ async def test_slow_encoder_probe_does_not_block_event_loop(
     started = threading.Event()
     release = threading.Event()
 
-    def slow_encoder():
+    def slow_encoder() -> tuple[str, list[str], list[str]]:
         started.set()
         release.wait(timeout=1.0)
         return "libx264", ["-crf", "23"], ["-preset", "veryfast"]
 
-    async def no_snap(path, target, search_window=5.0):
+    async def no_snap(path: Path, target: float, search_window: float = 5.0) -> float:
         return target
 
-    async def fake_owner(command, **kwargs):
+    async def fake_owner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         await asyncio.to_thread(_write_bytes, Path(command[-1]), b"rendered")
         return subprocess.CompletedProcess(command, 0, "", "")
 

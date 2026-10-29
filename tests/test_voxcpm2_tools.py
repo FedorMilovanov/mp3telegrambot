@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+from typing import Any
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -14,7 +15,7 @@ SEGMENTED_PATH = ROOT / "tools" / "voxcpm2" / "segmented_cpu_dub.py"
 VALIDATOR_PATH = ROOT / "tools" / "voxcpm2" / "validate_run.py"
 
 
-def _load_module(name: str, path: Path):
+def _load_module(name: str, path: Path) -> Any:
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
@@ -26,7 +27,7 @@ segmented = _load_module("voxcpm2_segmented_cpu_dub", SEGMENTED_PATH)
 validator = _load_module("voxcpm2_validate_run", VALIDATOR_PATH)
 
 
-def test_probe_duration_uses_resolved_ffprobe(monkeypatch) -> None:
+def test_probe_duration_uses_resolved_ffprobe(monkeypatch: pytest.MonkeyPatch) -> None:
     run = Mock(return_value=SimpleNamespace(returncode=0, stdout="12.5\n", stderr=""))
     monkeypatch.setattr(segmented.shutil, "which", lambda _name: "/resolved/ffprobe")
     monkeypatch.setattr(segmented.subprocess, "run", run)
@@ -35,7 +36,7 @@ def test_probe_duration_uses_resolved_ffprobe(monkeypatch) -> None:
     assert run.call_args.args[0][0] == "/resolved/ffprobe"
 
 
-def test_probe_duration_preserves_missing_executable_error(monkeypatch) -> None:
+def test_probe_duration_preserves_missing_executable_error(monkeypatch: pytest.MonkeyPatch) -> None:
     run = Mock()
     monkeypatch.setattr(segmented.shutil, "which", lambda _name: None)
     monkeypatch.setattr(segmented.subprocess, "run", run)
@@ -97,7 +98,7 @@ def test_read_segments_accepts_gaps_and_rejects_overlap(tmp_path: Path) -> None:
         segmented.read_segments(invalid)
 
 
-def _valid_report(tmp_path: Path) -> dict:
+def _valid_report(tmp_path: Path) -> dict[str, Any]:
     raw = tmp_path / "01_raw.wav"
     fitted = tmp_path / "01_fitted.wav"
     output = tmp_path / "timeline.wav"

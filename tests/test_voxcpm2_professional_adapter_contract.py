@@ -1,4 +1,5 @@
 from __future__ import annotations
+import pytest
 
 import json
 import runpy
@@ -7,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import soundfile as sf
+from typing import Any
 
 
 def _write_reference(path: Path) -> None:
@@ -18,7 +20,7 @@ def _write_reference(path: Path) -> None:
 
 def test_professional_adapter_exports_and_forwards_v4_hooks(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     legacy_path = tmp_path / "legacy_renderer.py"
     legacy_path.write_text(
@@ -81,7 +83,7 @@ def main():
     def wrapped_log(message: str) -> None:
         events.append(("wrapped_log", message))
 
-    def wrapped_seed(seed: int, _torch_module) -> None:
+    def wrapped_seed(seed: int, _torch_module: Any) -> None:
         events.append(("wrapped_seed", seed))
 
     adapter_globals["log"] = wrapped_log
@@ -95,7 +97,7 @@ def main():
 
 def test_quality_v4_patches_the_globals_used_by_runpy_functions(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     marker = tmp_path / "hooks.json"
     original = tmp_path / "fake_renderer.py"

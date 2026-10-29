@@ -1,4 +1,7 @@
 from __future__ import annotations
+import pathlib
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 import asyncio
 from types import SimpleNamespace
@@ -15,12 +18,15 @@ class _ServiceError(RuntimeError):
         self.status_code = status_code
 
 
-def _install_factory_stubs(monkeypatch, run_pass):
+def _install_factory_stubs(
+    monkeypatch: pytest.MonkeyPatch,
+    run_pass: Callable[..., Awaitable[dict[str, Any]]],
+) -> None:
     import services.shorts_factory_candidates as candidates
     import services.shorts_factory_quality_gate as quality_gate
     import services.shorts_factory_source as source
 
-    async def verified_duration(_path):
+    async def verified_duration(_path: pathlib.Path) -> float:
         return 120.0
 
     monkeypatch.setattr(
@@ -75,8 +81,8 @@ def test_project_scope_detector_requires_explicit_project_quota_name() -> None:
 
 
 def test_same_explicit_project_domain_is_skipped_after_project_scoped_429(
-    monkeypatch,
-    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
 ) -> None:
     audio = tmp_path / "factory.flac"
     audio.write_bytes(b"x" * 2048)
@@ -85,7 +91,7 @@ def test_same_explicit_project_domain_is_skipped_after_project_scoped_429(
     third = SimpleNamespace(name="third")
     calls: list[str] = []
 
-    async def run_pass(client, **kwargs):
+    async def run_pass(client: Any, **kwargs: Any) -> dict[str, Any]:
         calls.append(client.name)
         if client is first:
             raise _ServiceError(
@@ -118,14 +124,14 @@ def test_same_explicit_project_domain_is_skipped_after_project_scoped_429(
     assert plan["strict_quality"] is True
 
 
-def test_generic_429_does_not_skip_same_labeled_domain(monkeypatch, tmp_path) -> None:
+def test_generic_429_does_not_skip_same_labeled_domain(monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path) -> None:
     audio = tmp_path / "factory.flac"
     audio.write_bytes(b"x" * 2048)
     first = SimpleNamespace(name="first")
     second = SimpleNamespace(name="second")
     calls: list[str] = []
 
-    async def run_pass(client, **kwargs):
+    async def run_pass(client: Any, **kwargs: Any) -> dict[str, Any]:
         calls.append(client.name)
         if client is first:
             raise _ServiceError(429, "RESOURCE_EXHAUSTED")
@@ -153,8 +159,8 @@ def test_generic_429_does_not_skip_same_labeled_domain(monkeypatch, tmp_path) ->
 
 
 def test_all_same_domain_project_quota_reports_skipped_credentials(
-    monkeypatch,
-    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
 ) -> None:
     audio = tmp_path / "factory.flac"
     audio.write_bytes(b"x" * 2048)
@@ -163,7 +169,7 @@ def test_all_same_domain_project_quota_reports_skipped_credentials(
     third = SimpleNamespace(name="third")
     calls: list[str] = []
 
-    async def run_pass(client, **kwargs):
+    async def run_pass(client: Any, **kwargs: Any) -> dict[str, Any]:
         calls.append(client.name)
         raise _ServiceError(
             429,
@@ -195,14 +201,16 @@ def test_all_same_domain_project_quota_reports_skipped_credentials(
     assert "project-a" not in message
 
 
-def test_misaligned_domain_metadata_fails_open_to_legacy_rotation(monkeypatch, tmp_path) -> None:
+def test_misaligned_domain_metadata_fails_open_to_legacy_rotation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     audio = tmp_path / "factory.flac"
     audio.write_bytes(b"x" * 2048)
     first = SimpleNamespace(name="first")
     second = SimpleNamespace(name="second")
     calls: list[str] = []
 
-    async def run_pass(client, **kwargs):
+    async def run_pass(client: Any, **kwargs: Any) -> dict[str, Any]:
         calls.append(client.name)
         if client is first:
             raise _ServiceError(
@@ -229,7 +237,7 @@ def test_misaligned_domain_metadata_fails_open_to_legacy_rotation(monkeypatch, t
 
 
 def test_key_domain_entries_deduplicate_without_exposing_key_material(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from core import globals as core_globals
 
@@ -247,7 +255,7 @@ def test_key_domain_entries_deduplicate_without_exposing_key_material(
 
 
 def test_conflicting_duplicate_key_domains_and_unsafe_labels_fail_closed(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from core import globals as core_globals
 

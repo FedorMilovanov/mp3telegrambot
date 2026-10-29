@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from collections.abc import Awaitable, Callable
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -27,11 +28,11 @@ def _write_download_candidates(directory: Path, media_id: str) -> None:
     _write_bytes(directory / f"{media_id}_video.mp4", b"mp4")
 
 
-def _patch_render_runtime(monkeypatch, run) -> None:
-    async def no_snap(path, target, search_window=5.0):
+def _patch_render_runtime(monkeypatch: pytest.MonkeyPatch, run: Callable[..., Awaitable[SimpleNamespace]]) -> None:
+    async def no_snap(path: Path, target: float, search_window: float = 5.0) -> float:
         return target
 
-    async def no_crop(path, start_seconds=0.0):
+    async def no_crop(path: Path, start_seconds: float = 0.0) -> str:
         return ""
 
     monkeypatch.setattr(shorts_video_impl.shutil, "which", lambda name: "/ffmpeg")
@@ -46,7 +47,7 @@ def _patch_render_runtime(monkeypatch, run) -> None:
 
 
 @pytest.mark.asyncio
-async def test_shorts_download_reuses_verified_workdir_video(monkeypatch, tmp_path: Path) -> None:
+async def test_shorts_download_reuses_verified_workdir_video(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     workdir = tmp_path / "workdir"
     download_dir = tmp_path / "downloads"
     audio = workdir / "original_video.f140.m4a"
@@ -71,7 +72,7 @@ async def test_shorts_download_reuses_verified_workdir_video(monkeypatch, tmp_pa
 @pytest.mark.asyncio
 @pytest.mark.parametrize("workdir_kind", ["missing", "rejected"])
 async def test_shorts_download_falls_back_when_workdir_has_no_reusable_video(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     workdir_kind: str,
 ) -> None:
@@ -83,7 +84,7 @@ async def test_shorts_download_falls_back_when_workdir_has_no_reusable_video(
     monkeypatch.setattr(shorts_video_impl, "DOWNLOAD_DIR", download_dir)
     monkeypatch.setattr(eng_subtitles, "_has_video_stream", lambda path: False)
 
-    async def fake_run(command, **kwargs):
+    async def fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
         await asyncio.to_thread(_write_download_candidates, download_dir, "media")
         return SimpleNamespace(returncode=0, stderr="")
 
@@ -99,10 +100,12 @@ async def test_shorts_download_falls_back_when_workdir_has_no_reusable_video(
 
 
 @pytest.mark.asyncio
-async def test_shorts_download_discovers_preferred_video_after_process(monkeypatch, tmp_path: Path) -> None:
+async def test_shorts_download_discovers_preferred_video_after_process(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setattr(shorts_video_impl, "DOWNLOAD_DIR", tmp_path)
 
-    async def fake_run(command, **kwargs):
+    async def fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
         await asyncio.to_thread(_write_download_candidates, tmp_path, "media")
         return SimpleNamespace(returncode=0, stderr="")
 
@@ -126,7 +129,7 @@ async def test_shorts_download_discovers_preferred_video_after_process(monkeypat
     ids=["missing", "empty", "below-gate", "at-gate"],
 )
 async def test_legacy_short_render_uses_single_nonempty_size_gate(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     payload: bytes | None,
     expected: bool,
@@ -135,7 +138,7 @@ async def test_legacy_short_render_uses_single_nonempty_size_gate(
     output_path = tmp_path / "short.mp4"
     _write_bytes(source_path, b"source")
 
-    async def fake_run(command, **kwargs):
+    async def fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
         if payload is not None:
             await asyncio.to_thread(_write_bytes, output_path, payload)
         return SimpleNamespace(returncode=0, stderr="")
@@ -158,7 +161,7 @@ async def test_legacy_short_render_uses_single_nonempty_size_gate(
     ids=["missing", "empty", "nonempty"],
 )
 async def test_legacy_short_transform_validates_nonempty_output(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     payload: bytes | None,
     expected: bool,
@@ -167,7 +170,7 @@ async def test_legacy_short_transform_validates_nonempty_output(
     output_path = tmp_path / "processed.mp4"
     _write_bytes(input_path, b"input")
 
-    async def fake_run(command, **kwargs):
+    async def fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
         if payload is not None:
             await asyncio.to_thread(_write_bytes, output_path, payload)
         return SimpleNamespace(returncode=0, stderr="")
@@ -187,7 +190,9 @@ async def test_legacy_short_transform_validates_nonempty_output(
 
 
 @pytest.mark.asyncio
-async def test_legacy_short_noop_transform_copies_in_owned_worker(monkeypatch, tmp_path: Path) -> None:
+async def test_legacy_short_noop_transform_copies_in_owned_worker(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     input_path = tmp_path / "input.mp4"
     output_path = tmp_path / "processed.mp4"
     _write_bytes(input_path, b"input")
@@ -208,7 +213,9 @@ async def test_legacy_short_noop_transform_copies_in_owned_worker(monkeypatch, t
 
 
 @pytest.mark.asyncio
-async def test_legacy_short_transform_missing_input_does_not_start_process(monkeypatch, tmp_path: Path) -> None:
+async def test_legacy_short_transform_missing_input_does_not_start_process(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     run = AsyncMock()
     monkeypatch.setattr(shorts_video_impl.shutil, "which", lambda name: "/ffmpeg")
     monkeypatch.setattr(shorts_video_impl, "run_cancellable_process", run)
@@ -225,7 +232,9 @@ async def test_legacy_short_transform_missing_input_does_not_start_process(monke
 
 
 @pytest.mark.asyncio
-async def test_legacy_short_transcribe_uses_russian_whisper_and_cleans_wav(monkeypatch, tmp_path: Path) -> None:
+async def test_legacy_short_transcribe_uses_russian_whisper_and_cleans_wav(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     video_path = tmp_path / "short.mp4"
     _write_bytes(video_path, b"video")
     wav_paths: list[Path] = []
@@ -238,7 +247,7 @@ async def test_legacy_short_transcribe_uses_russian_whisper_and_cleans_wav(monke
     info = SimpleNamespace(duration=0.5, language="ru", language_probability=0.99)
     model = SimpleNamespace(transcribe=Mock(return_value=([segment], info)))
 
-    async def fake_run(command, **kwargs):
+    async def fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
         wav_path = Path(command[-1])
         wav_paths.append(wav_path)
         await asyncio.to_thread(_write_bytes, wav_path, b"w" * 2048)
@@ -278,7 +287,9 @@ async def test_legacy_short_transcribe_uses_russian_whisper_and_cleans_wav(monke
 
 
 @pytest.mark.asyncio
-async def test_legacy_short_transcribe_missing_video_does_not_start_process(monkeypatch, tmp_path: Path) -> None:
+async def test_legacy_short_transcribe_missing_video_does_not_start_process(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     run = AsyncMock()
     monkeypatch.setattr(shorts_video_impl, "HAS_FASTER_WHISPER", True)
     monkeypatch.setattr(shorts_video_impl, "run_cancellable_process", run)
@@ -296,7 +307,7 @@ async def test_legacy_short_transcribe_missing_video_does_not_start_process(monk
     ids=["missing", "empty", "nonempty"],
 )
 async def test_legacy_short_burn_validates_output_and_cleans_ass(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     payload: bytes | None,
     expected: bool,
@@ -306,7 +317,7 @@ async def test_legacy_short_burn_validates_output_and_cleans_ass(
     _write_bytes(input_path, b"input")
     ass_paths: list[Path] = []
 
-    async def fake_run(command, **kwargs):
+    async def fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
         subtitle_filter = command[command.index("-vf") + 1]
         ass_paths.append(Path(subtitle_filter.split("'", 2)[1]))
         if payload is not None:
@@ -330,7 +341,9 @@ async def test_legacy_short_burn_validates_output_and_cleans_ass(
 
 
 @pytest.mark.asyncio
-async def test_legacy_short_burn_missing_input_does_not_start_process(monkeypatch, tmp_path: Path) -> None:
+async def test_legacy_short_burn_missing_input_does_not_start_process(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     run = AsyncMock()
     monkeypatch.setattr(shorts_video_impl.shutil, "which", lambda name: "/ffmpeg")
     monkeypatch.setattr(shorts_video_impl, "run_cancellable_process", run)
@@ -346,13 +359,15 @@ async def test_legacy_short_burn_missing_input_does_not_start_process(monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_legacy_short_title_poster_draws_jpeg_and_cleans_frame(monkeypatch, tmp_path: Path) -> None:
+async def test_legacy_short_title_poster_draws_jpeg_and_cleans_frame(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     video_path = tmp_path / "short.mp4"
     poster_path = tmp_path / "poster.jpg"
     _write_bytes(video_path, b"video")
     frame_paths: list[Path] = []
 
-    async def fake_run(command, **kwargs):
+    async def fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
         frame_path = Path(command[-1])
         frame_paths.append(frame_path)
         await asyncio.to_thread(_write_jpeg, frame_path)
@@ -382,7 +397,7 @@ async def test_legacy_short_title_poster_draws_jpeg_and_cleans_frame(monkeypatch
     ids=["missing", "empty", "nonempty"],
 )
 async def test_legacy_short_snapshot_validates_nonempty_output(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     payload: bytes | None,
     expected: bool,
@@ -391,7 +406,7 @@ async def test_legacy_short_snapshot_validates_nonempty_output(
     snapshot_path = tmp_path / "snapshot.jpg"
     _write_bytes(video_path, b"video")
 
-    async def fake_run(command, **kwargs):
+    async def fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
         if payload is not None:
             await asyncio.to_thread(_write_bytes, snapshot_path, payload)
         return SimpleNamespace(returncode=0, stderr="")

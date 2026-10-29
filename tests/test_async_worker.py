@@ -171,7 +171,7 @@ async def test_repeated_cancel_after_soft_timeout_does_not_orphan_inner() -> Non
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("timeout", [0, -1, float("inf"), float("nan"), "bad"])
-async def test_soft_timeout_rejects_invalid_deadline_before_ownership(timeout) -> None:
+async def test_soft_timeout_rejects_invalid_deadline_before_ownership(timeout: float | str) -> None:
     future = asyncio.get_running_loop().create_future()
     with pytest.raises(ValueError, match="finite positive"):
         await await_owned_with_soft_timeout(future, timeout=timeout)

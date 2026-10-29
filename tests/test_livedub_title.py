@@ -1,6 +1,8 @@
 """Behavioral contracts for LiveDub caption title normalization and routing."""
 
 from __future__ import annotations
+from collections.abc import Awaitable, Callable, Iterator
+from typing import Any
 
 import asyncio
 from pathlib import Path
@@ -14,22 +16,24 @@ from services import gemini_router, livedub_info
 
 
 @pytest.fixture(autouse=True)
-def clear_title_cache():
+def clear_title_cache() -> Iterator[None]:
     titles._LIVEDUB_TITLE_CACHE.clear()
     yield
     titles._LIVEDUB_TITLE_CACHE.clear()
 
 
-def _translate(*args, **kwargs):
+def _translate(*args: Any, **kwargs: Any) -> tuple[str, str]:
     return asyncio.run(titles._translate_livedub_title_for_caption(*args, **kwargs))
 
 
-def _install_main_gemini(monkeypatch, response_text, light_card):
+def _install_main_gemini(
+    monkeypatch: pytest.MonkeyPatch, response_text: str, light_card: dict[str, Any]
+) -> dict[str, list[Any]]:
     """Route the lightweight card and main fallback through deterministic fakes."""
-    calls = {"sdk": [], "config": [], "models": []}
+    calls: dict[str, list[Any]] = {"sdk": [], "config": [], "models": []}
 
     class _Models:
-        async def generate_content(self, **kwargs):
+        async def generate_content(self, **kwargs: Any) -> SimpleNamespace:
             calls["sdk"].append(kwargs)
             return SimpleNamespace(text=response_text)
 
@@ -37,15 +41,21 @@ def _install_main_gemini(monkeypatch, response_text, light_card):
     monkeypatch.setattr(titles, "GEMINI_CLIENTS", [client])
     monkeypatch.setenv("LIVEDUB_TITLE_TRANSLATE", "1")
 
-    async def fake_card(title_line, dub_srt_path=None, *, source_url="", force=False):
+    async def fake_card(
+        title_line: str,
+        dub_srt_path: Path | None = None,
+        *,
+        source_url: str = "",
+        force: bool = False,
+    ) -> dict[str, Any]:
         assert force is True
         return light_card
 
-    def fake_config(**kwargs):
+    def fake_config(**kwargs: Any) -> dict[str, Any]:
         calls["config"].append(kwargs)
         return kwargs
 
-    async def fake_router(client_list, fn, model_name=""):
+    async def fake_router(client_list: list[Any], fn: Callable[[Any], Awaitable[Any]], model_name: str = "") -> Any:
         assert client_list == [client]
         calls["models"].append(model_name)
         return await fn(client_list[0])
@@ -58,8 +68,14 @@ def _install_main_gemini(monkeypatch, response_text, light_card):
 
 # Retained cases moved verbatim in behavior from the historical QA collector;
 # only the implementation module under test changed.
-def test_livedub_caption_title_light_translation(monkeypatch):
-    async def fake_card(title_line, dub_srt_path=None, *, source_url="", force=False):
+def test_livedub_caption_title_light_translation(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_card(
+        title_line: str,
+        dub_srt_path: Path | None = None,
+        *,
+        source_url: str = "",
+        force: bool = False,
+    ) -> dict[str, Any]:
         assert force is True
         return {"youtube_title": "Почему вы диспенсационалист? - Абнер Чау & Кости Хинн"}
 
@@ -77,11 +93,17 @@ def test_livedub_caption_title_light_translation(monkeypatch):
     assert titles._format_livedub_title_line(title, author) == title
 
 
-def test_main_module_wrapper_uses_main_gemini_clients(monkeypatch):
+def test_main_module_wrapper_uses_main_gemini_clients(monkeypatch: pytest.MonkeyPatch) -> None:
     """The historical main-module monkeypatch seam is executable, not aliased."""
     import pipelines.main_pipeline as main
 
-    async def fake_card(title_line, dub_srt_path=None, *, source_url="", force=False):
+    async def fake_card(
+        title_line: str,
+        dub_srt_path: Path | None = None,
+        *,
+        source_url: str = "",
+        force: bool = False,
+    ) -> dict[str, Any]:
         return {"youtube_title": "Истинная Вера - Пол Вошер"}
 
     monkeypatch.setattr(main, "GEMINI_CLIENTS", [object()])
@@ -100,7 +122,7 @@ def test_main_module_wrapper_uses_main_gemini_clients(monkeypatch):
     assert result == ("Истинная Вера - Пол Вошер", "")
 
 
-def test_livedub_caption_uses_existing_analysis_without_extra_gemini(monkeypatch):
+def test_livedub_caption_uses_existing_analysis_without_extra_gemini(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(titles, "GEMINI_CLIENTS", [])
     title, author = _translate(
         "Why Are You a Dispensationalist? - Abner Chou & Costi Hinn",
@@ -114,9 +136,9 @@ def test_livedub_caption_uses_existing_analysis_without_extra_gemini(monkeypatch
     assert author == "Абнер Чау & Кости Хинн"
 
 
-def test_livedub_title_translate_can_be_disabled_for_metadata_only(monkeypatch):
+def test_livedub_title_translate_can_be_disabled_for_metadata_only(monkeypatch: pytest.MonkeyPatch) -> None:
     class _BadModels:
-        async def generate_content(self, **kwargs):
+        async def generate_content(self, **kwargs: Any) -> None:
             raise AssertionError("Gemini must not be called when LIVEDUB_TITLE_TRANSLATE=0")
 
     monkeypatch.setattr(
@@ -135,8 +157,16 @@ def test_livedub_title_translate_can_be_disabled_for_metadata_only(monkeypatch):
     assert title.startswith("All Your Deeds")
 
 
-def test_livedub_title_default_uses_light_info_pipeline(monkeypatch):
-    async def fake_card(title_line, dub_srt_path=None, *, source_url="", force=False):
+def test_livedub_title_default_uses_light_info_pipeline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_card(
+        title_line: str,
+        dub_srt_path: Path | None = None,
+        *,
+        source_url: str = "",
+        force: bool = False,
+    ) -> dict[str, Any]:
         assert force is True
         return {"youtube_title": "Все ваши дела будут вскрыты у Белого престола - Пол Вошер"}
 
@@ -153,7 +183,7 @@ def test_livedub_title_default_uses_light_info_pipeline(monkeypatch):
     assert author == ""
 
 
-def test_livedub_title_author_first_is_reordered():
+def test_livedub_title_author_first_is_reordered() -> None:
     title, author = titles._split_livedub_title_author(
         "R.C. Sproul: True Seeker-Sensitive Churches", "", "", "BibleQ&A"
     )
@@ -165,7 +195,7 @@ def test_livedub_title_author_first_is_reordered():
     )
 
 
-def test_livedub_send_video_caption_includes_title_and_html_parse_mode():
+def test_livedub_send_video_caption_includes_title_and_html_parse_mode() -> None:
     main_src = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     title_src = Path("pipelines/livedub_title.py").read_text(encoding="utf-8")
     assert "async def _translate_livedub_title_for_caption" in title_src
@@ -186,15 +216,15 @@ def test_livedub_send_video_caption_includes_title_and_html_parse_mode():
     ("raw", "expected"),
     [(None, 256), ("", 256), ("   ", 256), ("32", 32), ("many", 256)],
 )
-def test_cache_max_entries_preserves_environment_fallback(raw, expected):
+def test_cache_max_entries_preserves_environment_fallback(raw: str | None, expected: int) -> None:
     assert titles._cache_max_entries(raw) == expected
 
 
-def test_translation_cache_hit_skips_fallback_and_gemini(monkeypatch):
+def test_translation_cache_hit_skips_fallback_and_gemini(monkeypatch: pytest.MonkeyPatch) -> None:
     cache_key = ("Full", "Parsed", "Channel", "", "")
     titles._LIVEDUB_TITLE_CACHE[cache_key] = ("Готовое Название", "Автор")
 
-    def forbidden_fallback(*args):
+    def forbidden_fallback(*args: Any) -> None:
         raise AssertionError("fallback must not run after a cache hit")
 
     monkeypatch.setattr(titles, "_fallback_livedub_ru_title", forbidden_fallback)
@@ -204,7 +234,7 @@ def test_translation_cache_hit_skips_fallback_and_gemini(monkeypatch):
     )
 
 
-def test_analysis_title_and_author_independently_use_metadata_fallback(monkeypatch):
+def test_analysis_title_and_author_independently_use_metadata_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(titles, "GEMINI_CLIENTS", [])
     fallback_title, fallback_author = titles._fallback_livedub_ru_title(
         "True Faith - Paul Washer",
@@ -228,11 +258,11 @@ def test_analysis_title_and_author_independently_use_metadata_fallback(monkeypat
     ) == (fallback_title, "Другой Автор")
 
 
-def test_no_gemini_clients_uses_metadata_without_light_card(monkeypatch):
+def test_no_gemini_clients_uses_metadata_without_light_card(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(titles, "GEMINI_CLIENTS", [])
     monkeypatch.setenv("LIVEDUB_TITLE_TRANSLATE", "1")
 
-    async def forbidden_card(*args, **kwargs):
+    async def forbidden_card(*args: Any, **kwargs: Any) -> None:
         raise AssertionError("light card must not run without clients")
 
     monkeypatch.setattr(livedub_info, "build_livedub_info_card", forbidden_card)
@@ -240,7 +270,7 @@ def test_no_gemini_clients_uses_metadata_without_light_card(monkeypatch):
     assert _translate("True Faith - Paul Washer", "", "", "") == expected
 
 
-def test_non_russian_light_title_uses_shared_main_gemini_router(monkeypatch):
+def test_non_russian_light_title_uses_shared_main_gemini_router(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = _install_main_gemini(
         monkeypatch,
         '```json\n{"title_ru":"Вера","author_ru":"Paul Washer"}\n```',
@@ -265,7 +295,7 @@ def test_non_russian_light_title_uses_shared_main_gemini_router(monkeypatch):
     assert sdk_call["config"] == calls["config"][0]
 
 
-def test_empty_main_gemini_fields_fall_back_to_metadata(monkeypatch):
+def test_empty_main_gemini_fields_fall_back_to_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_main_gemini(
         monkeypatch,
         '{"title_ru":"","author_ru":""}',
@@ -275,14 +305,14 @@ def test_empty_main_gemini_fields_fall_back_to_metadata(monkeypatch):
     assert _translate("Assurance - Paul Washer", "", "", "") == expected
 
 
-def test_light_and_main_gemini_failures_preserve_metadata_fallback(monkeypatch):
+def test_light_and_main_gemini_failures_preserve_metadata_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(titles, "GEMINI_CLIENTS", [object()])
     monkeypatch.setenv("LIVEDUB_TITLE_TRANSLATE", "1")
 
-    async def failed_card(*args, **kwargs):
+    async def failed_card(*args: Any, **kwargs: Any) -> None:
         raise RuntimeError("light unavailable")
 
-    async def failed_router(*args, **kwargs):
+    async def failed_router(*args: Any, **kwargs: Any) -> None:
         raise RuntimeError("main unavailable")
 
     monkeypatch.setattr(livedub_info, "build_livedub_info_card", failed_card)
@@ -292,7 +322,7 @@ def test_light_and_main_gemini_failures_preserve_metadata_fallback(monkeypatch):
     assert _translate("Assurance - Paul Washer", "", "", "") == expected
 
 
-def test_split_and_format_defensive_edges(monkeypatch):
+def test_split_and_format_defensive_edges(monkeypatch: pytest.MonkeyPatch) -> None:
     assert titles._split_title_author_line("") == ("", "")
     assert titles._split_title_author_line("John Doe & Jane Roe - true faith") == (
         "true faith",
@@ -311,7 +341,7 @@ def test_split_and_format_defensive_edges(monkeypatch):
     assert titles._split_title_author_line(" - True") == (" - True", "")
 
 
-def test_split_livedub_metadata_fallbacks_and_channel_mapping():
+def test_split_livedub_metadata_fallbacks_and_channel_mapping() -> None:
     assert titles._split_livedub_title_author("", "", "Solo Speaker", "") == (
         "",
         "Solo Speaker",

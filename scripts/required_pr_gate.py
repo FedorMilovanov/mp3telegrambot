@@ -4,8 +4,8 @@ import argparse
 import json
 import os
 import re
-import shutil
-import subprocess
+import shutil as shutil
+import subprocess as subprocess
 import time
 from pathlib import Path
 from urllib.parse import urlencode
@@ -219,7 +219,10 @@ def _github_json(url: str, token: str) -> dict[str, object]:
         },
     )
     with urlopen(request, timeout=20) as response:  # noqa: S310 - fixed GitHub API URL
-        return json.loads(response.read().decode("utf-8"))
+        payload: dict[str, object] = json.loads(response.read().decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("GitHub API response must be a JSON object")
+    return payload
 
 
 def _latest_profile_runs(
@@ -249,7 +252,7 @@ def _latest_profile_runs(
         if path not in expected_set:
             continue
         current = latest.get(path)
-        if current is None or int(raw_run.get("id", 0)) > int(current.get("id", 0)):
+        if current is None or int(str(raw_run.get("id", 0))) > int(str(current.get("id", 0))):
             latest[path] = raw_run
     return latest
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -10,13 +11,13 @@ WORKFLOW = ROOT / ".github" / "workflows" / "tts-weighted-smoke.yml"
 CONTRACT_WORKFLOW = ROOT / ".github" / "workflows" / "tts-weighted-smoke-contract.yml"
 
 
-def _load(path: Path) -> dict:
+def _load(path: Path) -> dict[str, Any]:
     payload = yaml.load(path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
     assert isinstance(payload, dict)
     return payload
 
 
-def _workflow() -> dict:
+def _workflow() -> dict[str, Any]:
     return _load(WORKFLOW)
 
 

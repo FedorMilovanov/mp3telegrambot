@@ -26,7 +26,8 @@ def test_delivery_failure_retries_and_returns_success_without_reraising(
     monkeypatch.setattr(core, "_legacy_render_and_master", fake_render)
     monkeypatch.setattr(core, "MAX_AUTOMATIC_DELIVERY_RETRIES", 3)
 
-    assert core.render_and_master(object()) == "ready"
+    result: object = core.render_and_master(object())
+    assert result == "ready"
     assert calls == [1, 2]
 
 
@@ -106,7 +107,8 @@ def test_streamed_renderer_failure_report_drives_automatic_retry(
     monkeypatch.setattr(core, "_legacy_render_and_master", fake_render)
     monkeypatch.setattr(core, "MAX_AUTOMATIC_DELIVERY_RETRIES", 3)
 
-    assert core.render_and_master(root=tmp_path) == "ready"
+    result: object = core.render_and_master(root=tmp_path)
+    assert result == "ready"
     assert calls == [1, 2]
 
 

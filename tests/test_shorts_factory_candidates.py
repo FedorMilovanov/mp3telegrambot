@@ -14,7 +14,7 @@ from services.shorts_factory_candidates import (
 )
 
 
-def test_factory_plan_enforces_duration_ranges_and_overlap():
+def test_factory_plan_enforces_duration_ranges_and_overlap() -> None:
     raw = {
         "metadata": {
             "language": "en",
@@ -71,7 +71,7 @@ def test_factory_plan_enforces_duration_ranges_and_overlap():
     assert plan["long_candidates"][0]["duration_seconds"] == 600
 
 
-def test_factory_plan_reserves_three_seconds_for_render_envelope():
+def test_factory_plan_reserves_three_seconds_for_render_envelope() -> None:
     assert PUBLIC_SHORT_MAX_SEC == 180
     assert SHORT_MAX_SEC == 177
     assert PUBLIC_LONG_MAX_SEC == 900
@@ -104,7 +104,7 @@ def test_factory_plan_reserves_three_seconds_for_render_envelope():
     assert plan["long_candidates"] == []
 
 
-def test_factory_plan_rejects_out_of_source_bounds():
+def test_factory_plan_rejects_out_of_source_bounds() -> None:
     raw = {
         "shorts_candidates": [
             {
@@ -123,7 +123,7 @@ def test_factory_plan_rejects_out_of_source_bounds():
     assert plan["shorts_candidates"] == []
 
 
-def test_factory_plan_rejects_unverified_boundaries_by_default():
+def test_factory_plan_rejects_unverified_boundaries_by_default() -> None:
     raw = {
         "shorts_candidates": [
             {
@@ -142,7 +142,7 @@ def test_factory_plan_rejects_unverified_boundaries_by_default():
     assert plan["shorts_candidates"] == []
 
 
-def test_factory_model_defaults_to_gemini_38_flash(monkeypatch):
+def test_factory_model_defaults_to_gemini_38_flash(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in (
         "SHORTS_FACTORY_MODEL",
         "GEMINI_PRO_MODEL",
@@ -154,14 +154,14 @@ def test_factory_model_defaults_to_gemini_38_flash(monkeypatch):
     assert shorts_factory_model() == MODEL_PRIMARY
 
 
-def test_global_gemini_max_does_not_control_factory(monkeypatch):
+def test_global_gemini_max_does_not_control_factory(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SHORTS_FACTORY_MODEL", raising=False)
     monkeypatch.setenv("GEMINI_MAX_MODEL", "gemini-3.1-pro-preview")
 
     assert shorts_factory_model() == MODEL_PRIMARY
 
 
-def test_legacy_pro_env_does_not_override_factory(monkeypatch):
+def test_legacy_pro_env_does_not_override_factory(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SHORTS_FACTORY_MODEL", raising=False)
     monkeypatch.delenv("GEMINI_MAX_MODEL", raising=False)
     monkeypatch.setenv("GEMINI_PRO_MODEL", "gemini-3.1-pro-preview")
@@ -169,7 +169,7 @@ def test_legacy_pro_env_does_not_override_factory(monkeypatch):
     assert shorts_factory_model() == MODEL_PRIMARY
 
 
-def test_factory_model_accepts_explicit_current_route(monkeypatch):
+def test_factory_model_accepts_explicit_current_route(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SHORTS_FACTORY_MODEL", MODEL_PRIMARY)
 
     assert shorts_factory_model() == MODEL_PRIMARY
@@ -186,25 +186,30 @@ def test_factory_model_accepts_explicit_current_route(monkeypatch):
         "gemini-3.6-pro",
     ],
 )
-def test_factory_model_rejects_non_38_routes(monkeypatch, model):
+def test_factory_model_rejects_non_38_routes(monkeypatch: pytest.MonkeyPatch, model: str) -> None:
     monkeypatch.setenv("SHORTS_FACTORY_MODEL", model)
 
     with pytest.raises(RuntimeError, match=f"requires {MODEL_PRIMARY}"):
         shorts_factory_model()
 
 
-def test_factory_response_schema_requires_complete_plan_shape():
+def test_factory_response_schema_requires_complete_plan_shape() -> None:
     assert FACTORY_PLAN_RESPONSE_SCHEMA["required"] == [
         "metadata",
         "shorts_candidates",
         "long_candidates",
     ]
-    candidate = FACTORY_PLAN_RESPONSE_SCHEMA["properties"]["shorts_candidates"]["items"]
+    properties = FACTORY_PLAN_RESPONSE_SCHEMA["properties"]
+    assert isinstance(properties, dict)
+    shorts_candidates = properties["shorts_candidates"]
+    assert isinstance(shorts_candidates, dict)
+    candidate = shorts_candidates["items"]
+    assert isinstance(candidate, dict)
     assert "boundary_verified" in candidate["required"]
     assert "quality_score" in candidate["required"]
 
 
-def test_factory_ai_data_uses_plan_metadata_and_explicit_fallbacks():
+def test_factory_ai_data_uses_plan_metadata_and_explicit_fallbacks() -> None:
     plan = {
         "metadata": {
             "format": "sermon",

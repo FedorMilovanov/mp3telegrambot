@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+from typing import Any
 
 from tools.voxcpm2.generic_project_runtime import (
     choose_caption_track,
@@ -16,7 +17,7 @@ from tools.voxcpm2.generic_project_runtime import (
 from tools.voxcpm2.generic_short_production import standardize_russian_title
 
 
-def _groups() -> list[dict]:
+def _groups() -> list[dict[str, Any]]:
     return [
         {"id": 1, "start": 0.0, "end": 5.0, "source": "First source sentence."},
         {"id": 2, "start": 5.0, "end": 11.0, "source": "Second source sentence."},

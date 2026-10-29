@@ -9,6 +9,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from types import ModuleType
+
+from flask.testing import FlaskClient
 
 import pytest
 
@@ -16,7 +20,7 @@ from core import runtime_status
 
 
 @pytest.fixture(scope="module")
-def client():
+def client() -> FlaskClient:
     from core.globals import flask_app
 
     flask_app.config.update(TESTING=True)
@@ -24,14 +28,14 @@ def client():
 
 
 @pytest.fixture(autouse=True)
-def _fresh_state():
+def _fresh_state() -> Iterator[None]:
     runtime_status.reset()
     yield
     runtime_status.reset()
 
 
 @pytest.fixture
-def healthy_sources(monkeypatch: pytest.MonkeyPatch):
+def healthy_sources(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     """Подменяем внешние факты: реальные БД и диск в юнит-тесте не нужны."""
     from core import health_report
 
@@ -43,7 +47,7 @@ def healthy_sources(monkeypatch: pytest.MonkeyPatch):
     return health_report
 
 
-def test_legacy_health_keeps_its_contract(client) -> None:
+def test_legacy_health_keeps_its_contract(client: FlaskClient) -> None:
     from core.globals import mark_bot_alive
 
     mark_bot_alive()
@@ -52,7 +56,7 @@ def test_legacy_health_keeps_its_contract(client) -> None:
     assert response.get_data(as_text=True) == "OK"
 
 
-def test_healthz_reports_details(client, healthy_sources) -> None:
+def test_healthz_reports_details(client: FlaskClient, healthy_sources: ModuleType) -> None:
     response = client.get("/healthz")
     assert response.status_code == 200
     payload = json.loads(response.get_data(as_text=True))
@@ -64,7 +68,9 @@ def test_healthz_reports_details(client, healthy_sources) -> None:
     assert "gpu_slots_limit" in payload["jobs"]
 
 
-def test_healthz_fails_when_database_is_down(client, healthy_sources, monkeypatch) -> None:
+def test_healthz_fails_when_database_is_down(
+    client: FlaskClient, healthy_sources: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(healthy_sources, "database_ok", lambda *_a, **_k: False)
     response = client.get("/healthz")
     assert response.status_code == 503
@@ -72,14 +78,14 @@ def test_healthz_fails_when_database_is_down(client, healthy_sources, monkeypatc
     assert "database_unavailable" in payload["problems"]
 
 
-def test_healthz_does_not_leak_paths_or_secrets(client, healthy_sources) -> None:
+def test_healthz_does_not_leak_paths_or_secrets(client: FlaskClient, healthy_sources: ModuleType) -> None:
     body = client.get("/healthz").get_data(as_text=True)
     assert "bot_cache.db" not in body
     assert "C:\\" not in body
     assert "/home/" not in body
 
 
-def test_metrics_are_served_as_prometheus_text(client, healthy_sources) -> None:
+def test_metrics_are_served_as_prometheus_text(client: FlaskClient, healthy_sources: ModuleType) -> None:
     response = client.get("/metrics")
     assert response.status_code == 200
     body = response.get_data(as_text=True)
@@ -89,7 +95,9 @@ def test_metrics_are_served_as_prometheus_text(client, healthy_sources) -> None:
     assert "mp3bot_disk_free_bytes" in body
 
 
-def test_metrics_ignore_unknown_states(client, healthy_sources, monkeypatch) -> None:
+def test_metrics_ignore_unknown_states(
+    client: FlaskClient, healthy_sources: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Даже при пустом снимке эндпоинт отвечает валидным текстом, а не 500."""
     monkeypatch.setattr(runtime_status, "snapshot", lambda now=None: {})
     response = client.get("/metrics")

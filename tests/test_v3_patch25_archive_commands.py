@@ -9,7 +9,16 @@ from core.generated_pages import (
 )
 
 
-def _save(tmp_path, *, video_id, title, author, scripture_refs=None, hashtags=None, status="complete"):
+def _save(
+    tmp_path: Path,
+    *,
+    video_id: str,
+    title: str,
+    author: str,
+    scripture_refs: list[str] | None = None,
+    hashtags: list[str] | None = None,
+    status: str = "complete",
+) -> None:
     record = build_generated_page_record(
         video_id=video_id,
         source_url=f"https://youtu.be/{video_id}",
@@ -26,7 +35,7 @@ def _save(tmp_path, *, video_id, title, author, scripture_refs=None, hashtags=No
     save_generated_page_record(record, base_dir=tmp_path)
 
 
-def test_query_generated_pages_recent_search_author_scripture(tmp_path):
+def test_query_generated_pages_recent_search_author_scripture(tmp_path: Path) -> None:
     _save(
         tmp_path,
         video_id="a1",
@@ -61,7 +70,7 @@ def test_query_generated_pages_recent_search_author_scripture(tmp_path):
     assert [r["video_id"] for r in by_status] == ["b2"]
 
 
-def test_archive_commands_are_registered_and_documented():
+def test_archive_commands_are_registered_and_documented() -> None:
     commands = Path("handlers/commands.py").read_text(encoding="utf-8")
     main = Path("main.py").read_text(encoding="utf-8")
 
@@ -80,14 +89,14 @@ def test_archive_commands_are_registered_and_documented():
     assert 'CommandHandler("scripture"' in main
 
 
-def test_archive_formatter_uses_html_links_without_web_preview():
+def test_archive_formatter_uses_html_links_without_web_preview() -> None:
     commands = Path("handlers/commands.py").read_text(encoding="utf-8")
     assert "disable_web_page_preview=True" in commands
     assert '<a href="{html_mod.escape(url)}">{label}</a>' in commands
     assert "safe_trim" not in commands.lower()  # formatter has its own conservative truncation
 
 
-def test_admin_status_and_disk_reports_use_safe_html_limit():
+def test_admin_status_and_disk_reports_use_safe_html_limit() -> None:
     commands = Path("handlers/commands.py").read_text(encoding="utf-8")
     assert '_html_message_limit("\\n".join(lines))' in commands
     assert "html_mod.escape(str(LOCAL_BOT_API_URL))" in commands
@@ -95,7 +104,7 @@ def test_admin_status_and_disk_reports_use_safe_html_limit():
     assert "html_mod.escape(str(e))" in commands
 
 
-def test_html_message_limit_preserves_tags_and_entities():
+def test_html_message_limit_preserves_tags_and_entities() -> None:
     from handlers.commands import _html_message_limit
 
     msg = _html_message_limit("<b>" + ("A &amp; B " * 1000) + "</b><code>tail</code>", limit=3900)
@@ -107,7 +116,7 @@ def test_html_message_limit_preserves_tags_and_entities():
     assert "&am…" not in msg
 
 
-def test_html_pre_message_truncates_before_escaping_entities():
+def test_html_pre_message_truncates_before_escaping_entities() -> None:
     from handlers.commands import _html_pre_message
 
     msg = _html_pre_message(("<&> " * 2000), limit=3900)
@@ -120,14 +129,14 @@ def test_html_pre_message_truncates_before_escaping_entities():
     assert msg.count("&lt;") == msg.count("&gt;")
 
 
-def test_resetcache_echo_escapes_user_supplied_video_id():
+def test_resetcache_echo_escapes_user_supplied_video_id() -> None:
     commands = Path("handlers/commands.py").read_text(encoding="utf-8")
     assert "safe_video_id = html_mod.escape" in commands
     assert "<code>{safe_video_id}</code>" in commands
     assert "<code>{video_id}</code>" not in commands
 
 
-def test_archive_formatter_truncates_without_breaking_html_tags():
+def test_archive_formatter_truncates_without_breaking_html_tags() -> None:
     from handlers.commands import _archive_format_records
 
     records = []

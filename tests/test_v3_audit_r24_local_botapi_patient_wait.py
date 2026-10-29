@@ -18,7 +18,7 @@ REQUIRED = Path("services/local_botapi_required.py").read_text(encoding="utf-8")
 ENTRYPOINT = Path("bot_new.py").read_text(encoding="utf-8")
 
 
-def test_required_pre_main_gate_replaces_optional_patient_flag():
+def test_required_pre_main_gate_replaces_optional_patient_flag() -> None:
     feature = next(item for item in DEFAULT_RUNTIME_FEATURES if item.feature_id == "local-bot-api")
     assert feature.module == "services.local_botapi_required"
     assert feature.installer == "require_local_bot_api"
@@ -27,14 +27,14 @@ def test_required_pre_main_gate_replaces_optional_patient_flag():
     assert ENTRYPOINT.index("bootstrap_pre_main()") < ENTRYPOINT.index("import main as _main_module")
 
 
-def test_required_readiness_window_is_bounded_and_defaults_to_five_minutes():
+def test_required_readiness_window_is_bounded_and_defaults_to_five_minutes() -> None:
     assert 'os.getenv("LOCAL_BOT_API_REQUIRED_TIMEOUT_SEC", "300")' in REQUIRED
     assert "max(60, min(value, 600))" in REQUIRED
     assert "time.monotonic() + timeout_sec" in REQUIRED
     assert "сервер оставлен запущенным" in REQUIRED
 
 
-def test_cloud_media_fallback_is_disabled_before_any_probe():
+def test_cloud_media_fallback_is_disabled_before_any_probe() -> None:
     function = REQUIRED[REQUIRED.index("def require_local_bot_api") :]
     assert function.index("_disable_cloud_transport()") < function.index("probe_runtime._probe_getme")
     helper = REQUIRED[REQUIRED.index("def _disable_cloud_transport") : REQUIRED.index("def _mark_local_ready")]
@@ -44,7 +44,7 @@ def test_cloud_media_fallback_is_disabled_before_any_probe():
     assert 'MP3BOT_EFFECTIVE_BOT_API"] = "cloud"' not in REQUIRED
 
 
-def test_warming_server_is_reused_and_cold_start_is_single_attempt():
+def test_warming_server_is_reused_and_cold_start_is_single_attempt() -> None:
     assert "if probe_runtime._tcp_open(host, port, timeout_sec=0.5):" in REQUIRED
     assert "жду /getMe" in REQUIRED
     assert "без перезапуска" in REQUIRED
@@ -54,7 +54,7 @@ def test_warming_server_is_reused_and_cold_start_is_single_attempt():
     assert "proxy_url=proxy_url" in REQUIRED
 
 
-def test_env_documents_only_the_current_required_contract():
+def test_env_documents_only_the_current_required_contract() -> None:
     env = Path(".env.example").read_text(encoding="utf-8")
     assert "Локальный Telegram Bot API обязателен" in env
     assert "LOCAL_BOT_API_REQUIRED_TIMEOUT_SEC=300" in env

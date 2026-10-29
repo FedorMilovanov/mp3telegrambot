@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
+from collections.abc import Callable, Coroutine
+from typing import Any, cast
 from urllib.parse import urlparse
 
 import pytest
@@ -13,58 +15,58 @@ from pipelines.livedub_quick_stage import finish_livedub_quick
 
 
 class _Status:
-    def __init__(self, events, *, fail_edit=False, fail_delete=False):
+    def __init__(self, events: list[tuple[str, Any]], *, fail_edit: bool = False, fail_delete: bool = False) -> None:
         self.events = events
         self.fail_edit = fail_edit
         self.fail_delete = fail_delete
 
-    async def edit_text(self, text):
+    async def edit_text(self, text: str) -> None:
         self.events.append(("edit", text))
         if self.fail_edit:
             raise RuntimeError("edit failed")
 
-    async def delete(self):
+    async def delete(self) -> None:
         self.events.append(("delete", None))
         if self.fail_delete:
             raise RuntimeError("delete failed")
 
 
 class _Message:
-    def __init__(self, events, *, fail_reply=False):
+    def __init__(self, events: list[tuple[str, Any]], *, fail_reply: bool = False) -> None:
         self.events = events
         self.fail_reply = fail_reply
 
-    async def reply_text(self, text):
+    async def reply_text(self, text: str) -> None:
         self.events.append(("reply", text))
         if self.fail_reply:
             raise RuntimeError("reply failed")
 
 
-def _sender(events, delivered):
-    async def send():
+def _sender(events: list[tuple[str, Any]], delivered: bool) -> Callable[[], Coroutine[Any, Any, bool]]:
+    async def send() -> bool:
         events.append(("send", None))
         return delivered
 
     return send
 
 
-def _cleanup(events):
-    def cleanup(media_id):
+def _cleanup(events: list[tuple[str, Any]]) -> Callable[[str], None]:
+    def cleanup(media_id: str) -> None:
         events.append(("cleanup", media_id))
 
     return cleanup
 
 
-def _update(events, *, fail_reply=False):
+def _update(events: list[tuple[str, Any]], *, fail_reply: bool = False) -> SimpleNamespace:
     return SimpleNamespace(message=_Message(events, fail_reply=fail_reply))
 
 
-def _kinds(events):
+def _kinds(events: list[tuple[str, Any]]) -> list[str]:
     return [event[0] for event in events]
 
 
-def test_success_edits_and_deletes_status_before_cleanup():
-    events = []
+def test_success_edits_and_deletes_status_before_cleanup() -> None:
+    events: list[tuple[str, Any]] = []
     status = _Status(events)
 
     result = asyncio.run(
@@ -86,8 +88,8 @@ def test_success_edits_and_deletes_status_before_cleanup():
     assert events[-1][1] == "media-1"
 
 
-def test_success_without_status_skips_both_status_operations():
-    events = []
+def test_success_without_status_skips_both_status_operations() -> None:
+    events: list[tuple[str, Any]] = []
 
     result = asyncio.run(
         finish_livedub_quick(
@@ -106,8 +108,8 @@ def test_success_without_status_skips_both_status_operations():
     assert _kinds(events) == ["send", "cleanup"]
 
 
-def test_status_edit_and_delete_failures_are_best_effort():
-    events = []
+def test_status_edit_and_delete_failures_are_best_effort() -> None:
+    events: list[tuple[str, Any]] = []
     status = _Status(events, fail_edit=True, fail_delete=True)
 
     result = asyncio.run(
@@ -127,8 +129,8 @@ def test_status_edit_and_delete_failures_are_best_effort():
     assert _kinds(events) == ["edit", "send", "delete", "cleanup"]
 
 
-def test_generic_failure_is_explained_and_returns_false():
-    events = []
+def test_generic_failure_is_explained_and_returns_false() -> None:
+    events: list[tuple[str, Any]] = []
 
     result = asyncio.run(
         finish_livedub_quick(
@@ -149,8 +151,8 @@ def test_generic_failure_is_explained_and_returns_false():
     assert "ENG Full (/mode)" in events[1][1]
 
 
-def test_auth_marker_selects_actionable_hint(tmp_path):
-    events = []
+def test_auth_marker_selects_actionable_hint(tmp_path: Path) -> None:
+    events: list[tuple[str, Any]] = []
     (tmp_path / ".auth_required").write_text("required", encoding="utf-8")
 
     result = asyncio.run(
@@ -174,8 +176,8 @@ def test_auth_marker_selects_actionable_hint(tmp_path):
     assert "rust-server-531j.onrender.com/v1/auth/handle" in hint
 
 
-def test_playlist_failure_is_silent_but_still_cleans_up():
-    events = []
+def test_playlist_failure_is_silent_but_still_cleans_up() -> None:
+    events: list[tuple[str, Any]] = []
 
     result = asyncio.run(
         finish_livedub_quick(
@@ -194,15 +196,15 @@ def test_playlist_failure_is_silent_but_still_cleans_up():
     assert _kinds(events) == ["send", "cleanup"]
 
 
-def test_marker_oserror_falls_back_to_generic_hint():
+def test_marker_oserror_falls_back_to_generic_hint() -> None:
     class BrokenWorkdir:
-        def __truediv__(self, _name):
+        def __truediv__(self, _name: str) -> BrokenWorkdir:
             return self
 
-        def exists(self):
+        def exists(self) -> None:
             raise OSError("marker unavailable")
 
-    events = []
+    events: list[tuple[str, Any]] = []
 
     result = asyncio.run(
         finish_livedub_quick(
@@ -211,7 +213,7 @@ def test_marker_oserror_falls_back_to_generic_hint():
             title="Название",
             send_result=_sender(events, False),
             silent_errors=False,
-            workdir=BrokenWorkdir(),
+            workdir=cast(Any, BrokenWorkdir()),
             media_id="media-7",
             cleanup=_cleanup(events),
         )
@@ -221,8 +223,8 @@ def test_marker_oserror_falls_back_to_generic_hint():
     assert "Перевод «Живые голоса» не получился" in events[1][1]
 
 
-def test_reply_failure_does_not_mask_result_or_skip_cleanup():
-    events = []
+def test_reply_failure_does_not_mask_result_or_skip_cleanup() -> None:
+    events: list[tuple[str, Any]] = []
 
     result = asyncio.run(
         finish_livedub_quick(
@@ -241,10 +243,10 @@ def test_reply_failure_does_not_mask_result_or_skip_cleanup():
     assert _kinds(events) == ["send", "reply", "cleanup"]
 
 
-def test_send_exception_propagates_before_delete_and_cleanup():
-    events = []
+def test_send_exception_propagates_before_delete_and_cleanup() -> None:
+    events: list[tuple[str, Any]] = []
 
-    async def failing_send():
+    async def failing_send() -> bool:
         events.append(("send", None))
         raise RuntimeError("delivery failed")
 
@@ -266,7 +268,7 @@ def test_send_exception_propagates_before_delete_and_cleanup():
 
 
 # Replacements for source-owner assertions retained by test_livedub_qa.py.
-def test_eng_quick_never_silent():
+def test_eng_quick_never_silent() -> None:
     main = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     stage = Path("pipelines/livedub_quick_stage.py").read_text(encoding="utf-8")
     assert "return await finish_livedub_quick(" in main
@@ -275,7 +277,7 @@ def test_eng_quick_never_silent():
     assert "Перевод «Живые голоса» не получился" in stage
 
 
-def test_auth_required_marker_and_user_hint():
+def test_auth_required_marker_and_user_hint() -> None:
     mix = Path("services/livedub_mix.py").read_text(encoding="utf-8")
     assert ".auth_required" in mix
     assert "LIVEDUB_AUTH_REQUIRED" in mix

@@ -3,7 +3,7 @@
 from pathlib import Path
 
 
-def test_verify_repo_summary_is_ascii_safe_for_windows_cp1251():
+def test_verify_repo_summary_is_ascii_safe_for_windows_cp1251() -> None:
     src = Path("tools/verify_repo.py").read_text(encoding="utf-8")
     assert 'mark = "OK" if r.ok else "FAIL"' in src
     assert "✅" not in src

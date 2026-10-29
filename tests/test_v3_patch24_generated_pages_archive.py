@@ -11,7 +11,7 @@ from core.generated_pages import (
 )
 
 
-def test_generated_pages_archive_writes_sqlite_jsonl_and_markdown(tmp_path):
+def test_generated_pages_archive_writes_sqlite_jsonl_and_markdown(tmp_path: Path) -> None:
     record = build_generated_page_record(
         video_id="vid1",
         source_url="https://youtu.be/x",
@@ -55,7 +55,7 @@ def test_generated_pages_archive_writes_sqlite_jsonl_and_markdown(tmp_path):
     assert row == ("Миссия Церкви", "complete")
 
 
-def test_generated_pages_archive_upserts_markdown_latest_without_duplicates(tmp_path):
+def test_generated_pages_archive_upserts_markdown_latest_without_duplicates(tmp_path: Path) -> None:
     r1 = build_generated_page_record(
         video_id="same",
         source_url="https://youtu.be/a",
@@ -86,12 +86,12 @@ def test_generated_pages_archive_upserts_markdown_latest_without_duplicates(tmp_
     assert len((tmp_path / "generated_pages.jsonl").read_text(encoding="utf-8").splitlines()) == 2
 
 
-def test_extract_scripture_refs_from_ai_data():
+def test_extract_scripture_refs_from_ai_data() -> None:
     ai = {"terms_data": {"scripture": ["Мф. 28:16–20||mission", "Рим. 8:28", "Мф. 28:16–20||dup"]}}
     assert extract_scripture_refs(ai) == ["Мф. 28:16–20", "Рим. 8:28"]
 
 
-def test_main_pipeline_wires_generated_pages_archive():
+def test_main_pipeline_wires_generated_pages_archive() -> None:
     source = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     fresh = Path("pipelines/fresh_caption_stage.py").read_text(encoding="utf-8")
     stage = Path("pipelines/archive_stage.py").read_text(encoding="utf-8")

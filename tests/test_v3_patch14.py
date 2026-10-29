@@ -11,14 +11,14 @@ Changes:
 """
 
 
-def test_run_expanded_pipeline_has_thinking_level_param():
+def test_run_expanded_pipeline_has_thinking_level_param() -> None:
     src = open("services/telegraph_pages.py", encoding="utf-8").read()
     assert 'thinking_level: str = "high"' in src, (
         "_run_expanded_pipeline must have thinking_level parameter with default high"
     )
 
 
-def test_run_expanded_pipeline_passes_thinking_level():
+def test_run_expanded_pipeline_passes_thinking_level() -> None:
     src = open("services/telegraph_pages.py", encoding="utf-8").read()
     # Both Gemini calls inside must use the parameter, not hardcoded "high"
     assert "thinking_level=thinking_level," in src, (
@@ -26,7 +26,7 @@ def test_run_expanded_pipeline_passes_thinking_level():
     )
 
 
-def test_reflection_reverted_to_high_quality():
+def test_reflection_reverted_to_high_quality() -> None:
     # V3-P15+17: quality first — Reflection uses default high.
     # AUDIT R5: окно расширено до конца вызова — override medium однажды
     # вернулся НИЖЕ старого окна +500 симв. и тихо жил, обходя этот тест.
@@ -38,7 +38,7 @@ def test_reflection_reverted_to_high_quality():
     assert "thinking_level=" not in refl_block or 'thinking_level="high"' in refl_block
 
 
-def test_study_keeps_default_high():
+def test_study_keeps_default_high() -> None:
     src = open("services/telegraph_pages.py", encoding="utf-8").read()
     # Study must NOT override (uses default high from _run_expanded_pipeline)
     # Find the StudyAnalysis _run_expanded_pipeline call
@@ -52,7 +52,7 @@ def test_study_keeps_default_high():
     assert not has_explicit_tl, "StudyAnalysis must use default thinking_level (high) — don't override"
 
 
-def test_reflection_cost_optimization_documented():
+def test_reflection_cost_optimization_documented() -> None:
     """Both calls inside _run_expanded_pipeline must use thinking_level param."""
     src = open("services/telegraph_pages.py", encoding="utf-8").read()
     # Count how many times hardcoded "high" appears in _gemini_text_request calls

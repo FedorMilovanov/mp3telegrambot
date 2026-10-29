@@ -11,7 +11,7 @@ import re
 # ─── New constants in prompt_rules ────────────────────────────────────────
 
 
-def test_qa_timestamp_rule_exists_and_has_content():
+def test_qa_timestamp_rule_exists_and_has_content() -> None:
     from core.prompt_rules import QA_TIMESTAMP_RULE
 
     assert "ПРАВИЛО ТАЙМКОДОВ ОТНОСИТЕЛЬНО СЕКЦИИ" in QA_TIMESTAMP_RULE
@@ -19,7 +19,7 @@ def test_qa_timestamp_rule_exists_and_has_content():
     assert "НИКОГДА" in QA_TIMESTAMP_RULE
 
 
-def test_strict_bans_study_exists_and_has_content():
+def test_strict_bans_study_exists_and_has_content() -> None:
     from core.prompt_rules import STRICT_BANS_STUDY
 
     assert "СТРОГИЕ ЗАПРЕТЫ" in STRICT_BANS_STUDY
@@ -30,7 +30,7 @@ def test_strict_bans_study_exists_and_has_content():
 # ─── _expand_prompt_rules handles new constants ───────────────────────────
 
 
-def test_expand_handles_strict_bans_study():
+def test_expand_handles_strict_bans_study() -> None:
     from core.prompts import _expand_prompt_rules
 
     result = _expand_prompt_rules("A {STRICT_BANS_STUDY} B")
@@ -38,7 +38,7 @@ def test_expand_handles_strict_bans_study():
     assert "главный вывод" in result
 
 
-def test_expand_handles_qa_timestamp_rule():
+def test_expand_handles_qa_timestamp_rule() -> None:
     from core.prompts import _expand_prompt_rules
 
     result = _expand_prompt_rules("X {QA_TIMESTAMP_RULE} Y")
@@ -49,13 +49,13 @@ def test_expand_handles_qa_timestamp_rule():
 # ─── STUDY_ANALYSIS_PROMPT ───────────────────────────────────────────────
 
 
-def test_study_analysis_has_strict_bans():
+def test_study_analysis_has_strict_bans() -> None:
     from core.prompts import STUDY_ANALYSIS_PROMPT
 
     assert "СТРОГИЕ ЗАПРЕТЫ" in STUDY_ANALYSIS_PROMPT, "STUDY_ANALYSIS_PROMPT must contain СТРОГИЕ ЗАПРЕТЫ"
 
 
-def test_study_analysis_has_glavny_vyvod():
+def test_study_analysis_has_glavny_vyvod() -> None:
     from core.prompts import STUDY_ANALYSIS_PROMPT
 
     assert "главный вывод" in STUDY_ANALYSIS_PROMPT, (
@@ -63,13 +63,13 @@ def test_study_analysis_has_glavny_vyvod():
     )
 
 
-def test_study_analysis_bans_reflection_content():
+def test_study_analysis_bans_reflection_content() -> None:
     from core.prompts import STUDY_ANALYSIS_PROMPT
 
     assert "reflection content" in STUDY_ANALYSIS_PROMPT, "STUDY_ANALYSIS_PROMPT must ban reflection content"
 
 
-def test_study_analysis_has_strict_bans_but_not_bloated():
+def test_study_analysis_has_strict_bans_but_not_bloated() -> None:
     """STRICT_BANS_STUDY присутствует; AUDIT R5 сократил каталог авторов —
     гардируем содержание, а не «чем длиннее, тем лучше»."""
     from core.prompts import STUDY_ANALYSIS_PROMPT
@@ -78,7 +78,7 @@ def test_study_analysis_has_strict_bans_but_not_bloated():
     assert 40000 < len(STUDY_ANALYSIS_PROMPT) < 60000, f"got {len(STUDY_ANALYSIS_PROMPT)}"
 
 
-def test_study_analysis_no_raw_placeholders():
+def test_study_analysis_no_raw_placeholders() -> None:
     from core.prompts import STUDY_ANALYSIS_PROMPT
 
     for ph in ("{STRICT_BANS_STUDY}", "{STRICT_BANS}", "{INLINE_TIMESTAMP_RULES}"):
@@ -88,7 +88,7 @@ def test_study_analysis_no_raw_placeholders():
 # ─── All four main prompts: no shared-rule placeholders ──────────────────
 
 
-def test_all_prompts_no_unresolved_shared_placeholders():
+def test_all_prompts_no_unresolved_shared_placeholders() -> None:
     from core.prompts import (
         SYNOPSIS_PROMPT_V2,
         SYNOPSIS_PROMPT_QA,

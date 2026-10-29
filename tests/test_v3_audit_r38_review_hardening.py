@@ -6,12 +6,13 @@
 import asyncio
 import types
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 
 # ── R34b: _titles_match больше не подменяет чужую книгу ────────────────────
-def test_r34b_generic_one_word_title_no_crossmap():
+def test_r34b_generic_one_word_title_no_crossmap() -> None:
     from core.source_titles import official_ru_title, normalize_source_card_line
 
     # «Holiness» Райла (одно слово) НЕ должен цеплять чужие/другие книги
@@ -25,7 +26,7 @@ def test_r34b_generic_one_word_title_no_crossmap():
     assert "Святость Бога" not in out and out.startswith("**The Holiness of God**")
 
 
-def test_r34b_no_stray_period_before_why():
+def test_r34b_no_stray_period_before_why() -> None:
     from core.source_titles import normalize_source_card_line as N
 
     out = N("**Strange Fire**, Джон МакАртур (John MacArthur) — критика движения.")
@@ -34,7 +35,7 @@ def test_r34b_no_stray_period_before_why():
 
 
 # ── R35b: хэштеги — фильтр пустых ДО среза [:4] ────────────────────────────
-def test_r35b_filter_empties_before_slice():
+def test_r35b_filter_empties_before_slice() -> None:
     from services.render_clips_montage import _hashtags_line
 
     assert _hashtags_line(["", "#a", "#b", "#c", "#d", "#e"]) == "#a #b #c #d"
@@ -53,14 +54,14 @@ def test_r35b_filter_empties_before_slice():
         ("429 RESOURCE_EXHAUSTED quota", "QUOTA"),
     ],
 )
-def test_r26b_overload_context(msg, want):
+def test_r26b_overload_context(msg: str, want: str) -> None:
     from services.gemini_error_policy import classify_gemini_error
 
     assert classify_gemini_error(ValueError(msg)).kind.name == want
 
 
 # ── R27b: _crop_consensus учитывает число сэмплов ──────────────────────────
-def test_r27b_crop_consensus_uses_sample_count():
+def test_r27b_crop_consensus_uses_sample_count() -> None:
     from services.ffmpeg import _crop_consensus
 
     C = "396:270:72:44"
@@ -73,42 +74,45 @@ def test_r27b_crop_consensus_uses_sample_count():
 
 
 # ── R30b: обрыв отправки посреди викторины не глотает итог ─────────────────
-def test_r30b_send_failure_still_shows_score():
+def test_r30b_send_failure_still_shows_score() -> None:
     import services.quiz_sessions as qs
     import services.quiz_generator as qg
 
-    qg._sanitize_poll_payload = lambda q, index, total: {
-        "question": q["question"],
-        "options": q["options"],
-        "correct": q["correct"],
-        "explanation": "x",
-    }
+    def sanitize_poll_payload(q: dict[str, Any], index: int, total: int) -> dict[str, Any]:
+        return {
+            "question": q["question"],
+            "options": q["options"],
+            "correct": q["correct"],
+            "explanation": "x",
+        }
+
+    qg._sanitize_poll_payload = sanitize_poll_payload
 
     class Bot:
-        def __init__(self):
+        def __init__(self) -> None:
             self.n = 0
-            self.polls = []
-            self.messages = []
+            self.polls: list[dict[str, Any]] = []
+            self.messages: list[dict[str, Any]] = []
 
-        async def send_poll(self, **kw):
+        async def send_poll(self, **kw: Any) -> types.SimpleNamespace:
             self.n += 1
             if self.n == 3:
                 raise RuntimeError("network blip")  # 3-я отправка (Q3) падает
             self.polls.append(kw)
             return types.SimpleNamespace(poll=types.SimpleNamespace(id=f"p{self.n}"))
 
-        async def send_message(self, **kw):
+        async def send_message(self, **kw: Any) -> None:
             self.messages.append(kw)
 
-    def upd():
+    def upd() -> types.SimpleNamespace:
         return types.SimpleNamespace(
             effective_chat=types.SimpleNamespace(id=1), message=types.SimpleNamespace(message_id=1)
         )
 
-    def ans(pid):
+    def ans(pid: str) -> types.SimpleNamespace:
         return types.SimpleNamespace(poll_answer=types.SimpleNamespace(poll_id=pid, option_ids=[0]))
 
-    async def run():
+    async def run() -> types.SimpleNamespace:
         qs._polls.clear()
         Q = [{"question": f"Q{i}", "options": ["a", "b", "c", "d"], "correct": 0} for i in range(5)]
         ctx = types.SimpleNamespace(bot=Bot())
@@ -123,7 +127,7 @@ def test_r30b_send_failure_still_shows_score():
     assert len(qs._polls) == 0  # ничего не подвисло
 
 
-def test_r30b_prune_removes_stale():
+def test_r30b_prune_removes_stale() -> None:
     import services.quiz_sessions as qs
 
     qs._polls.clear()
@@ -134,7 +138,7 @@ def test_r30b_prune_removes_stale():
 
 
 # ── R29b: тяжёлые NVENC-проходы серилизованы семафором ─────────────────────
-def test_r29b_all_nvenc_encodes_under_semaphore():
+def test_r29b_all_nvenc_encodes_under_semaphore() -> None:
     sv = Path("services/shorts_video_impl.py").read_text(encoding="utf-8")
     # render + postprocess + burn = минимум 3 GPU-семафора
     assert sv.count("_sched.gpu_render") >= 3
@@ -144,7 +148,7 @@ def test_r29b_all_nvenc_encodes_under_semaphore():
 
 
 # ── R28b: статикой считаем только доминирующий freeze ──────────────────────
-def test_r28b_static_requires_dominant_freeze():
+def test_r28b_static_requires_dominant_freeze() -> None:
     src = Path("services/shorts_static_policy.py").read_text(encoding="utf-8")
     assert "freeze_duration" in src
     assert "freeze_ratio >= freeze_min" in src

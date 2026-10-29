@@ -10,7 +10,7 @@ from core.text_utils import normalize_common_typos
 from core.title_topic_audit import choose_safe_public_title
 
 
-def _flat(node):
+def _flat(node: object) -> str:
     if isinstance(node, str):
         return node
     if isinstance(node, dict):
@@ -20,7 +20,7 @@ def _flat(node):
     return ""
 
 
-def test_json_parser_rejects_obvious_timestamps_beyond_duration_plus_small_tolerance():
+def test_json_parser_rejects_obvious_timestamps_beyond_duration_plus_small_tolerance() -> None:
     raw = (
         '{"real_author":"A","real_title":"T","format":"sermon","main_topic":"M",'
         '"timestamps":[{"time":"10:20","topic":"ok"},{"time":"11:00","topic":"too far"}]}'
@@ -31,7 +31,7 @@ def test_json_parser_rejects_obvious_timestamps_beyond_duration_plus_small_toler
     assert "11:00 too far" not in parsed["timestamps"]
 
 
-def test_content_audit_no_legacy_duplicate_normalized_text_issues():
+def test_content_audit_no_legacy_duplicate_normalized_text_issues() -> None:
     _, _, issues = audit_expanded_sections(
         [{"title": "Странный огонь", "content": "Стину Лоусону. цитата / / Вторая глава"}],
         label="StudyAnalysis",
@@ -42,7 +42,7 @@ def test_content_audit_no_legacy_duplicate_normalized_text_issues():
     assert "normalized_text" not in codes
 
 
-def test_structured_scripture_quote_removes_only_one_outer_quote_pair():
+def test_structured_scripture_quote_removes_only_one_outer_quote_pair() -> None:
     section = {
         "title": "T",
         "content": "fallback",
@@ -52,7 +52,7 @@ def test_structured_scripture_quote_removes_only_one_outer_quote_pair():
     assert "«Он сказал: «придет»»" in text
 
 
-def test_synopsis_quality_prefers_blocks_over_content_fallback_not_double_count():
+def test_synopsis_quality_prefers_blocks_over_content_fallback_not_double_count() -> None:
     section = {
         "title": "T",
         "time": "0:00",
@@ -64,12 +64,12 @@ def test_synopsis_quality_prefers_blocks_over_content_fallback_not_double_count(
     assert synopsis_density_score([section], 3600) < 1000
 
 
-def test_source_card_legacy_dedupes_cyrillic_latin_duplicate_parenthetical():
+def test_source_card_legacy_dedupes_cyrillic_latin_duplicate_parenthetical() -> None:
     line = "• Джон МакАртур, Strange Fire (John MacArthur, Strange Fire)."
     assert normalize_source_card_line(line) == "**Чуждый огонь**, Джон МакАртур (Strange Fire, John MacArthur)."
 
 
-def test_safe_public_title_uses_fallback_only_when_it_is_better_aligned():
+def test_safe_public_title_uses_fallback_only_when_it_is_better_aligned() -> None:
     ai = {
         "real_title": "Святой Дух Откровения",
         "main_topic": "Пастырская верность и церковная дисциплина.",
@@ -83,14 +83,14 @@ def test_safe_public_title_uses_fallback_only_when_it_is_better_aligned():
     )
 
 
-def test_archive_url_fields_are_not_truncated_at_800_chars():
+def test_archive_url_fields_are_not_truncated_at_800_chars() -> None:
     long_url = "https://example.com/" + "a" * 1500
     record = build_generated_page_record(video_id="longurl", source_url=long_url, title="T", synopsis_url=long_url)
     assert record["source_url"] == long_url
     assert record["synopsis_url"] == long_url
 
 
-def test_postprocess_sentence_spacing_does_not_split_numeric_acronym_refs():
+def test_postprocess_sentence_spacing_does_not_split_numeric_acronym_refs() -> None:
     nodes = [{"tag": "p", "children": ["NA28.BHS Ин.3:16.Следующее"]}]
     text = _postprocess_telegraph_nodes(nodes)[0]["children"][0]
     assert "NA28.BHS" in text
@@ -98,7 +98,7 @@ def test_postprocess_sentence_spacing_does_not_split_numeric_acronym_refs():
     assert "16. Следующее" in text
 
 
-def test_normalize_common_typos_can_skip_source_map_pass_for_audit_pipeline():
+def test_normalize_common_typos_can_skip_source_map_pass_for_audit_pipeline() -> None:
     src = "• Джон МакАртур, Чуждый огонь (John MacArthur, Strange Fire)."
     assert "John MacArthur" in normalize_common_typos(src, source_map=False)
     assert "Strange Fire, John MacArthur" in normalize_common_typos(src)

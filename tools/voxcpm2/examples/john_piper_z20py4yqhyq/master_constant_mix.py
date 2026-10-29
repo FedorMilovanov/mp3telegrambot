@@ -13,7 +13,7 @@ import argparse
 import json
 import math
 import shutil
-import subprocess
+import subprocess as subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -27,11 +27,11 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from tools.voxcpm2.final_media_qa import (  # noqa: E402 -- repo-root bootstrap must precede absolute project imports
-    LOUDNESS_TOLERANCE_LU,
-    TARGET_I_RANGE,
-    TARGET_LRA_RANGE,
-    TARGET_TP_RANGE,
-    verify_final_outputs,
+    LOUDNESS_TOLERANCE_LU as LOUDNESS_TOLERANCE_LU,
+    TARGET_I_RANGE as TARGET_I_RANGE,
+    TARGET_LRA_RANGE as TARGET_LRA_RANGE,
+    TARGET_TP_RANGE as TARGET_TP_RANGE,
+    verify_final_outputs as verify_final_outputs,
 )
 
 

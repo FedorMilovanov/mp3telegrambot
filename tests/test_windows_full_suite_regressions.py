@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
+from typing import Any, cast
 from pathlib import Path
 
 import pytest
@@ -8,7 +10,7 @@ import pytest
 
 def test_atomic_json_retries_transient_permission_error(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from tools.voxcpm2 import dub_job_preflight as preflight
 
@@ -16,7 +18,7 @@ def test_atomic_json_retries_transient_permission_error(
     original_replace = preflight.os.replace
     attempts = 0
 
-    def flaky_replace(source, target):
+    def flaky_replace(source: Path, target: Path) -> None:
         nonlocal attempts
         attempts += 1
         if attempts < 3:
@@ -36,14 +38,14 @@ def test_atomic_json_retries_transient_permission_error(
 
 def test_atomic_json_exhausts_retry_and_cleans_temp(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from tools.voxcpm2 import dub_job_preflight as preflight
 
     destination = tmp_path / "production_preflight.json"
     attempts = 0
 
-    def blocked_replace(_source, _target):
+    def blocked_replace(_source: Path, _target: Path) -> None:
         nonlocal attempts
         attempts += 1
         raise PermissionError(13, "persistent Windows sharing violation")
@@ -96,7 +98,8 @@ def test_single_chapter_without_metadata_is_not_reported_as_success(
         comment="Комментарий",
         thumb_path=thumbnail,
     )
-    tags = ID3(str(mp3))
+    id3_factory = cast(Callable[[str], Any], ID3)
+    tags = id3_factory(str(mp3))
     assert tags.getall("TIT2")[0].text[0] == "Только метаданные"
     assert tags.getall("TPE1")[0].text[0] == "Исполнитель"
     assert tags.getall("COMM")[0].text[0] == "Комментарий"

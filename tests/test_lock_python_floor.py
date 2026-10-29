@@ -26,7 +26,7 @@ CI = Path(".github/workflows/ci.yml")
 LOCK = Path("requirements-lock.txt")
 
 
-def _floor_from_ci() -> tuple[int, int]:
+def _floor_from_ci() -> tuple[int, ...]:
     """Минимальная версия из матрицы CI (а не литерал в тесте)."""
     text = CI.read_text(encoding="utf-8")
     match = re.search(r"python-version:\s*\[([^\]]+)\]", text)

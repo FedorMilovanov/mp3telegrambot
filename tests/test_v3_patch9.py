@@ -3,19 +3,19 @@
 import re
 
 
-def test_study_analysis_has_third_person_ban():
+def test_study_analysis_has_third_person_ban() -> None:
     from core.prompts import STUDY_ANALYSIS_PROMPT
 
     assert "ЗАПРЕТ ОТ ТРЕТЬЕГО ЛИЦА" in STUDY_ANALYSIS_PROMPT
 
 
-def test_study_analysis_no_raw_placeholders():
+def test_study_analysis_no_raw_placeholders() -> None:
     from core.prompts import STUDY_ANALYSIS_PROMPT
 
     assert not re.findall(r"\{[A-Z_]+\}", STUDY_ANALYSIS_PROMPT)
 
 
-def test_study_analysis_substantive_but_not_bloated():
+def test_study_analysis_substantive_but_not_bloated() -> None:
     """AUDIT R5: 12К-знаковый статический каталог авторов заменён компактным
     ядром + тематическим {source_pack} — гардируем и низ (содержательность),
     и верх (диета: Gemini 3.x хуже следует раздутым промптам)."""
@@ -25,20 +25,20 @@ def test_study_analysis_substantive_but_not_bloated():
     assert len(STUDY_ANALYSIS_PROMPT) < 60000
 
 
-def test_qa_title_requires_question_mark():
+def test_qa_title_requires_question_mark() -> None:
     from core.prompts import SYNOPSIS_PROMPT_QA
 
     assert "ОБЯЗАТЕЛЬНО со знаком вопроса (?)" in SYNOPSIS_PROMPT_QA
 
 
-def test_qa_title_has_bad_good_examples():
+def test_qa_title_has_bad_good_examples() -> None:
     from core.prompts import SYNOPSIS_PROMPT_QA
 
     assert "❌ Плохо: «Когнитивная польза" in SYNOPSIS_PROMPT_QA
     assert "✅ Хорошо: «Почему вы пишете от руки" in SYNOPSIS_PROMPT_QA
 
 
-def test_all_prompts_no_shared_placeholders():
+def test_all_prompts_no_shared_placeholders() -> None:
     from core.prompts import (
         SYNOPSIS_PROMPT_V2,
         SYNOPSIS_PROMPT_QA,
@@ -61,7 +61,7 @@ def test_all_prompts_no_shared_placeholders():
         assert not found, f"{name}: unresolved {found}"
 
 
-def test_v2_reflection_study_all_have_third_person_ban():
+def test_v2_reflection_study_all_have_third_person_ban() -> None:
     from core.prompts import SYNOPSIS_PROMPT_V2, STUDY_ANALYSIS_PROMPT, REFLECTION_APPLICATION_PROMPT
 
     for name, p in [

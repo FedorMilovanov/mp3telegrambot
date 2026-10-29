@@ -22,17 +22,19 @@ def _glob_paths(directory: Path, pattern: str) -> list[Path]:
 
 
 @pytest.mark.asyncio
-async def test_atomic_mp3_conversion_publishes_only_after_probe(monkeypatch, tmp_path: Path) -> None:
+async def test_atomic_mp3_conversion_publishes_only_after_probe(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     source = tmp_path / "source.mp3"
     output = tmp_path / "out.mp3"
     source.write_bytes(b"source" * 4096)
     monkeypatch.setattr(mp3_conversion.shutil, "which", lambda name: f"/{name}")
 
-    async def fake_run(command, **_kwargs):
+    async def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
         await asyncio.to_thread(_write_bytes, Path(command[-1]), b"encoded" * 4096)
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
-    async def fake_probe(path):
+    async def fake_probe(path: Path) -> bool:
         return await asyncio.to_thread(_audio_file_is_nonempty, Path(path))
 
     monkeypatch.setattr(mp3_conversion, "run_cancellable_process", fake_run)
@@ -44,19 +46,21 @@ async def test_atomic_mp3_conversion_publishes_only_after_probe(monkeypatch, tmp
 
 
 @pytest.mark.asyncio
-async def test_atomic_mp3_conversion_reuses_probed_current_output(monkeypatch, tmp_path: Path) -> None:
+async def test_atomic_mp3_conversion_reuses_probed_current_output(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     source = tmp_path / "source.mp3"
     output = tmp_path / "out.mp3"
     source.write_bytes(b"source" * 4096)
     output.write_bytes(b"encoded" * 4096)
     monkeypatch.setattr(mp3_conversion.shutil, "which", lambda name: f"/{name}")
-    probes = []
+    probes: list[Path] = []
 
-    async def fake_probe(path):
+    async def fake_probe(path: Path) -> bool:
         probes.append(Path(path))
         return True
 
-    async def unexpected_run(_command, **_kwargs):
+    async def unexpected_run(_command: list[str], **_kwargs: object) -> None:
         pytest.fail("current proved output must not be encoded again")
 
     monkeypatch.setattr(mp3_conversion, "_probe_audio_file", fake_probe)
@@ -76,11 +80,13 @@ async def test_atomic_mp3_conversion_rejects_same_path(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_atomic_mp3_conversion_chains_resolve_failure_for_same_path(monkeypatch, tmp_path: Path) -> None:
+async def test_atomic_mp3_conversion_chains_resolve_failure_for_same_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     source = tmp_path / "source.mp3"
     source.write_bytes(b"source")
 
-    def denied_resolve(_self, strict=False):
+    def denied_resolve(_self: Path, strict: bool = False) -> None:
         raise OSError("resolve denied")
 
     monkeypatch.setattr(Path, "resolve", denied_resolve)
@@ -90,7 +96,9 @@ async def test_atomic_mp3_conversion_chains_resolve_failure_for_same_path(monkey
 
 
 @pytest.mark.asyncio
-async def test_atomic_mp3_conversion_keeps_existing_output_on_failed_probe(monkeypatch, tmp_path: Path) -> None:
+async def test_atomic_mp3_conversion_keeps_existing_output_on_failed_probe(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     source = tmp_path / "source.mp3"
     output = tmp_path / "out.mp3"
     source.write_bytes(b"source" * 4096)
@@ -98,11 +106,11 @@ async def test_atomic_mp3_conversion_keeps_existing_output_on_failed_probe(monke
     old = output.read_bytes()
     monkeypatch.setattr(mp3_conversion.shutil, "which", lambda name: f"/{name}")
 
-    async def fake_run(command, **_kwargs):
+    async def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
         await asyncio.to_thread(_write_bytes, Path(command[-1]), b"bad" * 4096)
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
-    async def fake_probe(_path):
+    async def fake_probe(_path: Path) -> bool:
         return False
 
     monkeypatch.setattr(mp3_conversion, "run_cancellable_process", fake_run)

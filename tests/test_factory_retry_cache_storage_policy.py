@@ -1,6 +1,8 @@
 from __future__ import annotations
+from typing import Any
 
 import asyncio
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -8,23 +10,25 @@ import pytest
 from services import shorts_factory_retry_cache as cache
 
 
-def test_cache_storage_failure_fails_open_only_after_reverification(monkeypatch, tmp_path):
+def test_cache_storage_failure_fails_open_only_after_reverification(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     prepared = tmp_path / "analysis.aac"
     prepared.write_bytes(b"x" * 4096)
 
-    async def no_cache(*args, **kwargs):
+    async def no_cache(*args: Any, **kwargs: Any) -> None:
         return None
 
-    async def downloader(*args, **kwargs):
+    async def downloader(*args: Any, **kwargs: Any) -> Path:
         return prepared
 
-    async def storage_failure(*args, **kwargs):
+    async def storage_failure(*args: Any, **kwargs: Any) -> None:
         raise OSError("cache disk unavailable")
 
-    async def probe(_path):
+    async def probe(_path: Path) -> SimpleNamespace:
         return SimpleNamespace(duration=120.0, has_audio=True, audio_sample_rate=48000, audio_codec="aac")
 
-    async def duration(_path):
+    async def duration(_path: Path) -> float:
         return 120.0
 
     import services.media_delivery_probe as media_probe
@@ -48,23 +52,25 @@ def test_cache_storage_failure_fails_open_only_after_reverification(monkeypatch,
     assert result == prepared
 
 
-def test_cache_storage_failure_still_fails_closed_if_media_no_longer_verifies(monkeypatch, tmp_path):
+def test_cache_storage_failure_still_fails_closed_if_media_no_longer_verifies(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     prepared = tmp_path / "analysis.aac"
     prepared.write_bytes(b"x" * 4096)
 
-    async def no_cache(*args, **kwargs):
+    async def no_cache(*args: Any, **kwargs: Any) -> None:
         return None
 
-    async def downloader(*args, **kwargs):
+    async def downloader(*args: Any, **kwargs: Any) -> Path:
         return prepared
 
-    async def storage_failure(*args, **kwargs):
+    async def storage_failure(*args: Any, **kwargs: Any) -> None:
         raise OSError("cache disk unavailable")
 
-    async def probe(_path):
+    async def probe(_path: Path) -> SimpleNamespace:
         return SimpleNamespace(duration=30.0, has_audio=True, audio_sample_rate=48000, audio_codec="aac")
 
-    async def duration(_path):
+    async def duration(_path: Path) -> float:
         return 30.0
 
     import services.media_delivery_probe as media_probe

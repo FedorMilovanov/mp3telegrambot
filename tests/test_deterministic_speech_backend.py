@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 import json
 import subprocess
 import sys
@@ -25,7 +26,7 @@ from services.speech_backends import (
 
 
 @pytest.fixture
-def deterministic_backend():
+def deterministic_backend() -> Iterator[DeterministicSpeechBackend]:
     backend = DeterministicSpeechBackend()
     register_backend(backend)
     try:
@@ -34,15 +35,17 @@ def deterministic_backend():
         unregister_backend(backend.backend_id)
 
 
-def test_registry_accepts_a_distinct_second_backend(deterministic_backend):
+def test_registry_accepts_a_distinct_second_backend(
+    deterministic_backend: DeterministicSpeechBackend,
+) -> None:
     assert backend_ids() == ("deterministic-ci", "voxcpm2")
     assert get_backend("deterministic") is deterministic_backend
     assert get_backend("vox-cpm2").backend_id == "voxcpm2"
 
 
 def test_deterministic_backend_is_not_selectable_for_production(
-    deterministic_backend,
-):
+    deterministic_backend: DeterministicSpeechBackend,
+) -> None:
     with pytest.raises(BackendCapabilityError):
         select_production_backend(
             deterministic_backend.backend_id,
@@ -51,9 +54,9 @@ def test_deterministic_backend_is_not_selectable_for_production(
 
 
 def test_deterministic_backend_has_different_audio_and_no_model_knobs(
-    deterministic_backend,
+    deterministic_backend: DeterministicSpeechBackend,
     tmp_path: Path,
-):
+) -> None:
     session = deterministic_backend.open_session(
         BackendSessionConfig(
             model_path=tmp_path,
@@ -88,7 +91,7 @@ def test_deterministic_backend_has_different_audio_and_no_model_knobs(
     assert profile.backend_options == {}
 
 
-def test_deterministic_cli_produces_pcm_without_model_archive(tmp_path: Path):
+def test_deterministic_cli_produces_pcm_without_model_archive(tmp_path: Path) -> None:
     segments = tmp_path / "segments.json"
     output = tmp_path / "timeline.wav"
     segments.write_text(

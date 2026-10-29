@@ -28,7 +28,7 @@ def _base_database(path: Path) -> None:
         )
 
 
-def test_numbered_migration_is_applied_once(tmp_path: Path):
+def test_numbered_migration_is_applied_once(tmp_path: Path) -> None:
     path = tmp_path / "main.db"
     _base_database(path)
 
@@ -53,7 +53,7 @@ def test_numbered_migration_is_applied_once(tmp_path: Path):
         assert conn.execute("SELECT COUNT(*) FROM schema_migrations WHERE scope='test'").fetchone()[0] == 1
 
 
-def test_unknown_operational_error_is_not_swallowed(tmp_path: Path):
+def test_unknown_operational_error_is_not_swallowed(tmp_path: Path) -> None:
     path = tmp_path / "locked.db"
     _base_database(path)
 
@@ -71,7 +71,7 @@ def test_unknown_operational_error_is_not_swallowed(tmp_path: Path):
         assert conn.execute("SELECT COUNT(*) FROM schema_migrations WHERE scope='test'").fetchone()[0] == 0
 
 
-def test_history_checksum_mismatch_fails_closed(tmp_path: Path):
+def test_history_checksum_mismatch_fails_closed(tmp_path: Path) -> None:
     path = tmp_path / "history.db"
     _base_database(path)
     migration = Migration(1, "one", lambda _conn: None)
@@ -85,20 +85,20 @@ def test_history_checksum_mismatch_fails_closed(tmp_path: Path):
         run_migrations(path, scope="test", migrations=(migration,))
 
 
-def test_apply_database_migrations_returns_json_result(tmp_path: Path, monkeypatch):
+def test_apply_database_migrations_returns_json_result(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     main_path = tmp_path / "main.db"
     dub_path = tmp_path / "dub.db"
     with sqlite3.connect(dub_path) as conn:
         conn.execute("CREATE TABLE dub_jobs(id INTEGER PRIMARY KEY)")
 
     class Store:
-        def __init__(self):
+        def __init__(self) -> None:
             self.db_path = dub_path
 
-        def connect(self):
+        def connect(self) -> sqlite3.Connection:
             return sqlite3.connect(dub_path)
 
-    def report(path, *, scope, migrations):
+    def report(path: Path, *, scope: str, migrations: tuple[Migration, ...]) -> MigrationReport:
         assert Path(path) in {main_path, dub_path}
         assert migrations == ()
         return MigrationReport(database=scope, applied=(1,), current_version=1)
@@ -128,7 +128,7 @@ def test_apply_database_migrations_returns_json_result(tmp_path: Path, monkeypat
     }
 
 
-def test_only_real_duplicate_column_is_skipped(tmp_path: Path):
+def test_only_real_duplicate_column_is_skipped(tmp_path: Path) -> None:
     path = tmp_path / "columns.db"
     _base_database(path)
     with sqlite3.connect(path) as conn:

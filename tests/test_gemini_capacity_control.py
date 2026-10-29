@@ -7,7 +7,7 @@ import pytest
 from services import gemini_capacity_control as control
 
 
-def test_transient_attempt_limit_is_hard_capped_at_three(monkeypatch):
+def test_transient_attempt_limit_is_hard_capped_at_three(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("GEMINI_TRANSIENT_MAX_ATTEMPTS", raising=False)
     assert control.transient_attempt_limit() == 3
     monkeypatch.setenv("GEMINI_TRANSIENT_MAX_ATTEMPTS", "99")
@@ -16,7 +16,7 @@ def test_transient_attempt_limit_is_hard_capped_at_three(monkeypatch):
     assert control.transient_attempt_limit() == 1
 
 
-def test_retry_budget_is_shared_and_fail_closed(monkeypatch):
+def test_retry_budget_is_shared_and_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GEMINI_TRANSIENT_MAX_ATTEMPTS", "3")
     budget = control.GeminiRetryBudget()
     assert [budget.claim(), budget.claim(), budget.claim()] == [1, 2, 3]
@@ -26,7 +26,7 @@ def test_retry_budget_is_shared_and_fail_closed(monkeypatch):
         budget.claim()
 
 
-def test_retry_delay_is_exponential_jittered_and_capped(monkeypatch):
+def test_retry_delay_is_exponential_jittered_and_capped(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("GEMINI_RETRY_BASE_SECONDS", raising=False)
     monkeypatch.delenv("GEMINI_RETRY_MAX_SECONDS", raising=False)
     monkeypatch.delenv("GEMINI_RETRY_JITTER_SECONDS", raising=False)
@@ -37,29 +37,31 @@ def test_retry_delay_is_exponential_jittered_and_capped(monkeypatch):
     assert control.transient_retry_delay(8) == 60.0
 
 
-def test_heavy_concurrency_defaults_to_one_and_is_bounded(monkeypatch):
+def test_heavy_concurrency_defaults_to_one_and_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("GEMINI_HEAVY_MAX_CONCURRENCY", raising=False)
     assert control.heavy_concurrency() == 1
     monkeypatch.setenv("GEMINI_HEAVY_MAX_CONCURRENCY", "99")
     assert control.heavy_concurrency() == 4
 
 
-def test_heavy_gate_serializes_expensive_calls_by_default(monkeypatch):
+def test_heavy_gate_serializes_expensive_calls_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("GEMINI_HEAVY_MAX_CONCURRENCY", "1")
 
-    async def scenario():
+    async def scenario() -> list[str]:
         order: list[str] = []
         first_entered = asyncio.Event()
         release_first = asyncio.Event()
 
-        async def first():
+        async def first() -> None:
             async with control.heavy_gemini_slot():
                 order.append("first-enter")
                 first_entered.set()
                 await release_first.wait()
                 order.append("first-exit")
 
-        async def second():
+        async def second() -> None:
             await first_entered.wait()
             async with control.heavy_gemini_slot():
                 order.append("second-enter")
@@ -76,10 +78,12 @@ def test_heavy_gate_serializes_expensive_calls_by_default(monkeypatch):
     assert asyncio.run(scenario()) == ["first-enter", "first-exit", "second-enter"]
 
 
-def test_overload_cooldown_delays_following_heavy_call(monkeypatch):
+def test_overload_cooldown_delays_following_heavy_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("GEMINI_HEAVY_MAX_CONCURRENCY", "1")
 
-    async def scenario():
+    async def scenario() -> float:
         loop = asyncio.get_running_loop()
         started = loop.time()
         control.note_overload(0.03)
@@ -90,8 +94,10 @@ def test_overload_cooldown_delays_following_heavy_call(monkeypatch):
     assert elapsed >= 0.02
 
 
-def test_files_overload_does_not_block_text_inference(monkeypatch):
-    async def scenario():
+def test_files_overload_does_not_block_text_inference(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> str:
         control.trip_overload_circuit(domain="files", seconds=30)
         assert control.domain_circuit_open("files") is True
         assert control.domain_circuit_open("inference") is False
@@ -103,8 +109,8 @@ def test_files_overload_does_not_block_text_inference(monkeypatch):
     assert asyncio.run(scenario()) == "ok"
 
 
-def test_inference_circuit_blocks_inference_and_preparatory_files():
-    async def scenario():
+def test_inference_circuit_blocks_inference_and_preparatory_files() -> None:
+    async def scenario() -> None:
         control.trip_overload_circuit(domain="inference", seconds=30)
         with pytest.raises(control.GeminiCapacityCircuitOpen):
             await control.run_heavy_gemini_call(
@@ -120,11 +126,11 @@ def test_inference_circuit_blocks_inference_and_preparatory_files():
     asyncio.run(scenario())
 
 
-def test_retry_ceiling_opens_circuit(monkeypatch):
+def test_retry_ceiling_opens_circuit(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GEMINI_RETRY_MAX_SECONDS", "60")
     monkeypatch.setenv("GEMINI_OVERLOAD_CIRCUIT_SECONDS", "30")
 
-    async def scenario():
+    async def scenario() -> None:
         control.note_overload(60.0, domain="inference")
         assert control.domain_circuit_open("inference") is True
 

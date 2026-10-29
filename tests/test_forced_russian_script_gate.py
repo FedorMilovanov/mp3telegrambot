@@ -1,4 +1,5 @@
 from __future__ import annotations
+import pytest
 
 from pathlib import Path
 
@@ -8,7 +9,7 @@ from tools.voxcpm2 import professional_audio_qa_v45 as qa
 TARGET = "Это проверка."
 
 
-def _patch_forced_pass(monkeypatch) -> None:
+def _patch_forced_pass(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         qa.semantic_tts_guard_v4.legacy,
         "_transcribe",
@@ -17,7 +18,7 @@ def _patch_forced_pass(monkeypatch) -> None:
 
 
 def test_arabic_auto_text_cannot_be_laundered_by_forced_russian(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     _patch_forced_pass(monkeypatch)
@@ -40,7 +41,7 @@ def test_arabic_auto_text_cannot_be_laundered_by_forced_russian(
 
 
 def test_empty_auto_text_with_probable_foreign_language_is_not_rescued(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     _patch_forced_pass(monkeypatch)
@@ -61,7 +62,7 @@ def test_empty_auto_text_with_probable_foreign_language_is_not_rescued(
 
 
 def test_empty_auto_text_with_unknown_language_may_use_forced_retry(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     _patch_forced_pass(monkeypatch)
@@ -83,7 +84,7 @@ def test_empty_auto_text_with_unknown_language_may_use_forced_retry(
 
 
 def test_empty_auto_text_detected_as_russian_may_use_forced_retry(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     _patch_forced_pass(monkeypatch)
@@ -104,7 +105,7 @@ def test_empty_auto_text_detected_as_russian_may_use_forced_retry(
 
 
 def test_cyrillic_auto_text_with_uncertain_language_may_be_rescued(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     _patch_forced_pass(monkeypatch)

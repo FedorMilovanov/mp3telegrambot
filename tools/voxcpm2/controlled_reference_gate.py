@@ -12,7 +12,7 @@ from typing import Any
 import numpy as np
 import soundfile as sf
 
-from tools.voxcpm2 import expressive_continuity
+from tools.voxcpm2 import expressive_continuity as expressive_continuity
 from tools.voxcpm2.direct_timbre_analysis import spectral_envelope, spectral_similarity
 
 MIN_REFERENCE_SECONDS = 5.0

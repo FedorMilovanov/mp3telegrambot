@@ -5,11 +5,12 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from numpy.typing import NDArray
 
 from tools.voxcpm2 import final_media_qa
 
 
-def _branches(*, seconds: int = 16, sample_rate: int = 8_000):
+def _branches(*, seconds: int = 16, sample_rate: int = 8_000) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     rng = np.random.default_rng(2026072902)
     length = seconds * sample_rate
     source = rng.normal(0.0, 0.11, length).astype(np.float64)

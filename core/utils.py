@@ -28,7 +28,7 @@ import logging
 import os
 import re
 import shutil
-import time  # FIX #21: не было импорта
+import time as time  # FIX #21: не было импорта
 from datetime import date  # FIX #21: не было импорта
 from io import BytesIO
 from pathlib import Path

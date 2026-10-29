@@ -1,3 +1,4 @@
+from typing import Any
 import asyncio
 from pathlib import Path
 
@@ -28,7 +29,7 @@ async def test_optional_clips_timeout_returns_without_user_error(
     started = asyncio.Event()
     cancelled = asyncio.Event()
 
-    async def slow_candidates(**_kwargs):
+    async def slow_candidates(**_kwargs: Any) -> None:
         started.set()
         try:
             await asyncio.sleep(1)

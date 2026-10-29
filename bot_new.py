@@ -14,7 +14,7 @@ def _configure_stdio() -> None:
     """Make every early startup diagnostic safe on Windows legacy consoles."""
     for stream in (sys.stdout, sys.stderr):
         with contextlib.suppress(AttributeError, OSError):
-            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+            getattr(stream, "reconfigure")(encoding="utf-8", errors="backslashreplace")
 
 
 _configure_stdio()

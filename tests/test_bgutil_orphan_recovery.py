@@ -9,7 +9,7 @@ import pytest
 from services import bgutil_orphan_recovery as recovery
 
 
-def _owner(command_line: str, *, pid: int = 23984, name: str = "node.exe"):
+def _owner(command_line: str, *, pid: int = 23984, name: str = "node.exe") -> recovery.WindowsPortOwner:
     return recovery.WindowsPortOwner(
         pid=pid,
         name=name,
@@ -18,7 +18,7 @@ def _owner(command_line: str, *, pid: int = 23984, name: str = "node.exe"):
     )
 
 
-def test_exact_repo_local_bgutil_owner_is_recognized(tmp_path):
+def test_exact_repo_local_bgutil_owner_is_recognized(tmp_path: Path) -> None:
     server_main = tmp_path / "server" / "build" / "main.js"
     command = f'node.exe "{server_main.resolve()}" --port 4416'
     assert recovery.is_expected_bgutil_owner(
@@ -28,7 +28,7 @@ def test_exact_repo_local_bgutil_owner_is_recognized(tmp_path):
     )
 
 
-def test_owner_with_other_script_or_port_is_rejected(tmp_path):
+def test_owner_with_other_script_or_port_is_rejected(tmp_path: Path) -> None:
     server_main = tmp_path / "server" / "build" / "main.js"
     other_main = tmp_path / "other" / "build" / "main.js"
     assert not recovery.is_expected_bgutil_owner(
@@ -43,7 +43,7 @@ def test_owner_with_other_script_or_port_is_rejected(tmp_path):
     )
 
 
-def test_non_node_listener_is_rejected(tmp_path):
+def test_non_node_listener_is_rejected(tmp_path: Path) -> None:
     server_main = tmp_path / "server" / "build" / "main.js"
     command = f'python.exe "{server_main.resolve()}" --port 4416'
     assert not recovery.is_expected_bgutil_owner(
@@ -53,15 +53,15 @@ def test_non_node_listener_is_rejected(tmp_path):
     )
 
 
-def test_non_windows_recovery_is_noop(monkeypatch):
-    def unexpected_probe(_port):
+def test_non_windows_recovery_is_noop(monkeypatch: pytest.MonkeyPatch) -> None:
+    def unexpected_probe(_port: int) -> None:
         raise AssertionError("non-Windows recovery must not inspect Windows listeners")
 
     monkeypatch.setattr(recovery, "_probe_windows_port_owners", unexpected_probe)
     assert recovery.recover_orphaned_bgutil_http_runtime(platform_name="posix") is None
 
 
-def test_windows_recovery_kills_only_proven_repo_local_orphan(monkeypatch, tmp_path):
+def test_windows_recovery_kills_only_proven_repo_local_orphan(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     server_main = tmp_path / "server" / "build" / "main.js"
     owner = _owner(f'node.exe "{server_main.resolve()}" --port 4416')
     probes = iter([(owner,), ()])
@@ -88,7 +88,7 @@ def test_windows_recovery_kills_only_proven_repo_local_orphan(monkeypatch, tmp_p
     assert killed == [owner.pid]
 
 
-def test_windows_recovery_refuses_unknown_listener(monkeypatch, tmp_path):
+def test_windows_recovery_refuses_unknown_listener(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     server_main = tmp_path / "server" / "build" / "main.js"
     stranger = _owner(
         r"node.exe C:\other-project\server\build\main.js --port 4416",
@@ -113,7 +113,7 @@ def test_windows_recovery_refuses_unknown_listener(monkeypatch, tmp_path):
         )
 
 
-def test_windows_tree_kill_uses_resolved_taskkill(monkeypatch):
+def test_windows_tree_kill_uses_resolved_taskkill(monkeypatch: pytest.MonkeyPatch) -> None:
     run = Mock(return_value=SimpleNamespace(returncode=0, stdout="", stderr=""))
     monkeypatch.setattr(
         recovery,
@@ -133,7 +133,7 @@ def test_windows_tree_kill_uses_resolved_taskkill(monkeypatch):
     ]
 
 
-def test_bot_entrypoint_acquires_singleton_before_bgutil_runtime():
+def test_bot_entrypoint_acquires_singleton_before_bgutil_runtime() -> None:
     root = Path(__file__).resolve().parents[1]
     source = (root / "bot_new.py").read_text(encoding="utf-8")
 

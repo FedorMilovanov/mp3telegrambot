@@ -143,9 +143,9 @@ def test_voxcpm2_length_planner_requires_typed_request_and_internal_evidence() -
         backend.plan_generation_length(_audio_spec(None), _length_request())
 
     with pytest.raises(TypeError, match="BackendGenerationLengthRequest"):
-        backend.plan_generation_length(  # type: ignore[arg-type]
+        backend.plan_generation_length(
             _audio_spec(),
-            {"duration_budget": 4.0},
+            {"duration_budget": 4.0},  # type: ignore[arg-type]
         )
 
 

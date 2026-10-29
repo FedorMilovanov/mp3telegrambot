@@ -1,22 +1,32 @@
 """LiveDub publication data remains lazy, source-compatible, and HTML-safe."""
 
 from __future__ import annotations
+import pytest
 
 import asyncio
 import html
+from collections.abc import Callable
+from typing import Any
 
-from pipelines.livedub_publication_stage import prepare_livedub_publication
+from pipelines.livedub_publication_stage import LiveDubPublication, prepare_livedub_publication
 
 
-def _missing():
+def _missing() -> None:
     raise NameError("historical local is not defined on this path")
 
 
-def _forbidden():
+def _forbidden() -> None:
     raise AssertionError("lazy fallback must not be evaluated")
 
 
-def _prepare(*, ai_data, cached_ai_data, title="", performer="", full_title=""):
+def _prepare(
+    *,
+    ai_data: Callable[[], Any],
+    cached_ai_data: Callable[[], Any],
+    title: str = "",
+    performer: str = "",
+    full_title: str = "",
+) -> LiveDubPublication:
     return asyncio.run(
         prepare_livedub_publication(
             ai_data=ai_data,
@@ -30,12 +40,12 @@ def _prepare(*, ai_data, cached_ai_data, title="", performer="", full_title=""):
     )
 
 
-def _patch_card(monkeypatch, card):
+def _patch_card(monkeypatch: pytest.MonkeyPatch, card: dict[str, Any]) -> list[tuple[str, str]]:
     import services.livedub_publication as publication
 
-    calls = []
+    calls: list[tuple[str, str]] = []
 
-    async def build(source_line, source_url):
+    async def build(source_line: str, source_url: str) -> dict[str, Any]:
         calls.append((source_line, source_url))
         return card
 
@@ -43,7 +53,7 @@ def _patch_card(monkeypatch, card):
     return calls
 
 
-def test_fresh_ai_wins_and_card_values_are_escaped(monkeypatch):
+def test_fresh_ai_wins_and_card_values_are_escaped(monkeypatch: pytest.MonkeyPatch) -> None:
     card = {"title": "Card <Title>", "author": "Card Author"}
     calls = _patch_card(monkeypatch, card)
 
@@ -60,7 +70,7 @@ def test_fresh_ai_wins_and_card_values_are_escaped(monkeypatch):
     assert result.title_html == "Card &lt;Title&gt; - Card Author"
 
 
-def test_missing_fresh_data_uses_cache_without_duplicate_author(monkeypatch):
+def test_missing_fresh_data_uses_cache_without_duplicate_author(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = _patch_card(
         monkeypatch,
         {"title": "Cached title - cached author", "author": "CACHED AUTHOR"},
@@ -79,7 +89,7 @@ def test_missing_fresh_data_uses_cache_without_duplicate_author(monkeypatch):
     assert result.title_html == "Cached title - cached author"
 
 
-def test_non_dict_and_missing_values_keep_generic_title_fallback(monkeypatch):
+def test_non_dict_and_missing_values_keep_generic_title_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = _patch_card(monkeypatch, {"title": "", "author": ""})
 
     result = _prepare(
@@ -93,7 +103,7 @@ def test_non_dict_and_missing_values_keep_generic_title_fallback(monkeypatch):
     assert result.title_html == "Переведённое видео"
 
 
-def test_empty_fresh_dict_does_not_trigger_cached_fallback(monkeypatch):
+def test_empty_fresh_dict_does_not_trigger_cached_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = _patch_card(monkeypatch, {"title": "", "author": ""})
 
     result = _prepare(
@@ -107,7 +117,7 @@ def test_empty_fresh_dict_does_not_trigger_cached_fallback(monkeypatch):
     assert result.title_line == "Fallback title - Fallback author"
 
 
-def test_whitespace_title_preserves_empty_html_branch(monkeypatch):
+def test_whitespace_title_preserves_empty_html_branch(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = _patch_card(monkeypatch, {"title": "   ", "author": ""})
 
     result = _prepare(ai_data=lambda: None, cached_ai_data=lambda: None)

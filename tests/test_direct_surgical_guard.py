@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -8,7 +9,7 @@ from tools.voxcpm2 import direct_surgical_polish_v2
 from tools.voxcpm2 import direct_timing_guard as guard
 
 
-def seg(text="Текст.", **extra):
+def seg(text: str = "Текст.", **extra: Any) -> dict[str, Any]:
     return {
         "id": 1,
         "text": text,

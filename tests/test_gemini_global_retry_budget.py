@@ -10,11 +10,11 @@ from services import gemini_capacity_control as control
 from services import gemini_router
 
 
-def test_generic_503_is_capped_at_three_calls_across_four_clients(monkeypatch):
+def test_generic_503_is_capped_at_three_calls_across_four_clients(monkeypatch: pytest.MonkeyPatch) -> None:
     clients = [SimpleNamespace(name=f"c{i}") for i in range(1, 5)]
     calls: list[str] = []
 
-    async def invoke(client):
+    async def invoke(client: SimpleNamespace) -> None:
         calls.append(client.name)
         raise RuntimeError("503 UNAVAILABLE: high demand")
 
@@ -29,11 +29,11 @@ def test_generic_503_is_capped_at_three_calls_across_four_clients(monkeypatch):
     assert calls == ["c1", "c1", "c2"]
 
 
-def test_generic_timeout_is_capped_and_reuses_then_rotates(monkeypatch):
+def test_generic_timeout_is_capped_and_reuses_then_rotates(monkeypatch: pytest.MonkeyPatch) -> None:
     clients = [SimpleNamespace(name=f"c{i}") for i in range(1, 5)]
     calls: list[str] = []
 
-    async def invoke(client):
+    async def invoke(client: SimpleNamespace) -> None:
         calls.append(client.name)
         raise asyncio.TimeoutError("request timed out")
 
@@ -47,11 +47,11 @@ def test_generic_timeout_is_capped_and_reuses_then_rotates(monkeypatch):
     assert calls == ["c1", "c1", "c2"]
 
 
-def test_generic_429_rotates_but_cannot_expand_past_global_budget(monkeypatch):
+def test_generic_429_rotates_but_cannot_expand_past_global_budget(monkeypatch: pytest.MonkeyPatch) -> None:
     clients = [SimpleNamespace(name=f"c{i}") for i in range(1, 5)]
     calls: list[str] = []
 
-    async def invoke(client):
+    async def invoke(client: SimpleNamespace) -> None:
         calls.append(client.name)
         raise RuntimeError("429 RESOURCE_EXHAUSTED")
 
@@ -64,8 +64,10 @@ def test_generic_429_rotates_but_cannot_expand_past_global_budget(monkeypatch):
     assert calls == ["c1", "c2", "c3"]
 
 
-def test_generic_clients_explicitly_disable_sdk_retry_stack():
+def test_generic_clients_explicitly_disable_sdk_retry_stack() -> None:
     options = core_globals._gemini_http_options
     if options is None or not hasattr(options, "retry_options"):
         pytest.skip("installed google-genai does not expose retry_options")
-    assert options.retry_options.attempts == 1
+    retry_options = options.retry_options
+    assert retry_options is not None
+    assert retry_options.attempts == 1

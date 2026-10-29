@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 # ── Gemini-F1: метафоричное название больше НЕ обнуляется ───────────────────
-def test_r39_metaphorical_title_not_zeroed():
+def test_r39_metaphorical_title_not_zeroed() -> None:
     from core.json_parser import _parse_gemini_response
 
     resp = json.dumps(
@@ -20,13 +20,14 @@ def test_r39_metaphorical_title_not_zeroed():
         }
     )
     p = _parse_gemini_response(resp, 600)
+    assert p is not None
     assert p.get("real_title") == "Трус и лжец"
     assert p.get("title_topic_warning")
     assert not p.get("real_title_ai_rejected")
 
 
 # ── Gemini-F3: cue-подстрока внутри слова не теряется ──────────────────────
-def test_r39_vtt_substring_word_not_dropped():
+def test_r39_vtt_substring_word_not_dropped() -> None:
     import services.youtube_transcript as yt
 
     chunk = ["kingdom", "of", "heaven"]
@@ -38,7 +39,7 @@ def test_r39_vtt_substring_word_not_dropped():
 
 
 # ── Gemini-F4: обе длительности unknown = нейтрально, не полный буст ────────
-def test_r39_dur_score_both_unknown_neutral():
+def test_r39_dur_score_both_unknown_neutral() -> None:
     from services.search import _score_candidate_match
 
     mw = {"свидетельство", "трус", "лжец"}
@@ -48,7 +49,7 @@ def test_r39_dur_score_both_unknown_neutral():
 
 
 # ── Telegraph-F2: safe_trim_caption уважает лимит UTF-16 ────────────────────
-def test_r39_caption_trim_utf16_limit():
+def test_r39_caption_trim_utf16_limit() -> None:
     from converters.md_telegraph import safe_trim_caption, visible_length
 
     for cap in ["🙏" * 1000, "<b>📜 " + "слово " * 90 + "🙏✝️</b>"]:
@@ -56,7 +57,7 @@ def test_r39_caption_trim_utf16_limit():
 
 
 # ── Persist-F2: QA/info не падают на списке строк вместо dict ───────────────
-def test_r39_qa_info_survive_string_shapes():
+def test_r39_qa_info_survive_string_shapes() -> None:
     from services.livedub_qa import format_qa_report
     from services.livedub_info import format_livedub_info_message
 
@@ -73,7 +74,7 @@ def test_r39_qa_info_survive_string_shapes():
 
 
 # ── Persist-F1: элементы JSON-списков в архиве приводятся к str ───────────────
-def test_r39_archive_rows_coerce_list_elements():
+def test_r39_archive_rows_coerce_list_elements() -> None:
     from core.generated_pages import _RECORD_KEYS, _rows_to_dicts
 
     row = tuple("[1,2]" if k == "hashtags" else "" for k in _RECORD_KEYS)
@@ -82,13 +83,13 @@ def test_r39_archive_rows_coerce_list_elements():
 
 
 # ── Структурные проверки (без ffmpeg/сети) ─────────────────────────────────
-def test_r39_telegraph_destructive_move_removed():
+def test_r39_telegraph_destructive_move_removed() -> None:
     for f in ("services/telegraph.py", "services/telegraph_pages.py"):
         src = Path(f).read_text(encoding="utf-8")
         assert "переношу последнюю секцию" not in src
 
 
-def test_r39_mp3_reencode_guarded_against_self():
+def test_r39_mp3_reencode_guarded_against_self() -> None:
     """`_64.mp3` не пережимается «в себя»: ffmpeg читал бы файл, который пишет.
 
     Защита переехала вместе с кодом в `pipelines/audio_stage.py`; поведение
@@ -99,7 +100,7 @@ def test_r39_mp3_reencode_guarded_against_self():
     assert "уже 64 kbps" in stage.lower()
 
 
-def test_r39_process_global_fallback_marker_is_removed():
+def test_r39_process_global_fallback_marker_is_removed() -> None:
     pipeline = Path("pipelines/main_pipeline.py").read_text(encoding="utf-8")
     telegraph = Path("services/telegraph_pages.py").read_text(encoding="utf-8")
     caption = Path("converters/caption.py").read_text(encoding="utf-8")
@@ -109,6 +110,6 @@ def test_r39_process_global_fallback_marker_is_removed():
     assert "_gemini_was_fallback" not in caption
 
 
-def test_r39_pdf_font_loop_skips_non_files():
+def test_r39_pdf_font_loop_skips_non_files() -> None:
     src = Path("services/pdf_generator.py").read_text(encoding="utf-8")
     assert "not f.is_file()" in src

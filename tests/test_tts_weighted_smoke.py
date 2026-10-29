@@ -223,7 +223,7 @@ def _fake_probe(output: Path) -> dict[str, Any]:
 
 
 @pytest.mark.parametrize("field", ["sample_rate", "channels", "duration"])
-def test_ffprobe_rejects_non_scalar_audio_facts(monkeypatch, tmp_path: Path, field: str) -> None:
+def test_ffprobe_rejects_non_scalar_audio_facts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, field: str) -> None:
     stream = {"codec_type": "audio", "sample_rate": 24_000, "channels": 1, "duration": 4.0}
     stream[field] = []
     monkeypatch.setattr("services.tts_weighted_smoke.shutil.which", lambda _name: "/ffprobe")
@@ -241,7 +241,7 @@ def test_ffprobe_rejects_non_scalar_audio_facts(monkeypatch, tmp_path: Path, fie
 
 
 def test_weighted_smoke_runs_real_session_and_keeps_only_safe_report(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     import services.tts_weighted_smoke as smoke
@@ -280,7 +280,7 @@ def test_weighted_smoke_runs_real_session_and_keeps_only_safe_report(
 
 
 def test_weighted_smoke_fails_closed_without_required_execution_evidence(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     import services.tts_weighted_smoke as smoke
@@ -299,7 +299,7 @@ def test_weighted_smoke_fails_closed_without_required_execution_evidence(
 
 @pytest.mark.parametrize("invalid", ["nan", "silent", "ambiguous"])
 def test_weighted_smoke_rejects_invalid_pcm(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     invalid: str,
 ) -> None:
@@ -339,7 +339,7 @@ def test_expected_python_mismatch_fails_before_model_load(tmp_path: Path) -> Non
     assert not config.work_dir.exists()
 
 
-def test_temporary_backend_environment_is_restored(monkeypatch, tmp_path: Path) -> None:
+def test_temporary_backend_environment_is_restored(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     import services.tts_weighted_smoke as smoke
 
     monkeypatch.setattr(smoke, "_ffprobe_output", _fake_probe)

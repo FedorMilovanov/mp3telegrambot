@@ -1,4 +1,6 @@
 from __future__ import annotations
+from typing import Any
+import pathlib
 
 import pytest
 
@@ -7,14 +9,16 @@ from services import bgutil_http_runtime as http_runtime
 
 
 @pytest.fixture(autouse=True)
-def _reset_owned_process(monkeypatch: pytest.MonkeyPatch):
+def _reset_owned_process(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(http_runtime, "_OWNED_PROCESS", None)
     monkeypatch.setattr(http_runtime, "_CLEANUP_REGISTERED", False)
 
 
-def test_reuses_only_version_matched_owned_http_provider(monkeypatch, tmp_path):
+def test_reuses_only_version_matched_owned_http_provider(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     class OwnedProcess:
-        def poll(self):
+        def poll(self) -> None:
             return None
 
     owned = OwnedProcess()
@@ -25,7 +29,7 @@ def test_reuses_only_version_matched_owned_http_provider(monkeypatch, tmp_path):
         lambda *_args, **_kwargs: {"version": PIN, "server_uptime": 12},
     )
 
-    def unexpected_popen(*_args, **_kwargs):
+    def unexpected_popen(*_args: Any, **_kwargs: Any) -> None:
         raise AssertionError("matching owned provider must be reused")
 
     monkeypatch.setattr(http_runtime.subprocess, "Popen", unexpected_popen)
@@ -37,7 +41,9 @@ def test_reuses_only_version_matched_owned_http_provider(monkeypatch, tmp_path):
     assert result == http_runtime.DEFAULT_BASE_URL
 
 
-def test_matching_but_unowned_http_provider_fails_closed(monkeypatch, tmp_path):
+def test_matching_but_unowned_http_provider_fails_closed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     monkeypatch.setattr(
         http_runtime,
         "_ping",
@@ -51,7 +57,7 @@ def test_matching_but_unowned_http_provider_fails_closed(monkeypatch, tmp_path):
         )
 
 
-def test_existing_wrong_version_fails_closed(monkeypatch, tmp_path):
+def test_existing_wrong_version_fails_closed(monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path) -> None:
     monkeypatch.setattr(
         http_runtime,
         "_ping",
@@ -65,7 +71,7 @@ def test_existing_wrong_version_fails_closed(monkeypatch, tmp_path):
         )
 
 
-def test_missing_compiled_http_server_fails_closed(monkeypatch, tmp_path):
+def test_missing_compiled_http_server_fails_closed(monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path) -> None:
     monkeypatch.setattr(http_runtime, "_ping", lambda *_args, **_kwargs: None)
     with pytest.raises(http_runtime.BgutilHttpRuntimeError, match="build/main.js"):
         http_runtime.ensure_bgutil_http_runtime(
@@ -75,7 +81,9 @@ def test_missing_compiled_http_server_fails_closed(monkeypatch, tmp_path):
         )
 
 
-def test_spawns_pinned_main_once_and_waits_for_versioned_ping(monkeypatch, tmp_path):
+def test_spawns_pinned_main_once_and_waits_for_versioned_ping(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     build = tmp_path / "build"
     build.mkdir()
     main_js = build / "main.js"
@@ -92,24 +100,24 @@ def test_spawns_pinned_main_once_and_waits_for_versioned_ping(monkeypatch, tmp_p
     probe_ports: list[int] = []
     monkeypatch.setattr(http_runtime, "require_loopback_binding", probe_ports.append)
 
-    captured: dict[str, object] = {}
+    captured: dict[str, Any] = {}
 
     class FakeProcess:
         pid = 12345
-        returncode = None
+        returncode: int | None = None
 
-        def poll(self):
+        def poll(self) -> None:
             return None
 
-        def terminate(self):
+        def terminate(self) -> None:
             self.returncode = 0
 
-        def wait(self, timeout=None):
+        def wait(self, timeout: float | None = None) -> int | None:
             return self.returncode
 
-    process = FakeProcess()
+    process: Any = FakeProcess()
 
-    def fake_popen(command, **kwargs):
+    def fake_popen(command: list[str], **kwargs: object) -> Any:
         captured["command"] = command
         captured["kwargs"] = kwargs
         return process
@@ -137,11 +145,13 @@ def test_spawns_pinned_main_once_and_waits_for_versioned_ping(monkeypatch, tmp_p
     assert probe_ports == [http_runtime.DEFAULT_PORT]
 
 
-def test_upstream_http_route_is_loopback_for_ytdlp_even_if_server_bind_is_broad():
+def test_upstream_http_route_is_loopback_for_ytdlp_even_if_server_bind_is_broad() -> None:
     assert http_runtime.DEFAULT_BASE_URL == "http://127.0.0.1:4416"
 
 
-def test_bgutil_http_log_path_defaults_to_file_and_respects_sentinels(monkeypatch, tmp_path):
+def test_bgutil_http_log_path_defaults_to_file_and_respects_sentinels(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
     monkeypatch.delenv("BGUTIL_HTTP_LOG", raising=False)
     assert http_runtime.bgutil_http_log_path() == http_runtime.DEFAULT_BGUTIL_HTTP_LOG
     for sentinel in ("none", "devnull", "off", "0", "-"):

@@ -14,7 +14,7 @@ from services.dub_delivery import (
     _dynamic_outputs as _dynamic_outputs,
     _dynamic_project_root as _dynamic_project_root,
     _recipe_outputs as _recipe_outputs,
-    _short,
+    _short as _short,
     available_outputs as available_outputs,
     send_project_outputs,
 )

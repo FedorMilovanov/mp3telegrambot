@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+from typing import Any
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -13,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / "tools" / "voxcpm2" / "production_preflight.py"
 
 
-def _load_module():
+def _load_module() -> Any:
     spec = importlib.util.spec_from_file_location(
         "voxcpm2_production_preflight",
         MODULE_PATH,
@@ -27,7 +28,7 @@ def _load_module():
 preflight = _load_module()
 
 
-def test_probe_duration_uses_resolved_ffprobe(monkeypatch) -> None:
+def test_probe_duration_uses_resolved_ffprobe(monkeypatch: pytest.MonkeyPatch) -> None:
     run = Mock(return_value=SimpleNamespace(returncode=0, stdout="12.5\n", stderr=""))
     monkeypatch.setattr(preflight.shutil, "which", lambda _name: "/resolved/ffprobe")
     monkeypatch.setattr(preflight.subprocess, "run", run)
@@ -36,7 +37,7 @@ def test_probe_duration_uses_resolved_ffprobe(monkeypatch) -> None:
     assert run.call_args.args[0][0] == "/resolved/ffprobe"
 
 
-def test_probe_duration_preserves_missing_executable_error(monkeypatch) -> None:
+def test_probe_duration_preserves_missing_executable_error(monkeypatch: pytest.MonkeyPatch) -> None:
     run = Mock()
     monkeypatch.setattr(preflight.shutil, "which", lambda _name: None)
     monkeypatch.setattr(preflight.subprocess, "run", run)

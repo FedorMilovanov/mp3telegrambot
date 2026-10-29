@@ -30,53 +30,53 @@ from services.speech_backends import (
     BackendGenerationProfileRequest,
     BackendGenerationRequest,
     BackendSessionConfig,
-    get_backend,
+    get_backend as _initial_get_backend,
 )
 from tools.voxcpm2 import direct_timing_guard
 from tools.voxcpm2.direct_max_quality_io import (
     EXPECTED_ENCODE_SR,
     EXPECTED_OUTPUT_SR,
     REFERENCE_TAIL_SILENCE,
-    MAX_TEMPO,
-    PREFERRED_MAX_TEMPO,
+    MAX_TEMPO as MAX_TEMPO,
+    PREFERRED_MAX_TEMPO as PREFERRED_MAX_TEMPO,
     SPEECH_SLOT_POLICY,
     configure_utf8,
-    log,
+    log as _initial_log,
     probe_duration,
     sha256_file,
-    read_segments,
+    read_segments as _initial_read_segments,
     speech_slot_seconds,
 )
 from tools.voxcpm2.direct_max_quality_analysis import (
     FIT_TEMPO_POLICY,
     _mono,
     activity_stats,
-    candidate_hard_ok,
+    candidate_hard_ok as _initial_candidate_hard_ok,
     candidate_score as _base_candidate_score,
     clean_tail_restart,
     clipping_ratio,
     detect_tail_restart,
     edge_silence,
     pitch_profile,
-    prepare_reference,
+    prepare_reference as _initial_prepare_reference,
     required_tempo,
 )
 from tools.voxcpm2.direct_max_quality_render import (
     ADAPTIVE_RETRY_POLICY,
-    _generate,  # noqa: F401 - legacy facade compatibility; production uses backend session
+    _generate as _initial_generate,  # noqa: F401 - legacy facade compatibility; production uses backend session
     build_timeline,
     fit_without_slowdown,
     set_seed,
 )
 from tools.voxcpm2.direct_retry_epoch import (
     POLICY as RETRY_EPOCH_POLICY,
-    invalidate_segment_for_retry,
-    load_retry_epoch,
-    seed_for_attempt,
+    invalidate_segment_for_retry as _initial_invalidate_segment_for_retry,
+    load_retry_epoch as _initial_load_retry_epoch,
+    seed_for_attempt as _initial_seed_for_attempt,
 )
 from tools.voxcpm2.direct_source_prosody import (
     candidate_pitch_evidence_ok,
-    source_prosody_penalty,
+    source_prosody_penalty as _initial_source_prosody_penalty,
 )
 
 
@@ -105,7 +105,7 @@ MAX_CANDIDATE_ATTEMPTS = 5
 STRONG_CANDIDATE_SCORE = 85.0
 
 
-def _build_generation_length_request(
+def _initial_build_generation_length_request(
     segment: dict[str, Any],
     *,
     duration_budget: float,
@@ -146,7 +146,7 @@ def _merge_backend_options(*sources: Mapping[str, Any]) -> dict[str, Any]:
     return merged
 
 
-def _build_generation_request(
+def _initial_build_generation_request(
     session: Any,
     **kwargs: Any,
 ) -> BackendGenerationRequest:
@@ -188,14 +188,14 @@ def _report_mapping(value: Any) -> dict[str, Any]:
     return result
 
 
-def _acceptable_candidates(
+def _initial_acceptable_candidates(
     candidates: list[dict[str, Any]],
     speech_slot: float,
 ) -> list[dict[str, Any]]:
     return [item for item in candidates if candidate_hard_ok(item, speech_slot) and candidate_pitch_evidence_ok(item)]
 
 
-def _candidate_failure_summary(candidates: list[dict[str, Any]], speech_slot: float) -> str:
+def _initial_candidate_failure_summary(candidates: list[dict[str, Any]], speech_slot: float) -> str:
     parts: list[str] = []
     for item in candidates:
         voice = item.get("voice_match") or {}
@@ -241,7 +241,7 @@ def _candidate_failure_summary(candidates: list[dict[str, Any]], speech_slot: fl
     return "; ".join(parts)
 
 
-def _raw_failure_evidence(
+def _initial_raw_failure_evidence(
     candidates: list[dict[str, Any]],
     *,
     speech_slot: float,
@@ -589,7 +589,7 @@ def _render_main() -> None:
             sf.write(str(raw_path), wav_np, sample_rate, subtype="PCM_24")
             leading, trailing = edge_silence(wav_np, sample_rate)
             tail_info = detect_tail_restart(wav_np, sample_rate)
-            candidate = {
+            candidate: dict[str, Any] = {
                 "attempt": attempt_index,
                 "seed": seed,
                 "retry_epoch": retry_epoch,
@@ -872,15 +872,15 @@ _UNIVERSAL_STATE: dict[str, Any] = {
     "current_segment_id": None,
     "total_segments": 0,
 }
-_universal_base_read_segments = read_segments
-_universal_base_load_retry_epoch = load_retry_epoch
-_universal_base_invalidate_segment_for_retry = invalidate_segment_for_retry
-_universal_base_seed_for_attempt = seed_for_attempt
-_universal_base_acceptable_candidates = _acceptable_candidates
-_universal_base_raw_failure_evidence = _raw_failure_evidence
+_universal_base_read_segments = _initial_read_segments
+_universal_base_load_retry_epoch = _initial_load_retry_epoch
+_universal_base_invalidate_segment_for_retry = _initial_invalidate_segment_for_retry
+_universal_base_seed_for_attempt = _initial_seed_for_attempt
+_universal_base_acceptable_candidates = _initial_acceptable_candidates
+_universal_base_raw_failure_evidence = _initial_raw_failure_evidence
 
 
-def read_segments(path: Path) -> list[dict[str, Any]]:
+def _universal_read_segments_impl(path: Path) -> list[dict[str, Any]]:
     segments = list(_universal_base_read_segments(Path(path)))
     _UNIVERSAL_STATE["segments"] = universal_runtime._segments_by_id(segments)
     _UNIVERSAL_STATE["total_segments"] = len(segments)
@@ -889,9 +889,10 @@ def read_segments(path: Path) -> list[dict[str, Any]]:
 
 def _universal_segment(segment_id: Any) -> dict[str, Any] | None:
     try:
-        return _UNIVERSAL_STATE["segments"].get(int(segment_id))
+        value = _UNIVERSAL_STATE["segments"].get(int(segment_id))
     except (TypeError, ValueError, OverflowError):
         return None
+    return value if isinstance(value, dict) else None
 
 
 def _universal_scope(
@@ -917,7 +918,7 @@ def _universal_scope(
     return segment, context, fingerprint
 
 
-def load_retry_epoch(work_dir: Path, segment_id: Any) -> int:
+def _universal_load_retry_epoch_impl(work_dir: Path, segment_id: Any) -> int:
     _UNIVERSAL_STATE["work_dir"] = Path(work_dir).resolve()
     segment, _context, scope = _universal_scope(Path(work_dir), segment_id)
     if isinstance(segment, dict) and scope:
@@ -934,7 +935,7 @@ def load_retry_epoch(work_dir: Path, segment_id: Any) -> int:
     return int(_universal_base_load_retry_epoch(work_dir, segment_id))
 
 
-def invalidate_segment_for_retry(
+def _universal_invalidate_segment_for_retry_impl(
     work_dir: Path,
     segment: dict[str, Any],
     *,
@@ -962,7 +963,7 @@ def invalidate_segment_for_retry(
     )
 
 
-def seed_for_attempt(
+def _universal_seed_for_attempt_impl(
     base_seed: int,
     segment_id: int,
     attempt: int,
@@ -1028,7 +1029,7 @@ def _universal_current_segment() -> dict[str, Any] | None:
     return _universal_segment(_UNIVERSAL_STATE.get("current_segment_id"))
 
 
-def _acceptable_candidates(
+def _universal_acceptable_candidates_impl(
     candidates: list[dict[str, Any]],
     speech_slot: float,
 ) -> list[dict[str, Any]]:
@@ -1077,7 +1078,7 @@ def _acceptable_candidates(
     return acceptable
 
 
-def _raw_failure_evidence(
+def _universal_raw_failure_evidence_impl(
     candidates: list[dict[str, Any]],
     *,
     speech_slot: float,
@@ -1110,13 +1111,13 @@ _SURGICAL_RUNTIME_STATE: dict[str, Any] = {
     "current_segment_id": None,
     "runtime_context": None,
 }
-_surgical_base_log = log
-_surgical_base_get_backend = get_backend
-_surgical_base_prepare_reference = prepare_reference
-_surgical_base_read_segments = read_segments
-_surgical_base_build_generation_length_request = _build_generation_length_request
-_surgical_base_acceptable_candidates = _acceptable_candidates
-_surgical_base_raw_failure_evidence = _raw_failure_evidence
+_surgical_base_log = _initial_log
+_surgical_base_get_backend = _initial_get_backend
+_surgical_base_prepare_reference = _initial_prepare_reference
+_surgical_base_read_segments = _universal_read_segments_impl
+_surgical_base_build_generation_length_request = _initial_build_generation_length_request
+_surgical_base_acceptable_candidates = _universal_acceptable_candidates_impl
+_surgical_base_raw_failure_evidence = _universal_raw_failure_evidence_impl
 _surgical_hash_file = sha256_file
 _surgical_max_tempo = float(MAX_TEMPO)
 _surgical_expected_encode = int(EXPECTED_ENCODE_SR)
@@ -1133,7 +1134,7 @@ def log(message: str) -> Any:
     return _surgical_base_log(text)
 
 
-def get_backend(name: str) -> Any:
+def _surgical_get_backend_impl(name: str) -> Any:
     backend = _surgical_base_get_backend(name)
     if str(getattr(backend, "backend_id", "")).casefold() != "voxcpm2":
         return backend
@@ -1145,11 +1146,11 @@ def get_backend(name: str) -> Any:
     )
 
 
-def prepare_reference(source: Path, output: Path, sf_module: Any) -> dict[str, Any]:
+def _surgical_prepare_reference_impl(source: Path, output: Path, sf_module: Any) -> dict[str, Any]:
     cached = surgical_runtime.direct_surgical_io.cached_reference(
         source=source,
         output=output,
-        _surgical_hash_file=_surgical_hash_file,
+        hash_file=_surgical_hash_file,
         expected_sample_rate=_surgical_expected_encode,
     )
     if cached is not None:
@@ -1159,11 +1160,11 @@ def prepare_reference(source: Path, output: Path, sf_module: Any) -> dict[str, A
     return surgical_runtime.direct_surgical_io.enrich_reference_report(
         report,
         source=source,
-        _surgical_hash_file=_surgical_hash_file,
+        hash_file=_surgical_hash_file,
     )
 
 
-def read_segments(path: Path) -> list[dict[str, Any]]:
+def _surgical_read_segments_impl(path: Path) -> list[dict[str, Any]]:
     values = list(_surgical_base_read_segments(Path(path)))
     _SURGICAL_RUNTIME_STATE["segments"] = surgical_runtime._segments_by_id(values)
     return values
@@ -1171,9 +1172,10 @@ def read_segments(path: Path) -> list[dict[str, Any]]:
 
 def _segment(segment_id: Any) -> dict[str, Any] | None:
     try:
-        return _SURGICAL_RUNTIME_STATE["segments"].get(int(segment_id))
+        value = _SURGICAL_RUNTIME_STATE["segments"].get(int(segment_id))
     except (TypeError, ValueError, OverflowError):
         return None
+    return value if isinstance(value, dict) else None
 
 
 def _runtime_context() -> dict[str, str]:
@@ -1275,13 +1277,13 @@ def _position(segment_id: int) -> tuple[int, int]:
         return min(max(1, int(segment_id)), total), total
 
 
-def _build_generation_length_request(
+def _surgical_build_generation_length_request_impl(
     segment: dict[str, Any],
     *,
     duration_budget: float,
     attempt: int,
     previous_output_durations: tuple[float, ...],
-) -> Any:
+) -> BackendGenerationLengthRequest:
     segment_id = int(segment.get("id") or 0)
     _SURGICAL_RUNTIME_STATE["current_segment_id"] = segment_id
     epoch = int(_SURGICAL_RUNTIME_STATE["retry_epochs"].get(segment_id, segment.get("retry_epoch") or 0))
@@ -1345,16 +1347,17 @@ def _build_generation_length_request(
     )
 
 
-def seed_for_attempt(base_seed: int, segment_id: int, attempt: int, epoch: int) -> int:
+def _surgical_seed_for_attempt_impl(base_seed: int, segment_id: int, attempt: int, epoch: int) -> int:
     _SURGICAL_RUNTIME_STATE["current_segment_id"] = int(segment_id)
     _SURGICAL_RUNTIME_STATE["retry_epochs"][int(segment_id)] = int(epoch)
     return int(surgical_runtime.direct_retry_epoch.seed_for_attempt(base_seed, segment_id, attempt, epoch))
 
 
-def _acceptable_candidates(
+def _surgical_acceptable_candidates_impl(
     candidates: list[dict[str, Any]],
     speech_slot: float,
 ) -> list[dict[str, Any]]:
+    legacy_error: RuntimeError | None
     try:
         acceptable = list(_surgical_base_acceptable_candidates(candidates, speech_slot))
     except RuntimeError as exc:
@@ -1431,7 +1434,7 @@ def _acceptable_candidates(
     return []
 
 
-def _raw_failure_evidence(
+def _surgical_raw_failure_evidence_impl(
     candidates: list[dict[str, Any]],
     *,
     speech_slot: float,
@@ -1465,9 +1468,9 @@ _FINAL_AUDIT_STATE: dict[str, Any] = {
     "preflight_done": False,
     "model_context": {},
 }
-_final_audit_base_read_segments = read_segments
-_final_audit_base_prepare_reference = prepare_reference
-_final_audit_base_get_backend = get_backend
+_final_audit_base_read_segments = _surgical_read_segments_impl
+_final_audit_base_prepare_reference = _surgical_prepare_reference_impl
+_final_audit_base_get_backend = _surgical_get_backend_impl
 
 
 def _final_audit_base_context() -> dict[str, Any]:
@@ -1489,7 +1492,7 @@ def _final_audit_persist_context() -> dict[str, Any]:
     return current
 
 
-def read_segments(path: Path) -> list[dict[str, Any]]:
+def _final_audit_read_segments_impl(path: Path) -> list[dict[str, Any]]:
     source = Path(path).resolve()
     final_audit._raw_segments(source)
     values = list(_final_audit_base_read_segments(source))
@@ -1552,11 +1555,11 @@ _BASE_ALL = tuple(globals().get("__all__", ()))
 from dataclasses import replace  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
 
 
-from tools.voxcpm2 import direct_monolith_contract  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
+from tools.voxcpm2 import direct_monolith_contract as direct_monolith_contract  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
 
-from tools.voxcpm2 import russian_pronunciation  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
+from tools.voxcpm2 import russian_pronunciation as russian_pronunciation  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
 
-from tools.voxcpm2 import source_prosody_policy  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
+from tools.voxcpm2 import source_prosody_policy as source_prosody_policy  # noqa: E402 -- late compatibility layer stays below the legacy API snapshot
 
 POLICY = "direct-cli-monolithic-voice-v5"
 
@@ -1583,25 +1586,25 @@ def set_continuation_context(reference: Path | None, text: str = "") -> None:
     _CONTINUATION_TEXT = str(text or "").strip()
 
 
-_legacy_read_segments = read_segments
+_legacy_read_segments = _final_audit_read_segments_impl
 
-_legacy_seed_for_attempt = seed_for_attempt
+_legacy_seed_for_attempt = _surgical_seed_for_attempt_impl
 
-_legacy_generate = _generate
+_legacy_generate = _initial_generate
 
-_legacy_build_generation_length_request = _build_generation_length_request
+_legacy_build_generation_length_request = _surgical_build_generation_length_request_impl
 
-_legacy_build_generation_request = _build_generation_request
+_legacy_build_generation_request = _initial_build_generation_request
 
-_legacy_source_prosody_penalty = source_prosody_penalty
+_legacy_source_prosody_penalty = _initial_source_prosody_penalty
 
-_legacy_candidate_hard_ok = candidate_hard_ok
+_legacy_candidate_hard_ok = _initial_candidate_hard_ok
 
-_legacy_acceptable_candidates = _acceptable_candidates
+_legacy_acceptable_candidates = _surgical_acceptable_candidates_impl
 
-_legacy_candidate_failure_summary = _candidate_failure_summary
+_legacy_candidate_failure_summary = _initial_candidate_failure_summary
 
-_legacy_raw_failure_evidence = _raw_failure_evidence
+_legacy_raw_failure_evidence = _surgical_raw_failure_evidence_impl
 
 
 def read_segments(path: Path) -> list[dict[str, Any]]:
@@ -1643,7 +1646,7 @@ def _generate(
     """Compatibility seam; production cadence planning uses typed requests."""
     segment = direct_monolith_contract.current_segment() or {"text": text}
     synthesis = russian_pronunciation.synthesis_text(segment, _CURRENT_ATTEMPT)
-    kwargs = {
+    kwargs: dict[str, Any] = {
         "text": synthesis,
         "reference": reference,
         "cfg": cfg,
@@ -1781,6 +1784,10 @@ def _monolith_diagnostic(candidate: dict[str, Any]) -> str:
     start = evidence.get("start_artifact") or {}
     stress = evidence.get("stress_evidence") or {}
     variant = (candidate.get("source_prosody_match") or {}).get("pronunciation_variant") or {}
+    neighbour_similarity = neighbour.get("spectral_similarity")
+    generated_f0_jump = transition.get("generated_f0_median_jump_st")
+    source_f0_jump = transition.get("source_f0_median_jump_st")
+    allowed_f0_jump = transition.get("allowed_f0_median_jump_st")
     return (
         "monolith={failures}, anchorSim={anchor:.3f}, neighbourSim={neighbour_sim}, "
         "adjF0={adj_f0}, sourceAdj={source_adj}, allowedAdj={allowed_adj}, "
@@ -1788,26 +1795,10 @@ def _monolith_diagnostic(candidate: dict[str, Any]) -> str:
     ).format(
         failures=failures,
         anchor=float(identity.get("anchor_spectral_similarity") or 0.0),
-        neighbour_sim=(
-            f"{float(neighbour.get('spectral_similarity')):.3f}"
-            if neighbour.get("spectral_similarity") is not None
-            else "n/a"
-        ),
-        adj_f0=(
-            f"{float(transition.get('generated_f0_median_jump_st')):.2f}st"
-            if transition.get("generated_f0_median_jump_st") is not None
-            else "n/a"
-        ),
-        source_adj=(
-            f"{float(transition.get('source_f0_median_jump_st')):.2f}st"
-            if transition.get("source_f0_median_jump_st") is not None
-            else "n/a"
-        ),
-        allowed_adj=(
-            f"{float(transition.get('allowed_f0_median_jump_st')):.2f}st"
-            if transition.get("allowed_f0_median_jump_st") is not None
-            else "n/a"
-        ),
+        neighbour_sim=(f"{float(neighbour_similarity):.3f}" if neighbour_similarity is not None else "n/a"),
+        adj_f0=(f"{float(generated_f0_jump):.2f}st" if generated_f0_jump is not None else "n/a"),
+        source_adj=(f"{float(source_f0_jump):.2f}st" if source_f0_jump is not None else "n/a"),
+        allowed_adj=(f"{float(allowed_f0_jump):.2f}st" if allowed_f0_jump is not None else "n/a"),
         f0=float(identity.get("f0_median") or 0.0),
         start_leak=bool(start.get("suspicious")),
         stress=(str(stress.get("reason") or "ok") if stress.get("required") else "n/a"),

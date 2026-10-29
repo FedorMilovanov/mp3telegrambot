@@ -9,7 +9,7 @@ from core.synopsis_quality import (
 )
 
 
-def test_synopsis_density_retry_policy_only_for_long_thin_outputs():
+def test_synopsis_density_retry_policy_only_for_long_thin_outputs() -> None:
     issues = audit_synopsis_density([{"title": "A", "time": "0:00", "content": "short"}], 3600)
     assert should_retry_synopsis_density(issues, 3600) is True
     # QUALITY FIRST 2026-06-10: базовые проблемы плотности (too_few_chars/
@@ -25,13 +25,13 @@ def test_synopsis_density_retry_policy_only_for_long_thin_outputs():
     assert should_retry_synopsis_density(transcript_only, 50 * 60) is True
 
 
-def test_synopsis_density_score_prefers_fuller_output():
+def test_synopsis_density_score_prefers_fuller_output() -> None:
     thin = [{"title": "A", "time": "0:00", "content": "x" * 100}]
     full = [{"title": str(i), "time": f"{i}:00", "content": "x" * 1000} for i in range(10)]
     assert synopsis_density_score(full, 3600) > synopsis_density_score(thin, 3600)
 
 
-def test_telegraph_wires_nonfatal_density_retry():
+def test_telegraph_wires_nonfatal_density_retry() -> None:
     src = Path("services/telegraph.py").read_text(encoding="utf-8")
     assert "def _synopsis_density_retry_enabled" in src
     assert "SYNOPSIS_DENSITY_RETRY" in src
@@ -43,7 +43,7 @@ def test_telegraph_wires_nonfatal_density_retry():
     assert "_syn_profile.min_total_chars" in src
 
 
-def test_synopsis_density_retry_accepts_fewer_quality_issues_even_if_score_not_higher():
+def test_synopsis_density_retry_accepts_fewer_quality_issues_even_if_score_not_higher() -> None:
     src = open("services/telegraph.py", encoding="utf-8").read()
     assert "_retry_improved_issues" in src
     assert "_retry_improved_issues and _retry_not_much_thinner" in src

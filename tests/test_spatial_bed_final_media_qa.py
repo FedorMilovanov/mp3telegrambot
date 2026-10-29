@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import numpy as np
+from numpy.typing import NDArray
 
 from tools.voxcpm2 import final_media_qa
 from tools.voxcpm2 import spatial_bed_contract
 
 
-def _fixture(*, seconds: float = 8.0, sample_rate: int = 8_000):
+def _fixture(
+    *, seconds: float = 8.0, sample_rate: int = 8_000
+) -> tuple[np.random.Generator, NDArray[np.float64], NDArray[np.float64]]:
     rng = np.random.default_rng(20260731)
     count = int(seconds * sample_rate)
     time = np.arange(count, dtype=np.float64) / sample_rate

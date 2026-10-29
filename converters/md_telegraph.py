@@ -37,7 +37,7 @@ import asyncio  # FIX markdown
 import json  # FIX markdown
 import logging  # FIX markdown
 import re
-import requests  # FIX markdown
+import requests as requests  # FIX markdown
 from typing import Any
 
 logger = logging.getLogger(__name__)  # FIX markdown

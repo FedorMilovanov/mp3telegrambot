@@ -10,7 +10,7 @@ LEGACY_NAMES = (
 )
 
 
-def test_application_has_no_model_global_gemini_quota_registry():
+def test_application_has_no_model_global_gemini_quota_registry() -> None:
     """429/quota state may not be cached globally by model name anywhere."""
     offenders: list[str] = []
     for path in Path(".").rglob("*.py"):
