@@ -49,7 +49,7 @@ Pillow>=13.0.0,<14.0.0
 # Floor 2.25: thinking_level появился в 1.51, Gemini 3.8 Flash — в 2.22,
 # Voices API / Gemini 3.8 TTS — в 2.25; lock проверен на 2.32.0.
 # breaking changes 2.x касаются Interactions/continuation API, generate_content не тронут.
-google-genai>=2.25.0,<3.0.0
+google-genai>=2.33.0,<3.0.0
 
 # ── Health-check сервер ────────────────────────────────────────────────────────
 flask>=3.0.0,<4.0.0
@@ -59,7 +59,7 @@ flask>=3.0.0,<4.0.0
 waitress>=3.0.0,<4.0.0
 
 # ── Переменные окружения ──────────────────────────────────────────────────────
-python-dotenv>=1.0.0,<2.0.0
+python-dotenv>=1.2.4,<2.0.0
 
 # ── Runtime dependency-lock contract ──────────────────────────────────────────
 # bot_new.py переиспользует canonical requirements parser/validator до запуска
@@ -73,12 +73,12 @@ packaging>=26.2,<27.0
 # официально поддерживает ctranslate2>=4,<5, поэтому фиксируем безопасный floor.
 # SoundFile читает/пишет float/PCM24 WAV для reference-only NoChew и onset trim.
 faster-whisper>=1.0.0
-ctranslate2>=4.6.2,<5.0.0
+ctranslate2>=4.8.4,<5.0.0
 # <2.5 — не «перестраховка», а требование floor'а: numpy 2.5+ объявляет
 # Серия 2.5 требует Python>=3.12 — ровно floor проекта после 2026-10-24, поэтому
 # верхняя граница <2.5 снята: мажор должен приходить обычным Dependabot-PR и
 # проверяться полным прогоном, а не быть заблокированным объявлением.
-numpy>=2.4.0,<3.0
+numpy>=2.5.4,<3.0
 soundfile>=0.12.1,<1.0.0
 
 # ── PDF-генератор (pdf_generator.py) ──────────────────────────────────────────
@@ -92,4 +92,4 @@ beautifulsoup4>=4.12.0
 # Часовой пояс Europe/Moscow для сброса дневных лимитов (AUDIT L8).
 # На Windows нет системной IANA tz-базы — без tzdata ZoneInfo("Europe/Moscow")
 # падает и лимиты тихо сбрасываются по локальному времени сервера.
-tzdata>=2024.1
+tzdata>=2026.5
