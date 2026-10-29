@@ -196,13 +196,13 @@ _SCRIPTURE_CHAIN_RE = re.compile(rf"(?<!\*)(?:{_SCRIPTURE_SINGLE_RE})(?:\s*\u219
 # Импортируется выше: from core.core_utils import ..., _fix_rtl_in_text, ...
 
 
-def _fix_rtl_in_nodes(nodes: list) -> list:
+def _fix_rtl_in_nodes(nodes: list[Any]) -> list[Any]:
     """A03: Рекурсивно применяет _fix_rtl_in_text ко всему дереву nodes.
     _fix_rtl_in_text работает только на плоских строках; bidi-символы
     внутри bold/italic/blockquote нод оставались нетронутыми и рендерились
     как видимые артефакты на iOS/Android."""
 
-    def _walk(node):
+    def _walk(node: Any) -> Any:
         if isinstance(node, str):
             return _fix_rtl_in_text(node)
         if isinstance(node, dict) and "children" in node:
@@ -220,8 +220,8 @@ def _dedup_consecutive_timestamps(content: str) -> str:
         return content
     _TS_START = re.compile(r"^(\d{1,2}:\d{2}(?::\d{2})?)(?:\s|$)")
     lines = content.split("\n")
-    result = []
-    prev_ts = None
+    result: list[str] = []
+    prev_ts: str | None = None
     for line in lines:
         m = _TS_START.match(line.strip())
         if m:
@@ -242,7 +242,7 @@ def _clamp_content_timestamps(content: str, duration: int) -> str:
     if not duration or not content:
         return content
 
-    def _replace(m: re.Match) -> str:
+    def _replace(m: re.Match[str]) -> str:
         _ = m.group(1) or ""
         _ = m.group(2) or ""
         time_str = m.group(3)
@@ -489,7 +489,7 @@ def _strip_timestamps_inside_scripture_quotes(content: str) -> str:
     return "".join(out)
 
 
-def _linkify_inline_timestamps(nodes: list, yt_url: str, duration: int = 0) -> list:
+def _linkify_inline_timestamps(nodes: list[Any], yt_url: str, duration: int = 0) -> list[Any]:
     """Делает кликабельными inline-таймкоды вида **22:15** внутри content.
     Поддерживает:
     1) таймкод внутри italic-ноды;
@@ -504,7 +504,7 @@ def _linkify_inline_timestamps(nodes: list, yt_url: str, duration: int = 0) -> l
     TS_MARKERS = ("⏱", "🔗", "📌", "⏳", "📍", "\u00a0⏱", "\u00a0🔗")
     STRAY_RE = re.compile(r"^\s*(?:\\?\*+|_\.?|\*{1,2}\.?)\s*$")
 
-    def _make_ts_link(marker: str, bold_text: str) -> dict | None:
+    def _make_ts_link(marker: str, bold_text: str) -> dict[str, Any] | None:
         secs = time_to_seconds(bold_text)
         if secs is None:
             return None
@@ -517,7 +517,7 @@ def _linkify_inline_timestamps(nodes: list, yt_url: str, duration: int = 0) -> l
             "children": [marker + "\u00a0" + bold_text] if marker else [bold_text],
         }
 
-    def _is_plain_bold_timestamp(node) -> str | None:
+    def _is_plain_bold_timestamp(node: Any) -> str | None:
         if not isinstance(node, dict):
             return None
         if node.get("tag") != "b":
@@ -529,8 +529,8 @@ def _linkify_inline_timestamps(nodes: list, yt_url: str, duration: int = 0) -> l
         txt = children[0].strip().rstrip(".")
         return txt if TS_RE.match(txt) else None
 
-    def _process_children(children: list, allow_plain_bold_fallback: bool) -> list:
-        new_children = []
+    def _process_children(children: list[Any], allow_plain_bold_fallback: bool) -> list[Any]:
+        new_children: list[Any] = []
         i = 0
 
         while i < len(children):
@@ -539,8 +539,8 @@ def _linkify_inline_timestamps(nodes: list, yt_url: str, duration: int = 0) -> l
             # ── Случай 1: italic-нода, внутри которой может быть таймкод ──────────
             if isinstance(child, dict) and child.get("tag") == "i":
                 ic = list(child.get("children", []))
-                rebuilt_ic: list = []
-                extracted_links: list = []
+                rebuilt_ic: list[Any] = []
+                extracted_links: list[Any] = []
                 j = 0
 
                 while j < len(ic):
@@ -681,7 +681,7 @@ def _linkify_inline_timestamps(nodes: list, yt_url: str, duration: int = 0) -> l
                 _SCRIPTURE_BEFORE = re.compile(rf"(?:^|\s)(?:{_SCRIPTURE_BOOK_RE}\.?|{_SCRIPTURE_FULL_BOOK_RE})\s*$")
                 _mid_matches = list(_MID_TS.finditer(child))
                 if _mid_matches:
-                    parts = []
+                    parts: list[Any] = []
                     last_end = 0
                     any_linked = False
                     for _mm in _mid_matches:
@@ -728,7 +728,7 @@ def _linkify_inline_timestamps(nodes: list, yt_url: str, duration: int = 0) -> l
         # после извлечения ссылок-таймкодов из rebuilt_ic
         return [c for c in new_children if not (isinstance(c, str) and c.strip() in ("*", r"\*", "_.", "", "**", "_"))]
 
-    result = []
+    result: list[Any] = []
     for node in nodes:
         if not isinstance(node, dict) or node.get("tag") not in ("p", "blockquote"):
             result.append(node)
@@ -847,12 +847,12 @@ def _patch_scripture_format(content: str) -> str:
     # Pattern B: bolded  "• **Матфея 7:21 – 23.**" or "• **Матфея 7:21 – 23**"
     _RE_BOLD = re.compile(rf"^(•\s+)\*\*({_BOOKS_RU})\s+(\d[\d\s:,;.–—-]*?)\s*\.?\*\*\.?\s*$")
 
-    def _norm_verses(v):
+    def _norm_verses(v: str) -> str:
         """'7:21 – 23' → '7:21–23'"""
         v = v.strip().rstrip(".")
         return re.sub(r"(\d)\s*[–—-]\s*(\d)", r"\1–\2", v)
 
-    def _is_quote_line(s):
+    def _is_quote_line(s: str) -> bool:
         """Check if line is an italic quote: *«...»* or _«...»_ etc."""
         s = s.strip()
         # *«text»*  or  _«text»_
@@ -863,7 +863,7 @@ def _patch_scripture_format(content: str) -> str:
             return True
         return False
 
-    def _extract_quote(s):
+    def _extract_quote(s: str) -> str:
         """Extract clean quote text from a quote line."""
         s = s.strip()
         # Remove leading/trailing * or _
@@ -918,12 +918,12 @@ def _patch_scripture_format(content: str) -> str:
 
 
 def _structured_blocks_to_nodes_v2(
-    blocks: list,
+    blocks: list[Any],
     *,
     yt_url: str = "",
     duration: int = 0,
     plain_scripture: bool = False,
-) -> list:
+) -> list[Any]:
     """Render structured Gemini blocks without reverse-engineering flat content.
 
     This is a forward-compatible path for schemas that return section.blocks.
@@ -1084,14 +1084,14 @@ def _structured_blocks_to_nodes_v2(
 
 
 def _section_to_nodes_v2(
-    section: dict,
+    section: dict[str, Any],
     yt_url: str = "",
     rutube_url: str = "",
     vk_url: str = "",
     page_title: str = "",
     duration: int = 0,
     plain_scripture: bool = False,  # FIXED #127: REFLECTION требует plain text для Scripture refs
-) -> list:
+) -> list[Any]:
     """
     Конвертирует один section в Telegraph nodes.
 
@@ -1102,7 +1102,7 @@ def _section_to_nodes_v2(
     - не тянет жирный через длинные куски;
     - не рендерит лишние divider lines.
     """
-    nodes = []
+    nodes: list[Any] = []
 
     title = (section.get("title") or "").strip()
     time_str = (section.get("time") or "").strip()
@@ -1207,7 +1207,7 @@ def _section_to_nodes_v2(
     # поддерживает: (Рим. 8:28), (Рим. 8:28, 29), (Рим. 8:28; 1 Кор. 15:14), (1 Кор. 15:1–4)
     # A07 FIX: используем _SCRIPTURE_REF_RE и _SCRIPTURE_CHAIN_RE с уровня модуля
     # PATCH V2 FIX: оборачиваем Scripture refs в курсив только если ещё не обёрнуто
-    def _wrap_scripture_safe(m_sc: re.Match) -> str:
+    def _wrap_scripture_safe(m_sc: re.Match[str]) -> str:
         start_sc = m_sc.start()
         if start_sc > 0 and content[start_sc - 1] == "*":
             return m_sc.group(0)
@@ -1319,7 +1319,7 @@ def _section_to_nodes_v2(
     # ------------------------------------------------------------------
 
     lines = content.split("\n")
-    rebuilt_lines = []
+    rebuilt_lines: list[str] = []
     j = 0
 
     while j < len(lines):
@@ -1401,7 +1401,7 @@ def _section_to_nodes_v2(
     content = re.sub(r"(?m)^(\d+\.)\s*\n+\s*(\*\*[^*\n]+\*\*)", r"\1 \2", content)
 
     # Слишком длинный bold-абзац -> если он реально длинный, не держим всё жирным
-    def _shrink_overbold_line(m):
+    def _shrink_overbold_line(m: re.Match[str]) -> str:
         inner = m.group(1).strip()
         # Сохраняем таймкод до его удаления (Bug #4)
         _ts_save = re.search(r"(([⏱🔗]\s*)?\*{0,2}\d{1,2}:\d{2}(?::\d{2})?\*{0,2})\s*$", inner)
@@ -1428,7 +1428,7 @@ def _section_to_nodes_v2(
 
     # Ложный курсив-блок (Gemini обернул весь абзац в *...*) — убираем обёртку,
     # оставляем внутренний **bold** нетронутым.
-    def _strip_italic_wrap(m):
+    def _strip_italic_wrap(m: re.Match[str]) -> str:
         inner = m.group(1)
         # #53/#75: не снимаем курсив со Scripture-цитат в «ёлочках» и Scripture refs в скобках
         stripped_inner = inner.lstrip()
@@ -1539,7 +1539,7 @@ def _section_to_nodes_v2(
 
         if time_str:
             secs = time_to_seconds(time_str) if time_str else None
-            ts_parts = []
+            ts_parts: list[Any] = []
 
             if yt_url and secs is not None:
                 yt_link = get_youtube_timestamp_url(yt_url, secs)
@@ -1597,14 +1597,14 @@ def _section_to_nodes_v2(
         # Без этого браузер переключает выравнивание всей строки вправо (BiDi).
         _RTL_DETECT_RE = re.compile(r"[\u0590-\u05FF\u0600-\u06FF]")
 
-        def _has_rtl_deep(node) -> bool:
+        def _has_rtl_deep(node: Any) -> bool:
             if isinstance(node, str):
                 return bool(_RTL_DETECT_RE.search(node))
             if isinstance(node, dict):
                 return any(_has_rtl_deep(c) for c in node.get("children", []))
             return False
 
-        def _apply_ltr_attr(node):
+        def _apply_ltr_attr(node: Any) -> Any:
             if not isinstance(node, dict):
                 return node
             tag = node.get("tag", "")
@@ -1626,7 +1626,7 @@ def _section_to_nodes_v2(
 
         content_nodes = [_apply_ltr_attr(n) for n in content_nodes]
 
-        def _unwrap_source_map_bold(node):
+        def _unwrap_source_map_bold(node: Any) -> Any:
             """Keep «Карта источников» source cards visually consistent.
 
             Gemini sometimes emits one card as `• **Чикагское заявление...**`
@@ -1639,7 +1639,7 @@ def _section_to_nodes_v2(
             original title is verifiable while Russian titles are often guessed.
             """
 
-            def _flat_local(n):
+            def _flat_local(n: Any) -> str:
                 if isinstance(n, str):
                     return n
                 if isinstance(n, dict):
@@ -1699,7 +1699,7 @@ def _section_to_nodes_v2(
 
 
 def _estimate_nodes_v2(
-    sections: list, yt_url: str = "", rutube_url: str = "", vk_url: str = "", duration: int = 0
+    sections: list[dict[str, Any]], yt_url: str = "", rutube_url: str = "", vk_url: str = "", duration: int = 0
 ) -> int:
     """Оценивает кол-во Telegraph nodes для списка разделов."""
     return sum(
@@ -1708,7 +1708,9 @@ def _estimate_nodes_v2(
     )
 
 
-def _split_sections_smart(sections: list, node_limit: int = 180, yt_url: str = "") -> list:
+def _split_sections_smart(
+    sections: list[dict[str, Any]], node_limit: int = 180, yt_url: str = ""
+) -> list[list[dict[str, Any]]]:
     """
     Делит sections на части для Telegraph по границам разделов.
     Никогда не разрывает section посередине.
@@ -1718,8 +1720,8 @@ def _split_sections_smart(sections: list, node_limit: int = 180, yt_url: str = "
     if not sections:
         return [[]]
 
-    parts: list[list] = []
-    current: list = []
+    parts: list[list[dict[str, Any]]] = []
+    current: list[dict[str, Any]] = []
     current_count: int = 0
 
     for sec in sections:
@@ -1745,7 +1747,9 @@ def _split_sections_smart(sections: list, node_limit: int = 180, yt_url: str = "
     return parts or [[]]
 
 
-def _split_sections_recursive(sections: list, node_limit: int, yt_url: str = "") -> list:
+def _split_sections_recursive(
+    sections: list[dict[str, Any]], node_limit: int, yt_url: str = ""
+) -> list[list[dict[str, Any]]]:
     """
     Рекурсивно делит sections пока каждая часть не влезает в node_limit.
     Единственный способ нарушить — section из одного элемента > node_limit
@@ -1771,9 +1775,14 @@ def _split_sections_recursive(sections: list, node_limit: int, yt_url: str = "")
     return left_result + right_result
 
 
-def _build_toc_nodes_v2(outline: list, yt_url: str = "", parts: list = None, duration: int = 0) -> list:  # noqa: ARG001 (parts reserved for future multi-part TOC links)
+def _build_toc_nodes_v2(
+    outline: list[dict[str, Any]],
+    yt_url: str = "",
+    parts: list[Any] | None = None,
+    duration: int = 0,
+) -> list[Any]:  # noqa: ARG001 (parts reserved for future multi-part TOC links)
     """Строит оглавление «Структура материала» с кликабельными таймкодами."""
-    nodes = []
+    nodes: list[Any] = []
     nodes.append({"tag": "p", "children": [{"tag": "b", "children": ["Структура материала"]}]})
 
     for i, item in enumerate(outline, 1):
@@ -1791,7 +1800,7 @@ def _build_toc_nodes_v2(outline: list, yt_url: str = "", parts: list = None, dur
         title = re.sub(r"\s*\(ч\.\s*\d+(?:/\d+)?\)\s*", "", title).strip()
         title = re.sub(r"\s*\(часть\s*\d+(?:/\d+)?\)\s*", "", title, flags=re.IGNORECASE).strip()
 
-        children = [{"tag": "b", "children": [f"{i}.\u00a0"]}]
+        children: list[Any] = [{"tag": "b", "children": [f"{i}.\u00a0"]}]
         # #84: title может содержать **bold** — прогоняем через _md_parse_inline
         # (убран лишний "\u00a0" — давал двойной пробел "1.  Название")
         # _md_parse_inline импортирована из core_utils в начале модуля — lazy import не нужен
@@ -1820,7 +1829,7 @@ def _build_toc_nodes_v2(outline: list, yt_url: str = "", parts: list = None, dur
     return nodes
 
 
-def _build_nav_nodes_v2(part_idx: int, total_parts: int, parts_urls: list, leading_hr: bool = True) -> list:
+def _build_nav_nodes_v2(part_idx: int, total_parts: int, parts_urls: list[str], leading_hr: bool = True) -> list[Any]:
     """
     Строит навигационный блок между частями в формате [N/total].
     Пример: ⬅ Назад: [1/3]     ➡ Дальше: [3/3]
@@ -1829,8 +1838,8 @@ def _build_nav_nodes_v2(part_idx: int, total_parts: int, parts_urls: list, leadi
     if total_parts <= 1:
         return []
 
-    nodes = [{"tag": "hr"}] if leading_hr else []
-    nav_children = []
+    nodes: list[Any] = [{"tag": "hr"}] if leading_hr else []
+    nav_children: list[Any] = []
 
     if part_idx > 0:
         prev_url = parts_urls[part_idx - 1] if part_idx - 1 < len(parts_urls) else None
@@ -1862,7 +1871,7 @@ def _build_nav_nodes_v2(part_idx: int, total_parts: int, parts_urls: list, leadi
     return nodes
 
 
-def _build_related_materials_nodes(records: list[dict[str, Any]]) -> list:
+def _build_related_materials_nodes(records: list[dict[str, Any]]) -> list[Any]:
     """Build 'Read Next' nodes for the bottom of the Telegraph page."""
     if not records:
         return []
@@ -1885,7 +1894,7 @@ def _build_related_materials_nodes(records: list[dict[str, Any]]) -> list:
     return nodes
 
 
-def _final_telegraph_polish(nodes: list) -> list:
+def _final_telegraph_polish(nodes: list[Any]) -> list[Any]:
     """A05: Финальный слой очистки перед отправкой в Telegraph API.
     Запускать ДО любого createPage/editPage.
     Гарантирует: нет orphaned **, нет пустых nodes, нет h1/h2/h5/h6, нет bidi-мусора."""
@@ -1905,7 +1914,7 @@ def _final_telegraph_polish(nodes: list) -> list:
         re.IGNORECASE,
     )
 
-    def _polish_node(node):
+    def _polish_node(node: Any) -> Any:
         if isinstance(node, str):
             node = _ORPHAN_BOLD_RE.sub("", node)
             node = _BIDI_RE.sub("", node)
@@ -1956,7 +1965,7 @@ def _final_telegraph_polish(nodes: list) -> list:
                 # значимый разделитель (b("Иоан 4:34:") + " " + i("«цитата»")).
                 # Раньше дропалась целиком → жирный текст слипался с курсивом.
                 _orig = node["children"]
-                new_ch = []
+                new_ch: list[Any] = []
                 for _ci, c in enumerate(_orig):
                     if isinstance(c, str) and not c.strip():
                         if 0 < _ci < len(_orig) - 1:
@@ -1972,7 +1981,7 @@ def _final_telegraph_polish(nodes: list) -> list:
     # с вертикальным отступом. Самозакрывающиеся теги (hr/br/img) — НЕ пустые.
     _SELF_CLOSING = {"hr", "br", "img"}
 
-    def _is_empty_container(n) -> bool:
+    def _is_empty_container(n: Any) -> bool:
         if not isinstance(n, dict):
             return False
         tag = str(n.get("tag", "")).lower()
@@ -1989,14 +1998,14 @@ def _final_telegraph_polish(nodes: list) -> list:
     _RTL_CHAR_RE = re.compile(r"[\u0590-\u05FF\u0600-\u06FF]")
     _LTR_STRONG_RE = re.compile(r"[A-Za-zА-Яа-яЁё0-9]")
 
-    def _flat_text(n) -> str:
+    def _flat_text(n: Any) -> str:
         if isinstance(n, str):
             return n
         if isinstance(n, dict):
             return "".join(_flat_text(c) for c in n.get("children", []))
         return ""
 
-    def _first_strong_is_rtl(n) -> bool:
+    def _first_strong_is_rtl(n: Any) -> bool:
         for ch in _flat_text(n):
             if _RTL_CHAR_RE.match(ch):
                 return True
@@ -2004,7 +2013,7 @@ def _final_telegraph_polish(nodes: list) -> list:
                 return False
         return False
 
-    def _anchor_ltr(n):
+    def _anchor_ltr(n: Any) -> Any:
         if isinstance(n, dict) and n.get("tag") in ("p", "li", "blockquote", "h3", "h4") and _first_strong_is_rtl(n):
             ch = list(n.get("children", []))
             if ch and isinstance(ch[0], str):
@@ -2021,7 +2030,13 @@ def _final_telegraph_polish(nodes: list) -> list:
     return [n for n in result if n and not _is_empty_container(n)]
 
 
-async def _create_telegraph_page_single(title: str, author: str, nodes: list, loop, author_url: str = "") -> tuple:
+async def _create_telegraph_page_single(
+    title: str,
+    author: str,
+    nodes: list[Any],
+    loop: asyncio.AbstractEventLoop,
+    author_url: str = "",
+) -> tuple[str | None, str]:
     """Публикует одну Telegraph-страницу. Возвращает (url, error).
     НЕ усекает контент — CONTENT_TOO_BIG возвращается как ошибка
     для обработки выше по стеку через дробление sections.
@@ -2088,7 +2103,14 @@ async def _create_telegraph_page_single(title: str, author: str, nodes: list, lo
     return None, last_err
 
 
-async def _edit_telegraph_page(page_url: str, title: str, author: str, nodes: list, loop, author_url: str = "") -> bool:
+async def _edit_telegraph_page(
+    page_url: str,
+    title: str,
+    author: str,
+    nodes: list[Any],
+    loop: asyncio.AbstractEventLoop,
+    author_url: str = "",
+) -> bool:
     """Обновляет существующую Telegraph-страницу навигационными ссылками."""
     token = TELEGRAPH_TOKEN
     if not token:
@@ -2160,10 +2182,10 @@ async def _edit_telegraph_page(page_url: str, title: str, author: str, nodes: li
 # ─── Synopsis v2.0: helper для Gemini ────────────────────────
 
 
-def _extract_partial_sections(text: str) -> list:
+def _extract_partial_sections(text: str) -> list[dict[str, Any]]:
     """Безопасный fallback-парсер для кривого JSON.
     Посимвольный сканер корректно обрабатывает вложенные {} и любой порядок ключей."""
-    sections = []
+    sections: list[dict[str, Any]] = []
     depth = 0
     start = -1
     for i, ch in enumerate(text):
@@ -2228,7 +2250,7 @@ def safe_trim_caption(caption: str, limit: int = 1024) -> str:
     # но продолжаем пытаться добавить следующие — иначе при длинном main_topic
     # теряются ВСЕ таймкоды, ссылки и хэштеги.
     lines = caption.split("\n")
-    result_lines = []
+    result_lines: list[str] = []
     current_len = 0
     for line in lines:
         line_vlen = visible_length(line)
@@ -2282,7 +2304,7 @@ def safe_trim_caption(caption: str, limit: int = 1024) -> str:
 
     # Закрываем незакрытые теги (простые парные теги Telegram HTML)
     _PAIRED = ["b", "i", "u", "s", "a", "tg-emoji", "code", "pre", "spoiler"]
-    open_tags = []
+    open_tags: list[str] = []
     for m in re.finditer(r"<(/?)(\w[\w-]*)(?:\s[^>]*)?>", result):
         closing, tag = m.group(1), m.group(2).lower()
         if tag not in _PAIRED:
@@ -2357,14 +2379,14 @@ def get_caption_timestamp_limit(format_name: str) -> int:
 # ════════════════════════════════════════════════════════
 
 
-def _postprocess_telegraph_nodes(nodes: list) -> list:
+def _postprocess_telegraph_nodes(nodes: list[Any]) -> list[Any]:
     """Fix common Gemini generation bugs in Telegraph nodes:
     space before/after ⏱, double spaces, '. .', hyphen→dash in verses,
     Unicode spaces, bidi isolates, merge adjacent text nodes,
     space between <strong> and <a>⏱
     """
 
-    def _fix_text(text):
+    def _fix_text(text: str) -> str:
         if not isinstance(text, str):
             return text
         # FIX (Python 3.12+): replacement-строка в re.sub НЕ понимает \uXXXX —
@@ -2465,7 +2487,7 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         text = re.sub(r"Лексико\s+[—-]\s+семантическ", "Лексико-семантическ", text)
         return scrub_third_person_phrases(text)
 
-    def _ends_no_space(n):
+    def _ends_no_space(n: Any) -> bool:
         if isinstance(n, str):
             return bool(n) and not n.endswith(" ")
         if isinstance(n, dict):
@@ -2473,8 +2495,8 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
             return _ends_no_space(ch[-1]) if ch else False
         return False
 
-    def _walk(nodes_in):
-        result = []
+    def _walk(nodes_in: list[Any]) -> list[Any]:
+        result: list[Any] = []
         for node in nodes_in:
             if isinstance(node, str):
                 fixed = _fix_text(node)
@@ -2486,7 +2508,7 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
                 nn = dict(node)
                 if "children" in nn:
                     nn["children"] = _walk(nn["children"])
-                    patched = []
+                    patched: list[Any] = []
                     for j, child in enumerate(nn["children"]):
                         if (
                             j > 0
@@ -2506,7 +2528,7 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
                 result.append(node)
         return result
 
-    def _is_emoji_stub_node(node) -> bool:
+    def _is_emoji_stub_node(node: Any) -> bool:
         """True if node is <p><b>EMOJI.</b></p> or <p>EMOJI.</p> — useless stub from Gemini section labels."""
         import unicodedata
 
@@ -2543,14 +2565,14 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
 
         return False
 
-    def _flatten_text(node) -> str:
+    def _flatten_text(node: Any) -> str:
         if isinstance(node, str):
             return node
         if isinstance(node, dict):
             return "".join(_flatten_text(c) for c in node.get("children", []))
         return ""
 
-    def _normalize_paragraph_node(node):
+    def _normalize_paragraph_node(node: Any) -> Any:
         """Post-fixes for common Gemini Telegraph regressions:
         1) strip section-leading emoji labels like `🔑 ` / `📖 ` / `🗣️ `
         2) de-bold bare list markers like `**•**` / `**-**`
@@ -2562,7 +2584,7 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         if not children:
             return node
 
-        def _strip_leading_icon_prefix(ch):
+        def _strip_leading_icon_prefix(ch: list[Any]) -> list[Any]:
             icon_re = re.compile(r"^\s*[🔑📖🏛️⚖️📚📜🛡️🗣️🧭🗝️]+(?:️)?\s*")
             out = list(ch)
             while out and isinstance(out[0], str):
@@ -2576,7 +2598,7 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
                 break
             return out
 
-        def _deb0ld_marker(ch):
+        def _deb0ld_marker(ch: list[Any]) -> list[Any]:
             if not ch or not isinstance(ch[0], dict) or ch[0].get("tag") not in ("b", "strong"):
                 return ch
             raw = "".join(_flatten_text(c) for c in ch[0].get("children", [])).strip()
@@ -2588,7 +2610,7 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         children = _strip_leading_icon_prefix(children)
         children = _deb0ld_marker(children)
 
-        def _fix_split_hyphenated_bold_term(ch):
+        def _fix_split_hyphenated_bold_term(ch: list[Any]) -> list[Any]:
             """Repair old pages where one hyphenated term was split as
             <b>Историко</b> + " — грамматический".
             """
@@ -2616,7 +2638,7 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
                 out[i + 1] = nxt[m.end() :]
             return [x for x in out if not (isinstance(x, str) and x == "")]
 
-        def _trim_inline_spacing(ch):
+        def _trim_inline_spacing(ch: list[Any]) -> list[Any]:
             """Normalize spaces across inline Telegraph children.
 
             Fixes visible glitches such as:
@@ -2625,7 +2647,7 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
             without touching semantic spaces inside normal text.
             """
 
-            def _trim_node_edges(n):
+            def _trim_node_edges(n: Any) -> Any:
                 if isinstance(n, dict) and n.get("tag") in ("b", "strong", "i", "em"):
                     nn = dict(n)
                     cc = list(nn.get("children", []))
@@ -2641,7 +2663,7 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
                     return re.sub(r"(\d+:\d+)\s*[-–—]\s*(\d+)", r"\1–\2", n)
                 return n
 
-            out = []
+            out: list[Any] = []
             for _xi, x in enumerate(ch):
                 trimmed = _trim_node_edges(x)
                 # VISUAL FIX 2026-06-10: если у b/i срезали хвостовой пробел,
@@ -2658,7 +2680,7 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
                             out.append(" ")
                             continue
                 out.append(trimmed)
-            compact = []
+            compact: list[Any] = []
             for item in out:
                 if isinstance(item, str) and compact:
                     prev = compact[-1]
@@ -2672,7 +2694,7 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         children = _fix_split_hyphenated_bold_term(children)
         children = _trim_inline_spacing(children)
 
-        def _normalize_quote_ref_bullet(ch):
+        def _normalize_quote_ref_bullet(ch: list[Any]) -> list[Any]:
             """Turn quote-first bullets into canonical scripture micro-blocks.
 
             Gemini sometimes emits:
@@ -2687,7 +2709,7 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
             if not first.strip().startswith("•"):
                 return ch
 
-            def _mk(ref, quote):
+            def _mk(ref: str, quote: str) -> list[Any]:
                 ref = ref.strip().strip("()").rstrip(".:")
                 quote = quote.strip().strip("*_").strip()
                 quote = quote.rstrip(".")
@@ -2727,7 +2749,7 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         children = _normalize_quote_ref_bullet(children)
 
         # FIX 2026-05-25: fix "( **Term**)" → "(**Term**)" spacing in term definitions
-        def _fix_paren_bold_space(ch):
+        def _fix_paren_bold_space(ch: list[Any]) -> list[Any]:
             """Fix '( **' → '(**' in text nodes before bold children."""
             out = list(ch)
             for i in range(len(out)):
@@ -2745,7 +2767,7 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
 
         # FIX 2026-05-25: de-bold source cards in "Карта источников"
         # Pattern: <p>• <b>Author, <em>Title</em>...</b></p> → unwrap <b>
-        def _debold_source_card(ch):
+        def _debold_source_card(ch: list[Any]) -> list[Any]:
             """Unwrap bold from source card entries like • **Author, *Title*...**"""
             if len(ch) < 2:
                 return ch
@@ -2833,7 +2855,7 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
             node["children"] = [{"tag": "b", "children": children}]
         return node
 
-    def _split_inline_bullet_paragraph_node(node):
+    def _split_inline_bullet_paragraph_node(node: Any) -> list[Any]:
         """Split paragraphs where Gemini glued several bullet cards into one <p>.
 
         Live example: `• **A** — text. • **B** — text. • **C** — text.`
@@ -2847,10 +2869,10 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
         if flat.count("•") < 2 or " • " not in flat:
             return [node]
 
-        paragraphs: list[list] = []
-        current: list = []
+        paragraphs: list[list[Any]] = []
+        current: list[Any] = []
 
-        def _flush():
+        def _flush() -> None:
             nonlocal current
             # Trim empty text edges, but keep semantic spaces inside.
             while current and isinstance(current[0], str) and not current[0].strip():
@@ -2880,7 +2902,7 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
             return [node]
         return [{"tag": "p", "children": para} for para in paragraphs]
 
-    def _split_scripture_explanation_node(node):
+    def _split_scripture_explanation_node(node: Any) -> list[Any]:
         """Split `• **Ref:** *«quote»* Explanation...` into two paragraphs.
 
         In the Study page section «Ключевые тексты» the ref+quote should be the
@@ -2939,7 +2961,7 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
     walked = _walk(nodes)
     cleaned = [n for n in walked if not _is_emoji_stub_node(n)]
     normalized = [_normalize_paragraph_node(n) for n in cleaned]
-    split = []
+    split: list[Any] = []
     for n in normalized:
         for sn in _split_scripture_explanation_node(n):
             split.extend(_split_inline_bullet_paragraph_node(sn))
@@ -2952,7 +2974,7 @@ def _postprocess_telegraph_nodes(nodes: list) -> list:
     # гарантированно оборачивает challenge в **. Речь ровно про эту пару
     # абзацев (контракт "application"-блока: bold-триггер + "Шаг:"),
     # поэтому дожимаем формат здесь же, постфактум.
-    def _dedup_adjacent_timestamp_link(children: list) -> list:
+    def _dedup_adjacent_timestamp_link(children: list[Any]) -> list[Any]:
         """Тот же баг иногда дублирует один inline-таймкод дважды подряд
         ("... комфортной ⏱ 41:14. ⏱ 41:14") — схлопываем повтор."""
         out = list(children)

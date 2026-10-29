@@ -1568,10 +1568,13 @@ Telegram context guards. Предыдущий срез — 236/241 production mo
 (97,9 %), оставалось 5 modules (2,1 %) с 340 ошибками. Следующий checkpoint
 закрыл 87 ошибок в двух Command/Dub command modules через typed callback
 boundaries, generic segment/archive records и Telegram actor narrowing.
-Текущий срез — 238/241 production modules (98,8 %), остаётся 3 modules
-(1,2 %). Полный production baseline оставшихся файлов — 253 ошибки в
-3 файлах; новые exclude или общие suppression для их сокрытия не
-добавляются.
+Предыдущий срез — 238/241 production modules (98,8 %), оставалось 3 modules
+(1,2 %) с 253 ошибками. Финальный production checkpoint закрыл их через typed
+JSON/SDK boundaries, generic Telegraph nodes, exact optional narrowing и
+worker-side file I/O; Synopsis outline contract в analysis/render pipeline
+исправлен на фактический список секций. Текущий срез — **241/241 production
+modules (100 %)**, **0 strict-mypy ошибок**. Production exclude или общие
+suppression для сокрытия ошибок не добавлялись.
 
 **Найденные по дороге настоящие дефекты:** кортеж кортежей в `negative` у
 `core/source_packs.py` (работал только за счёт защитного `neg[0]`), `max()`/деление
@@ -1579,11 +1582,11 @@ boundaries, generic segment/archive records и Telegram actor narrowing.
 `int(cur.lastrowid)` при отсутствии вставки в `core/observability.py`,
 `subprocess.CREATE_NO_WINDOW` и `int(None)` в `services/`.
 
-**Осталось (волна 3+):** по одному пакету за PR в порядке `services/` → `handlers/` →
-`converters/` → `tools/`; `main_pipeline.py` — тем же PR, который закончит его разрез
-(P0-3).
-**Приёмка:** `mypy --strict` по каждому новому пакету = 0; расширение среза только
-вперёд, «частично типизированных» пакетов в списке нет.
+**Осталось:** production strict-mypy backlog закрыт полностью. Отдельная
+типизация `tools/` и тестов не входила в acceptance этого burn-down и не должна
+ослаблять или расширять production gate неявно.
+**Приёмка:** `mypy --strict` по всем 241 production modules = 0; срез только
+вперёд, «частично типизированных» production-пакетов в списке нет.
 
 ### P1-3. Наблюдаемость (скорректировано после проверки кода) — ✅ сделано
 

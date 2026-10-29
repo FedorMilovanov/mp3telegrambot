@@ -18,6 +18,7 @@
 | `pipelines/` | 0 | — |
 | `converters/__init__.py` | 0 | — |
 | `converters/caption.py` | 0 | — |
+| `converters/md_telegraph.py` | 0 | — |
 | `converters/telegraph_nodes.py` | 0 | — |
 | `handlers/__init__.py` | 0 | — |
 | `handlers/callbacks.py` | 0 | — |
@@ -132,7 +133,9 @@
 | `services/speech_backends/` | 0 | — |
 | `services/study_synthesis_policy.py` | 0 | — |
 | `services/study_synthesis_runtime.py` | 0 | — |
+| `services/telegraph.py` | 0 | — |
 | `services/telegraph_edit.py` | 0 | — |
+| `services/telegraph_pages.py` | 0 | — |
 | `services/telegraph_repair.py` | 0 | — |
 | `services/translation_editorial.py` | 0 | — |
 | `services/translation_editorial_composition.py` | 0 | — |
@@ -149,17 +152,18 @@
 | `services/youtube_po_token_runtime.py` | 0 | — |
 | `services/youtube_transcript.py` | 0 | — |
 
-Текущий срез — 238/241 production modules (98,8 %); вне него остаются
-3 modules (1,2 %).
+Текущий срез — **241/241 production modules (100 %)**, ошибок `mypy --strict` — **0**.
+Production typing backlog закрыт; `tools/` и тесты в этот production-срез не входят.
 
 Измерено после расширения среза на `pipelines/`: полный `mypy --strict .`
 (включая `tests/`) — 5 038 ошибок в 563 файлах; по пакетам без тестов:
 `services/` 673, `tools/` 255, `handlers/` 158, `converters/` 143, `main.py` 49,
 `bot_new.py` 1.
 
-Отложенные файлы перечислены в `TYPED_SLICES` (`tools/check_types.py`) с
-причиной и передаются в mypy как `--exclude`; тест проверяет, что каждый
-такой путь существует и что список совпадает с этой таблицей.
+В `TYPED_SLICES` (`tools/check_types.py`) больше нет отложенных production-файлов
+или `--exclude`. Механизм явных исключений сохранён для будущих осознанных
+изменений; тест проверяет существование таких путей и совпадение всего списка
+с этой таблицей.
 
 ## Как запускать
 

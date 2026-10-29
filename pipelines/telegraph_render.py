@@ -70,7 +70,7 @@ class RenderRequest:
     media_id: str
     rutube_url: str = ""
     vk_url: str = ""
-    synopsis_outline: str | None = None
+    synopsis_outline: list[dict[str, Any]] | None = None
     early_links: dict[str, Any] | None = None
     combined_enabled: bool = False
 

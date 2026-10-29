@@ -83,12 +83,13 @@ import re
 import tempfile
 from pathlib import Path
 import requests
+from typing import Any, Awaitable, Callable
 
-# types — из google.genai
-try:
-    from google.genai import types
-except ImportError:
-    types = None
+# types — из google.genai; optional SDK boundary stays explicit for strict typing.
+_genai_types: Any = None
+with contextlib.suppress(ImportError):
+    from google.genai import types as _genai_types
+types: Any = _genai_types
 
 logger = logging.getLogger(__name__)
 
@@ -100,8 +101,8 @@ async def _edit_telegraph_page_classified(
     page_url: str,
     title: str,
     author: str,
-    nodes: list,
-    loop,
+    nodes: list[Any],
+    loop: asyncio.AbstractEventLoop,
     *,
     author_url: str = "",
 ) -> TelegraphEditResult:
@@ -172,7 +173,13 @@ def _synopsis_verbatim_prompt_enabled() -> bool:
     return (os.getenv("SYNOPSIS_VERBATIM_PROMPT", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
 
 
-async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url: str = "") -> str | None:
+async def _telegraph_post(
+    title: str,
+    author: str,
+    nodes: list[Any],
+    loop: asyncio.AbstractEventLoop,
+    author_url: str = "",
+) -> str | None:
     """Публикует страницу в Telegraph, возвращает URL или None.
     При CONTENT_TOO_BIG автоматически разбивает на части и создаёт оглавление."""
 
@@ -208,7 +215,7 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
         logger.warning("TELEGRAPH_TOKEN не задан")
         return None
 
-    async def _post_once(t, ns):
+    async def _post_once(t: str, ns: list[Any]) -> tuple[str | None, str | None]:
         t = fit_telegraph_title(t)
         safe_author = fit_telegraph_author_name(author)
         safe_author_url = fit_telegraph_author_url(author_url)
@@ -245,7 +252,7 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
                         continue
                     return None, last_err
                 if data.get("ok"):
-                    return data["result"]["url"], None
+                    return str(data["result"]["url"]), None
                 last_err = data.get("error", "")
                 _has_flood_wait = bool(re.match(r"FLOOD_WAIT_(\d+)", str(last_err)))
                 if (status_code in {408, 425, 429} or bool(status_code and status_code >= 500)) and not _has_flood_wait:
@@ -285,7 +292,7 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
     # CONTENT_TOO_BIG — разбиваем пополам и публикуем по частям
     logger.info(f"Telegraph: CONTENT_TOO_BIG для '{title}', разбиваю на части...")
 
-    def _find_split_index(ns: list) -> int:
+    def _find_split_index(ns: list[Any]) -> int:
         """Ищет индекс разреза: идёт назад от середины до первого h3/h4-узла
         и делает разрез ПЕРЕД ним. Если h3/h4 не найден — делит по середине."""
         mid = max(1, len(ns) // 2)
@@ -299,12 +306,12 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
     chunks = [nodes[:split_idx], nodes[split_idx:]]
     chunks = [c for c in chunks if c]  # убираем пустые
 
-    parts_urls = []
+    parts_urls: list[tuple[str, str]] = []
 
     # Recursive split has no arbitrary depth cap. Every CONTENT_TOO_BIG split
     # strictly reduces node count, so recursion terminates at a single unsplittable
     # node instead of dropping valid Synopsis tails after a fixed number of parts.
-    async def _publish_chunk(chunk, label: str, depth: int = 0) -> bool:
+    async def _publish_chunk(chunk: list[Any], label: str, depth: int = 0) -> bool:
         part_title = compose_telegraph_title(title, f" ({label})")
         part_url, part_err = await _post_once(part_title, chunk)
         if part_url:
@@ -336,7 +343,7 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
         return parts_urls[0][1]
 
     # Оглавление
-    toc_nodes = [{"tag": "hr"}]
+    toc_nodes: list[Any] = [{"tag": "hr"}]
     for num, part_url in parts_urls:
         toc_nodes.append(
             {"tag": "p", "children": [{"tag": "a", "attrs": {"href": part_url}, "children": [f"Часть {num}"]}]}
@@ -346,7 +353,7 @@ async def _telegraph_post(title: str, author: str, nodes: list, loop, author_url
     return toc_url
 
 
-def _attach_synopsis_grounding(ai_data, sections) -> None:
+def _attach_synopsis_grounding(ai_data: Any, sections: list[Any]) -> None:
     """Attach bounded verbatim evidence without making page publication fail."""
     # Study/Reflection are text-only. Keep this private blackboard key out of
     # the persistent cache while giving them actual speech fragments to quote.
@@ -372,18 +379,18 @@ def _attach_synopsis_grounding(ai_data, sections) -> None:
 
 
 async def create_telegraph_synopsis(
-    mp3_path,
-    title,
-    performer,
-    duration,
-    url="",
-    existing_audio_part=None,
-    existing_client=None,
-    ai_data=None,
-    rutube_url="",
-    vk_url="",
+    mp3_path: Path,
+    title: str,
+    performer: str,
+    duration: Any,
+    url: str = "",
+    existing_audio_part: Any = None,
+    existing_client: Any = None,
+    ai_data: dict[str, Any] | None = None,
+    rutube_url: str = "",
+    vk_url: str = "",
     source_lang: str = "",
-):
+) -> tuple[str | None, list[Any] | None]:
     """
     v2.1 — Format-aware конспект в Telegraph.
 
@@ -394,7 +401,7 @@ async def create_telegraph_synopsis(
     5. Навигация добавляется через editPage после публикации всех частей.
     """
     # FIX: track uploaded Gemini files for cleanup after synopsis generation
-    _synopsis_uploaded_files: list[tuple] = []  # [(client, file_name), ...]
+    _synopsis_uploaded_files: list[tuple[Any, str]] = []  # [(client, file_name), ...]
     try:
         if not GEMINI_CLIENTS:
             logger.warning("Synopsis: нет GEMINI_CLIENTS — пропускаем")
@@ -486,15 +493,15 @@ async def create_telegraph_synopsis(
             _format_note = _format_note_map.get(_fmt, "")
             # BP-01 FIX: передаём primary-анализ в конспект, чтобы
             # Gemini не изобретал материал заново, а достраивал уже известное.
-            _main_topic = (ai_data.get("main_topic") or "").strip()[:600]
-            _analysis_summ = (ai_data.get("analysis_summary") or "").strip()[:500]
+            _main_topic = ((ai_data or {}).get("main_topic") or "").strip()[:600]
+            _analysis_summ = ((ai_data or {}).get("analysis_summary") or "").strip()[:500]
             # argument_arc: available via ai_data if needed later
-            _key_cats_raw = ai_data.get("key_categories") or []
+            _key_cats_raw = (ai_data or {}).get("key_categories") or []
             _key_cats_str2 = (
                 ", ".join(_key_cats_raw[:6]) if isinstance(_key_cats_raw, list) else str(_key_cats_raw)[:200]
             )
             # Таймкоды из первичного анализа — как якорная сетка
-            _ts_raw = ai_data.get("timestamps") or []
+            _ts_raw = (ai_data or {}).get("timestamps") or []
             _ts_anchor = ""
             if isinstance(_ts_raw, list) and _ts_raw:
                 _ts_source = _ts_raw[:24]
@@ -611,16 +618,16 @@ async def create_telegraph_synopsis(
         prompt = _compacted_prompt.text
 
         loop = asyncio.get_running_loop()
-        file_size_mb = mp3_path.stat().st_size / (1024 * 1024)
+        file_size_mb = (await asyncio.to_thread(mp3_path.stat)).st_size / (1024 * 1024)
 
         async def _generate_synopsis_content(
-            client,
+            client: Any,
             model_name: str,
-            contents,
+            contents: Any,
             max_tokens: int = 32000,
             *,
             use_schema: bool = True,
-        ):
+        ) -> Any:
             """Generate synopsis JSON.
 
             For transcript-backed verbatim Synopsis we prefer legacy JSON mode:
@@ -660,7 +667,12 @@ async def create_telegraph_synopsis(
                 timeout=960.0,
             )
 
-        async def _synopsis_with_client(client, upload_fn, prompt_text, _loop):
+        async def _synopsis_with_client(
+            client: Any,
+            upload_fn: Callable[[Any], Awaitable[Any]],
+            prompt_text: str,
+            _loop: asyncio.AbstractEventLoop,
+        ) -> Any:
             """fix #2: вспомогательная функция — загружает аудио и вызывает Gemini."""
             audio = await upload_fn(client)
             if audio is None:
@@ -675,13 +687,13 @@ async def create_telegraph_synopsis(
                 use_schema=not _transcript_attached,
             )
 
-        def _extract_response_text(resp) -> str:
+        def _extract_response_text(resp: Any) -> str:
             if resp is None:
                 return ""
             try:
                 return (resp.text or "").strip()
             except Exception:
-                chunks = []
+                chunks: list[str] = []
                 candidates = getattr(resp, "candidates", None) or []
                 if candidates:
                     first = candidates[0]
@@ -695,7 +707,7 @@ async def create_telegraph_synopsis(
                 return "".join(chunks).strip()
 
         # ── Запрос к Gemini ───────────────────────────────────
-        response = None
+        response: Any = None
         await asyncio.sleep(2)  # AUDIT-V2-SLEEP: 2s достаточно (было 5s)
 
         if existing_audio_part is not None and existing_client is not None:
@@ -713,7 +725,7 @@ async def create_telegraph_synopsis(
 
         if response is None:
 
-            async def _upload(client):
+            async def _upload(client: Any) -> Any:
                 if file_size_mb > 20:
                     uf = await client.aio.files.upload(
                         file=mp3_path,
@@ -733,10 +745,10 @@ async def create_telegraph_synopsis(
                     _synopsis_uploaded_files.append((client, uf.name))  # FIX: track for cleanup
                     return uf
                 else:
-                    audio_bytes = mp3_path.read_bytes()
+                    audio_bytes = await asyncio.to_thread(mp3_path.read_bytes)
                     return types.Part.from_bytes(data=audio_bytes, mime_type="audio/mpeg")
 
-            async def _call_synopsis(client):
+            async def _call_synopsis(client: Any) -> Any:
                 return await _synopsis_with_client(client, _upload, prompt, loop)
 
             response = await gemini_generate(GEMINI_CLIENTS, _call_synopsis, model_name=GEMINI_MODEL)
@@ -757,7 +769,7 @@ async def create_telegraph_synopsis(
                 )
                 try:
 
-                    async def _call_fallback(client):
+                    async def _call_fallback(client: Any) -> Any:
                         audio = await _upload(client)
                         return await _generate_synopsis_content(
                             client,
@@ -798,7 +810,7 @@ async def create_telegraph_synopsis(
 
         # ── Парсим JSON (с retry при сломанном JSON) ─────────
 
-        def _try_parse_synopsis_json(text: str) -> tuple[list, list] | None:
+        def _try_parse_synopsis_json(text: str) -> tuple[list[Any], list[Any]] | None:
             """Возвращает (outline, sections) или None если не распарсилось."""
             try:
                 clean = text.strip()
@@ -813,7 +825,9 @@ async def create_telegraph_synopsis(
                 # Защита: Gemini иногда вставляет реальные переносы строк
                 # внутри JSON-строк — это невалидный JSON. Экранируем их.
                 def _fix_json_newlines(s: str) -> str:
-                    result, in_str, i = [], False, 0
+                    result: list[str] = []
+                    in_str = False
+                    i = 0
                     while i < len(s):
                         c = s[i]
                         if c == "\\" and i + 1 < len(s):
@@ -850,8 +864,8 @@ async def create_telegraph_synopsis(
             t = text.strip()
             return t.startswith("{") or '"sections"' in t or '"outline"' in t
 
-        sections: list = []
-        outline: list = []
+        sections: list[Any] = []
+        outline: list[Any] = []
 
         parsed = _try_parse_synopsis_json(synopsis_text)
         if parsed is not None:
@@ -870,7 +884,7 @@ async def create_telegraph_synopsis(
             # (temperature на 3.x не переопределяется — см. make_audio_config)
             logger.warning("Synopsis: сломанный JSON от Gemini — выполняю retry")
             await asyncio.sleep(10)  # Пауза перед retry
-            retry_response = None
+            retry_response: Any = None
             try:
                 retry_prompt = (
                     "Твой предыдущий ответ содержал сломанный JSON. "
@@ -894,7 +908,7 @@ async def create_telegraph_synopsis(
                 # доступна и в _call_synopsis_simple (3-й retry), даже если
                 # 2-й retry прошёл через ветку existing_audio_part и этот блок
                 # не выполнялся. Иначе возможен NameError.
-                async def _upload_retry(client):
+                async def _upload_retry(client: Any) -> Any:
                     if file_size_mb > 20:
                         uf = await client.aio.files.upload(
                             file=mp3_path,
@@ -914,11 +928,12 @@ async def create_telegraph_synopsis(
                         _synopsis_uploaded_files.append((client, uf.name))  # FIX: track for cleanup
                         return uf
                     else:
-                        return types.Part.from_bytes(data=mp3_path.read_bytes(), mime_type="audio/mpeg")
+                        audio_bytes = await asyncio.to_thread(mp3_path.read_bytes)
+                        return types.Part.from_bytes(data=audio_bytes, mime_type="audio/mpeg")
 
                 if retry_response is None:
 
-                    async def _call_synopsis_retry(client):
+                    async def _call_synopsis_retry(client: Any) -> Any:
                         return await _synopsis_with_client(client, _upload_retry, retry_prompt, loop)
 
                     retry_response = await gemini_generate(
@@ -943,7 +958,7 @@ async def create_telegraph_synopsis(
                         '  "sections": [{"title": "...", "time": "0:00", "content": "..."}, ...]\n'
                         "}"
                     )
-                    simple_response = None
+                    simple_response: Any = None
                     try:
                         if existing_audio_part is not None and existing_client is not None:
                             try:
@@ -958,7 +973,7 @@ async def create_telegraph_synopsis(
                                 simple_response = None
                         if simple_response is None:
 
-                            async def _call_synopsis_simple(client):
+                            async def _call_synopsis_simple(client: Any) -> Any:
                                 return await _synopsis_with_client(client, _upload_retry, simple_prompt, loop)
 
                             simple_response = await gemini_generate(
@@ -1072,7 +1087,7 @@ async def create_telegraph_synopsis(
                 if _transcript_attached:
                     logger.info("Synopsis v2: density retry uses transcript-only text path")
 
-                    async def _call_density_retry_text(client):
+                    async def _call_density_retry_text(client: Any) -> Any:
                         return await _generate_synopsis_content(
                             client,
                             GEMINI_MODEL,
@@ -1153,7 +1168,14 @@ async def create_telegraph_synopsis(
             )
 
         # ── Валидация плотности sections (BP-04) ─────────────
-        _thin_count = sum(1 for s in sections if len(((s.get("content") or "").strip() or s.get("blocks"))) < 100)
+        def _section_is_thin(section: Any) -> bool:
+            content = section.get("content")
+            if isinstance(content, str) and content.strip():
+                return len(content.strip()) < 100
+            blocks = section.get("blocks")
+            return len(blocks) < 100 if isinstance(blocks, list) else True
+
+        _thin_count = sum(1 for s in sections if _section_is_thin(s))
         if _thin_count > 0:
             logger.warning(
                 f"Synopsis v2: {_thin_count}/{len(sections)} sections имеют content < 100 символов — "
@@ -1243,9 +1265,9 @@ async def create_telegraph_synopsis(
         # Деление только по границам sections. Никакой обрезки нод.
         # Если любая часть не публикуется — весь synopsis считается неуспешным.
 
-        published_parts: list[tuple[list, str]] = []  # (part_secs, url)
+        published_parts: list[tuple[list[dict[str, Any]], str]] = []  # (part_secs, url)
 
-        async def _publish_recursive(secs: list, depth: int = 0) -> bool:
+        async def _publish_recursive(secs: list[dict[str, Any]], depth: int = 0) -> bool:
             """Публикует список sections рекурсивно.
             Возвращает True если ВСЕ части успешно опубликованы.
             При любом fail — возвращает False (без частичного результата).
@@ -1255,7 +1277,7 @@ async def create_telegraph_synopsis(
 
             sec_offset = sum(len(p[0]) for p in published_parts)
             sec_range = f"sections[{sec_offset}..{sec_offset + len(secs) - 1}]"
-            part_nodes = []
+            part_nodes: list[Any] = []
             for sec_idx, sec in enumerate(secs):
                 if sec_idx > 0:
                     part_nodes.append({"tag": "hr"})
@@ -1357,9 +1379,9 @@ async def create_telegraph_synopsis(
         # Без паузы editPage падает 3/3 при >50 nodes (0.7с между create и edit).
 
         async def _build_part_nodes_edit(
-            i: int, part_secs: list, part_title: str, *, include_outline: bool = True
-        ) -> list:
-            _nodes: list = []
+            i: int, part_secs: list[dict[str, Any]], part_title: str, *, include_outline: bool = True
+        ) -> list[Any]:
+            _nodes: list[Any] = []
             if include_outline:
                 if i == 0:
                     _nodes.extend(_build_toc_nodes_v2(outline, yt_url=url, parts=parts))
@@ -1367,14 +1389,14 @@ async def create_telegraph_synopsis(
                     # FIX BUG-5: add mini-outline for parts 2+ so reader sees section titles
                     # AUDIT R16: сквозная нумерация от глобального индекса секции.
                     _sec_offset_for_part = sum(len(p) for p in parts[:i])
-                    _mini_outline = []
+                    _mini_outline: list[Any] = []
                     for _ps_idx, _ps in enumerate(part_secs):
                         _ps_title = _ps.get("title", "")
                         _ps_time = (_ps.get("time") or "").strip()
                         if not _ps_title:
                             continue
                         _global_num = _sec_offset_for_part + _ps_idx + 1
-                        _children = [{"tag": "b", "children": [f"{_global_num}.\xa0"]}]
+                        _children: list[Any] = [{"tag": "b", "children": [f"{_global_num}.\xa0"]}]
                         _children.extend(_md_parse_inline(_ps_title))
                         if _ps_time:
                             _secs = time_to_seconds(_ps_time)
