@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from telegram import InputFile
+from telegram.error import TimedOut
 
 from core.database import asettings_get, get_max_file_size_mb, settings_get
 from core.globals import DOWNLOAD_DIR
@@ -95,12 +96,13 @@ async def process_and_send_clips(
     factory_publication: bool = False,
     snap_to_silence: bool = True,
 ) -> int:
-    """Render and send long clips, returning the number actually delivered."""
+    """Render and send long clips, returning the number confirmed delivered."""
     video_path: Path | None = None
     borrowed_video = False
     clip_paths: list[Path] = []
     snap_paths: list[Path] = []
     sent = 0
+    unconfirmed = 0
     try:
         livedub_source: Path | None = None
         if livedub_video_path:
@@ -354,9 +356,10 @@ async def process_and_send_clips(
                     thumbnail=thumb_buf,
                     supports_streaming=True,
                     parse_mode="HTML",
-                    write_timeout=300,
-                    read_timeout=300,
-                    connect_timeout=30,
+                    write_timeout=1800,
+                    read_timeout=1800,
+                    connect_timeout=120,
+                    pool_timeout=120,
                 )
                 sent += 1
                 logger.info(
@@ -368,11 +371,24 @@ async def process_and_send_clips(
                     candidate.get("title", ""),
                     delivery_duration,
                 )
+            except TimedOut as send_err:
+                unconfirmed += 1
+                logger.warning(
+                    "Clips: delivery unconfirmed %d/%d; no automatic retry to avoid duplicate delivery: %s",
+                    i,
+                    total,
+                    send_err,
+                )
             except Exception as send_err:
                 logger.warning("Clips: send error %d/%d: %s", i, total, send_err)
 
         if sent == 0:
-            logger.warning("Clips: no clips delivered")
+            if unconfirmed:
+                logger.warning("Clips: no clips confirmed delivered; unconfirmed uploads=%d", unconfirmed)
+            else:
+                logger.warning("Clips: no clips delivered")
+        elif unconfirmed:
+            logger.warning("Clips: delivered %d/%d; unconfirmed uploads=%d", sent, total, unconfirmed)
         else:
             logger.info("Clips: delivered %d/%d", sent, total)
         return sent
