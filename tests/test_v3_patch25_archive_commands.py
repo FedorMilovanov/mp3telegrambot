@@ -93,7 +93,7 @@ def test_archive_formatter_uses_html_links_without_web_preview() -> None:
     commands = Path("handlers/commands.py").read_text(encoding="utf-8")
     assert "disable_web_page_preview=True" in commands
     assert '<a href="{html_mod.escape(url)}">{label}</a>' in commands
-    assert "safe_trim" not in commands.lower()  # formatter has its own conservative truncation
+    assert "safe_trim_caption" in commands  # shared UTF-16/HTML-safe final boundary
 
 
 def test_admin_status_and_disk_reports_use_safe_html_limit() -> None:
@@ -105,28 +105,66 @@ def test_admin_status_and_disk_reports_use_safe_html_limit() -> None:
 
 
 def test_html_message_limit_preserves_tags_and_entities() -> None:
+    from converters.md_telegraph import visible_length
     from handlers.commands import _html_message_limit
 
     msg = _html_message_limit("<b>" + ("A &amp; B " * 1000) + "</b><code>tail</code>", limit=3900)
 
-    assert len(msg) <= 3900
+    assert visible_length(msg) <= 3900
     assert "…обрезано" in msg
     assert msg.count("<b>") == msg.count("</b>")
     assert msg.count("<code>") == msg.count("</code>")
     assert "&am…" not in msg
 
 
+def test_html_message_limit_counts_astral_emoji_as_utf16_units() -> None:
+    from converters.md_telegraph import visible_length
+    from handlers.commands import _html_message_limit
+
+    msg = _html_message_limit("<b>" + "😀" * 5 + "</b>", limit=9, suffix="…")
+
+    assert visible_length(msg) == 9
+    assert msg == "<b>😀😀😀😀</b>…"
+    assert msg.count("<b>") == msg.count("</b>") == 1
+
+
+def test_html_message_limit_preserves_entities_and_closing_tag_budget() -> None:
+    from converters.md_telegraph import visible_length
+    from handlers.commands import _html_message_limit
+
+    msg = _html_message_limit("<b>" + ("A &amp; 😀 " * 500) + "</b><code>tail</code>", limit=200)
+
+    assert visible_length(msg) <= 200
+    assert "…обрезано" in msg
+    assert "&am…" not in msg
+    assert msg.count("<b>") == msg.count("</b>") == 1
+    assert msg.count("<code>") == msg.count("</code>")
+
+
+def test_html_pre_message_counts_astral_emoji_as_utf16_units() -> None:
+    from converters.md_telegraph import visible_length
+    from handlers.commands import _html_pre_message
+
+    msg = _html_pre_message("🙏" * 100, limit=32)
+
+    assert visible_length(msg) <= 32
+    assert msg.startswith("<pre>") and msg.endswith("</pre>")
+    assert "…обрезано" in msg
+
+
 def test_html_pre_message_truncates_before_escaping_entities() -> None:
+    from converters.md_telegraph import visible_length
     from handlers.commands import _html_pre_message
 
     msg = _html_pre_message(("<&> " * 2000), limit=3900)
 
-    assert len(msg) <= 3900
+    assert visible_length(msg) <= 3900
     assert msg.startswith("<pre>") and msg.endswith("</pre>")
     assert "…обрезано" in msg
     assert "<&>" not in msg
     assert msg.count("<pre>") == msg.count("</pre>") == 1
-    assert msg.count("&lt;") == msg.count("&gt;")
+    assert "&amp;" in msg
+    assert "&am\n…" not in msg
 
 
 def test_resetcache_echo_escapes_user_supplied_video_id() -> None:
@@ -137,6 +175,7 @@ def test_resetcache_echo_escapes_user_supplied_video_id() -> None:
 
 
 def test_archive_formatter_truncates_without_breaking_html_tags() -> None:
+    from converters.md_telegraph import visible_length
     from handlers.commands import _archive_format_records
 
     records = []
@@ -156,10 +195,35 @@ def test_archive_formatter_truncates_without_breaking_html_tags() -> None:
 
     text = _archive_format_records(records, title="Архив <опасный> & длинный")
 
-    assert len(text) <= 3900
+    assert visible_length(text) <= 3900
     assert "…обрезано" in text
     assert text.count("<b>") == text.count("</b>")
     assert text.count("<code>") == text.count("</code>")
     assert text.count("<a href=") == text.count("</a>")
     assert "<с тегами>" not in text
     assert "& сущностями" not in text
+
+
+def test_archive_formatter_enforces_utf16_limit_for_emoji_records() -> None:
+    from converters.md_telegraph import visible_length
+    from handlers.commands import _archive_format_records
+
+    records = [
+        {
+            "title": "😀" * 180,
+            "author": "🙏" * 120,
+            "publication_status": "complete",
+            "youtube_url": f"https://youtu.be/video{i}",
+            "synopsis_url": f"https://telegra.ph/page{i}",
+            "publication_warning": "⚠️ " + "😀" * 200,
+        }
+        for i in range(20)
+    ]
+
+    text = _archive_format_records(records, title="Поиск 😀 " + "🙏" * 200)
+
+    assert visible_length(text) <= 3900
+    assert "…обрезано" in text
+    assert text.count("<b>") == text.count("</b>")
+    assert text.count("<code>") == text.count("</code>")
+    assert text.count("<a href=") == text.count("</a>")

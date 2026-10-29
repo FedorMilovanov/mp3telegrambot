@@ -3,7 +3,7 @@
 from core.health_report import (
     MIN_FREE_DISK_GB,
     STALE_MAINTENANCE_SECONDS,
-    STALE_UPDATE_SECONDS,
+    STALE_POLLING_SECONDS,
     _is_windows_drive,
     _metric,
     build_health,
@@ -18,7 +18,7 @@ from core.health_report import (
 __all__ = [
     "MIN_FREE_DISK_GB",
     "STALE_MAINTENANCE_SECONDS",
-    "STALE_UPDATE_SECONDS",
+    "STALE_POLLING_SECONDS",
     "_is_windows_drive",
     "_metric",
     "build_health",

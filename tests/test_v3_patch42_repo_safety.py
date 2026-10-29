@@ -11,7 +11,10 @@ def test_segments_command_uses_safe_pre_without_nested_code_tags() -> None:
     assert "Нажмите кнопку или: /cut {video_id} N" in src
     assert "&lt;code&gt;" not in src[src.find("async def segments_command") : src.find("async def cutseg_command")]
     assert "caption=caption[:1024]" not in src
-    assert "safe_trim" not in src.lower()
+    # Keep local ad-hoc HTML trimmers banned. The shared UTF-16/tag-preserving
+    # converter primitive is covered by executable archive boundary tests.
+    assert "def safe_trim" not in src.lower()
+    assert "def _safe_trim" not in src.lower()
 
 
 def test_reasoning_guidance_is_centralized_and_present_in_prompts() -> None:

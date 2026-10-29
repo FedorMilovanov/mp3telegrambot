@@ -88,6 +88,75 @@ def test_new_companion_transaction_rolls_back_partial_send(monkeypatch: pytest.M
     assert bot.deleted == [(7, 101)]
 
 
+def test_new_companion_transaction_rolls_back_message_with_empty_file_id(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    _reset_singleflight()
+    video, _clean, _mixed = _patch_media(monkeypatch, tmp_path)
+    bot = FakeBot([(101, "")])
+    drops: list[str] = []
+    monkeypatch.setattr(companion, "_cache_drop", lambda key: drops.append(key))
+    caplog.set_level("INFO")
+
+    async def scenario() -> None:
+        with pytest.raises(RuntimeError, match="Telegram не вернул audio.file_id"):
+            await coordinator.deliver_new_companions(
+                bot,
+                chat_id=7,
+                video_path=video,
+                publication_card={},
+                reply_to=9,
+                thumbnail=None,
+                video_file_id="video-id",
+            )
+
+    asyncio.run(scenario())
+    assert bot.deleted == [(7, 101)]
+    assert drops == ["video-id"]
+    assert "new companion transaction rolled back=1/1" in caplog.text
+
+
+def test_new_companion_transaction_reports_rollback_failure_for_missing_audio(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    _reset_singleflight()
+    video, _clean, _mixed = _patch_media(monkeypatch, tmp_path)
+
+    class MissingAudioBot(FakeBot):
+        async def send_audio(self, **kwargs: Any) -> SimpleNamespace:
+            self.sent_audio.append(kwargs)
+            return SimpleNamespace(message_id=102, audio=None)
+
+        async def delete_message(self, *, chat_id: int, message_id: int) -> bool:
+            self.deleted.append((chat_id, message_id))
+            raise RuntimeError("delete denied")
+
+    bot = MissingAudioBot([])
+    monkeypatch.setattr(companion, "_cache_drop", lambda _key: None)
+    caplog.set_level("INFO")
+
+    async def scenario() -> None:
+        with pytest.raises(RuntimeError, match="Telegram не вернул audio.file_id"):
+            await coordinator.deliver_new_companions(
+                bot,
+                chat_id=7,
+                video_path=video,
+                publication_card={},
+                reply_to=9,
+                thumbnail=None,
+                video_file_id="video-id",
+            )
+
+    asyncio.run(scenario())
+    assert bot.deleted == [(7, 102)]
+    assert "rollback delete failed chat=7 message=102" in caplog.text
+    assert "new companion transaction rolled back=0/1" in caplog.text
+
+
 def test_new_companion_transaction_commits_only_after_all_messages(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -20,7 +20,7 @@ concurrency:
 jobs:
   test:
     name: Python ${{ matrix.python-version }} safety checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -32,12 +32,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
@@ -48,6 +48,16 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-lock.txt
           python tools/check_requirements_lock.py
+
+      - name: Install approved FFmpeg/FFprobe
+        # Ubuntu Noble package: 7:6.1.1-3ubuntu5. Keep the package revision
+        # explicit; the following step also proves executable version and hash.
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends "ffmpeg=7:6.1.1-3ubuntu5"
+
+      - name: Verify media tool provenance
+        run: python tools/verify_media_tools.py --expected-version 6.1.1
 
       - name: Validate installed runtime dependency closure
         run: >-
@@ -61,6 +71,8 @@ jobs:
 
       - name: Run tests
         shell: bash
+        env:
+          MP3_REQUIRE_MEDIA_INTEGRATION: "1"
         # Покрытие измеряется на одном job'е (3.12), а не на всех трёх: цифра
         # от версии Python не зависит, а время CI — зависит.
         run: |
@@ -119,7 +131,7 @@ jobs:
 
       - name: Upload pytest diagnostics
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: pytest-output-${{ matrix.python-version }}
           path: pytest-output.txt
@@ -150,15 +162,15 @@ jobs:
 
   windows-runtime:
     name: Windows runtime safety checks
-    runs-on: windows-latest
+    runs-on: windows-2025
     timeout-minutes: 20
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Setup Python 3.13
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.13"
           cache: "pip"
@@ -169,6 +181,15 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-lock.txt
           python tools/check_requirements_lock.py
+
+      - name: Install approved FFmpeg/FFprobe
+        # Chocolatey package 9.0.2 (approved 2026-09-20); version and binary
+        # hashes are checked independently before any integration testimony.
+        shell: pwsh
+        run: choco install ffmpeg --version=9.0.2 --yes --no-progress
+
+      - name: Verify media tool provenance
+        run: python tools/verify_media_tools.py --expected-version 9.0.2
 
       - name: Validate installed runtime dependency closure
         run: >-
@@ -187,6 +208,8 @@ jobs:
           }
 
       - name: Run Windows-sensitive regression tests
+        env:
+          MP3_REQUIRE_MEDIA_INTEGRATION: "1"
         run: >-
           python tools/run_pytest_with_annotations.py -q
           tests/test_runtime_manifest.py
@@ -301,15 +324,15 @@ jobs:
     # Проект обязан устанавливаться, а не только запускаться из папки: без
     # этого job'а wheel может собраться зелёным и не содержать точки входа.
     name: Package build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Setup Python 3.13
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.13"
 
@@ -364,7 +387,7 @@ jobs:
       - windows-runtime
       - packaging
       - dependency-audit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Every pull_request workflow is aggregated here (discovered dynamically by
     # scripts/required_pr_gate.py), so this budget must cover the slowest one.
     timeout-minutes: 45
@@ -386,7 +409,7 @@ jobs:
           test "$AUDIT_RESULT" = "success"
 
       - name: Checkout exact PR tree
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
 

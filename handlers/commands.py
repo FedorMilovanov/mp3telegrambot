@@ -9,6 +9,7 @@ import html as html_mod
 from typing import Any
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
+from converters.md_telegraph import safe_trim_caption, visible_length
 from core.globals import (
     DOWNLOAD_DIR,
     GEMINI_CLIENTS,
@@ -790,76 +791,17 @@ def _archive_parse_limit(args: list[str] | None, default: int = 7) -> int:
 
 
 def _html_message_limit(html_text: Any, *, limit: int = 3900, suffix: str = "\n…обрезано") -> str:
-    """Trim a Telegram HTML message without cutting tags/entities."""
+    """Trim a Telegram HTML message by its visible UTF-16 length."""
     text = str(html_text or "").replace("\x00", "")
-    if len(text) <= limit:
-        return text
-    paired = {"b", "i", "u", "s", "a", "tg-emoji", "code", "pre", "spoiler"}
-    out: list[str] = []
-    open_tags: list[str] = []
-    i = 0
-    budget = max(0, limit - len(suffix) - 64)
-    while i < len(text) and len("".join(out)) < budget:
-        ch = text[i]
-        if ch == "<":
-            end = text.find(">", i)
-            if end == -1:
-                break
-            token = text[i : end + 1]
-            if len("".join(out)) + len(token) > budget:
-                break
-            m = re.match(r"<\s*(/?)\s*([A-Za-z][\w-]*)\b[^>]*>", token)
-            if m:
-                closing, tag = m.group(1), m.group(2).lower()
-                if tag in paired:
-                    if closing:
-                        if tag in open_tags:
-                            while open_tags and open_tags[-1] != tag:
-                                open_tags.pop()
-                            if open_tags:
-                                open_tags.pop()
-                    elif not token.rstrip().endswith("/>"):
-                        open_tags.append(tag)
-            out.append(token)
-            i = end + 1
-            continue
-        if ch == "&":
-            end = text.find(";", i)
-            if end != -1 and end - i <= 12:
-                token = text[i : end + 1]
-                if len("".join(out)) + len(token) > budget:
-                    break
-                out.append(token)
-                i = end + 1
-                continue
-        out.append(ch)
-        i += 1
-    result = "".join(out).rstrip() + suffix
-    for tag in reversed(open_tags):
-        result += f"</{tag}>"
-    return result if len(result) <= limit else result[:limit]
+    return safe_trim_caption(text, limit, suffix=suffix)
 
 
 def _html_pre_message(text: Any, *, limit: int = 3900) -> str:
-    """Build a Telegram HTML <pre> message without cutting escaped entities."""
+    """Build a UTF-16-bounded Telegram HTML <pre> message."""
     raw = str(text or "").replace("\x00", "")
-    suffix = "\n…обрезано"
-    wrapper_len = len("<pre></pre>")
     escaped = html_mod.escape(raw)
-    if len(escaped) + wrapper_len <= limit:
-        return f"<pre>{escaped}</pre>"
-    lo, hi = 0, len(raw)
-    best = ""
-    while lo <= hi:
-        mid = (lo + hi) // 2
-        candidate_raw = raw[:mid].rstrip() + suffix
-        candidate = html_mod.escape(candidate_raw)
-        if len(candidate) + wrapper_len <= limit:
-            best = candidate
-            lo = mid + 1
-        else:
-            hi = mid - 1
-    return f"<pre>{best}</pre>"
+    trimmed = safe_trim_caption(escaped, limit, suffix="\n…обрезано")
+    return f"<pre>{trimmed}</pre>"
 
 
 def _archive_clip_plain(value: Any, limit: int) -> str:
@@ -900,13 +842,13 @@ def _archive_format_records(records: list[dict[str, Any]], *, title: str) -> str
             item.append("⚠️ " + html_mod.escape(_archive_clip_plain(str(r.get("publication_warning")), 240)))
         item.append("")
         candidate = "\n".join([*parts, *item]).strip()
-        if len(candidate) + len(note) > limit:
-            if len("\n".join(parts).strip()) + len(note) <= limit:
+        if visible_length(candidate) + visible_length(note) > limit:
+            if visible_length("\n".join(parts).strip()) + visible_length(note) <= limit:
                 parts.append(note.strip())
             break
         parts.extend(item)
     text = "\n".join(parts).strip()
-    return text if len(text) <= limit else text[:limit]
+    return safe_trim_caption(text, limit, suffix=note)
 
 
 async def archive_command(update: Any, context: Any) -> None:

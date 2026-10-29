@@ -8,13 +8,60 @@ module does not replace PTB class methods.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import time
 from datetime import datetime, timezone
 from typing import Any, MutableMapping
+from urllib.parse import urlsplit
+
+from telegram.request import BaseRequest, HTTPXRequest, RequestData
+
+from core import runtime_status
 
 logger = logging.getLogger(__name__)
+
+
+class PollingHeartbeatHTTPXRequest(HTTPXRequest):
+    """HTTPX transport that witnesses successful empty and non-empty polls."""
+
+    async def do_request(
+        self,
+        url: str,
+        method: str,
+        request_data: RequestData | None = None,
+        read_timeout: Any = BaseRequest.DEFAULT_NONE,
+        write_timeout: Any = BaseRequest.DEFAULT_NONE,
+        connect_timeout: Any = BaseRequest.DEFAULT_NONE,
+        pool_timeout: Any = BaseRequest.DEFAULT_NONE,
+    ) -> tuple[int, bytes]:
+        status, payload = await super().do_request(
+            url,
+            method,
+            request_data,
+            read_timeout,
+            write_timeout,
+            connect_timeout,
+            pool_timeout,
+        )
+        is_get_updates = urlsplit(url).path.rstrip("/").endswith("/getUpdates")
+        response_valid = False
+        if status == 200 and is_get_updates:
+            try:
+                response = json.loads(payload)
+            except ValueError:
+                response = None
+            result = response.get("result") if isinstance(response, dict) else None
+            response_valid = (
+                isinstance(response, dict)
+                and response.get("ok") is True
+                and isinstance(result, list)
+                and all(isinstance(item, dict) for item in result)
+            )
+        if response_valid:
+            runtime_status.record_polling_heartbeat()
+        return status, payload
 
 
 def _bounded_env_seconds(name: str, *, default: int, minimum: int, maximum: int) -> int:
@@ -106,6 +153,7 @@ def polling_error_callback(error: BaseException) -> None:
 
 
 __all__ = [
+    "PollingHeartbeatHTTPXRequest",
     "accept_pending_update",
     "polling_error_callback",
 ]

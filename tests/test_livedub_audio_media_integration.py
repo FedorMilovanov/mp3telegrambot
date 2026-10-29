@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -11,8 +12,11 @@ from services import livedub_audio_companion as companion
 from services.livedub_audio_quality_guard import select_clean_translation_mp3
 
 
+REQUIRE_MEDIA_INTEGRATION = os.environ.get("MP3_REQUIRE_MEDIA_INTEGRATION") == "1"
+FFMPEG = shutil.which("ffmpeg")
+FFPROBE = shutil.which("ffprobe")
 pytestmark = pytest.mark.skipif(
-    not shutil.which("ffmpeg") or not shutil.which("ffprobe"),
+    not REQUIRE_MEDIA_INTEGRATION and (not FFMPEG or not FFPROBE),
     reason="FFmpeg/FFprobe are required for the media integration test",
 )
 
@@ -35,7 +39,11 @@ def _sha256(path: Path) -> str:
 
 
 def test_clean_ru_and_final_mix_are_valid_distinct_mp3_files(tmp_path: Path) -> None:
-    ffmpeg = shutil.which("ffmpeg")
+    if REQUIRE_MEDIA_INTEGRATION:
+        assert FFMPEG is not None and FFPROBE is not None, (
+            "authoritative media lane requires both FFmpeg and FFprobe; a missing tool is a failure, not a skip"
+        )
+    ffmpeg = FFMPEG
     assert ffmpeg is not None
 
     video = tmp_path / "publication.mp4"

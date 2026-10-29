@@ -342,6 +342,8 @@ async def run_bot_async() -> str | None:
 
     from telegram.request import HTTPXRequest
 
+    from services.polling_reliability_runtime import PollingHeartbeatHTTPXRequest
+
     # Кастомный request с увеличенными таймаутами — решает проблему
     # обрывов соединения в httpx 0.28+ (агрессивное закрытие idle-соединений)
     # FIX: если в системе задан HTTP(S)_PROXY, httpx гонит через него даже
@@ -424,7 +426,7 @@ async def run_bot_async() -> str | None:
             "а если /getMe зависнет — быстро fallback'нусь на облачный Bot API через этот proxy"
         )
     t_request = HTTPXRequest(**_request_kwargs)
-    get_updates_request = HTTPXRequest(**_request_kwargs)
+    get_updates_request = PollingHeartbeatHTTPXRequest(**_request_kwargs)
 
     # FIX 2026-06-10: по умолчанию PTB обрабатывает апдейты ПОСЛЕДОВАТЕЛЬНО —
     # во время 10-20-минутной обработки видео бот не отвечал ни на /stop,
@@ -817,7 +819,7 @@ async def run_bot_async() -> str | None:
                 )
                 _request_kwargs["proxy"] = _cloud_fallback_proxy_url
                 t_request = HTTPXRequest(**_request_kwargs)
-                get_updates_request = HTTPXRequest(**_request_kwargs)
+                get_updates_request = PollingHeartbeatHTTPXRequest(**_request_kwargs)
                 builder = (
                     Application.builder()
                     .token(BOT_TOKEN)
@@ -989,6 +991,7 @@ async def run_bot_async() -> str | None:
             updater = app.updater
             if updater is None:
                 raise RuntimeError("PTB Updater is unavailable; polling cannot start")
+            runtime_status.record_polling_started()
             await updater.start_polling(
                 allowed_updates=Update.ALL_TYPES,
                 drop_pending_updates=False,

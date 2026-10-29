@@ -169,6 +169,7 @@ async def _send_local_variant_uncommitted(
     reply_to: Any,
     thumbnail: Any,
     reference_duration: int,
+    sent_messages: list[Any],
 ) -> tuple[Any, str, dict[str, Any]]:
     import services.livedub_audio_companion as companion
 
@@ -201,6 +202,10 @@ async def _send_local_variant_uncommitted(
         kwargs["thumbnail"] = thumb_path
 
     message = await bot.send_audio(**kwargs)
+    # Telegram has already made the message visible. Transfer ownership to the
+    # transaction before validating cache metadata so every later failure is
+    # routed through the same reverse-order rollback exactly once.
+    sent_messages.append(message)
     audio_file_id = str(getattr(getattr(message, "audio", None), "file_id", "") or "").strip()
     if not audio_file_id:
         raise RuntimeError(f"{companion._VARIANT_LABELS[variant]}: Telegram не вернул audio.file_id")
@@ -274,8 +279,8 @@ async def deliver_new_companions(
                     reply_to=reply_to,
                     thumbnail=thumbnail,
                     reference_duration=video_duration,
+                    sent_messages=sent_messages,
                 )
-                sent_messages.append(message)
                 pending_cache.append((variant, audio_file_id, meta))
 
             for variant, audio_file_id, meta in pending_cache:

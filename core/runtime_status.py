@@ -32,6 +32,8 @@ class _State:
     updates_total: int = 0
     updates_rejected_total: int = 0
     last_update_at: float = 0.0
+    polling_started_at: float = 0.0
+    last_polling_success_at: float = 0.0
     jobs_active: int = 0
     jobs_total: int = 0
     maintenance_runs_total: int = 0
@@ -64,6 +66,19 @@ def record_update_rejected() -> None:
     """Апдейт отброшен до бизнес-логики (дедупликация, устаревший pending)."""
     with _LOCK:
         _state.updates_rejected_total += 1
+
+
+def record_polling_started() -> None:
+    """Start a new getUpdates lifecycle with a bounded startup grace period."""
+    with _LOCK:
+        _state.polling_started_at = time.time()
+        _state.last_polling_success_at = 0.0
+
+
+def record_polling_heartbeat() -> None:
+    """Record a successful getUpdates response, including an empty poll."""
+    with _LOCK:
+        _state.last_polling_success_at = time.time()
 
 
 def record_job_started() -> None:
@@ -141,12 +156,16 @@ def snapshot(now: float | None = None) -> dict[str, object]:
     now = time.time() if now is None else now
     with _LOCK:
         last_update_age = (now - _state.last_update_at) if _state.last_update_at else None
+        polling_start_age = (now - _state.polling_started_at) if _state.polling_started_at else None
+        last_polling_age = (now - _state.last_polling_success_at) if _state.last_polling_success_at else None
         last_maintenance_age = (now - _state.last_maintenance_at) if _state.last_maintenance_at else None
         return {
             "uptime_seconds": max(0.0, now - _state.started_at),
             "updates_total": _state.updates_total,
             "updates_rejected_total": _state.updates_rejected_total,
             "last_update_age_seconds": last_update_age,
+            "polling_start_age_seconds": polling_start_age,
+            "last_polling_age_seconds": last_polling_age,
             "jobs_active": _state.jobs_active,
             "jobs_total": _state.jobs_total,
             "maintenance_runs_total": _state.maintenance_runs_total,

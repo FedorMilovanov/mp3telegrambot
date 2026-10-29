@@ -53,7 +53,9 @@ exclude = ["tests*", "docs*", "vot_helper*"]
 # ветки `if`. Statement-only покрытие завышает картину ровно там, где больно —
 # в обработке ошибок.
 branch = true
-source = ["core", "services", "converters", "pipelines", "handlers"]
+# Supported root entrypoints are measured too: bootstrap evidence must not
+# remain outside the coverage denominator while package modules are measured.
+source = ["core", "services", "converters", "pipelines", "handlers", "main", "bot_new", "bot"]
 # tools/voxcpm2 — экспериментальные прогоны моделей, не прод; тесты под них
 # живут отдельно и в гейт покрытия не входят.
 omit = ["tests/*", "tools/*"]

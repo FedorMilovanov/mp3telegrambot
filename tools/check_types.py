@@ -111,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
     if missing_mypy(result):
         print(
             "TYPECHECK_FAILED: mypy не установлен. "
-            "Установите dev-зависимости: python -m pip install -r requirements-dev.txt",
+            "Установите точное CI-окружение: python -m pip install -r requirements-lock.txt",
             file=sys.stderr,
         )
         return EXIT_USAGE

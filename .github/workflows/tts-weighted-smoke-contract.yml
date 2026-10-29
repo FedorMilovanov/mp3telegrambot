@@ -68,17 +68,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-24.04, windows-2025]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     env:
       PYTHONUTF8: '1'
       PYTHONIOENCODING: utf-8
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.12'
           cache: pip
@@ -113,7 +113,7 @@ jobs:
           tests/test_tts_weighted_runner_provisioning_cli.py
           tests/test_tts_weighted_runner_provisioning_powershell.py
       - name: Parse provisioning PowerShell
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-2025'
         shell: pwsh
         run: |
           $Tokens = $null

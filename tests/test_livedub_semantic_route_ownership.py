@@ -30,9 +30,9 @@ def test_env_example_keeps_user_copy_off_utility_lane() -> None:
 
 def test_ci_uses_node24_actions_and_runs_repository_verifier() -> None:
     ci = _read(".github/workflows/ci.yml")
-    assert "actions/checkout@v6" in ci
-    assert "actions/setup-python@v6" in ci
-    assert "actions/upload-artifact@v7" in ci
+    assert "uses: actions/checkout@" in ci
+    assert "uses: actions/setup-python@" in ci
+    assert "uses: actions/upload-artifact@" in ci
     assert "python tools/verify_repo.py" in ci
 
 

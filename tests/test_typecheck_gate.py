@@ -172,7 +172,7 @@ def test_declared_slice_is_type_clean() -> None:
     if missing_mypy(result):  # pragma: no cover - сломанное окружение
         pytest.fail(
             "mypy не установлен: гейт типизации не может быть проверен. "
-            "Установите dev-зависимости: pip install -r requirements-dev.txt"
+            "Установите точное CI-окружение: pip install -r requirements-lock.txt"
         )
     assert result.returncode == 0, (
         f"срез {[s.path for s in TYPED_SLICES]} не проходит mypy --strict ({error_count(output)} ошибок):\n{output}"

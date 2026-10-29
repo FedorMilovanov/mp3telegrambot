@@ -9,7 +9,6 @@ open a folder, copy links, and share them without using the bot UI.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import os
 import logging
@@ -20,6 +19,7 @@ from pathlib import Path
 from typing import Any, Iterable, Sequence
 
 from core.database import _db_conn
+from core.sqlite_schema import add_column_if_missing, require_columns
 
 
 ARCHIVE_DIR = Path(os.getenv("GENERATED_PAGES_DIR", "data/generated_pages"))
@@ -176,6 +176,8 @@ def build_generated_page_record(
 
 
 def _ensure_schema(conn: sqlite3.Connection) -> None:
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS generated_pages (
             video_id TEXT PRIMARY KEY,
@@ -217,12 +219,7 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
         )
     """)
 
-    def _trusted_ident(name: str) -> str:
-        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
-            raise ValueError(f"unsafe column name: {name!r}")
-        return name
-
-    for col, ddl in [
+    additive_migrations = [
         ("quality_warnings", "TEXT DEFAULT '[]'"),
         ("timestamp_coverage_ratio", "REAL DEFAULT 0"),
         ("segments_status", "TEXT DEFAULT 'complete'"),
@@ -234,9 +231,10 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
         ("repair_count", "INTEGER DEFAULT 0"),
         ("last_repair_changed_pages", "INTEGER DEFAULT 0"),
         ("last_repair_errors", "TEXT DEFAULT ''"),
-    ]:
-        with contextlib.suppress(sqlite3.OperationalError):
-            conn.execute(f"ALTER TABLE generated_pages ADD COLUMN {_trusted_ident(col)} {ddl}")
+    ]
+    for col, declaration in additive_migrations:
+        add_column_if_missing(conn, table="generated_pages", column=col, declaration=declaration)
+    require_columns(conn, table="generated_pages", expected=(col for col, _declaration in additive_migrations))
     conn.execute("CREATE INDEX IF NOT EXISTS idx_generated_pages_updated ON generated_pages(updated_at)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_generated_pages_author ON generated_pages(author)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_generated_pages_status ON generated_pages(publication_status)")

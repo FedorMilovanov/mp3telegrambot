@@ -290,7 +290,7 @@ def test_healthy_bot_returns_200_and_names_the_version() -> None:
 @pytest.mark.parametrize(
     ("overrides", "problem"),
     [
-        ({"snapshot": _snapshot(last_update_age_seconds=900.0)}, "updates_stale"),
+        ({"snapshot": _snapshot(polling_start_age_seconds=900.0)}, "polling_stale"),
         ({"snapshot": _snapshot(last_maintenance_age_seconds=9000.0)}, "maintenance_stale"),
         ({"snapshot": _snapshot(last_maintenance_ok=False)}, "maintenance_failed"),
         ({"db_ok": False}, "database_unavailable"),
@@ -318,6 +318,44 @@ def test_first_minutes_without_updates_are_not_an_alert() -> None:
     payload, status = _health(snapshot=_snapshot(last_update_age_seconds=None))
     assert status == 200
     assert payload["updates"]["last_age_seconds"] is None
+
+
+def test_long_quiet_traffic_is_healthy_while_polling_answers() -> None:
+    payload, status = _health(
+        snapshot=_snapshot(
+            last_update_age_seconds=900.0,
+            polling_start_age_seconds=900.0,
+            last_polling_age_seconds=1.0,
+        )
+    )
+    assert status == 200
+    assert payload["updates"]["last_age_seconds"] == 900.0
+    assert payload["polling"]["last_age_seconds"] == 1.0
+
+
+def test_stalled_polling_fails_even_with_recent_user_traffic() -> None:
+    payload, status = _health(
+        snapshot=_snapshot(
+            last_update_age_seconds=1.0,
+            polling_start_age_seconds=900.0,
+            last_polling_age_seconds=301.0,
+        )
+    )
+    assert status == 503
+    assert payload["problems"] == ["polling_stale"]
+
+
+def test_no_received_traffic_is_healthy_after_successful_empty_poll() -> None:
+    payload, status = _health(
+        snapshot=_snapshot(
+            last_update_age_seconds=None,
+            polling_start_age_seconds=900.0,
+            last_polling_age_seconds=2.0,
+        )
+    )
+    assert status == 200
+    assert payload["updates"]["last_age_seconds"] is None
+    assert payload["polling"]["last_age_seconds"] == 2.0
 
 
 # ── /metrics ────────────────────────────────────────────────────────────────
@@ -349,7 +387,7 @@ def test_metrics_agree_with_healthz() -> None:
     Иначе мониторинг и health-проба сообщают разное об одном и том же боте — и
     верят тому, который удобнее.
     """
-    snapshot = _snapshot(last_update_age_seconds=900.0)
+    snapshot = _snapshot(polling_start_age_seconds=900.0, last_update_age_seconds=1.0)
     text = render_prometheus(snapshot=snapshot, db_ok=True, free_disk_gb=50.0, keys_configured=1)
     payload, status = build_health(
         snapshot=snapshot,
@@ -360,7 +398,7 @@ def test_metrics_agree_with_healthz() -> None:
     )
     assert status == 503
     assert "mp3bot_up 0" in text
-    assert payload["problems"] == ["updates_stale"]
+    assert payload["problems"] == ["polling_stale"]
 
 
 def test_metrics_without_key_count_still_work() -> None:

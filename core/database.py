@@ -7,6 +7,7 @@ Database layer — db_init, db_save, db_get, settings, rate_limit, cache.
 from core.globals import DB_PATH as DB_PATH
 from core.globals import LOCAL_BOT_API_URL
 from core.model_catalog import ROLE_PRIMARY, configured_model
+from core.sqlite_schema import add_column_if_missing, require_columns
 
 import asyncio
 import contextlib
@@ -88,6 +89,7 @@ def db_init() -> None:
         # AUDIT M17: WAL + busy_timeout — для безопасной параллельной записи
         # rate_limit / video_cache / bot_settings из разных async-обработчиков.
         _configure_db_pragmas(conn)
+        conn.execute("BEGIN IMMEDIATE")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS video_cache (
                 video_id        TEXT PRIMARY KEY,
@@ -161,11 +163,14 @@ def db_init() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_gemini_runs_ts ON gemini_runs(ts)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_gemini_runs_task_ts ON gemini_runs(task, ts)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_gemini_runs_video_id ON gemini_runs(video_id)")
-        with contextlib.suppress(sqlite3.OperationalError):
-            conn.execute("ALTER TABLE gemini_runs ADD COLUMN validation_summary TEXT DEFAULT ''")
+        add_column_if_missing(
+            conn,
+            table="gemini_runs",
+            column="validation_summary",
+            declaration="TEXT DEFAULT ''",
+        )
         # Миграция video_cache: добавляем колонки если их нет (для старых баз данных)
-        migrated = []
-        for col, default in [
+        video_cache_migrations = [
             ("questions", "'[]'"),
             ("share_text", "''"),
             ("quotes_tg_url", "''"),
@@ -198,29 +203,22 @@ def db_init() -> None:
             ("livedub_file_id_version", "''"),
             # MP3 file_id — мгновенный resend при кэш-хите (без заливки 50МБ)
             ("audio_file_id", "''"),
-        ]:
-            # FIX SQL-injection: валидация ВНЕ try/except — ValueError не должен
-            # быть поглощён блоком except sqlite3.OperationalError
-            if not col.replace("_", "").isalnum():
-                raise ValueError(f"Небезопасное имя колонки для миграции: {col!r}")
-            try:
-                col_type = "INTEGER DEFAULT 0" if col == "updated_at" else f"TEXT DEFAULT {default}"
-                conn.execute(f"ALTER TABLE video_cache ADD COLUMN {col} {col_type}")
-                migrated.append(col)
-            except sqlite3.OperationalError:
-                pass  # Колонка уже существует
-        # Миграция short_trims: добавляем колонку для файла без субтитров
-        with contextlib.suppress(sqlite3.OperationalError):  # Колонка уже есть
-            conn.execute("ALTER TABLE short_trims ADD COLUMN video_path_nosub TEXT DEFAULT ''")
-        # #31: миграция — добавляем метку истечения срока nosub-файла (через 24ч)
-        with contextlib.suppress(sqlite3.OperationalError):  # Колонка уже есть
-            conn.execute("ALTER TABLE short_trims ADD COLUMN nosub_expiry INTEGER DEFAULT 0")
-        # AUDIT M5: добавляем длительность исходного видео — для ограничения end_s при ретриме
-        with contextlib.suppress(sqlite3.OperationalError):  # Колонка уже есть
-            conn.execute("ALTER TABLE short_trims ADD COLUMN source_duration INTEGER DEFAULT 0")
+        ]
+        for col, default in video_cache_migrations:
+            declaration = "INTEGER DEFAULT 0" if col == "updated_at" else f"TEXT DEFAULT {default}"
+            add_column_if_missing(conn, table="video_cache", column=col, declaration=declaration)
+        require_columns(conn, table="video_cache", expected=(col for col, _default in video_cache_migrations))
+
+        short_trim_migrations = (
+            ("video_path_nosub", "TEXT DEFAULT ''"),
+            ("nosub_expiry", "INTEGER DEFAULT 0"),
+            ("source_duration", "INTEGER DEFAULT 0"),
+        )
+        for col, declaration in short_trim_migrations:
+            add_column_if_missing(conn, table="short_trims", column=col, declaration=declaration)
+        require_columns(conn, table="short_trims", expected=(col for col, _declaration in short_trim_migrations))
+        require_columns(conn, table="gemini_runs", expected=("validation_summary",))
         conn.commit()
-        if migrated:
-            pass
 
 
 def db_cleanup_old_records() -> None:

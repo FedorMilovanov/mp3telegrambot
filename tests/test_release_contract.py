@@ -94,6 +94,34 @@ def test_release_workflow_verifies_before_publishing() -> None:
     assert "python -m pytest" in verify, "полный прогон не запускается до сборки"
 
 
+def test_release_workflow_binds_manual_dispatch_and_artifacts_to_peeled_tag() -> None:
+    workflow = yaml.safe_load(RELEASE_WORKFLOW.read_text(encoding="utf-8"))
+    jobs = workflow["jobs"]
+    verify = jobs["verify"]
+    assert verify["outputs"]["commit_sha"] == "${{ steps.identity.outputs.commit_sha }}"
+    assert verify["outputs"]["tag"] == "${{ steps.identity.outputs.tag }}"
+
+    verify_steps = verify["steps"]
+    checkout = next(step for step in verify_steps if step["name"] == "Checkout the requested tag")
+    assert checkout["with"]["ref"] == "${{ inputs.tag || github.ref }}"
+    identity = next(step for step in verify_steps if step.get("id") == "identity")
+    assert identity["env"]["REQUESTED_TAG"] == "${{ inputs.tag || github.ref_name }}"
+    assert identity["run"] == 'python tools/verify_release_tag.py --tag "$REQUESTED_TAG"'
+    assert verify_steps.index(identity) < next(
+        index for index, step in enumerate(verify_steps) if step["name"] == "Resolve the version"
+    )
+
+    build_steps = jobs["build"]["steps"]
+    build_checkout = next(step for step in build_steps if step["name"] == "Checkout the verified source commit")
+    assert build_checkout["with"]["ref"] == "${{ needs.verify.outputs.commit_sha }}"
+    identity_check = next(step for step in build_steps if step["name"] == "Verify the build source identity")
+    assert identity_check["env"]["EXPECTED_COMMIT"] == "${{ needs.verify.outputs.commit_sha }}"
+    assert "git rev-parse" in identity_check["run"]
+    names = [step["name"] for step in build_steps]
+    assert names.index("Verify the build source identity") < names.index("Build wheel and sdist")
+    assert names.index("Build wheel and sdist") < names.index("Checksums")
+
+
 def test_release_publishes_artifacts_with_checksums() -> None:
     workflow = yaml.safe_load(RELEASE_WORKFLOW.read_text(encoding="utf-8"))
     permissions = workflow["jobs"]["build"]["permissions"]

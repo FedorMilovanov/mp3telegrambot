@@ -2236,15 +2236,19 @@ def visible_length(text: str) -> int:
     return len(s) + extra
 
 
-def safe_trim_caption(caption: str, limit: int = 1024) -> str:
+def safe_trim_caption(caption: str, limit: int = 1024, *, suffix: str = "") -> str:
     """
-    Обрезает caption по видимой длине, не ломая HTML.
+    Обрезает Telegram HTML по видимой UTF-16 длине, не ломая теги/entities.
     Используется ТОЛЬКО как последний резерв — вызывать после всех попыток
-    пересобрать caption через _build().
+    пересобрать caption через _build(). ``suffix`` добавляется только при
+    реальном усечении и заранее вычитается из того же бюджета.
     Гарантирует: visible_length(result) <= limit и все HTML-теги закрыты.
     """
     if visible_length(caption) <= limit:
         return caption
+    if visible_length(suffix) > limit:
+        return safe_trim_caption(suffix, limit)
+    content_limit = max(0, limit - visible_length(suffix))
 
     # FIX 2026-05-21 #8 P1: если строка не влезает целиком, пропускаем её,
     # но продолжаем пытаться добавить следующие — иначе при длинном main_topic
@@ -2255,7 +2259,7 @@ def safe_trim_caption(caption: str, limit: int = 1024) -> str:
     for line in lines:
         line_vlen = visible_length(line)
         sep = 1 if result_lines else 0
-        if current_len + sep + line_vlen <= limit:
+        if current_len + sep + line_vlen <= content_limit:
             result_lines.append(line)
             current_len += sep + line_vlen
             continue
@@ -2273,13 +2277,13 @@ def safe_trim_caption(caption: str, limit: int = 1024) -> str:
                 elif line[i] == "&":
                     end = line.find(";", i)
                     if end == -1 or end - i > 10:
-                        if vis < limit:
+                        if vis < content_limit:
                             buf += line[i]
                             vis += 1
                         i += 1
                     else:
                         entity = line[i : end + 1]
-                        if vis < limit:
+                        if vis < content_limit:
                             buf += entity
                             vis += 1
                         i = end + 1
@@ -2288,7 +2292,7 @@ def safe_trim_caption(caption: str, limit: int = 1024) -> str:
                     # visible_length), иначе эмодзи-насыщенная строка обрезалась
                     # «по 1» и итог превышал 1024 → Telegram отклонял отправку.
                     _w = 2 if ord(line[i]) > 0xFFFF else 1
-                    if vis + _w <= limit:
+                    if vis + _w <= content_limit:
                         buf += line[i]
                         vis += _w
                     i += 1
@@ -2322,7 +2326,7 @@ def safe_trim_caption(caption: str, limit: int = 1024) -> str:
     for tag in reversed(open_tags):
         result += f"</{tag}>"
 
-    return result
+    return result + suffix
 
 
 def _trim_timestamps(timestamps_str: str, max_lines: int) -> str:

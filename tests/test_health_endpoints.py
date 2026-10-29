@@ -43,6 +43,8 @@ def healthy_sources(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     monkeypatch.setattr(health_report, "disk_free_gb", lambda *_a, **_k: 42.0)
     monkeypatch.setattr(health_report, "gemini_keys_configured", lambda: 2)
     runtime_status.record_update()
+    runtime_status.record_polling_started()
+    runtime_status.record_polling_heartbeat()
     runtime_status.record_maintenance(ok=True)
     return health_report
 
