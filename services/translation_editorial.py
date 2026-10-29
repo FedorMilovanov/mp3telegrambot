@@ -295,6 +295,8 @@ def _safe_media_id(media_id: str) -> str:
 
 def _path_stable_source_identity(source_entry: dict[str, Any]) -> dict[str, Any]:
     copied = json.loads(json.dumps(source_entry, ensure_ascii=False, allow_nan=False))
+    if not isinstance(copied, dict):
+        raise ValueError("source identity must remain a JSON object")
     translated = copied.get("translated_video")
     if isinstance(translated, dict):
         translated.pop("local_path", None)
@@ -504,8 +506,9 @@ def load_pack_manifest(pack_path: Path) -> dict[str, Any]:
             raise ValueError("manifest source identity is invalid")
         if not _is_canonical_sha256(translated.get("sha256")):
             raise ValueError("manifest translated-video SHA-256 is invalid")
+        translated_size = translated.get("bytes")
         try:
-            translated_bytes = int(translated.get("bytes"))
+            translated_bytes = int(translated_size) if isinstance(translated_size, (str, int, float)) else 0
         except (TypeError, ValueError):
             translated_bytes = 0
         if translated_bytes <= 0 or not str(translated.get("local_path") or "").strip():
@@ -627,7 +630,7 @@ def validate_review_document(review: dict[str, Any], manifest: dict[str, Any]) -
         errors.append("full_sermon must be an object")
         full_issues: list[Any] = []
     else:
-        full_issues = full.get("issues") if isinstance(full.get("issues"), list) else []
+        full_issues = list(full["issues"]) if isinstance(full.get("issues"), list) else []
         errors.extend(
             _validate_verdict_issue_shape(
                 "full_sermon",

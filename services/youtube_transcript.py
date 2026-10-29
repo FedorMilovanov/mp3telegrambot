@@ -32,7 +32,7 @@ def _env_enabled(name: str, default: bool = True) -> bool:
     return raw.strip().lower() not in {"0", "false", "no", "off"}
 
 
-def _sec_from_match(m: re.Match) -> int:
+def _sec_from_match(m: re.Match[str]) -> int:
     return int(m.group("h")) * 3600 + int(m.group("m")) * 60 + int(m.group("s"))
 
 
@@ -292,8 +292,7 @@ async def download_youtube_transcript_text(
             # yt-dlp accepts comma-separated globs. Keep order but avoid noisy
             # duplicates like en.*,en.*,en in logs/requests.
             prefs = [f"{lang_root}.*", lang_root, "en.*", "en"]
-            seen: set[str] = set()
-            sub_langs = ",".join(x for x in prefs if not (x in seen or seen.add(x)))
+            sub_langs = ",".join(dict.fromkeys(prefs))
 
         def _cmd(*, auto: bool) -> list[str]:
             return [

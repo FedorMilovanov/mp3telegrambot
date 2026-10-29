@@ -30,11 +30,11 @@ def _failure_report(reason: str, *, detail: str = "") -> dict[str, Any]:
 
 async def verify_highlights_candidate(
     source_video_path: Path,
-    candidate: dict,
+    candidate: dict[str, Any],
     *,
-    ai_data: dict | None = None,
+    ai_data: dict[str, Any] | None = None,
     source_duration: float = 0.0,
-) -> tuple[dict | None, dict[str, Any]]:
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     """Return structured evidence for every quality-gate failure.
 
     The internal verifier already classifies normal rejections. This boundary

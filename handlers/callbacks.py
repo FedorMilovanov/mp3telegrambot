@@ -47,6 +47,7 @@ import re  # AUDIT L9
 import time
 import uuid
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ def _path_exists(path: Path) -> bool:
     return path.exists()
 
 
-async def _release_render_lock(token) -> None:
+async def _release_render_lock(token: Any) -> None:
     """Release a segment lock without masking the callback's render result."""
     try:
         from core.render_locks import release_render_lock
@@ -127,7 +128,11 @@ def _build_settings_keyboard(
     return InlineKeyboardMarkup(buttons)
 
 
-def _flush_buttons(rows: list, btns: list, wide_threshold: int) -> None:
+def _flush_buttons(
+    rows: list[list[InlineKeyboardButton]],
+    btns: list[InlineKeyboardButton],
+    wide_threshold: int,
+) -> None:
     """Укладывает кнопки: короткие по 2 в ряд, длинные — по одной."""
     i = 0
     while i < len(btns):
@@ -155,7 +160,7 @@ async def _build_keyboard_async() -> InlineKeyboardMarkup:
     return _build_settings_keyboard(all_settings, speed)
 
 
-async def settings_command(update, context):
+async def settings_command(update: Any, context: Any) -> None:
     """Показывает панель настроек."""
     user_id = update.effective_user.id
     if not ADMIN_IDS or user_id not in ADMIN_IDS:
@@ -171,7 +176,7 @@ async def settings_command(update, context):
     )
 
 
-async def handle_callback(update, context) -> None:
+async def handle_callback(update: Any, context: Any) -> None:
     """AUDIT FIX C1: query.answer() вызывается ровно ОДИН раз в каждой ветке.
 
     Раньше безусловный await query.answer() в начале функции закрывал
@@ -439,7 +444,7 @@ async def handle_callback(update, context) -> None:
         await query.answer("🗑 Чистим...")
         loop = asyncio.get_running_loop()
 
-        def _delete_all_cache():
+        def _delete_all_cache() -> int:
             with _db_conn() as conn:
                 r = conn.execute("DELETE FROM video_cache").rowcount
                 conn.commit()
@@ -462,7 +467,12 @@ async def handle_callback(update, context) -> None:
 # ─── Подпрограммы strim ──────────────────────────────────────────
 
 
-async def _handle_strim_nosub(query, rec: dict, start_s: int, end_s: int) -> None:
+async def _handle_strim_nosub(
+    query: Any,
+    rec: dict[str, Any],
+    start_s: int,
+    end_s: int,
+) -> None:
     """Отправить ранее сохранённую версию без субтитров."""
     nosub_path_str = rec.get("video_path_nosub", "")
     if not nosub_path_str:
@@ -524,8 +534,8 @@ async def _handle_strim_nosub(query, rec: dict, start_s: int, end_s: int) -> Non
 
 
 async def _handle_strim_retrim(
-    query,
-    rec: dict,
+    query: Any,
+    rec: dict[str, Any],
     video_path: Path,
     start_s: int,
     end_s: int,
@@ -533,7 +543,7 @@ async def _handle_strim_retrim(
     source_duration: int,
 ) -> None:
     """Перерезать short по новым start_s/end_s и отправить."""
-    candidate = {}
+    candidate: dict[str, Any] = {}
     with contextlib.suppress(Exception):
         candidate = json.loads(rec["candidate_json"])
     candidate["start_seconds"] = start_s

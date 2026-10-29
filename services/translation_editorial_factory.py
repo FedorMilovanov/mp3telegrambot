@@ -287,7 +287,7 @@ def _gemini_max_attempts() -> int:
 
 def _manifest_for_model(manifest: dict[str, Any]) -> dict[str, Any]:
     """Remove machine-local paths before sending semantic evidence to Gemini."""
-    copied = json.loads(json.dumps(manifest, ensure_ascii=False))
+    copied: dict[str, Any] = json.loads(json.dumps(manifest, ensure_ascii=False))
     translated = (copied.get("source") or {}).get("translated_video") or {}
     if isinstance(translated, dict):
         translated.pop("local_path", None)

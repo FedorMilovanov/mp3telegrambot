@@ -11,6 +11,9 @@ import contextlib
 import html as html_mod
 import logging
 import uuid
+from typing import Any
+
+from telegram import Message
 
 from core.database import asettings_get, get_max_file_size_mb
 from core.globals import DOWNLOAD_DIR
@@ -34,14 +37,14 @@ logger = logging.getLogger(__name__)
 
 async def render_and_send_segment(
     *,
-    reply_target,
-    status_msg,
+    reply_target: Message,
+    status_msg: Message,
     video_id: str,
     source_url: str,
     segment: PlannedSegment,
     title: str,
     total_segments: int,
-    ai_data: dict | None = None,
+    ai_data: dict[str, Any] | None = None,
 ) -> bool:
     """Render, prove and deliver one selectable Q&A/theme segment."""
     safe_id = video_id.replace("/", "_").replace("\\", "_").replace("..", "_")

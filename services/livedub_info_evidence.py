@@ -194,7 +194,7 @@ def _claim_supported(text: str, evidence_lower: str) -> bool:
     return True
 
 
-def sanitize_card(card: dict | None, title_line: str, evidence: str) -> dict | None:
+def sanitize_card(card: dict[str, Any] | None, title_line: str, evidence: str) -> dict[str, Any] | None:
     if not isinstance(card, dict):
         return card
     result = dict(card)

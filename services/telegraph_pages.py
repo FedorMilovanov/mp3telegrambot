@@ -33,11 +33,7 @@ from converters.md_telegraph import (
     _estimate_nodes_v2,  # FIX telegraph_pages
 )
 from services.telegraph import _telegraph_post
-from core.core_utils import _fix_rtl_in_text, _md_parse_inline  # AUDIT-V2-MDPARSE
-from core.json_parser import (
-    # _try_parse_synopsis_json,  # FIX 2026-05-21 #13: dead import — используется локальный в telegraph.py
-    time_to_seconds,  # FIX telegraph_pages
-)
+from core.core_utils import _fix_rtl_in_text, _md_parse_inline, time_to_seconds  # AUDIT-V2-MDPARSE
 from core.url_utils import get_youtube_timestamp_url  # FIX telegraph_pages
 from core.utils import format_timestamp  # FIX telegraph_pages
 from core.prompts import REFLECTION_APPLICATION_PROMPT
@@ -58,18 +54,23 @@ from converters.md_telegraph import _build_related_materials_nodes
 from services import gemini_capacity_control as capacity_control
 
 import asyncio
+from collections.abc import Awaitable, Callable
 import json
 from dataclasses import dataclass  # FIX telegraph_pages
 import logging
 import re
 import time
 import os
+from typing import Any
 
 # types — из google.genai
+types: Any
 try:
-    from google.genai import types
+    from google.genai import types as _genai_types
 except ImportError:
     types = None
+else:
+    types = _genai_types
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +98,7 @@ def combined_study_reflection_enabled() -> bool:
     return (os.getenv("COMBINE_STUDY_REFLECTION", "0") or "0").strip().lower() in {"1", "true", "yes", "on"}
 
 
-async def create_telegraph_analytics(ai_data: dict, title: str, author: str, yt_url: str = "") -> str | None:
+async def create_telegraph_analytics(ai_data: dict[str, Any], title: str, author: str, yt_url: str = "") -> str | None:
     """v3.0 — Публикует аналитику (analysis_summary + argument_arc + key_categories) в Telegraph."""
     author = _clean_meta_line(author or "") or "Автор не указан"
     title = _clean_meta_line(title or "") or "Без названия"
@@ -110,7 +111,7 @@ async def create_telegraph_analytics(ai_data: dict, title: str, author: str, yt_
         return None
 
     loop = asyncio.get_running_loop()
-    nodes = []
+    nodes: list[Any] = []
 
     if analysis_summary and not is_meta_garbage(analysis_summary):
         nodes.append({"tag": "h3", "children": ["🧠 Аналитика"]})
@@ -150,7 +151,7 @@ async def create_telegraph_analytics(ai_data: dict, title: str, author: str, yt_
     return await _telegraph_post(f"Аналитика: {title}", author, nodes, loop)
 
 
-def _normalize_question_items(questions: list, *, max_items: int = 15) -> list[str]:
+def _normalize_question_items(questions: list[Any], *, max_items: int = 15) -> list[str]:
     """Normalize generated reflection questions before publishing/reusing them.
 
     Keeps only useful, deduplicated open questions. Preserves the 🟢/🔵 marker
@@ -181,7 +182,7 @@ def _normalize_question_items(questions: list, *, max_items: int = 15) -> list[s
     return out
 
 
-async def create_telegraph_questions(questions: list, title: str, author: str) -> str | None:
+async def create_telegraph_questions(questions: list[Any], title: str, author: str) -> str | None:
     """Публикует вопросы для обсуждения в Telegraph.
     v9: однофазная публикация — createPage сразу с финальным контентом и заголовком.
     Экономит 1 API-запрос на каждую публикацию.
@@ -209,7 +210,7 @@ async def create_telegraph_questions(questions: list, title: str, author: str) -
         return " ".join(parts)
 
     # ── Однофазная публикация (v9): сразу финальный контент ───────
-    final_nodes: list = []
+    final_nodes: list[Any] = []
 
     if green:
         final_nodes.append({"tag": "h3", "children": ["Вопросы для размышления"]})
@@ -242,7 +243,7 @@ async def create_telegraph_questions(questions: list, title: str, author: str) -
     return page_url
 
 
-async def create_telegraph_terms(terms_data: dict, title: str, author: str, yt_url: str = "") -> str | None:
+async def create_telegraph_terms(terms_data: dict[str, Any], title: str, author: str, yt_url: str = "") -> str | None:
     """Публикует блок «Термины» в Telegraph.
     terms_data — плоские массивы строк с разделителем ||.
     """
@@ -259,9 +260,9 @@ async def create_telegraph_terms(terms_data: dict, title: str, author: str, yt_u
         return None
 
     loop = asyncio.get_running_loop()
-    nodes: list = []
+    nodes: list[Any] = []
 
-    def _ts_nodes(times_str: str) -> list:
+    def _ts_nodes(times_str: str) -> list[Any]:
         if not times_str:
             return []
         parts = [t.strip() for t in re.split(r"[,\s•]+", times_str) if t.strip()]
@@ -269,7 +270,7 @@ async def create_telegraph_terms(terms_data: dict, title: str, author: str, yt_u
             return []
         # Лимит: максимум 3 таймкода на запись (начало темы + ключевой момент)
         # Валидация: пропускаем обрезанные/невалидные ("5", "41" без ":")
-        valid_parts = []
+        valid_parts: list[str] = []
         for t in parts:
             if ":" not in t:
                 continue  # обрезанный или невалидный таймкод
@@ -280,7 +281,7 @@ async def create_telegraph_terms(terms_data: dict, title: str, author: str, yt_u
                 break
         if not valid_parts:
             return []
-        children = []
+        children: list[Any] = []
         for i, ts in enumerate(valid_parts):
             secs = time_to_seconds(ts)
             if yt_url and secs is not None:
@@ -323,7 +324,7 @@ async def create_telegraph_terms(terms_data: dict, title: str, author: str, yt_u
 
     first_section = True
 
-    def _section_header(label: str):
+    def _section_header(label: str) -> None:
         nonlocal first_section
         if not first_section:
             nodes.append({"tag": "hr"})
@@ -455,7 +456,7 @@ async def create_telegraph_terms(terms_data: dict, title: str, author: str, yt_u
                 continue
 
             # Заголовок
-            header_parts = []
+            header_parts: list[str] = []
             if ref:
                 header_parts.append(ref)
             if ru_key:
@@ -482,7 +483,7 @@ async def create_telegraph_terms(terms_data: dict, title: str, author: str, yt_u
                 "BHS": "BHS (евр. текст ВЗ)",
             }
 
-            def _expand_source(sl: str, _abbrevs=_DICT_ABBREVS) -> str:
+            def _expand_source(sl: str, _abbrevs: dict[str, str] = _DICT_ABBREVS) -> str:
                 """Расшифровывает аббревиатуры словарей в source_label."""
                 if not sl:
                     return sl
@@ -557,7 +558,7 @@ async def _gemini_text_request(
     video_id: str = "",
     thinking_level: str = "high",
     response_mime_type: str | None = None,
-    response_schema=None,
+    response_schema: Any = None,
     allow_model_fallback: bool = False,
 ) -> str | None:
     """Strict-primary semantic Gemini request on the shared transport.
@@ -598,7 +599,7 @@ async def _gemini_text_request(
         s = str(e)
         return "500" in s or "INTERNAL" in s.upper()
 
-    async def _request_on_client(client):
+    async def _request_on_client(client: Any) -> str:
         elapsed = time.time() - _start_time
         if elapsed >= _TIME_BUDGET:
             raise asyncio.TimeoutError(f"Telegraph Gemini total time budget exceeded ({_TIME_BUDGET}s)")
@@ -706,7 +707,7 @@ async def _gemini_text_request(
 
     last_err = None
     try:
-        result = await gemini_generate(
+        result: str | None = await gemini_generate(
             GEMINI_CLIENTS,
             _request_on_client,
             model_name=model_name,
@@ -736,7 +737,9 @@ async def _gemini_text_request(
     return None
 
 
-def _parse_expanded_json(text: str, max_depth: int = 50, max_iterations: int = 500_000) -> tuple[list, list] | None:
+def _parse_expanded_json(
+    text: str, max_depth: int = 50, max_iterations: int = 500_000
+) -> tuple[list[Any], list[Any]] | None:
     """Парсит JSON {outline, sections} из ответа Gemini. Возвращает (outline, sections) или None.
     Поддерживает восстановление обрезанного JSON (max_tokens hit).
 
@@ -752,7 +755,7 @@ def _parse_expanded_json(text: str, max_depth: int = 50, max_iterations: int = 5
 
     # Попытка 1: чистый JSON
     try:
-        data = json.loads(text)
+        data: Any = json.loads(text)
         return data.get("outline", []), data.get("sections", [])
     except json.JSONDecodeError:
         pass
@@ -768,7 +771,8 @@ def _parse_expanded_json(text: str, max_depth: int = 50, max_iterations: int = 5
             # FIX 2026-05-21 #3 P1: Gemini иногда вставляет сырые \n внутри JSON-строк.
             # Экранируем их, как это делает _fix_json_newlines в telegraph.py.
             def _fix_json_newlines(s_in: str) -> str:
-                out, in_str, i = [], False, 0
+                out: list[str] = []
+                in_str, i = False, 0
                 while i < len(s_in):
                     c = s_in[i]
                     if c == "\\" and i + 1 < len(s_in):
@@ -854,8 +858,8 @@ def _parse_expanded_json(text: str, max_depth: int = 50, max_iterations: int = 5
 
 
 async def _publish_expanded_page(
-    sections: list,
-    outline: list,
+    sections: list[dict[str, Any]],
+    outline: list[dict[str, Any]],
     page_title: str,
     tg_title: str,
     author: str,
@@ -865,20 +869,20 @@ async def _publish_expanded_page(
     vk_url: str = "",
     duration: int = 0,
     plain_scripture: bool = False,  # FIXED #127: пробрасывается в _section_to_nodes_v2
-    ai_data: dict | None = None,  # FEATURE 2026-06-11: для блока «Читать также»
+    ai_data: dict[str, Any] | None = None,  # FEATURE 2026-06-11: для блока «Читать также»
     video_id: str = "",
 ) -> str | None:
     """Публикует article-like страницу по модели Конспекта (createPage + editPage).
     Использует рекурсивное дробление при CONTENT_TOO_BIG — аналогично Synopsis."""
     loop = asyncio.get_running_loop()
 
-    published_parts: list[tuple[list, str]] = []
+    published_parts: list[tuple[list[dict[str, Any]], str]] = []
 
-    async def _publish_recursive(secs: list, depth: int = 0) -> bool:
+    async def _publish_recursive(secs: list[dict[str, Any]], depth: int = 0) -> bool:
         if not secs:
             return True
 
-        body_nodes: list = []
+        body_nodes: list[Any] = []
         for sec_idx, sec in enumerate(secs):
             if sec_idx > 0:
                 body_nodes.append({"tag": "hr"})
@@ -966,9 +970,9 @@ async def _publish_expanded_page(
     # было ПОВТОРНО вызвать после сжатия части при CONTENT_TOO_BIG, вместо
     # того чтобы сразу выбрасывать оглавление насовсем (старый Edge-A).
     async def _build_expanded_part_nodes(
-        i: int, part_secs: list, part_title: str, *, include_outline: bool = True
-    ) -> list:
-        _nodes: list = []
+        i: int, part_secs: list[dict[str, Any]], part_title: str, *, include_outline: bool = True
+    ) -> list[Any]:
+        _nodes: list[Any] = []
         if include_outline and i == 0:
             _nodes.extend(_build_toc_nodes_v2(outline, yt_url=yt_url, parts=parts, duration=duration))
 
@@ -1086,7 +1090,7 @@ def _content_audit_retry_enabled() -> bool:
     return (os.getenv("EXPANDED_CONTENT_AUDIT_RETRY", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
 
 
-def _audit_warning_count(issues) -> int:
+def _audit_warning_count(issues: list[Any]) -> int:
     try:
         return sum(1 for i in issues or [] if has_content_audit_warnings([i]))
     except Exception:
@@ -1097,14 +1101,14 @@ async def _retry_expanded_sections_for_content_audit(
     *,
     label: str,
     original_prompt: str,
-    outline: list,
-    sections: list,
-    issues: list,
+    outline: list[dict[str, Any]],
+    sections: list[dict[str, Any]],
+    issues: list[Any],
     max_tokens: int,
     thinking_level: str,
-    response_schema,
+    response_schema: Any,
     expected_author: str,
-) -> tuple[list, list, list] | None:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[Any]] | None:
     """One Gemini repair pass for unresolved content-audit warnings.
 
     This is not a regex cleanup. It asks the primary quality model to repair the
@@ -1192,14 +1196,14 @@ async def _run_expanded_pipeline(
     author: str,
     yt_url: str = "",
     include_toc: bool = True,
-    fallback_fn=None,
+    fallback_fn: Callable[[], Awaitable[str | None]] | None = None,
     max_tokens: int = 8000,
     rutube_url: str = "",
     vk_url: str = "",
     duration: int = 0,
     plain_scripture: bool = False,  # FIXED #127: пробрасывается в _publish_expanded_page
     thinking_level: str = "high",  # V3-P14: настраивается по типу задачи
-    ai_data: dict | None = None,  # FEATURE 2026-06-11: для блока «Читать также»
+    ai_data: dict[str, Any] | None = None,  # FEATURE 2026-06-11: для блока «Читать также»
     video_id: str = "",
 ) -> str | None:
     """Универсальный runner для article-like pages: Gemini -> парсинг -> публикация -> fallback."""
@@ -1404,14 +1408,14 @@ async def _run_expanded_pipeline(
 
 
 async def create_telegraph_study_analysis(
-    ai_data: dict | None,
+    ai_data: dict[str, Any] | None,
     title: str,
     author: str,
     yt_url: str = "",
-    compact_fn=None,
+    compact_fn: Callable[[], Awaitable[str | None]] | None = None,
     rutube_url: str = "",
     vk_url: str = "",
-    synopsis_outline: list | None = None,
+    synopsis_outline: list[dict[str, Any]] | None = None,
     duration: float = 0,
     video_id: str = "",  # FEATURE 2026-06-11
 ) -> str | None:
@@ -1456,15 +1460,15 @@ async def create_telegraph_study_analysis(
     translations = _td.get("translations", []) or []
     lexicon_notes = _td.get("lexicon_notes", []) or []
 
-    def _fmt_block(items, max_n=12):
+    def _fmt_block(items: list[Any], max_n: int = 12) -> str:
         if not items:
             return "не указаны"
         return "\n".join(f"- {str(x).split('||')[0].strip()}" for x in items[:max_n])
 
-    def _fmt_scripture(items, max_n=12):
+    def _fmt_scripture(items: list[Any], max_n: int = 12) -> str:
         if not items:
             return "не указаны"
-        parts = []
+        parts: list[str] = []
         for x in items[:max_n]:
             fields = str(x).split("||")
             ref = fields[0].strip() if fields else ""
@@ -1545,16 +1549,16 @@ async def create_telegraph_study_analysis(
 
 
 async def create_telegraph_study_reflection_combined(
-    ai_data: dict | None,
-    questions: list,
+    ai_data: dict[str, Any] | None,
+    questions: list[Any],
     title: str,
     author: str,
     yt_url: str = "",
-    study_compact_fn=None,
-    reflection_compact_fn=None,
+    study_compact_fn: Callable[[], Awaitable[str | None]] | None = None,
+    reflection_compact_fn: Callable[[], Awaitable[str | None]] | None = None,
     rutube_url: str = "",
     vk_url: str = "",
-    synopsis_outline: list | None = None,
+    synopsis_outline: list[dict[str, Any]] | None = None,
     duration: float = 0,
 ) -> CombinedStudyReflectionResult | None:
     """Optional one-call Study+Reflection generator.
@@ -1592,15 +1596,15 @@ async def create_telegraph_study_reflection_combined(
     key_cats_str = "\n".join(f"- {c}" for c in _key_cats[:12]) if _key_cats else "не указаны"
     _td = _ai.get("terms_data") or {}
 
-    def _fmt_block(items, max_n=12):
+    def _fmt_block(items: list[Any], max_n: int = 12) -> str:
         if not items:
             return "не указаны"
         return "\n".join(f"- {str(x).split('||')[0].strip()}" for x in items[:max_n])
 
-    def _fmt_scripture(items, max_n=12):
+    def _fmt_scripture(items: list[Any], max_n: int = 12) -> str:
         if not items:
             return "не указаны"
-        parts = []
+        parts: list[str] = []
         for x in items[:max_n]:
             fields = str(x).split("||")
             ref = fields[0].strip() if fields else ""
@@ -1657,7 +1661,7 @@ async def create_telegraph_study_reflection_combined(
         source_pack=_source_pack,
     )
 
-    merged_questions = []
+    merged_questions: list[str] = []
     if isinstance(questions, list):
         _normalized_questions = _normalize_question_items(questions, max_items=15)
         green = [q for q in _normalized_questions if str(q).startswith("\U0001f7e2")]
@@ -1788,7 +1792,9 @@ async def create_telegraph_study_reflection_combined(
     )
 
 
-def _combined_relevance_ok(sections: list[dict], ai_data: dict | None, *, label: str = "combined") -> bool:
+def _combined_relevance_ok(
+    sections: list[dict[str, Any]], ai_data: dict[str, Any] | None, *, label: str = "combined"
+) -> bool:
     """Reject obvious cross-run/application contamination in combined mode."""
 
     def terms(text: str) -> set[str]:
@@ -1825,7 +1831,7 @@ def _combined_relevance_ok(sections: list[dict], ai_data: dict | None, *, label:
     return True
 
 
-def _parse_combined_expanded_json(text: str) -> dict[str, tuple[list, list]] | None:
+def _parse_combined_expanded_json(text: str) -> dict[str, tuple[list[Any], list[Any]]] | None:
     """Parse {study:{outline,sections}, reflection:{outline,sections}}."""
     raw = str(text or "").strip()
     raw = re.sub(r"^```[a-zA-Z]*\s*", "", raw)
@@ -1835,10 +1841,10 @@ def _parse_combined_expanded_json(text: str) -> dict[str, tuple[list, list]] | N
     if start < 0 or end <= start:
         return None
     try:
-        data = json.loads(raw[start : end + 1])
+        data: Any = json.loads(raw[start : end + 1])
     except json.JSONDecodeError:
         return None
-    out: dict[str, tuple[list, list]] = {}
+    out: dict[str, tuple[list[Any], list[Any]]] = {}
     for key in ("study", "reflection"):
         page = data.get(key) if isinstance(data, dict) else None
         if not isinstance(page, dict):
@@ -1857,16 +1863,16 @@ def _parse_combined_expanded_json(text: str) -> dict[str, tuple[list, list]] | N
 
 
 async def create_telegraph_reflection_application(
-    questions: list,
+    questions: list[Any],
     title: str,
     author: str,
-    ai_data: dict | None = None,
+    ai_data: dict[str, Any] | None = None,
     duration: int = 0,
     yt_url: str = "",
-    compact_fn=None,
+    compact_fn: Callable[[], Awaitable[str | None]] | None = None,
     rutube_url: str = "",
     vk_url: str = "",
-    synopsis_outline: list | None = None,
+    synopsis_outline: list[dict[str, Any]] | None = None,
     video_id: str = "",  # FEATURE 2026-06-11
 ) -> str | None:
     """

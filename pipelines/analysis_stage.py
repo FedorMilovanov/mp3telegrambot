@@ -36,7 +36,7 @@ SYNOPSIS_STEP = 5
 #: Что вернул анализ: `(ai_data, used_client, used_audio_part)`.
 AnalyzeFn = Callable[..., Awaitable[tuple[dict[str, Any] | None, str | None, Any]]]
 #: Что вернул конспект: `(telegraph_url, outline)`.
-SynopsisFn = Callable[..., Awaitable[tuple[str | None, str | None]]]
+SynopsisFn = Callable[..., Awaitable[tuple[str | None, list[dict[str, Any]] | None]]]
 #: Что вернул поиск альтернативных ссылок: словарь с `rutube`/`vk` или None.
 LinksFn = Callable[..., Awaitable[dict[str, Any] | None]]
 #: Чтение пользовательской настройки.
@@ -76,7 +76,7 @@ class AnalysisOutcome:
 
     ai_data: dict[str, Any] | None = None
     telegraph_url: str | None = None
-    synopsis_outline: str | None = None
+    synopsis_outline: list[dict[str, Any]] | None = None
     used_client: str | None = None
     used_audio_part: Any = None
     degraded_caption_data: dict[str, Any] | None = None
@@ -235,7 +235,7 @@ async def run_analysis(
     vk = str((links or {}).get("vk") or "")
 
     telegraph_url: str | None = None
-    outline: str | None = None
+    outline: list[dict[str, Any]] | None = None
     if await deps.get_setting("synopsis"):
         telegraph_url, outline = await deps.create_synopsis(
             request.mp3_path,

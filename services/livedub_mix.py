@@ -45,6 +45,7 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,7 @@ def _env_int(name: str, default: int, max_value: int = 5000) -> int:
         return default
 
 
-def get_mix_params() -> dict:
+def get_mix_params() -> dict[str, Any]:
     delay_ms = _env_int("LIVEDUB_DELAY_MS", 600)
     # ВАЖНО: RU-дорожка сдвигается adelay'ем. Без хвоста amix раньше
     # завершался по длине оригинала и съедал последние слова перевода
@@ -136,7 +137,7 @@ def build_interval_volume_expr(intervals: list[tuple[float, float]], inside: flo
 _TARGET_LUFS = -16.0
 
 
-_loudness_cache: dict = {}
+_loudness_cache: dict[tuple[str, int], float] = {}
 
 
 def measure_loudness(path: Path, timeout: int = 600) -> float | None:
@@ -155,9 +156,9 @@ def measure_loudness(path: Path, timeout: int = 600) -> float | None:
         cache_key = None
     if cache_key is not None and cache_key in _loudness_cache:
         return _loudness_cache[cache_key]
-    kwargs: dict = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
+    kwargs: dict[str, Any] = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
     if os.name == "nt":
-        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     try:
         proc = subprocess.run(  # noqa: S603 -- resolved ffmpeg, fixed loudnorm argv, media path is data
             [
@@ -204,9 +205,9 @@ def _run_ffmpeg(args: list[str], timeout: int = 1800) -> tuple[bool, str]:
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         return False, "ffmpeg не найден"
-    kwargs: dict = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
+    kwargs: dict[str, Any] = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
     if os.name == "nt":
-        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     try:
         proc = subprocess.run(  # noqa: S603 -- resolved ffmpeg and internally built argv, no shell
             [ffmpeg, *args], timeout=timeout, **kwargs, check=False
@@ -272,9 +273,9 @@ def has_video_stream(path: Path) -> bool:
     if not ffprobe:
         return path.suffix.lower() in {".mp4", ".webm", ".mkv", ".mov", ".m4v"}
     try:
-        kwargs: dict = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
+        kwargs: dict[str, Any] = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
         if os.name == "nt":
-            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+            kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         proc = subprocess.run(  # noqa: S603 -- resolved ffprobe and fixed video-stream probe
             [
                 ffprobe,
@@ -639,7 +640,7 @@ async def build_pro_dub(video_url: str, workdir: Path, duration: float = 0.0, la
     ru_audio: Path | None = None
     orig_video: Path | None = None
 
-    async def _drain(task):
+    async def _drain(task: asyncio.Task[Any]) -> None:
         """Гасим отменённую задачу, чтобы не было 'exception was never retrieved'."""
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError, Exception):
@@ -719,7 +720,7 @@ def find_pro_tracks(workdir: Path) -> tuple[Path | None, Path | None]:
 # ── Метаданные для Telegram-отправки ─────────────────────────────
 
 
-def probe_video_meta(path: Path) -> dict:
+def probe_video_meta(path: Path) -> dict[str, int | None]:
     """width/height/duration для send_video.
 
     Для больших видео (>10 МБ) Telegram НЕ анализирует файл сам:
@@ -727,7 +728,7 @@ def probe_video_meta(path: Path) -> dict:
     не работает до полного скачивания (SO #71844601).
     """
     ffprobe = shutil.which("ffprobe")
-    meta = {"width": None, "height": None, "duration": None}
+    meta: dict[str, int | None] = {"width": None, "height": None, "duration": None}
     if not ffprobe:
         # Fallback: ffmpeg -i пишет метаданные в stderr (на Windows ffmpeg
         # нередко установлен без ffprobe — метаданные молча терялись)
@@ -735,9 +736,9 @@ def probe_video_meta(path: Path) -> dict:
         if not ffmpeg:
             return meta
         try:
-            kwargs: dict = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
+            kwargs: dict[str, Any] = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
             if os.name == "nt":
-                kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+                kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
             proc = subprocess.run(  # noqa: S603 -- resolved ffmpeg metadata fallback, no shell
                 [ffmpeg, "-i", str(path)], timeout=60, **kwargs, check=False
             )
@@ -793,9 +794,9 @@ def make_video_thumbnail(video_path: Path, at_sec: float = 3.0) -> Path | None:
         return None
     out = Path(video_path).with_suffix(".thumb.jpg")
     try:
-        kwargs: dict = {"capture_output": True}
+        kwargs: dict[str, Any] = {"capture_output": True}
         if os.name == "nt":
-            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+            kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         proc = subprocess.run(  # noqa: S603 -- resolved ffmpeg, fixed thumbnail argv, paths are data
             [
                 ffmpeg,
@@ -837,7 +838,7 @@ _FIX_EN_BOOST = _env_float("LIVEDUB_AUTOFIX_EN_BOOST", 2.2)  # 0.45 * 2.2 ≈ 1.
 
 
 def extract_fix_intervals(
-    issues: list[dict],
+    issues: list[dict[str, Any]],
     max_fixes: int | None = None,
 ) -> list[tuple[float, float]]:
     """Return merged windows covering every valid major QA timestamp.
@@ -904,7 +905,7 @@ def _unlink_missing(path: Path) -> None:
     path.unlink(missing_ok=True)
 
 
-async def apply_qa_audio_fixes(workdir: Path, issues: list[dict]) -> Path | None:
+async def apply_qa_audio_fixes(workdir: Path, issues: list[dict[str, Any]]) -> Path | None:
     """Пересобирает микс с точечными правками: в местах major-искажений
     RU-дубляж по умолчанию полностью вырезается, оригинал выводится в полный голос.
 
@@ -946,9 +947,10 @@ async def apply_qa_audio_fixes(workdir: Path, issues: list[dict]) -> Path | None
                 from services.eng_subtitles import merge_subtitles
 
                 with_subs = await merge_subtitles(result, srt, is_fallback=False)
-                if with_subs and await asyncio.to_thread(_path_exists, Path(with_subs)):
-                    logger.info("[LiveDubMix] авто-правка: субтитры возвращены в фикс-версию")
-                    return Path(with_subs)
+                if with_subs:
+                    if await asyncio.to_thread(_path_exists, Path(with_subs)):
+                        logger.info("[LiveDubMix] авто-правка: субтитры возвращены в фикс-версию")
+                        return Path(with_subs)
             except Exception as _sub_err:
                 logger.warning("[LiveDubMix] авто-правка: не удалось вернуть сабы: %s", _sub_err)
     return result

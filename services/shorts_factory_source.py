@@ -8,6 +8,7 @@ import contextlib
 import logging
 import os
 import shutil
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -171,7 +172,7 @@ def _stderr_tail(process: Any, limit: int = 900) -> str:
     return str(value)[-limit:]
 
 
-def _remove_paths(paths) -> None:
+def _remove_paths(paths: Iterable[Path]) -> None:
     for path in paths:
         with contextlib.suppress(OSError):
             Path(path).unlink(missing_ok=True)
@@ -585,6 +586,7 @@ async def create_factory_plan_from_supported_audio(
 
 
 __all__ = [
+    "DOWNLOAD_DIR",
     "create_factory_plan_from_supported_audio",
     "download_factory_audio_source",
     "download_factory_video_source",

@@ -37,9 +37,10 @@ def _pid_is_running(pid: int) -> bool:
         try:
             import ctypes
 
-            handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, int(pid))
+            kernel32 = getattr(ctypes, "windll").kernel32
+            handle = kernel32.OpenProcess(0x1000, False, int(pid))
             if handle:
-                ctypes.windll.kernel32.CloseHandle(handle)
+                kernel32.CloseHandle(handle)
                 return True
             return False
         except Exception:
@@ -76,7 +77,8 @@ def _windows_start_token(pid: int) -> str:
         from ctypes import wintypes
 
         process_query_limited_information = 0x1000
-        handle = ctypes.windll.kernel32.OpenProcess(
+        kernel32 = getattr(ctypes, "windll").kernel32
+        handle = kernel32.OpenProcess(
             process_query_limited_information,
             False,
             int(pid),
@@ -88,7 +90,7 @@ def _windows_start_token(pid: int) -> str:
         kernel = wintypes.FILETIME()
         user = wintypes.FILETIME()
         try:
-            ok = ctypes.windll.kernel32.GetProcessTimes(
+            ok = kernel32.GetProcessTimes(
                 handle,
                 ctypes.byref(creation),
                 ctypes.byref(exit_time),
@@ -100,7 +102,7 @@ def _windows_start_token(pid: int) -> str:
             value = (int(creation.dwHighDateTime) << 32) | int(creation.dwLowDateTime)
             return str(value)
         finally:
-            ctypes.windll.kernel32.CloseHandle(handle)
+            kernel32.CloseHandle(handle)
     except Exception:
         return ""
 

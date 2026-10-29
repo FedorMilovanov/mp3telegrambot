@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import json
 import os
 from pathlib import Path
@@ -175,3 +176,40 @@ def test_ffprobe_postcondition_uses_resolved_executable(monkeypatch: pytest.Monk
     assert isinstance(command, list)
     assert command[0] == "/resolved/ffprobe"
     assert command[-1] == str(media)
+
+
+def test_windows_pid_check_closes_owned_process_handle(monkeypatch: pytest.MonkeyPatch):
+    opened: list[tuple[int, bool, int]] = []
+    closed: list[int] = []
+
+    def open_process(access: int, inherit: bool, pid: int) -> int:
+        opened.append((access, inherit, pid))
+        return 88
+
+    kernel32 = SimpleNamespace(OpenProcess=open_process, CloseHandle=closed.append)
+    monkeypatch.setattr(ctypes, "windll", SimpleNamespace(kernel32=kernel32), raising=False)
+    monkeypatch.setattr(dub_execution.os, "name", "nt")
+
+    assert dub_execution._pid_is_running(123) is True
+    assert opened == [(0x1000, False, 123)]
+    assert closed == [88]
+
+
+def test_windows_start_token_closes_handle_after_process_times(monkeypatch: pytest.MonkeyPatch):
+    closed: list[int] = []
+    calls: list[int] = []
+
+    def get_process_times(handle: int, *_args: object) -> int:
+        calls.append(handle)
+        return 1
+
+    kernel32 = SimpleNamespace(
+        OpenProcess=lambda *_args: 77,
+        GetProcessTimes=get_process_times,
+        CloseHandle=closed.append,
+    )
+    monkeypatch.setattr(ctypes, "windll", SimpleNamespace(kernel32=kernel32), raising=False)
+
+    assert dub_execution._windows_start_token(123) == "0"
+    assert calls == [77]
+    assert closed == [77]

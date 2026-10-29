@@ -87,6 +87,13 @@ def _keep_candidates() -> list[dict]:
     ]
 
 
+def test_source_identity_rejects_non_object_json_roundtrip(monkeypatch) -> None:
+    monkeypatch.setattr(editorial.json, "loads", lambda _payload: [])
+
+    with pytest.raises(ValueError, match="source identity"):
+        editorial._path_stable_source_identity({"translated_video": {"local_path": "private"}})
+
+
 def test_parse_srt_supports_long_hours_and_multiline_text() -> None:
     cues = parse_srt_text("1\n02:03:04,125 --> 02:03:06,500\nFirst line\nSecond line\n\n")
     assert len(cues) == 1

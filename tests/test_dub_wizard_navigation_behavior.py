@@ -524,3 +524,38 @@ def test_callback_noop_admin_and_validation_paths(monkeypatch):
     errors = [text for text, _kwargs in update.effective_message.replies]
     assert sum("Выбор TTS уже завершён" in text for text in errors) == 2
     assert any("вышел за границы" in text for text in errors)
+
+
+def test_missing_telegram_context_guards_fail_closed(monkeypatch):
+    missing_message, _ = _update(with_message=False)
+    _run(wizard.dub_home_command, missing_message, _context())
+    _run(wizard.dubtts_command, missing_message, _context())
+    _run(wizard.dubsrt_command, missing_message, _context())
+    _run(wizard._activate_srt_upload, missing_message, _context(), "project")
+
+    missing_user, _ = _update(with_user=False)
+    _run(wizard._show_projects, missing_user)
+
+    class EmptyStore:
+        def list_projects(self, **_kwargs):
+            return []
+
+    monkeypatch.setattr(wizard, "DubStore", EmptyStore)
+    _run(wizard._show_projects, missing_message)
+
+    no_user_data = SimpleNamespace(args=None, user_data=None)
+    update, _ = _update()
+    _run(wizard.handle_dub_wizard_callback, update, no_user_data)
+    with pytest.raises(RuntimeError, match="Контекст выбора TTS"):
+        _run(wizard._show_profile_selection, SimpleNamespace(), no_user_data, "direct")
+    with pytest.raises(RuntimeError, match="create a Dub project"):
+        _run(
+            wizard._create_generic_project,
+            missing_message,
+            _context(),
+            "https://youtu.be/video-id",
+            "direct",
+            "profile",
+        )
+    with pytest.raises(RuntimeError, match="store SRT"):
+        _run(wizard._store_ready_srt, missing_message, _context(), "1\n00:00 --> 00:01\ntext")

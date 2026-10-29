@@ -21,7 +21,9 @@ import logging
 import re
 import shutil
 import subprocess
+from functools import partial
 from pathlib import Path
+from typing import Any
 
 from core.globals import (
     HAS_GEMINI,
@@ -33,10 +35,11 @@ from core.globals import (
 from services import gemini_capacity_control as capacity_control
 from services.gemini_quota_domains import ProjectQuotaDomainTracker
 
-try:
-    from google.genai import types  # type: ignore
-except Exception:  # pragma: no cover
-    types = None  # type: ignore
+_genai_types: Any = None
+with contextlib.suppress(Exception):  # pragma: no cover
+    from google.genai import types as _genai_types
+
+types: Any = _genai_types
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +52,7 @@ def _path_exists(path: Path) -> bool:
     return Path(path).exists()
 
 
-def _ffprobe_json(path: Path) -> dict | None:
+def _ffprobe_json(path: Path) -> dict[str, Any] | None:
     ffprobe = shutil.which("ffprobe")
     if not ffprobe:
         return None
@@ -72,7 +75,8 @@ def _ffprobe_json(path: Path) -> dict | None:
         )
         if proc.returncode != 0:
             return None
-        return json.loads(proc.stdout)
+        data = json.loads(proc.stdout)
+        return data if isinstance(data, dict) else None
     except Exception as exc:
         logger.warning("[LiveDubQA] ffprobe failed: %s", exc)
         return None
@@ -267,16 +271,16 @@ def _transient_gemini_error(exc: BaseException) -> bool:
 
 
 async def _upload_and_wait(
-    client,
+    client: Any,
     path: Path,
     display_name: str,
     budget: capacity_control.GeminiRetryBudget,
     *,
     quota_tracker: ProjectQuotaDomainTracker | None = None,
     quota_scope: str = "files",
-):
+) -> Any:
     budget.claim()
-    uf = None
+    uf: Any = None
     try:
         uf = await capacity_control.run_heavy_gemini_call(
             lambda: client.aio.files.upload(
@@ -295,7 +299,7 @@ async def _upload_and_wait(
                 raise TimeoutError(f"Gemini file processing timeout ({_QA_UPLOAD_WAIT}s)")
             await asyncio.sleep(3)
             uf = await capacity_control.run_heavy_gemini_call(
-                lambda _name=uf.name: client.aio.files.get(name=_name),
+                partial(client.aio.files.get, name=uf.name),
                 domain="files",
             )
         if uf.state == "FAILED":
@@ -309,7 +313,7 @@ async def _upload_and_wait(
                 capacity_control.transient_retry_delay(budget.used),
                 domain="files",
             )
-        if uf is not None and getattr(uf, "name", ""):
+        if uf is not None and getattr(uf, "name", False):
             with contextlib.suppress(Exception):
                 await client.aio.files.delete(name=uf.name)
         raise
@@ -351,7 +355,7 @@ def srt_to_timed_text(srt_path: Path, max_chars: int = 12000) -> str:
     return "\n".join(out)
 
 
-def _parse_qa_json(text: str) -> dict | None:
+def _parse_qa_json(text: str) -> dict[str, Any] | None:
     if not text:
         return None
     cleaned = re.sub(
@@ -373,7 +377,7 @@ def _parse_qa_json(text: str) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
-async def _delete_uploaded_qa_file_best_effort(client_used, uploaded_file) -> None:
+async def _delete_uploaded_qa_file_best_effort(client_used: Any, uploaded_file: Any) -> None:
     if client_used is None:
         return
     try:
@@ -385,15 +389,15 @@ async def _delete_uploaded_qa_file_best_effort(client_used, uploaded_file) -> No
 async def _run_translation_qa_base(
     dub_video_path: Path,
     original_audio_path: Path | None,
-    ai_data: dict | None,
+    ai_data: dict[str, Any] | None,
     duration: int,
     model_name: str = "",
     dub_srt_path: Path | None = None,
     dub_audio_path: Path | None = None,
-    existing_audio_part=None,
-    existing_client=None,
+    existing_audio_part: Any = None,
+    existing_client: Any = None,
     thinking_level: str = "high",
-) -> dict | None:
+) -> dict[str, Any] | None:
     if not (HAS_GEMINI and GEMINI_CLIENTS and types is not None):
         logger.info("[LiveDubQA] Gemini недоступен — смысловая проверка пропущена")
         return None
@@ -409,8 +413,8 @@ async def _run_translation_qa_base(
         return None
 
     qa_audio = dub_video_path.parent / f"{dub_video_path.stem}_qa.mp3"
-    uploaded: list = []
-    client_used = None
+    uploaded: list[Any] = []
+    client_used: Any = None
     _temp_original_audio: Path | None = None
     original_upload_budget = capacity_control.GeminiRetryBudget()
     dub_upload_budget = capacity_control.GeminiRetryBudget()
@@ -504,10 +508,10 @@ async def _run_translation_qa_base(
 
         prompt = _QA_PROMPT.format(reference_block=reference_block + dub_text_block)
 
-        async def _attempt(client):
+        async def _attempt(client: Any) -> Any:
             nonlocal client_used, _temp_original_audio
             client_used = client
-            parts = []
+            parts: list[Any] = []
             if existing_original_active and existing_client is client:
                 logger.info("[LiveDubQA] реюз audio_part основного анализа (без повторной заливки)")
                 parts.append(existing_audio_part)
@@ -618,7 +622,7 @@ async def _run_translation_qa_base(
                         capacity_control.note_overload(capacity_control.transient_retry_delay(inference_budget.used))
                     raise
 
-        last_err = None
+        last_err: Exception | None = None
         _qa_deadline = asyncio.get_running_loop().time() + _QA_TOTAL_TIMEOUT
         _clients_order = list(GEMINI_CLIENTS)
         if existing_client is not None and existing_client in _clients_order:
@@ -711,15 +715,16 @@ async def _run_translation_qa_base(
 async def run_translation_qa(
     dub_video_path: Path,
     original_audio_path: Path | None,
-    ai_data: dict | None,
+    ai_data: dict[str, Any] | None,
     duration: int,
     model_name: str = "",
     dub_srt_path: Path | None = None,
     dub_audio_path: Path | None = None,
-    existing_audio_part=None,
-    existing_client=None,
+    existing_audio_part: Any = None,
+    existing_client: Any = None,
     thinking_level: str = "high",
-) -> dict | None:
+) -> dict[str, Any] | None:
+    """Run bounded QA; existing_audio_part=None and existing_client=None disable reuse."""
     from services.livedub_long_qa import run_long_translation_qa
     from services.livedub_qa_hardening import (
         annotate_qa_availability,
@@ -757,7 +762,7 @@ async def run_translation_qa(
     )
 
 
-def _format_qa_report_base(qa: dict, video_url: str = "") -> str:
+def _format_qa_report_base(qa: dict[str, Any], video_url: str = "") -> str:
     score = qa.get("score")
     verdict = str(qa.get("verdict") or "").strip()
     issues = [issue for issue in (qa.get("issues") or []) if isinstance(issue, dict)]
@@ -797,7 +802,7 @@ def _format_qa_report_base(qa: dict, video_url: str = "") -> str:
         )
         return f'<a href="{href}"><b>{escaped}</b></a>'
 
-    def _fmt(issue: dict, icon: str) -> str:
+    def _fmt(issue: dict[str, Any], icon: str) -> str:
         timestamp = _ts_link(str(issue.get("time") or "—"))
         heard = html_mod.escape(str(issue.get("heard") or "")[:120])
         should = html_mod.escape(str(issue.get("should_be") or "")[:120])
@@ -839,7 +844,7 @@ def _format_qa_report_base(qa: dict, video_url: str = "") -> str:
     return text[:limit]
 
 
-def format_qa_report(qa: dict, video_url: str = "") -> str:
+def format_qa_report(qa: dict[str, Any], video_url: str = "") -> str:
     from services.livedub_long_qa import decorate_segment_report
     from services.livedub_qa_hardening import decorate_hardened_report
     from services.livedub_qa_trust import decorate_trust_report

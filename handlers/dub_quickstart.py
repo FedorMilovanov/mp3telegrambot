@@ -31,6 +31,8 @@ async def dubstart_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         if message:
             await message.reply_text("⛔ Dub Studio доступна только администратору.")
         return
+    if message is None:
+        return
     args = list(context.args or [])
     if not args:
         await message.reply_text(
@@ -39,12 +41,15 @@ async def dubstart_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         )
         return
     recipe_id = str(args[0]).strip().lower()
+    chat = update.effective_chat
+    if chat is None:
+        return
     try:
         store = DubStore()
         project = store.create_project(
             recipe_id,
             owner_user_id=user.id,
-            owner_chat_id=update.effective_chat.id,
+            owner_chat_id=chat.id,
         )
         job = store.enqueue_job(str(project["id"]), "render")
         await message.reply_text(

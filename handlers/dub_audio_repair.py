@@ -294,29 +294,38 @@ def _write_repair_request(
 async def dubsegments_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _admin(update):
         return
+    user = update.effective_user
+    message = update.effective_message
+    if user is None or message is None:
+        return
+    args = list(context.args or [])
     try:
         store = DubStore()
-        project = _resolve_project(store, update.effective_user.id, (context.args or [None])[0])
+        project = _resolve_project(store, user.id, args[0] if args else None)
         segments = load_repair_segments(str(project["id"]))
-        await update.effective_message.reply_text(
+        await message.reply_text(
             _segments_text(str(project["id"]), segments),
             parse_mode="HTML",
         )
     except Exception as exc:
-        await update.effective_message.reply_text("⚠️ " + html.escape(_short(str(exc), 1000)), parse_mode="HTML")
+        await message.reply_text("⚠️ " + html.escape(_short(str(exc), 1000)), parse_mode="HTML")
 
 
 async def _dubfix_command_unlocked(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _admin(update):
         return
+    user = update.effective_user
+    message = update.effective_message
+    if user is None or message is None:
+        return
     args = list(context.args or [])
     try:
         store = DubStore()
-        project = _resolve_project(store, update.effective_user.id, args[0] if args else None)
+        project = _resolve_project(store, user.id, args[0] if args else None)
         project_id = str(project["id"])
         segments = load_repair_segments(project_id)
         if len(args) < 2:
-            await update.effective_message.reply_text(_segments_text(project_id, segments), parse_mode="HTML")
+            await message.reply_text(_segments_text(project_id, segments), parse_mode="HTML")
             return
 
         selected = parse_segment_selector("".join(args[1:]), [int(item["id"]) for item in segments])
@@ -325,7 +334,7 @@ async def _dubfix_command_unlocked(update: Update, context: ContextTypes.DEFAULT
             project,
             segments,
             selected,
-            requested_by=update.effective_user.id,
+            requested_by=user.id,
         )
         try:
             job = store.enqueue_job(project_id, "repair_audio")
@@ -347,7 +356,7 @@ async def _dubfix_command_unlocked(update: Update, context: ContextTypes.DEFAULT
                 "Остальные берутся из успешного clean checkpoint baseline.",
             ]
         )
-        await update.effective_message.reply_text(
+        await message.reply_text(
             "\n".join(
                 [
                     f"🩹 <b>Чистый аудиоремонт поставлен в очередь: #{job['id']}</b>",
@@ -361,7 +370,7 @@ async def _dubfix_command_unlocked(update: Update, context: ContextTypes.DEFAULT
             parse_mode="HTML",
         )
     except Exception as exc:
-        await update.effective_message.reply_text("⚠️ " + html.escape(_short(str(exc), 1100)), parse_mode="HTML")
+        await message.reply_text("⚠️ " + html.escape(_short(str(exc), 1100)), parse_mode="HTML")
 
 
 async def dubfix_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

@@ -77,6 +77,8 @@ class WeightedTTSSmokeAttestationContext:
 def _positive_int(value: object, label: str) -> int:
     if isinstance(value, bool):
         raise ValueError(f"{label} не может быть bool.")
+    if not isinstance(value, (str, bytes, bytearray, int, float)):
+        raise ValueError(f"{label} должен быть положительным целым числом.")
     try:
         result = int(value)
     except (TypeError, ValueError, OverflowError) as exc:
@@ -124,6 +126,8 @@ def _required(mapping: Mapping[str, Any], key: str, label: str) -> Any:
 def _finite_number(value: object, label: str, *, minimum: float = 0.0) -> float:
     if isinstance(value, bool):
         raise ValueError(f"{label} не может быть bool.")
+    if not isinstance(value, (str, bytes, bytearray, int, float)):
+        raise ValueError(f"{label} должен быть конечным числом >= {minimum}.")
     try:
         result = float(value)
     except (TypeError, ValueError, OverflowError) as exc:

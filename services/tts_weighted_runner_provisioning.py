@@ -20,7 +20,7 @@ from pathlib import Path
 import platform
 import shutil
 import subprocess
-from typing import Any
+from typing import Any, cast
 
 from services.tts_weighted_smoke import _assert_privacy_allowlist, _atomic_report
 from services.tts_weighted_smoke_runner import (
@@ -331,6 +331,14 @@ def _doctor_summary(report: Mapping[str, Any]) -> dict[str, Any]:
     )
     if not all(isinstance(item, Mapping) for item in sections):
         raise RuntimeError("Runner doctor report не содержит обязательные sections.")
+    runtime = cast(Mapping[str, Any], runtime)
+    profile = cast(Mapping[str, Any], profile)
+    backend = cast(Mapping[str, Any], backend)
+    model = cast(Mapping[str, Any], model)
+    imports = cast(Mapping[str, Any], imports)
+    ffprobe = cast(Mapping[str, Any], ffprobe)
+    storage = cast(Mapping[str, Any], storage)
+    environment = cast(Mapping[str, Any], environment)
     if runtime.get("weights_loaded") is not False or runtime.get("session_opened") is not False:
         raise RuntimeError("Runner doctor нарушил no-weights/no-session invariant.")
     storage_keys = ("write", "fsync", "replace", "readback", "cleanup")

@@ -17,6 +17,26 @@ Telegram layer minutes later.
 import os
 
 import main
+from services import process_singleton
+
+
+def test_singleton_windows_pid_probe_closes_process_handle(monkeypatch):
+    import ctypes
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    kernel32 = SimpleNamespace(OpenProcess=Mock(return_value=88), CloseHandle=Mock())
+    monkeypatch.setattr(process_singleton, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(
+        ctypes,
+        "windll",
+        SimpleNamespace(kernel32=kernel32),
+        raising=False,
+    )
+
+    assert process_singleton._pid_is_running(123) is True
+    kernel32.OpenProcess.assert_called_once_with(0x1000, False, 123)
+    kernel32.CloseHandle.assert_called_once_with(88)
 
 
 def test_r44_fresh_lock_acquired(tmp_path, monkeypatch):

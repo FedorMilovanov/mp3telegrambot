@@ -438,6 +438,10 @@ def _latest_direct_draft(user_id: int) -> dict[str, Any] | None:
 
 
 async def dub_home_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.effective_message
+    user_data = context.user_data
+    if message is None or user_data is None:
+        return
     if not await _admin(update):
         return
     if context.args:
@@ -446,9 +450,9 @@ async def dub_home_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await dub_command(update, context)
         return
 
-    context.user_data.pop(_WIZARD_KEY, None)
+    user_data.pop(_WIZARD_KEY, None)
     default = next(choice for choice in production_tts_profile_choices() if choice.is_default)
-    await update.effective_message.reply_text(
+    await message.reply_text(
         "🎙 <b>Dub Studio — ролик под ключ</b>\n\n"
         "Два режима полностью разделены:\n"
         "• <b>Gemini MAX</b> сам получает исходный текст, переводит и проверяет.\n"
@@ -468,17 +472,19 @@ async def dubnewvideo_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def dubtts_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.effective_message
+    user = update.effective_user
+    if message is None or user is None:
+        return
     if not await _admin(update):
         return
     args = [str(value).strip() for value in (context.args or []) if str(value).strip()]
     if not args:
         text, page, page_count = _catalog_text(0)
-        await update.effective_message.reply_text(
-            text, parse_mode="HTML", reply_markup=_catalog_keyboard(page, page_count)
-        )
+        await message.reply_text(text, parse_mode="HTML", reply_markup=_catalog_keyboard(page, page_count))
         return
     if len(args) != 2:
-        await update.effective_message.reply_text(
+        await message.reply_text(
             "Использование:\n<code>/dubtts</code> — каталог моделей\n"
             "<code>/dubtts PROJECT_ID PROFILE_ID</code> — сменить модель у draft/failed/cancelled проекта.",
             parse_mode="HTML",
@@ -491,13 +497,13 @@ async def dubtts_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         result = rebind_inactive_project_tts_profile(
             store,
             project_id,
-            owner_user_id=update.effective_user.id,
+            owner_user_id=user.id,
             request_path=request_path,
             profile_value=profile_id,
         )
         choice = production_tts_profile_choice(result.choice.profile_id)
         status = "уже был закреплён" if not result.changed else "закреплён"
-        await update.effective_message.reply_text(
+        await message.reply_text(
             "🎙 <b>TTS-профиль проекта обновлён</b>\n\n"
             f"Проект: <code>{html.escape(result.project_id)}</code>\n"
             f"Профиль {status}: <code>{html.escape(choice.profile_id)}</code>\n"
@@ -509,14 +515,17 @@ async def dubtts_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             parse_mode="HTML",
         )
     except Exception as exc:
-        await update.effective_message.reply_text(
+        await message.reply_text(
             "⚠️ TTS-профиль не изменён: " + html.escape(_short(str(exc), 1400)),
             parse_mode="HTML",
         )
 
 
 async def _show_projects(update: Update) -> None:
-    projects = DubStore().list_projects(owner_user_id=update.effective_user.id, limit=10)
+    user = update.effective_user
+    if user is None:
+        return
+    projects = DubStore().list_projects(owner_user_id=user.id, limit=10)
     lines = ["📂 <b>Последние проекты</b>", ""]
     if not projects:
         lines.append("Проектов пока нет.")
@@ -547,7 +556,10 @@ async def _show_projects(update: Update) -> None:
             reply_markup=_home_keyboard(),
         )
     else:
-        await update.effective_message.reply_text(
+        message = update.effective_message
+        if message is None:
+            return
+        await message.reply_text(
             "\n".join(lines),
             parse_mode="HTML",
             reply_markup=_home_keyboard(),
@@ -559,9 +571,14 @@ async def _activate_srt_upload(
     context: ContextTypes.DEFAULT_TYPE,
     project_id: str,
 ) -> None:
+    message = update.effective_message
+    user = update.effective_user
+    user_data = context.user_data
+    if message is None or user is None or user_data is None:
+        return
     store = DubStore()
     project = store.get_project(project_id)
-    if not _project_owned_by(project, update.effective_user.id):
+    if not _project_owned_by(project, user.id):
         raise PermissionError("Это не ваш проект.")
     metadata = project.get("metadata") or {}
     if str(metadata.get("translation_mode")) != _DIRECT_MODE:
@@ -569,12 +586,12 @@ async def _activate_srt_upload(
     if str(project.get("status")) in {"queued", "rendering", "cancelling"}:
         raise RuntimeError("Проект уже выполняется. Сначала дождитесь завершения или отмените job.")
 
-    context.user_data[_WIZARD_KEY] = {
+    user_data[_WIZARD_KEY] = {
         "awaiting": "srt",
         "mode": _DIRECT_MODE,
         "project_id": project_id,
     }
-    await update.effective_message.reply_text(
+    await message.reply_text(
         "📎 <b>Пришлите готовый русский SRT</b>\n\n"
         "Текст будет озвучен без Gemini-проверки и без переписывания. "
         "Допустим файл <code>.srt</code> в UTF-8, UTF-16 или Windows-1251. "
@@ -589,8 +606,11 @@ async def _show_profile_selection(
     context: ContextTypes.DEFAULT_TYPE,
     mode: str,
 ) -> None:
+    user_data = context.user_data
+    if user_data is None:
+        raise RuntimeError("Контекст выбора TTS недоступен. Откройте /dub заново.")
     state = _selection_state(mode)
-    context.user_data[_WIZARD_KEY] = state
+    user_data[_WIZARD_KEY] = state
     text, page, _page_count = _selection_text(state, 0)
     await query.edit_message_text(
         text,
@@ -603,6 +623,9 @@ async def handle_dub_wizard_callback(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
+    user_data = context.user_data
+    if user_data is None:
+        return
     query = update.callback_query
     if not query:
         return
@@ -621,7 +644,7 @@ async def handle_dub_wizard_callback(
             return
 
         if action == "profile_page":
-            state = context.user_data.get(_WIZARD_KEY) or {}
+            state = user_data.get(_WIZARD_KEY) or {}
             if state.get("awaiting") != "tts_profile":
                 raise RuntimeError("Выбор TTS уже завершён. Откройте /dub заново.")
             page = _parse_selection_value(state, value)
@@ -634,7 +657,7 @@ async def handle_dub_wizard_callback(
             return
 
         if action == "profile":
-            state = context.user_data.get(_WIZARD_KEY) or {}
+            state = user_data.get(_WIZARD_KEY) or {}
             if state.get("awaiting") != "tts_profile":
                 raise RuntimeError("Выбор TTS уже завершён. Откройте /dub заново.")
             index = _parse_selection_value(state, value)
@@ -647,7 +670,7 @@ async def handle_dub_wizard_callback(
             state["profile_fingerprint"] = choice.fingerprint
             state.pop("selection_token", None)
             state.pop("profile_ids", None)
-            context.user_data[_WIZARD_KEY] = state
+            user_data[_WIZARD_KEY] = state
             await query.edit_message_text(
                 _mode_text(str(state.get("mode") or ""), choice),
                 parse_mode="HTML",
@@ -665,7 +688,7 @@ async def handle_dub_wizard_callback(
             return
 
         if action == "home":
-            context.user_data.pop(_WIZARD_KEY, None)
+            user_data.pop(_WIZARD_KEY, None)
             await query.edit_message_text(
                 "🎙 <b>Dub Studio — ролик под ключ</b>\n\nВыберите режим.",
                 parse_mode="HTML",
@@ -687,10 +710,12 @@ async def handle_dub_wizard_callback(
             await _activate_srt_upload(update, context, value)
             return
     except Exception as exc:
-        await query.message.reply_text(
-            "⚠️ " + html.escape(_short(str(exc), 1200)),
-            parse_mode="HTML",
-        )
+        message = query.message
+        if message is not None and hasattr(message, "reply_text"):
+            await message.reply_text(
+                "⚠️ " + html.escape(_short(str(exc), 1200)),
+                parse_mode="HTML",
+            )
 
 
 async def _create_generic_project(
@@ -700,6 +725,12 @@ async def _create_generic_project(
     mode: str,
     profile_id: str,
 ) -> None:
+    message = update.effective_message
+    user = update.effective_user
+    chat = update.effective_chat
+    user_data = context.user_data
+    if message is None or user is None or chat is None or user_data is None:
+        raise RuntimeError("Telegram message context is required to create a Dub project.")
     video_id, canonical_url = _extract_youtube_video_id(url)
     # Validate and bind the complete TTS request before creating a DB project or job.
     request = _request_payload(video_id, canonical_url, mode, profile_id)
@@ -708,8 +739,8 @@ async def _create_generic_project(
     mode_label = "Gemini MAX" if mode == _GEMINI_MODE else "мой готовый SRT"
     project = store.create_project(
         _GENERIC_RECIPE,
-        owner_user_id=update.effective_user.id,
-        owner_chat_id=update.effective_chat.id,
+        owner_user_id=user.id,
+        owner_chat_id=chat.id,
         title=f"Видео {video_id} — {mode_label}",
         metadata={
             "video_id": video_id,
@@ -728,8 +759,8 @@ async def _create_generic_project(
     model_line = f"TTS: <b>{html.escape(choice.display_name)}</b> · <code>{html.escape(choice.model_revision)}</code>\n"
     if mode == _GEMINI_MODE:
         job = store.enqueue_job(project_id, "render_gemini")
-        context.user_data.pop(_WIZARD_KEY, None)
-        await update.effective_message.reply_text(
+        user_data.pop(_WIZARD_KEY, None)
+        await message.reply_text(
             "🚀 <b>Gemini MAX запущен</b>\n\n"
             f"Проект: <code>{html.escape(project_id)}</code>\n"
             f"Видео: <code>{html.escape(video_id)}</code>\n" + model_line + f"Задание: <b>#{job['id']}</b>\n\n"
@@ -740,12 +771,12 @@ async def _create_generic_project(
         )
         return
 
-    context.user_data[_WIZARD_KEY] = {
+    user_data[_WIZARD_KEY] = {
         "awaiting": "srt",
         "mode": _DIRECT_MODE,
         "project_id": project_id,
     }
-    await update.effective_message.reply_text(
+    await message.reply_text(
         "✅ <b>Ссылка принята</b>\n\n"
         f"Проект: <code>{html.escape(project_id)}</code>\n"
         f"Видео: <code>{html.escape(video_id)}</code>\n"
@@ -776,14 +807,19 @@ async def _store_ready_srt(
     context: ContextTypes.DEFAULT_TYPE,
     text: str,
 ) -> None:
-    state = context.user_data.get(_WIZARD_KEY) or {}
+    message = update.effective_message
+    user = update.effective_user
+    user_data = context.user_data
+    if message is None or user is None or user_data is None:
+        raise RuntimeError("Telegram message context is required to store SRT.")
+    state = user_data.get(_WIZARD_KEY) or {}
     project_id = str(state.get("project_id") or "")
     if state.get("awaiting") != "srt" or not project_id:
         raise RuntimeError("Сначала выберите режим «Мой готовый перевод — SRT» и пришлите ссылку.")
 
     store = DubStore()
     project = store.get_project(project_id)
-    if not _project_owned_by(project, update.effective_user.id):
+    if not _project_owned_by(project, user.id):
         raise PermissionError("Это не ваш проект.")
     metadata = project.get("metadata") or {}
     if str(metadata.get("translation_mode")) != _DIRECT_MODE:
@@ -800,8 +836,8 @@ async def _store_ready_srt(
     )
 
     job = store.enqueue_job(project_id, "render_direct")
-    context.user_data.pop(_WIZARD_KEY, None)
-    await update.effective_message.reply_text(
+    user_data.pop(_WIZARD_KEY, None)
+    await message.reply_text(
         "✅ <b>Готовый SRT принят</b>\n\n"
         f"Реплик: <b>{len(cues)}</b>\n"
         f"Рендер: задание <b>#{job['id']}</b>\n"
@@ -814,16 +850,21 @@ async def _store_ready_srt(
 
 
 async def dubsrt_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.effective_message
+    user = update.effective_user
+    user_data = context.user_data
+    if message is None or user is None or user_data is None:
+        return
     if not await _admin(update):
         return
     token = str((context.args or [""])[0]).strip().lower()
     try:
-        project = DubStore().get_project(token) if token else _latest_direct_draft(update.effective_user.id)
+        project = DubStore().get_project(token) if token else _latest_direct_draft(user.id)
         if not project:
             raise RuntimeError("Не найден ожидающий SRT-проект. Откройте /dub и выберите режим готового SRT.")
         await _activate_srt_upload(update, context, str(project["id"]))
     except Exception as exc:
-        await update.effective_message.reply_text(
+        await message.reply_text(
             "⚠️ " + html.escape(_short(str(exc), 900)),
             parse_mode="HTML",
         )

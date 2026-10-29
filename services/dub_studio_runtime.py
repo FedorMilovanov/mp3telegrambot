@@ -54,9 +54,10 @@ def _pid_running(pid: int) -> bool:
         try:
             import ctypes
 
-            handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, int(pid))
+            windll = getattr(ctypes, "windll")
+            handle = windll.kernel32.OpenProcess(0x1000, False, int(pid))
             if handle:
-                ctypes.windll.kernel32.CloseHandle(handle)
+                windll.kernel32.CloseHandle(handle)
                 return True
             return False
         except Exception:

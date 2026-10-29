@@ -1543,8 +1543,38 @@ registry; aggregation и log-only behavior не изменились. Затем
 `services/shorts_duration_safety.py` добавлен после явной float-аннотации
 snap ceiling; source-window budget и public-delivery gates не изменились.
 Затем `services/shorts_factory_disk_guard.py` добавлен без смены selection,
-disk-capacity или format-policy behavior. Текущий срез — 117/241 production
-modules (48,5 %), остаётся 124 modules (51,5 %).
+disk-capacity или format-policy behavior. Затем одним zero-error checkpoint
+добавлены 49 уже строго типизированных production modules без смены их кода.
+Последующие fixes checkpoints закрыли ещё 46 ошибок: 14 файлов стали
+strict-clean через точные сигнатуры, None/platform narrowing, typed async и
+subprocess boundaries и явные re-export. Следующий checkpoint закрыл 43 ошибки
+в восьми Dub/FFmpeg/LiveDub/Quiz/Shorts modules через Telegram/result narrowing
+и typed process/publication boundaries. Текущий срез — 206/241 production
+modules (85,5 %), оставалось 35 modules (14,5 %). Затем 75 ошибок в девяти
+Factory/LiveDub/Editorial modules закрыты через typed callback/JSON boundaries,
+explicit SDK re-export и Telegram narrowing. Предыдущий срез — 215/241
+production modules (89,2 %), оставалось 26 modules (10,8 %) с 776 ошибками.
+Следующий checkpoint закрыл 77 ошибок в семи Main/Callback/Subtitle/LiveDub/
+Render/Quiz modules через typed external boundaries, generic collections и
+narrowing. Предыдущий срез — 222/241 production modules (92,1 %), оставалось
+19 modules (7,9 %) с 699 ошибками. Следующий checkpoint закрыл 142 ошибки в
+семи Composition/TTS/PDF/MP3/Shorts/Highlights/LiveDub modules через точные
+generic-типы, runtime-validated narrowing и typed legacy/SDK boundaries.
+Предыдущий срез — 229/241 production modules (95,0 %), оставалось
+12 modules (5,0 %) с 557 ошибками. Следующий checkpoint закрыл 217 ошибок в
+семи Telegraph/Search/Gemini/Shorts/LiveDub/Dub wizard modules через
+generic JSON boundaries, optional SDK narrowing, worker-side stat и
+Telegram context guards. Предыдущий срез — 236/241 production modules
+(97,9 %), оставалось 5 modules (2,1 %) с 340 ошибками. Следующий checkpoint
+закрыл 87 ошибок в двух Command/Dub command modules через typed callback
+boundaries, generic segment/archive records и Telegram actor narrowing.
+Предыдущий срез — 238/241 production modules (98,8 %), оставалось 3 modules
+(1,2 %) с 253 ошибками. Финальный production checkpoint закрыл их через typed
+JSON/SDK boundaries, generic Telegraph nodes, exact optional narrowing и
+worker-side file I/O; Synopsis outline contract в analysis/render pipeline
+исправлен на фактический список секций. Текущий срез — **241/241 production
+modules (100 %)**, **0 strict-mypy ошибок**. Production exclude или общие
+suppression для сокрытия ошибок не добавлялись.
 
 **Найденные по дороге настоящие дефекты:** кортеж кортежей в `negative` у
 `core/source_packs.py` (работал только за счёт защитного `neg[0]`), `max()`/деление
@@ -1552,11 +1582,11 @@ modules (48,5 %), остаётся 124 modules (51,5 %).
 `int(cur.lastrowid)` при отсутствии вставки в `core/observability.py`,
 `subprocess.CREATE_NO_WINDOW` и `int(None)` в `services/`.
 
-**Осталось (волна 3+):** по одному пакету за PR в порядке `services/` → `handlers/` →
-`converters/` → `tools/`; `main_pipeline.py` — тем же PR, который закончит его разрез
-(P0-3).
-**Приёмка:** `mypy --strict` по каждому новому пакету = 0; расширение среза только
-вперёд, «частично типизированных» пакетов в списке нет.
+**Осталось:** production strict-mypy backlog закрыт полностью. Отдельная
+типизация `tools/` и тестов не входила в acceptance этого burn-down и не должна
+ослаблять или расширять production gate неявно.
+**Приёмка:** `mypy --strict` по всем 241 production modules = 0; срез только
+вперёд, «частично типизированных» production-пакетов в списке нет.
 
 ### P1-3. Наблюдаемость (скорректировано после проверки кода) — ✅ сделано
 

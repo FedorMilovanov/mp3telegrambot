@@ -49,7 +49,7 @@ def _env_int(name: str, default: int, *, min_value: int = 1, max_value: int = 20
 QUIZ_QUESTION_COUNT = _env_int("QUIZ_QUESTION_COUNT", 10)
 
 
-def quiz_response_schema() -> dict:
+def quiz_response_schema() -> dict[str, Any]:
     item = {
         "type": "object",
         "properties": {
@@ -245,7 +245,7 @@ def _quiz_options_quality_issue(options: list[str], correct: int) -> str | None:
     return None
 
 
-def _parse_correct_index(value, options: list[str]) -> int | None:
+def _parse_correct_index(value: Any, options: list[str]) -> int | None:
     # Integers from the JSON schema follow the requested 0-based contract.
     if isinstance(value, int) and not isinstance(value, bool):
         return value if 0 <= value < len(options) else None
@@ -285,7 +285,11 @@ def _parse_correct_index(value, options: list[str]) -> int | None:
     return None
 
 
-def _parse_quiz_json(raw: str, *, expected_count: int | None = None) -> list[dict] | None:
+def _parse_quiz_json(
+    raw: str,
+    *,
+    expected_count: int | None = None,
+) -> list[dict[str, Any]] | None:
     """Parse and validate Gemini quiz response into Telegram-ready dicts."""
     if not raw:
         return None
@@ -309,7 +313,7 @@ def _parse_quiz_json(raw: str, *, expected_count: int | None = None) -> list[dic
     if not isinstance(data, list):
         return None
 
-    valid: list[dict] = []
+    valid: list[dict[str, Any]] = []
     seen_questions: set[str] = set()
     for item in data:
         if not isinstance(item, dict):
@@ -353,7 +357,7 @@ def _parse_quiz_json(raw: str, *, expected_count: int | None = None) -> list[dic
     return valid if valid else None
 
 
-def _format_ai_context(ai_data: dict | None) -> str:
+def _format_ai_context(ai_data: dict[str, Any] | None) -> str:
     ai = ai_data or {}
     parts: list[str] = []
     for label, key, limit in (
@@ -387,26 +391,26 @@ def _format_ai_context(ai_data: dict | None) -> str:
     return "\n\n".join(parts)
 
 
-def _extract_quiz_candidate_text(resp) -> str:
+def _extract_quiz_candidate_text(resp: Any) -> str:
     """Read visible candidate text while treating malformed metadata as empty."""
     try:
         for part in resp.candidates[0].content.parts:
             if not getattr(part, "thought", False) and getattr(part, "text", None):
-                return part.text
+                return str(part.text)
     except Exception:
         logger.debug("[Quiz] Gemini candidate-part text extraction failed", exc_info=True)
     return ""
 
 
 async def generate_quiz(
-    ai_data: dict,
+    ai_data: dict[str, Any],
     title: str = "",
     performer: str = "",
     duration: int = 0,
-    existing_audio_part=None,
-    existing_client=None,
+    existing_audio_part: Any = None,
+    existing_client: Any = None,
     count: int | None = None,
-) -> list[dict] | None:
+) -> list[dict[str, Any]] | None:
     """Generate quiz questions from video AI analysis.
 
     Uses an existing Gemini audio part only on its owning client. Project-scoped
@@ -457,7 +461,7 @@ async def generate_quiz(
             response_schema=schema,
         )
 
-        async def _generate_one(attempt_prompt: str):
+        async def _generate_one(attempt_prompt: str) -> Any:
             last_quota_error: BaseException | None = None
             for client in clients_order:
                 if tracker.should_skip(client, "quiz_generate"):
@@ -499,7 +503,7 @@ async def generate_quiz(
 очевидных distractors, плейсхолдеров или вариантов из разных смысловых категорий.
 Сделай тест более продуманным: близкие ответы, один нюанс различия, без карикатур.
 """
-        best_questions: list[dict] = []
+        best_questions: list[dict[str, Any]] = []
         last_raw = ""
         for attempt, attempt_prompt in enumerate((prompt, prompt + retry_note), start=1):
             resp = await _generate_one(attempt_prompt)
@@ -561,7 +565,12 @@ async def generate_quiz(
         return None
 
 
-def _sanitize_poll_payload(q: dict, *, index: int, total: int) -> dict | None:
+def _sanitize_poll_payload(
+    q: dict[str, Any],
+    *,
+    index: int,
+    total: int,
+) -> dict[str, Any] | None:
     question = normalize_question_text(q.get("question") or "", max_len=255)
     options = [_safe_trim(o, 100) for o in (q.get("options") or []) if str(o).strip()]
     options = _dedupe_keep_order(options)
@@ -586,9 +595,9 @@ def _sanitize_poll_payload(q: dict, *, index: int, total: int) -> dict | None:
 
 
 async def send_quiz_polls(
-    questions: list[dict],
-    update,
-    context,
+    questions: list[dict[str, Any]],
+    update: Any,
+    context: Any,
     title: str = "",
 ) -> int:
     """AUDIT R30 (полная замена по решению оператора): один набор = один

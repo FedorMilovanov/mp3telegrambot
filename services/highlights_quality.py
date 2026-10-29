@@ -131,7 +131,7 @@ def _has_balanced_quotes(text: str) -> bool:
     return True
 
 
-def _segment_intervals(segments: list[dict]) -> list[tuple[float, float]]:
+def _segment_intervals(segments: list[dict[str, Any]]) -> list[tuple[float, float]]:
     word_intervals = []
     for segment in segments:
         for word in segment.get("words") or []:
@@ -167,7 +167,7 @@ def _ends_cleanly(text: str) -> bool:
     return bool(value and _SENTENCE_END_RE.search(value) and not _DANGLING_END_RE.search(value))
 
 
-def _normalise_segments(segments: list[dict]) -> list[dict]:
+def _normalise_segments(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
     normalised = []
     for segment in segments or []:
         if not isinstance(segment, dict):
@@ -210,12 +210,12 @@ def _normalise_segments(segments: list[dict]) -> list[dict]:
 
 
 def refine_fragment_from_transcript(
-    fragment: dict,
-    segments: list[dict],
+    fragment: dict[str, Any],
+    segments: list[dict[str, Any]],
     *,
     window_start: float,
     window_end: float,
-) -> tuple[dict | None, dict]:
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     """Move one approximate fragment to complete utterance boundaries.
 
     This function is pure and intentionally exported for focused regression
@@ -351,9 +351,9 @@ def refine_fragment_from_transcript(
     return refined, evidence
 
 
-def _drop_overlaps_and_repeats(fragments: list[dict]) -> tuple[list[dict], list[dict]]:
-    accepted: list[dict] = []
-    rejected: list[dict] = []
+def _drop_overlaps_and_repeats(fragments: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    accepted: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
     for fragment in sorted(fragments, key=lambda item: item["start_seconds"]):
         if accepted:
             previous = accepted[-1]
@@ -379,9 +379,9 @@ def _drop_overlaps_and_repeats(fragments: list[dict]) -> tuple[list[dict], list[
     return accepted, rejected
 
 
-def build_delivery_subtitles(fragments: list[dict]) -> list[dict]:
+def build_delivery_subtitles(fragments: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Map source-relative verified transcript segments onto reel time."""
-    output: list[dict] = []
+    output: list[dict[str, Any]] = []
     reel_cursor = 0.0
     for fragment in fragments:
         source_start = float(fragment["start_seconds"])
@@ -421,7 +421,7 @@ def build_delivery_subtitles(fragments: list[dict]) -> list[dict]:
     return output
 
 
-def scale_subtitle_segments(segments: list[dict], speed: float) -> list[dict]:
+def scale_subtitle_segments(segments: list[dict[str, Any]], speed: float) -> list[dict[str, Any]]:
     if not segments or abs(float(speed or 1.0) - 1.0) <= 0.01:
         return segments
     factor = max(0.01, float(speed))
@@ -445,10 +445,10 @@ def scale_subtitle_segments(segments: list[dict], speed: float) -> list[dict]:
 
 
 def _probe_windows(
-    fragments: list[dict],
+    fragments: list[dict[str, Any]],
     *,
     source_duration: float,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     pre_roll = _env_float("HIGHLIGHTS_QA_PREROLL_SECONDS", 4.0, 1.0, 10.0)
     post_roll = _env_float("HIGHLIGHTS_QA_POSTROLL_SECONDS", 6.0, 1.0, 12.0)
     windows = []
@@ -489,7 +489,7 @@ def _nonempty_file_size(path: Path) -> int:
 
 async def _build_audio_probe(
     source_video_path: Path,
-    windows: list[dict],
+    windows: list[dict[str, Any]],
     work_dir: Path,
 ) -> Path | None:
     ffmpeg = shutil.which("ffmpeg")
@@ -576,11 +576,11 @@ async def _build_audio_probe(
 
 
 def _map_probe_segments_to_source(
-    probe_segments: list[dict],
-    windows: list[dict],
-) -> dict[int, list[dict]]:
+    probe_segments: list[dict[str, Any]],
+    windows: list[dict[str, Any]],
+) -> dict[int, list[dict[str, Any]]]:
     """Map only transcript evidence that is actually inside one probe window."""
-    mapped: dict[int, list[dict]] = {int(window["index"]): [] for window in windows}
+    mapped: dict[int, list[dict[str, Any]]] = {int(window["index"]): [] for window in windows}
     items = _normalise_segments(probe_segments)
     for item in items:
         center = (item["start"] + item["end"]) / 2
@@ -631,7 +631,7 @@ def _map_probe_segments_to_source(
 async def _judge_actual_transcripts(
     *,
     title: str,
-    fragments: list[dict],
+    fragments: list[dict[str, Any]],
 ) -> tuple[bool, list[int], str]:
     if not HAS_GEMINI or not GEMINI_CLIENTS:
         return False, [], "gemini_unavailable"
@@ -663,7 +663,7 @@ async def _judge_actual_transcripts(
         "- при сомнении отклоняй: плохой ролик хуже отсутствующего."
     )
 
-    async def _call(client):
+    async def _call(client: Any) -> Any:
         config = make_text_config_smart(
             temperature=0.0,
             max_output_tokens=1000,
@@ -717,11 +717,11 @@ async def _judge_actual_transcripts(
 
 async def refine_highlights_candidate(
     source_video_path: Path,
-    candidate: dict,
+    candidate: dict[str, Any],
     *,
-    ai_data: dict | None = None,
+    ai_data: dict[str, Any] | None = None,
     source_duration: float = 0.0,
-) -> tuple[dict | None, dict]:
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     """Return a verified candidate or ``None`` with structured evidence."""
     report: dict[str, Any] = {
         "policy": "actual-transcript-highlights-quality-v2",
@@ -884,7 +884,7 @@ async def refine_highlights_candidate(
 async def render_verified_highlights(
     source_video_path: Path,
     output_path: Path,
-    fragments: list[dict],
+    fragments: list[dict[str, Any]],
     *,
     visual_mode: str = "full_frame_vertical",
 ) -> bool:

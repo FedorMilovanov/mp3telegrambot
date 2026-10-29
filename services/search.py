@@ -10,6 +10,8 @@ import os
 import re
 import requests
 import time
+from functools import partial
+from typing import Any
 
 from core.text_utils import normalize_author_name, normalize_title_text  # FIX search
 from core.database import get_channel_mapping  # FIX search
@@ -21,11 +23,11 @@ logger = logging.getLogger(__name__)
 # видео. Раньше такой ЧАСТИЧНЫЙ листинг кэшировался и переиспользовался для
 # следующих видео плейлиста — и их ролики за границей загруженных страниц
 # «не находились», хотя реально есть на канале (VK ловил, RuTube терял).
-_RUTUBE_LISTING_CACHE: dict[str, tuple[float, list[dict], bool]] = {}
+_RUTUBE_LISTING_CACHE: dict[str, tuple[float, list[dict[str, Any]], bool]] = {}
 _RUTUBE_LISTING_CACHE_TTL = int(os.getenv("RUTUBE_LISTING_CACHE_TTL", "900"))
 
 
-def _get_rutube_listing_cache(cid: str) -> tuple[list[dict], bool] | None:
+def _get_rutube_listing_cache(cid: str) -> tuple[list[dict[str, Any]], bool] | None:
     """Возвращает (results, complete) или None. complete=False — листинг был
     обрезан ранним выходом, ему нельзя доверять «не найдено»."""
     item = _RUTUBE_LISTING_CACHE.get(str(cid or ""))
@@ -38,7 +40,7 @@ def _get_rutube_listing_cache(cid: str) -> tuple[list[dict], bool] | None:
     return list(results), complete
 
 
-def _set_rutube_listing_cache(cid: str, results: list[dict], complete: bool) -> None:
+def _set_rutube_listing_cache(cid: str, results: list[dict[str, Any]], complete: bool) -> None:
     if not (cid and results):
         return
     # Полный листинг не даём затирать частичным (другое видео могло рано выйти).
@@ -55,7 +57,7 @@ def _normalize(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
-def _normalize_duration(d) -> int:
+def _normalize_duration(d: Any) -> int:
     """Нормализует duration — может быть int, float, str ('3542' или '00:59:02')."""
     if isinstance(d, (int, float)):
         return int(d)
@@ -81,7 +83,7 @@ def _normalize_duration(d) -> int:
 
 # Стоп-слова для религиозного контента — встречаются в каждом втором видео
 # и не несут идентификационной нагрузки при поиске по RuTube/VK
-_SEARCH_STOPWORDS: frozenset = frozenset(
+_SEARCH_STOPWORDS: frozenset[str] = frozenset(
     {
         # Русские
         "вера",
@@ -250,7 +252,7 @@ _LOG_TOP_N = 5
 
 
 def _best_match(
-    results: list, title: str, duration: int, platform: str, early_exit: bool = True, log: bool = True
+    results: list[dict[str, Any]], title: str, duration: int, platform: str, early_exit: bool = True, log: bool = True
 ) -> tuple[str | None, float]:
     norm_title = _normalize(title)
     title_words = set(norm_title.split())
@@ -318,7 +320,7 @@ def _best_match(
     return best_url, best_score
 
 
-def _best_match_confident(results: list, title: str, duration: int) -> bool:
+def _best_match_confident(results: list[dict[str, Any]], title: str, duration: int) -> bool:
     """Возвращает True если в results уже есть кандидат с score >= _EARLY_EXIT_SCORE.
     Используется для страничного раннего выхода в search_rutube."""
     norm_title = _normalize(title)
@@ -364,7 +366,7 @@ def _extract_search_keywords(title: str) -> str:
     return t or _clean_search_title(title)  # fallback если всё вырезало
 
 
-def _build_search_title(ai_data: dict | None, fallback_title: str) -> str:
+def _build_search_title(ai_data: dict[str, Any] | None, fallback_title: str) -> str:
     """Строит оптимальный поисковый заголовок для RuTube/VK.
     Приоритет: real_event + real_title + real_author → full_title из yt-dlp.
     Не использует короткий real_title в одиночку если он < 20 символов.
@@ -407,22 +409,22 @@ def _build_search_title(ai_data: dict | None, fallback_title: str) -> str:
 
 async def _load_rutube_listing(
     cid: str,
-    headers: dict,
-    loop,
+    headers: dict[str, str],
+    loop: asyncio.AbstractEventLoop,
     search_title: str,
     duration: int,
     *,
     start_page: int = 1,
-    existing: list[dict] | None = None,
+    existing: list[dict[str, Any]] | None = None,
     allow_early_exit: bool = True,
-) -> tuple[list[dict], bool]:
+) -> tuple[list[dict[str, Any]], bool]:
     """Грузит листинг канала RuTube постранично. Возвращает (results, complete).
 
     complete=False — загрузку оборвал ранний выход (найдено уверенное
     совпадение), листинг НЕПОЛНЫЙ. complete=True — страницы кончились
     естественно (полный листинг) либо ранний выход отключён и дошли до конца.
     """
-    all_results: list[dict] = list(existing or [])
+    all_results: list[dict[str, Any]] = list(existing or [])
     max_pages = 100  # 100 стр × 20 = 2000 видео — покрывает большие каналы
     per_page = 20
     complete = True
@@ -431,8 +433,9 @@ async def _load_rutube_listing(
         try:
             resp = await loop.run_in_executor(
                 None,
-                lambda p=page: requests.get(
-                    f"https://rutube.ru/api/video/person/{cid}/?page={p}&per_page={per_page}",
+                partial(
+                    requests.get,
+                    f"https://rutube.ru/api/video/person/{cid}/?page={page}&per_page={per_page}",
                     timeout=10,
                     headers=headers,
                 ),
@@ -514,8 +517,9 @@ async def search_rutube(title: str, channel_name: str = "", duration: int = 0, f
             logger.info("RuTube: листинг канала пуст, видео не найдено")
             return None
 
-        def _score_listing():
-            _res, _score = None, 0.0
+        def _score_listing() -> tuple[str | None, float]:
+            _res: str | None = None
+            _score = 0.0
             for i, _t in enumerate(
                 [search_title, title] + ([fallback_title] if fallback_title and fallback_title != title else [])
             ):
@@ -588,12 +592,12 @@ def _build_vk_search_title(
     VK плохо ищет по длинным перегруженным заголовкам.
     """
 
-    def _cl(s):
+    def _cl(s: str) -> str:
         s = (s or "").strip()
         s = re.sub(r"\s+", " ", s)
         return s.strip(" -–—|:,.;")
 
-    def _dedup(text):
+    def _dedup(text: str) -> str:
         seen, words = set(), []
         for w in text.split():
             if w.lower() not in seen:
@@ -601,14 +605,14 @@ def _build_vk_search_title(
                 words.append(w)
         return " ".join(words)
 
-    def _shorten_authors(a):
+    def _shorten_authors(a: str) -> str:
         a = _cl(a)
         if not a:
             return ""
         parts = [p.strip() for p in re.split(r",|/|;|and|и", a, flags=re.IGNORECASE) if p.strip()]
         return " ".join(parts[:2])
 
-    def _is_qa(t):
+    def _is_qa(t: str) -> bool:
         t = t.lower()
         return any(
             m in t
@@ -663,7 +667,7 @@ def _build_vk_search_title(
 
 
 async def search_vk_video(
-    title: str, channel_name: str = "", duration: int = 0, ai_data: dict | None = None
+    title: str, channel_name: str = "", duration: int = 0, ai_data: dict[str, Any] | None = None
 ) -> str | None:
     loop = asyncio.get_running_loop()
     mapping = get_channel_mapping(channel_name)
@@ -677,7 +681,7 @@ async def search_vk_video(
     )
     logger.info(f"VK поиск: q='{search_title}', token present={bool(vk_token)}")
     try:
-        params: dict = {"q": search_title, "count": 10, "v": "5.199"}
+        params: dict[str, Any] = {"q": search_title, "count": 10, "v": "5.199"}
         if mapping and mapping.get("vk_owner_id"):
             params["owner_id"] = mapping["vk_owner_id"]
         elif mapping and mapping.get("vk_domain"):
@@ -858,8 +862,8 @@ async def search_vk_video(
 
 
 async def find_alternative_links(
-    title: str, channel_name: str, duration: int, ai_data: dict | None = None, fallback_title: str = ""
-) -> dict:
+    title: str, channel_name: str, duration: int, ai_data: dict[str, Any] | None = None, fallback_title: str = ""
+) -> dict[str, Any]:
     # Ищем только если канал известен — есть в CHANNEL_MAP
     if not get_channel_mapping(channel_name):
         logger.info(f"Канал '{channel_name}' не в CHANNEL_MAP — поиск RuTube/VK пропущен")

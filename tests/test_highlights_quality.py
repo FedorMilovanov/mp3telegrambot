@@ -1,3 +1,9 @@
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pytest
+
+from services import highlights_quality
 from services.highlights_quality import (
     _drop_overlaps_and_repeats,
     _map_probe_segments_to_source,
@@ -206,3 +212,30 @@ def test_probe_mapping_clips_word_evidence_to_exact_window() -> None:
     assert mapped[0][0]["text"] == "Проснитесь."
     assert mapped[0][0]["start"] == 100.0
     assert mapped[0][0]["words"][0]["start"] == 100.1
+
+
+@pytest.mark.asyncio
+async def test_coherence_judge_executes_typed_gemini_callback(monkeypatch) -> None:
+    response = SimpleNamespace(text='{"accept":true,"keep_indices":[1,2,3,4],"reason":"connected"}')
+    generate_content = AsyncMock(return_value=response)
+    client = SimpleNamespace(aio=SimpleNamespace(models=SimpleNamespace(generate_content=generate_content)))
+    monkeypatch.setattr(highlights_quality, "HAS_GEMINI", True)
+    monkeypatch.setattr(highlights_quality, "GEMINI_CLIENTS", [client])
+    monkeypatch.setattr(highlights_quality, "make_text_config_smart", lambda **kwargs: kwargs)
+
+    async def generate(clients, callback):
+        return await callback(clients[0])
+
+    monkeypatch.setattr(highlights_quality, "gemini_generate", generate)
+    fragments = [
+        {"start_seconds": float(index), "end_seconds": float(index + 1), "transcript": f"Part {index}"}
+        for index in range(4)
+    ]
+
+    accepted, keep, reason = await highlights_quality._judge_actual_transcripts(
+        title="One topic",
+        fragments=fragments,
+    )
+
+    assert (accepted, keep, reason) == (True, [1, 2, 3, 4], "connected")
+    assert generate_content.await_args.kwargs["config"]["response_mime_type"] == "application/json"

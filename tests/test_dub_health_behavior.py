@@ -375,6 +375,16 @@ def test_dubcheck_command_returns_after_admin_rejection(monkeypatch):
     assert message.replies[0][0].startswith("⛔")
 
 
+def test_dubcheck_command_handles_missing_effective_message(monkeypatch):
+    monkeypatch.setattr(health, "ADMIN_IDS", {1})
+    monkeypatch.setattr(health, "collect_dub_health", lambda: [])
+    update, message = _update(with_message=False)
+
+    asyncio.run(health.dubcheck_command(update, SimpleNamespace()))
+
+    assert message is None
+
+
 def test_health_registration_is_idempotent():
     class Application:
         def __init__(self):

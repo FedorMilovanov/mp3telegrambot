@@ -18,11 +18,11 @@ import platform
 import shutil
 import subprocess
 import sys
-from types import SimpleNamespace
 from typing import Any
 
 from services.speech_backends import BackendIdentity
 from services.tts_weighted_smoke import (
+    WeightedTTSSmokeConfig,
     WeightedTTSSmokeRuntime,
     _assert_privacy_allowlist,
     _atomic_report,
@@ -102,7 +102,7 @@ def _probe_imports(identity: BackendIdentity) -> dict[str, Any]:
     if torch is not None:
         cuda = getattr(torch, "cuda", None)
         available = bool(cuda is not None and cuda.is_available())
-        count = int(cuda.device_count()) if available else 0
+        count = int(cuda.device_count()) if available and cuda is not None else 0
         facts["torch"] = {
             "version": _module_version(torch),
             "cuda_available": available,
@@ -234,7 +234,15 @@ def run_weighted_tts_runner_doctor(
     if not isinstance(config, WeightedTTSSmokeRunnerConfig):
         raise TypeError("config должен быть WeightedTTSSmokeRunnerConfig.")
     _validate_expected_python(config.expected_python)
-    runtime = runtime or resolve_weighted_smoke_runtime(SimpleNamespace(profile_id=config.profile_id))
+    runtime = runtime or resolve_weighted_smoke_runtime(
+        WeightedTTSSmokeConfig(
+            profile_id=config.profile_id,
+            model_root=config.model_root,
+            reference_wav=config.reference_wav,
+            work_dir=config.work_dir,
+            expected_python=config.expected_python,
+        )
+    )
     if runtime.profile.profile_id != config.profile_id:
         raise RuntimeError("Runner doctor runtime разрешил другой profile_id.")
     if not runtime.profile.production_enabled:

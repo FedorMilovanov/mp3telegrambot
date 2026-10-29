@@ -16,11 +16,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 # poll_id -> {"session": <dict>, "correct_option": int, "ts": float}
-_polls: dict[str, dict] = {}
+_polls: dict[str, dict[str, Any]] = {}
 
 # AUDIT R30b: викторина живёт минуты. Чистим протухшие/лишние записи, чтобы
 # брошенные (неотвеченные) сессии не текли в памяти бесконечно.
@@ -37,11 +38,11 @@ def _prune_polls() -> None:
             _polls.pop(pid, None)
 
 
-def _payloads_from_questions(questions: list[dict]) -> list[dict]:
+def _payloads_from_questions(questions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     from services.quiz_generator import _sanitize_poll_payload
 
     total = len(questions)
-    out = []
+    out: list[dict[str, Any]] = []
     for i, q in enumerate(questions):
         p = _sanitize_poll_payload(q, index=i + 1, total=total)
         if p:
@@ -49,7 +50,7 @@ def _payloads_from_questions(questions: list[dict]) -> list[dict]:
     return out
 
 
-async def _send_next_poll(context, session: dict, reply_to=None) -> bool:
+async def _send_next_poll(context: Any, session: dict[str, Any], reply_to: Any = None) -> bool:
     """Отправляет текущий (session['index']) вопрос сессии. True если ушёл."""
     i = session["index"]
     payloads = session["payloads"]
@@ -98,7 +99,7 @@ async def _send_next_poll(context, session: dict, reply_to=None) -> bool:
     return True
 
 
-async def start_quiz_session(questions, update, context, title: str = "") -> int:
+async def start_quiz_session(questions: list[dict[str, Any]], update: Any, context: Any, title: str = "") -> int:
     """Запускает последовательную викторину: шлёт ПЕРВЫЙ вопрос.
     Возвращает число вопросов в тесте (0 если ничего не отправлено)."""
     payloads = _payloads_from_questions(questions)
@@ -119,7 +120,7 @@ async def start_quiz_session(questions, update, context, title: str = "") -> int
     return len(payloads)
 
 
-async def handle_quiz_poll_answer(update, context) -> None:
+async def handle_quiz_poll_answer(update: Any, context: Any) -> None:
     """PollAnswerHandler: пользователь ответил на вопрос — считаем результат
     и шлём следующий вопрос (или итоговый счёт)."""
     answer = getattr(update, "poll_answer", None)

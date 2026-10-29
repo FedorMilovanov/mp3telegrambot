@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections import deque
 from importlib import metadata
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 POLICY = "direct-runtime-dependency-lock-v2"
 
@@ -22,7 +22,7 @@ class RuntimeDependencyLockError(RuntimeError):
     """Raised when the direct runtime environment is not lock-compatible."""
 
 
-def _requirement_tools():
+def _requirement_tools() -> tuple[Any, Any, Any, Any, Any, Any, Any]:
     """Load the canonical repository requirement parser lazily and fail closed."""
     try:
         from packaging.requirements import Requirement
@@ -50,7 +50,7 @@ def _requirement_tools():
     )
 
 
-def _marker_applies(requirement, active_extras: set[str]) -> bool:
+def _marker_applies(requirement: Any, active_extras: set[str]) -> bool:
     marker = requirement.marker
     if marker is None:
         return True

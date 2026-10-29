@@ -37,7 +37,7 @@ def _max_stale_command_age() -> int:
 def _message_age_seconds(update: Any) -> float | None:
     message = getattr(update, "effective_message", None)
     stamp = getattr(message, "date", None)
-    if stamp is None:
+    if not isinstance(stamp, datetime):
         return None
     try:
         if stamp.tzinfo is None:

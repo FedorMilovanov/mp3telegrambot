@@ -196,6 +196,70 @@ def test_long_qa_without_original_uses_full_qa_fallback(monkeypatch, tmp_path):
     assert calls[0]["original_audio_path"] is None
 
 
+def test_long_qa_below_threshold_uses_base_runner(monkeypatch, tmp_path):
+    monkeypatch.setenv("LIVEDUB_LONG_QA_THRESHOLD_SEC", "120")
+    video = tmp_path / "dub.mp4"
+    video.write_bytes(b"video")
+    calls = []
+
+    async def base_runner(**kwargs):
+        calls.append(kwargs)
+        return {"score": 88, "issues": []}
+
+    result = asyncio.run(
+        long_qa.run_long_translation_qa(
+            base_runner,
+            dub_video_path=video,
+            original_audio_path=None,
+            ai_data=None,
+            duration=120,
+            model_name="model",
+        )
+    )
+
+    assert result == {"score": 88, "issues": []}
+    assert len(calls) == 1
+
+
+def test_long_qa_all_failed_segments_use_one_full_qa_fallback(monkeypatch, tmp_path):
+    monkeypatch.setenv("LIVEDUB_LONG_QA_THRESHOLD_SEC", "120")
+    video = tmp_path / "dub.mp4"
+    original = tmp_path / "original.mp3"
+    russian = tmp_path / "clean-ru.mp3"
+    for path in (video, original, russian):
+        path.write_bytes(b"media")
+
+    def extract(_source, _start, _length, output):
+        output.write_bytes(b"segment")
+        return output
+
+    monkeypatch.setattr(long_qa, "_extract_audio_segment", extract)
+    calls = []
+
+    async def base_runner(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            return None
+        return {"score": 77, "issues": []}
+
+    result = asyncio.run(
+        long_qa.run_long_translation_qa(
+            base_runner,
+            dub_video_path=video,
+            original_audio_path=original,
+            ai_data=None,
+            duration=121,
+            model_name="model",
+            dub_audio_path=russian,
+        )
+    )
+
+    assert result == {"score": 77, "issues": []}
+    assert len(calls) == 2
+    assert calls[-1]["original_audio_path"] == original
+    assert calls[-1]["dub_audio_path"] == russian
+
+
 def test_long_qa_source_default_is_high_thinking():
     source = Path("services/livedub_long_qa.py").read_text(encoding="utf-8")
 

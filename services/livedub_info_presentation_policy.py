@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import re
+from collections.abc import Callable
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -121,7 +122,7 @@ async def _translate_title_second_chance(title_line: str) -> tuple[str, str] | N
         return None
     try:
         from core.globals import GEMINI_CLIENTS, make_text_config_smart
-        from services.livedub_info import DEFAULT_INFO_MODEL
+        from core.model_catalog import MODEL_PRIMARY as DEFAULT_INFO_MODEL
     except Exception:
         return None
     if not GEMINI_CLIENTS:
@@ -162,7 +163,7 @@ async def _translate_title_second_chance(title_line: str) -> tuple[str, str] | N
         },
     )
 
-    async def _generate_title(client):
+    async def _generate_title(client: Any) -> Any:
         return await asyncio.wait_for(
             client.aio.models.generate_content(
                 model=model,
@@ -172,7 +173,7 @@ async def _translate_title_second_chance(title_line: str) -> tuple[str, str] | N
             timeout=60.0,
         )
 
-    def _parse_title_response(response) -> tuple[str, str] | None:
+    def _parse_title_response(response: Any) -> tuple[str, str] | None:
         try:
             data = json.loads(_strip_json_fence(getattr(response, "text", "") or ""))
             title = _clean(data.get("title"), 190)
@@ -200,10 +201,10 @@ async def _translate_title_second_chance(title_line: str) -> tuple[str, str] | N
     return None
 
 
-def _make_formatter(module: Any):
+def _make_formatter(module: Any) -> Callable[[dict[str, Any]], str]:
     safe_trim_caption = module.safe_trim_caption
 
-    def format_message(card: dict) -> str:
+    def format_message(card: dict[str, Any]) -> str:
         if not isinstance(card, dict):
             return ""
         raw_line = _clean(card.get("youtube_title") or card.get("telegram_description"), 260)
@@ -232,17 +233,17 @@ def _make_formatter(module: Any):
             ]
         if hashtags:
             lines += ["", html.escape(" ".join(hashtags), quote=False)]
-        return safe_trim_caption("\n".join(lines).strip(), 3900)
+        return str(safe_trim_caption("\n".join(lines).strip(), 3900))
 
     return format_message
 
 
 async def apply_card_presentation(
-    card: dict | None,
+    card: dict[str, Any] | None,
     title_line: str,
     *,
     source_url: str = "",
-) -> dict:
+) -> dict[str, Any]:
     """Apply concise Russian publication presentation without module mutation."""
     result = dict(card or {})
     current_line = _clean(result.get("youtube_title") or title_line, 260)
@@ -275,12 +276,12 @@ async def apply_card_presentation(
     return result
 
 
-def format_card_message(card: dict) -> str:
+def format_card_message(card: dict[str, Any]) -> str:
     """Render the concise publication card through the pure formatter."""
     from converters.md_telegraph import safe_trim_caption
 
     class _FormattingOwner:
-        pass
+        safe_trim_caption: Any
 
     owner = _FormattingOwner()
     owner.safe_trim_caption = safe_trim_caption

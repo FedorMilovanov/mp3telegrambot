@@ -143,7 +143,7 @@ async def _generate_quality_publication(source_line: str) -> dict[str, str] | No
         return None
     try:
         from core.globals import GEMINI_CLIENTS, make_text_config_smart
-        from services.livedub_info import DEFAULT_INFO_MODEL
+        from core.model_catalog import MODEL_PRIMARY as DEFAULT_INFO_MODEL
     except Exception:
         return None
     if not GEMINI_CLIENTS:
@@ -180,7 +180,7 @@ async def _generate_quality_publication(source_line: str) -> dict[str, str] | No
         response_schema=_response_schema(),
     )
 
-    async def _generate_publication(client):
+    async def _generate_publication(client: Any) -> Any:
         return await asyncio.wait_for(
             client.aio.models.generate_content(
                 model=model,
@@ -190,7 +190,7 @@ async def _generate_quality_publication(source_line: str) -> dict[str, str] | No
             timeout=90.0,
         )
 
-    def _parse_publication_response(response) -> dict[str, str] | None:
+    def _parse_publication_response(response: Any) -> dict[str, str] | None:
         try:
             raw = str(getattr(response, "text", "") or "").strip()
             raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.MULTILINE).strip()

@@ -147,7 +147,7 @@ def format_segments_text(segments: list[PlannedSegment], *, title: str = "") -> 
     return "\n".join(lines)
 
 
-def get_segment_by_index(segments: list[PlannedSegment], index: int) -> PlannedSegment | None:
+def get_segment_by_index(segments: list[PlannedSegment], index: int | str) -> PlannedSegment | None:
     try:
         idx = int(index)
     except (TypeError, ValueError):

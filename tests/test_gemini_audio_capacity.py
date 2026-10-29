@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from services import gemini_analyze as analyze
 from services import gemini_capacity_control as control
@@ -159,3 +160,56 @@ def test_audio_low_thinking_recovery_is_not_silently_promoted_to_high():
     from core.globals import _effective_thinking_level
 
     assert _effective_thinking_level("gemini-3.7-flash", "low") == "low"
+
+
+def test_validate_and_fix_timestamps_executes_nested_typed_helpers():
+    parsed = {
+        "time": "2:00",
+        "nested": [{"time": "0:30", "value": "kept"}],
+    }
+
+    result = analyze._validate_and_fix_timestamps(parsed, duration=60)
+
+    assert result == {
+        "time": "",
+        "nested": [{"time": "0:30", "value": "kept"}],
+    }
+
+
+def test_audio_empty_response_uses_real_low_thinking_recovery(monkeypatch, tmp_path):
+    audio = _install_common(monkeypatch, tmp_path)
+    monkeypatch.setattr(analyze, "make_audio_config", lambda **kwargs: kwargs)
+    monkeypatch.setattr(analyze, "alog_gemini_response", AsyncMock())
+    monkeypatch.setattr(analyze, "alog_gemini_run", AsyncMock())
+
+    class Files:
+        async def upload(self, **_kwargs):
+            return SimpleNamespace(name="files/audio", state="ACTIVE")
+
+    class Models:
+        def __init__(self):
+            self.calls = []
+
+        async def generate_content(self, **kwargs):
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                return SimpleNamespace(text="", candidates=[])
+            return SimpleNamespace(
+                text='{"real_title":"Recovered"}',
+                candidates=[SimpleNamespace(finish_reason="STOP")],
+            )
+
+    models = Models()
+    client = SimpleNamespace(aio=SimpleNamespace(files=Files(), models=models))
+    monkeypatch.setattr(analyze, "GEMINI_CLIENTS", [client])
+
+    parsed, used_client, used_audio_part = asyncio.run(
+        analyze.gemini_analyze_audio(audio, "Title", "Author", 120, None)
+    )
+
+    assert parsed is not None
+    assert parsed["format"] == "other"
+    assert used_client is client
+    assert used_audio_part.name == "files/audio"
+    assert len(models.calls) == 2
+    assert models.calls[1]["config"]["thinking_level"] == "low"

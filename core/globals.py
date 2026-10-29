@@ -129,8 +129,8 @@ except ImportError:
     HAS_PILLOW = False
 
 try:
-    from google import genai
-    from google.genai import types
+    from google import genai as genai
+    from google.genai import types as types
 
     HAS_GEMINI = True
 except ImportError:

@@ -65,8 +65,10 @@ def _merge_drop_spans(repairs: Iterable[dict[str, Any]]) -> list[list[float]]:
 
 def _identity_payload(document: dict[str, Any]) -> dict[str, Any]:
     """Return path-stable evidence identity for one deterministic repair result."""
-    source = document.get("source") if isinstance(document.get("source"), dict) else {}
-    output = document.get("output") if isinstance(document.get("output"), dict) else {}
+    source_value = document.get("source")
+    output_value = document.get("output")
+    source = source_value if isinstance(source_value, dict) else {}
+    output = output_value if isinstance(output_value, dict) else {}
     return {
         "schema_name": document.get("schema_name"),
         "schema_version": document.get("schema_version"),
@@ -187,7 +189,7 @@ def validate_repair_provenance_document(document: dict[str, Any]) -> list[str]:
             errors.append("repair provenance output SHA-256 is invalid")
         for prefix, item in (("source", source), ("output", output)):
             try:
-                byte_count = int(item.get("bytes"))
+                byte_count = int(item.get("bytes") or 0)
             except (TypeError, ValueError):
                 byte_count = 0
             duration = _finite_float(item.get("duration_seconds"))

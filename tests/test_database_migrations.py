@@ -5,9 +5,13 @@ from pathlib import Path
 
 import pytest
 
+import core.database as database
+import services.database_migrations as migrations
+import services.dub_studio as dub_studio
 from services.database_migrations import (
     DATABASE_MIGRATION_POLICY,
     Migration,
+    MigrationReport,
     add_column_if_missing,
     run_migrations,
 )
@@ -79,6 +83,49 @@ def test_history_checksum_mismatch_fails_closed(tmp_path: Path):
 
     with pytest.raises(RuntimeError, match="history mismatch"):
         run_migrations(path, scope="test", migrations=(migration,))
+
+
+def test_apply_database_migrations_returns_json_result(tmp_path: Path, monkeypatch):
+    main_path = tmp_path / "main.db"
+    dub_path = tmp_path / "dub.db"
+    with sqlite3.connect(dub_path) as conn:
+        conn.execute("CREATE TABLE dub_jobs(id INTEGER PRIMARY KEY)")
+
+    class Store:
+        def __init__(self):
+            self.db_path = dub_path
+
+        def connect(self):
+            return sqlite3.connect(dub_path)
+
+    def report(path, *, scope, migrations):
+        assert Path(path) in {main_path, dub_path}
+        assert migrations == ()
+        return MigrationReport(database=scope, applied=(1,), current_version=1)
+
+    monkeypatch.setattr(database, "DB_PATH", main_path)
+    monkeypatch.setattr(dub_studio, "DubStore", Store)
+    monkeypatch.setattr(migrations, "MAIN_MIGRATIONS", ())
+    monkeypatch.setattr(migrations, "DUB_MIGRATIONS", ())
+    monkeypatch.setattr(migrations, "run_migrations", report)
+
+    result = migrations.apply_database_migrations()
+
+    assert result == {
+        "policy": DATABASE_MIGRATION_POLICY,
+        "main": {
+            "policy": DATABASE_MIGRATION_POLICY,
+            "database": "main",
+            "applied": [1],
+            "current_version": 1,
+        },
+        "dub_studio": {
+            "policy": DATABASE_MIGRATION_POLICY,
+            "database": "dub-studio",
+            "applied": [1],
+            "current_version": 1,
+        },
+    }
 
 
 def test_only_real_duplicate_column_is_skipped(tmp_path: Path):

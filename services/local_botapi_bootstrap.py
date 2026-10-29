@@ -17,7 +17,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 from urllib.parse import urlparse
 
 from services.process_executables import resolve_required_executable
@@ -188,7 +188,7 @@ def _start_local_server(host: str, port: int) -> tuple[subprocess.Popen[bytes] |
         f"--log={log_path}",
         "--verbosity=2",
     ]
-    kwargs: dict[str, object] = {
+    kwargs: dict[str, Any] = {
         "stdin": subprocess.DEVNULL,
         "env": dict(os.environ),
     }
@@ -204,7 +204,7 @@ def _start_local_server(host: str, port: int) -> tuple[subprocess.Popen[bytes] |
             kwargs["creationflags"] = 0x8 | 0x200 | 0x08000000
         else:
             kwargs["start_new_session"] = True
-        process = subprocess.Popen(command, **kwargs)  # type: ignore[arg-type]  # noqa: S603 -- configured file, argv only
+        process = subprocess.Popen(command, **kwargs)  # noqa: S603 -- configured file, argv only
         return process, str(log_path)
     except Exception as exc:
         return None, f"{type(exc).__name__}: {exc}"

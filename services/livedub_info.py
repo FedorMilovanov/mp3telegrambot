@@ -71,7 +71,7 @@ def get_light_model_fallbacks() -> list[str]:
     return []
 
 
-def livedub_info_response_schema() -> dict:
+def livedub_info_response_schema() -> dict[str, Any]:
     return {
         "type": "object",
         "properties": {
@@ -122,7 +122,7 @@ def _safe_text(value: Any, limit: int = 1500) -> str:
     return text[:limit]
 
 
-def _fallback_card(title_line: str, source_url: str = "") -> dict:
+def _fallback_card(title_line: str, source_url: str = "") -> dict[str, Any]:
     title = _safe_text(title_line, 180) or "Переведённое видео"
     return {
         "telegram_description": title,
@@ -135,7 +135,11 @@ def _fallback_card(title_line: str, source_url: str = "") -> dict:
     }
 
 
-def _normalize_card(data: dict, fallback_title: str, source_url: str = "") -> dict:
+def _normalize_card(
+    data: dict[str, Any],
+    fallback_title: str,
+    source_url: str = "",
+) -> dict[str, Any]:
     fb = _fallback_card(fallback_title, source_url)
     if not isinstance(data, dict):
         return fb
@@ -152,7 +156,7 @@ def _normalize_card(data: dict, fallback_title: str, source_url: str = "") -> di
     if not isinstance(terms, list):
         terms = []
 
-    out = {
+    out: dict[str, Any] = {
         "telegram_description": _safe_text(data.get("telegram_description") or fb["telegram_description"], 520),
         "youtube_title": title_case_fragment(_safe_text(data.get("youtube_title") or fb["youtube_title"], 100)),
         "youtube_description": _safe_text(data.get("youtube_description") or fb["youtube_description"], 1200),
@@ -181,12 +185,12 @@ def _gemini_clients_snapshot() -> tuple[Any, ...]:
 
 
 async def _finalize_info_card(
-    card: dict | None,
+    card: dict[str, Any] | None,
     *,
     title_line: str,
     source_url: str,
     evidence: str,
-) -> dict:
+) -> dict[str, Any]:
     guarded = sanitize_card(card, str(title_line or ""), evidence)
     return await presentation_policy.apply_card_presentation(
         guarded,
@@ -201,7 +205,7 @@ async def build_livedub_info_card(
     *,
     source_url: str = "",
     force: bool = False,
-) -> dict | None:
+) -> dict[str, Any] | None:
     if not (force or livedub_info_enabled()):
         return None
     fallback = _fallback_card(title_line, source_url)
@@ -265,7 +269,7 @@ Paul Washer=Пол Вошер, Abner Chou=Абнер Чау, Costi Hinn=Кост
         response_schema=livedub_info_response_schema(),
     )
 
-    async def _call(client):
+    async def _call(client: Any) -> Any:
         return await asyncio.wait_for(
             client.aio.models.generate_content(
                 model=model,
@@ -295,5 +299,5 @@ def _h(text: Any) -> str:
     return html.escape(str(text or ""), quote=False)
 
 
-def format_livedub_info_message(card: dict) -> str:
+def format_livedub_info_message(card: dict[str, Any]) -> str:
     return presentation_policy.format_card_message(card)

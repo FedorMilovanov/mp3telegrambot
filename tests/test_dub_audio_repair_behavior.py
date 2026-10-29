@@ -80,6 +80,15 @@ def test_repair_admin_gate_handles_all_user_shapes(monkeypatch):
     assert _run(repair._admin, update) is False
 
 
+def test_repair_commands_stop_when_admin_update_has_no_message(monkeypatch):
+    monkeypatch.setattr(repair, "ADMIN_IDS", {1})
+    monkeypatch.setattr(repair, "DubStore", lambda: pytest.fail("missing message must not open the store"))
+    update, _ = _update(user_id=1, with_message=False)
+
+    _run(repair.dubsegments_command, update, SimpleNamespace(args=[]))
+    _run(repair._dubfix_command_unlocked, update, SimpleNamespace(args=[]))
+
+
 def test_project_resolution_enforces_owner_and_generic_recipe():
     project = {
         "id": "p",

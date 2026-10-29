@@ -4,7 +4,9 @@ import asyncio
 import json
 import logging
 import shutil
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from core.globals import GEMINI_CLIENTS, make_text_config_smart
 from core.database import GEMINI_MODEL
@@ -30,7 +32,10 @@ def _find_subtitle_audio(workdir: Path) -> Path | None:
     return None
 
 
-async def _translate_chunk_with_retry(chunk_segs, prev_context=""):
+async def _translate_chunk_with_retry(
+    chunk_segs: list[tuple[int, str]],
+    prev_context: str = "",
+) -> dict[str, Any] | None:
     """Translates a chunk of segments with retries and JSON enforcement across multiple Gemini keys."""
     if not GEMINI_CLIENTS:
         return None
@@ -66,7 +71,7 @@ async def _translate_chunk_with_retry(chunk_segs, prev_context=""):
         response_mime_type="application/json",
     )
 
-    async def _generate_chunk(client):
+    async def _generate_chunk(client: Any) -> Any:
         return await asyncio.wait_for(
             client.aio.models.generate_content(
                 model=GEMINI_MODEL,
@@ -76,7 +81,7 @@ async def _translate_chunk_with_retry(chunk_segs, prev_context=""):
             timeout=120.0,
         )
 
-    def _parse_chunk_response(response) -> dict | None:
+    def _parse_chunk_response(response: Any) -> dict[str, Any] | None:
         try:
             text = str(getattr(response, "text", "") or "").strip()
             text = re.sub(r"^```(?:json)?\s*", "", text)
@@ -188,17 +193,18 @@ async def create_gemini_subtitles(
         lang or "auto",
     )
 
-    def _run_whisper():
-        model = _get_whisper_model()
+    def _run_whisper() -> list[Any]:
+        model_factory: Callable[[], Any] = _get_whisper_model
+        model = model_factory()
         # Если язык известен (en, ru, de...) — форсируем, чтобы Whisper не ошибся
         # на акцентах. yt-dlp даёт ISO-коды, Whisper их понимает.
-        transcribe_args = {
-            "language": lang if lang else "en",
-            "beam_size": 1,
-            "vad_filter": True,
-            "vad_parameters": {"min_silence_duration_ms": 500},
-        }
-        segs_gen, _ = model.transcribe(str(actual_audio), **transcribe_args)
+        segs_gen, _ = model.transcribe(
+            str(actual_audio),
+            language=lang if lang else "en",
+            beam_size=1,
+            vad_filter=True,
+            vad_parameters={"min_silence_duration_ms": 500},
+        )
         return list(segs_gen)
 
     segments = await await_owned_coroutine(asyncio.to_thread(_run_whisper))
@@ -208,7 +214,7 @@ async def create_gemini_subtitles(
         return None
 
     # 4. Перевод Gemini батчами
-    translated_segments = {}
+    translated_segments: dict[str, str] = {}
 
     if not GEMINI_CLIENTS:
         logger.warning("[EngSubtitles] Gemini API не настроен, оставляем английский.")
@@ -216,9 +222,9 @@ async def create_gemini_subtitles(
     else:
         logger.info("[EngSubtitles] Переводим субтитры через Gemini (chunked JSON)...")
         CHUNK_SIZE = 50
-        chunks = []
+        chunks: list[list[tuple[int, str]]] = []
 
-        current_chunk = []
+        current_chunk: list[tuple[int, str]] = []
         for i, seg in enumerate(segments, 1):
             current_chunk.append((i, seg.text.strip()))
             if len(current_chunk) >= CHUNK_SIZE:
@@ -240,7 +246,7 @@ async def create_gemini_subtitles(
                         translated_segments[str(k)] = str(v)
                 if chunk:
                     last_id = chunk[-1][0]
-                    prev_context = data.get(str(last_id), "")
+                    prev_context = str(data.get(str(last_id), "") or "")
                 # AUDIT R43: правило «сглаживай заикания» иногда толкало модель
                 # СЛИТЬ соседние ID в один ключ ответа — пропавший ID молча падал
                 # на английский текст ниже (строка 228+), без единого сигнала в
@@ -276,7 +282,7 @@ async def create_gemini_subtitles(
                     translated_segments[str(sid)] = text
 
     # 5. Запись SRT
-    def _to_srt_time(seconds):
+    def _to_srt_time(seconds: float) -> str:
         h = int(seconds // 3600)
         m = int((seconds % 3600) // 60)
         s = int(seconds % 60)

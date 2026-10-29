@@ -23,7 +23,7 @@ import time
 import weakref
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import Awaitable, Callable, TypeVar
+from typing import AsyncIterator, Awaitable, Callable, TypeVar
 
 from services.latency_trace import note_latency_event, record_latency
 
@@ -143,7 +143,7 @@ def transient_retry_delay(failure_number: int) -> float:
         30.0,
     )
     delay = min(maximum, base * (2 ** max(0, int(failure_number) - 1)))
-    return delay + random.uniform(0.0, jitter)
+    return float(delay + random.uniform(0.0, jitter))
 
 
 @dataclass
@@ -240,7 +240,7 @@ async def _respect_capacity_state(state: _LoopState, domain: str) -> None:
 
 
 @asynccontextmanager
-async def heavy_gemini_slot(domain: str = "inference"):
+async def heavy_gemini_slot(domain: str = "inference") -> AsyncIterator[None]:
     domain = _domain(domain)
     state = _loop_state()
     require_domain_available(domain)

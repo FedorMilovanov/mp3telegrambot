@@ -101,11 +101,21 @@ def _schema() -> dict[str, Any]:
     }
 
 
-def _metadata(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[dict, str, str]:
+def _metadata(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[dict[str, Any], str, str]:
     ai_data = kwargs.get("ai_data", args[1] if len(args) > 1 else {})
     title = kwargs.get("title", args[2] if len(args) > 2 else "")
     performer = kwargs.get("performer", args[3] if len(args) > 3 else "")
     return ai_data if isinstance(ai_data, dict) else {}, str(title or ""), str(performer or "")
+
+
+def _item_index(item: dict[str, Any]) -> int | None:
+    value = item.get("index")
+    if not isinstance(value, (str, int, float)):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
 
 
 def _strip_json_fence(value: Any) -> str:
@@ -163,7 +173,7 @@ async def _generate_descriptions(
 
     clients = [client for _model, client in attempts]
 
-    async def _generate_descriptions_once(client):
+    async def _generate_descriptions_once(client: Any) -> Any:
         cfg = make_text_config_smart(
             max_output_tokens=1600,
             model_name=model,
@@ -180,15 +190,14 @@ async def _generate_descriptions(
             timeout=_timeout(),
         )
 
-    def _valid_descriptions_response(response) -> bool:
+    def _valid_descriptions_response(response: Any) -> bool:
         try:
             data = json.loads(_strip_json_fence(getattr(response, "text", "")))
             for item in data.get("items", []) if isinstance(data, dict) else []:
                 if not isinstance(item, dict):
                     continue
-                try:
-                    index = int(item.get("index"))
-                except (TypeError, ValueError):
+                index = _item_index(item)
+                if index is None:
                     continue
                 description = _clean_description(item.get("description"))
                 if 0 <= index < len(candidates) and description:
@@ -209,9 +218,8 @@ async def _generate_descriptions(
         for item in data.get("items", []) if isinstance(data, dict) else []:
             if not isinstance(item, dict):
                 continue
-            try:
-                index = int(item.get("index"))
-            except (TypeError, ValueError):
+            index = _item_index(item)
+            if index is None:
                 continue
             description = _clean_description(item.get("description"))
             if 0 <= index < len(candidates) and description:
@@ -270,7 +278,7 @@ def wrap_factory_caption_builder(builder: Callable[..., str]) -> Callable[..., s
     if builder in _WRAPPED_CAPTION_BUILDERS:
         return builder
 
-    def wrapped(*args, **kwargs):
+    def wrapped(*args: Any, **kwargs: Any) -> str:
         candidate = _candidate_from_call(args, kwargs)
         caption = builder(*args, **kwargs)
         return _insert_description(caption, candidate.get(_DESCRIPTION_FIELD))

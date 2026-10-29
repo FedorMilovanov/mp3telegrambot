@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ def _clean_title(topic: str, max_len: int = 120) -> str:
 _TS_LINE_RE = re.compile(r"^(\d{1,2}:\d{2}(?::\d{2})?)\s+(.+)$")
 
 
-def timestamps_to_chapter_list(timestamps) -> list:
+def timestamps_to_chapter_list(timestamps: Any) -> list[dict[str, Any]]:
     """Приводит таймкоды к списку {"time","topic"} для embed_chapters.
 
     FIX AUDIT R4: пайплайн хранит ai_data["timestamps"] СТРОКОЙ
@@ -56,7 +57,7 @@ def timestamps_to_chapter_list(timestamps) -> list:
             for t in timestamps
             if isinstance(t, dict) and str(t.get("time") or "").strip() and str(t.get("topic") or "").strip()
         ]
-    out: list[dict] = []
+    out: list[dict[str, Any]] = []
     for line in str(timestamps or "").splitlines():
         m = _TS_LINE_RE.match(line.strip())
         if m:
@@ -66,7 +67,7 @@ def timestamps_to_chapter_list(timestamps) -> list:
 
 def embed_chapters(
     mp3_path: Path,
-    timestamps: list,
+    timestamps: list[dict[str, Any]],
     duration_sec: int = 0,
     title: str = "",
     performer: str = "",
@@ -79,13 +80,16 @@ def embed_chapters(
     Возвращает True при успехе; любые проблемы — False без исключений.
     """
     try:
-        from mutagen.id3 import ID3, CHAP, CTOC, TIT2, TPE1, APIC, COMM, CTOCFlags
+        from mutagen import id3 as _id3
         from mutagen.id3._util import ID3NoHeaderError
 
+        # Mutagen has no typed public stubs; keep its dynamic frame boundary explicit.
+        id3_api = cast(Any, _id3)
+
         try:
-            tags = ID3(str(mp3_path))
+            tags = id3_api.ID3(str(mp3_path))
         except ID3NoHeaderError:
-            tags = ID3()
+            tags = id3_api.ID3()
 
         metadata_requested = bool(
             str(title or "").strip()
@@ -97,17 +101,17 @@ def embed_chapters(
 
         # 1. Базовые теги
         if title:
-            tags.add(TIT2(encoding=3, text=[title]))
+            tags.add(id3_api.TIT2(encoding=3, text=[title]))
         if performer:
-            tags.add(TPE1(encoding=3, text=[performer]))
+            tags.add(id3_api.TPE1(encoding=3, text=[performer]))
         if comment:
-            tags.add(COMM(encoding=3, lang="rus", desc="desc", text=[comment]))
+            tags.add(id3_api.COMM(encoding=3, lang="rus", desc="desc", text=[comment]))
 
         # 2. Обложка
         if thumb_path and Path(thumb_path).exists():
             try:
                 with open(thumb_path, "rb") as img:
-                    tags.add(APIC(encoding=3, mime="image/jpeg", type=3, desc="Cover", data=img.read()))
+                    tags.add(id3_api.APIC(encoding=3, mime="image/jpeg", type=3, desc="Cover", data=img.read()))
             except Exception as e:
                 logger.debug("MP3 cover embed failed: %s", e)
 
@@ -146,17 +150,17 @@ def embed_chapters(
                     cid = f"ch{i:02d}"
                     child_ids.append(cid)
                     tags.add(
-                        CHAP(
+                        id3_api.CHAP(
                             element_id=cid,
                             start_time=ms,
                             end_time=next_ms,
-                            sub_frames=[TIT2(encoding=3, text=[topic_title])],
+                            sub_frames=[id3_api.TIT2(encoding=3, text=[topic_title])],
                         )
                     )
                 tags.add(
-                    CTOC(
+                    id3_api.CTOC(
                         element_id="toc",
-                        flags=CTOCFlags.TOP_LEVEL | CTOCFlags.ORDERED,
+                        flags=id3_api.CTOCFlags.TOP_LEVEL | id3_api.CTOCFlags.ORDERED,
                         child_element_ids=child_ids,
                         sub_frames=[],
                     )

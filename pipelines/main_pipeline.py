@@ -5,6 +5,7 @@ Main Pipeline — process_single_video.
 """
 
 import html as html_mod
+from typing import Any
 
 from services.ffmpeg import YTDLP_BASE_ARGS  # FIX #23: нужен результат, не функция
 from services.async_process import run_cancellable_process
@@ -45,7 +46,7 @@ from pipelines.cached_presentation_stage import (
 from pipelines.delivery_stage import DeliveryRequest, deliver_cached_result, deliver_result
 from pipelines.extras_stage import ExtrasRequest, run_extras
 from pipelines.fresh_caption_stage import finalize_fresh_caption
-from pipelines.livedub_background_stage import run_livedub_background
+from pipelines.livedub_background_stage import BackgroundResult, run_livedub_background
 from pipelines.livedub_cached_delivery_stage import deliver_cached_livedub
 from pipelines.livedub_dub_stage import make_livedub_video, wait_for_livedub_video
 from pipelines.livedub_full_qa_stage import run_livedub_full_qa
@@ -133,7 +134,7 @@ async def _translate_livedub_title_for_caption(
     )
 
 
-def _sponsorblock_args() -> list:
+def _sponsorblock_args() -> list[str]:
     """SponsorBlock-вырезка для mp3 (opt-in, default OFF).
 
     ВАЖНО: вырезка сегментов СДВИГАЕТ таймлайн mp3 относительно YouTube —
@@ -166,7 +167,7 @@ def _sponsorblock_args() -> list:
     return ["--sponsorblock-remove", ",".join(parts)]
 
 
-async def _ytdlp_info_inprocess(url: str, timeout: int):
+async def _ytdlp_info_inprocess(url: str, timeout: int) -> dict[str, Any] | None:
     """AUDIT R31 (живой баг: `python.exe Application Error 0xc0000142` при
     спавне `sys.executable -m yt_dlp` из бота — при этом `python -m yt_dlp`
     из чистого терминала работает). Причина: дочерний python.exe наследует
@@ -209,7 +210,7 @@ async def _ytdlp_info_inprocess(url: str, timeout: int):
         logger.info("yt-dlp in-process: parse_options не сработал (%s) — subprocess", str(e)[:150])
         return None
 
-    def _run():
+    def _run() -> Any:
         with yt_dlp.YoutubeDL(opts) as ydl:
             return ydl.extract_info(url, download=False)
 
@@ -239,8 +240,13 @@ async def _ytdlp_info_inprocess(url: str, timeout: int):
 
 
 async def process_single_video(
-    url, update, status_msg=None, progress_prefix="", context=None, silent_errors: bool = False
-):
+    url: str,
+    update: Any,
+    status_msg: Any = None,
+    progress_prefix: str = "",
+    context: Any = None,
+    silent_errors: bool = False,
+) -> Any:
     url = get_youtube_video_url(url)
     thumb_buffer = None
     _pp = progress_prefix  # short alias for progress calls
@@ -405,7 +411,11 @@ async def process_single_video(
             except Exception:
                 _livedub_info_enabled = False
 
-            async def _run_livedub_bg(video_url, workdir, source_lang=""):
+            async def _run_livedub_bg(
+                video_url: str,
+                workdir: Path,
+                source_lang: str = "",
+            ) -> BackgroundResult:
                 # Keep local service imports as historical monkeypatch seams.
                 return await run_livedub_background(
                     video_url,
