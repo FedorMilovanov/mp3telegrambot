@@ -266,14 +266,26 @@ def test_cli_rejects_ambiguous_or_invalid_json(tmp_path: Path, content: str, mat
     assert main([str(evidence), "--expected-sha", SHA]) == 1
 
 
-def test_excessive_json_nesting_is_a_clean_validation_failure(
+def test_excessive_json_nesting_is_cleanly_rejected_on_any_interpreter(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     evidence = tmp_path / "evidence.json"
     evidence.write_text("[" * 1100 + "]" * 1100, encoding="utf-8")
 
     assert main([str(evidence), "--expected-sha", SHA]) == 1
-    assert "nested too deeply" in capsys.readouterr().err
+    assert "live canary evidence rejected" in capsys.readouterr().err
+
+
+def test_decoder_recursion_error_has_a_stable_diagnostic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence = tmp_path / "evidence.json"
+    evidence.write_text("[]", encoding="utf-8")
+
+    def fail_with_recursion_error(*args: Any, **kwargs: Any) -> object:
+        raise RecursionError("decoder limit")
+
+    monkeypatch.setattr("tools.verify_live_canary_evidence.json.loads", fail_with_recursion_error)
+    with pytest.raises(LiveCanaryEvidenceError, match="nested too deeply"):
+        load_evidence(evidence)
 
 
 def test_invalid_utf8_is_a_clean_validation_failure(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
