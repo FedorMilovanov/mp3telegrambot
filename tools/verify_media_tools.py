@@ -5,14 +5,14 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
-
-from services.process_executables import resolve_required_executable
 
 
 VERSION_RE = re.compile(r"^ff(?:mpeg|probe) version (?P<version>\S+)")
@@ -31,10 +31,10 @@ class MediaToolIdentity:
 
 
 def _resolve(name: str) -> str:
-    try:
-        return resolve_required_executable(name)
-    except FileNotFoundError as exc:
-        raise MediaToolError(str(exc)) from exc
+    resolved = shutil.which(name)
+    if resolved is None:
+        raise MediaToolError(f"Required executable not found on PATH: {name}")
+    return resolved
 
 
 def _query_version(executable: str) -> str:
@@ -86,6 +86,13 @@ def inspect_media_tools(expected_version: str) -> tuple[MediaToolIdentity, Media
     return identities[0], identities[1]
 
 
+def _github_error(message: str) -> None:
+    escaped = (
+        message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A").replace(":", "%3A").replace(",", "%2C")
+    )
+    print(f"::error title=Media tool verification failed::{escaped}", file=sys.stderr)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--expected-version", required=True, help="Approved upstream FFmpeg version")
@@ -93,7 +100,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         identities = inspect_media_tools(args.expected_version)
     except (MediaToolError, OSError) as exc:
-        print(f"media tool verification failed: {exc}", file=sys.stderr)
+        message = f"media tool verification failed: {exc}"
+        print(message, file=sys.stderr)
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            _github_error(message)
         return 1
     for identity in identities:
         print(f"{identity.name}: path={identity.path} version={identity.version} sha256={identity.sha256}")

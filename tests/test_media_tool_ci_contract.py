@@ -48,6 +48,39 @@ def test_required_ci_provisions_and_identifies_approved_media_tools() -> None:
     assert windows_steps.index(windows_verify) < windows_steps.index(windows_tests)
 
 
+def test_media_tool_cli_is_standalone_from_repository_root() -> None:
+    completed = subprocess.run(
+        [sys.executable, "tools/verify_media_tools.py", "--help"],
+        cwd=ROOT,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "--expected-version" in completed.stdout
+
+
+def test_media_tool_failure_is_explicit_in_github_annotations(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def _missing(name: str) -> str:
+        raise verify_media_tools.MediaToolError(f"Required executable not found on PATH: {name}")
+
+    monkeypatch.setattr(verify_media_tools, "_resolve", _missing)
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+
+    assert verify_media_tools.main(["--expected-version", "6.1.1"]) == 1
+
+    error = capsys.readouterr().err
+    assert "media tool verification failed: Required executable not found on PATH: ffmpeg" in error
+    assert "::error title=Media tool verification failed::media tool verification failed%3A" in error
+
+
 def test_media_tool_inspection_rejects_mismatched_pair(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(verify_media_tools, "_resolve", lambda name: f"/approved/{name}")
     monkeypatch.setattr(
