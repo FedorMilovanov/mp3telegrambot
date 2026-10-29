@@ -17,7 +17,7 @@
 Суффикс `_latest` запрещён: файл с таким именем устаревает молча, и читатель
 не может понять, что перед ним старое.
 
-Всего файлов: **76**.
+Всего файлов: **77**.
 
 ## Эксплуатация и контракты
 
@@ -30,6 +30,7 @@
 | [`generated_pages_archive.md`](generated_pages_archive.md) | Санитизированный публичный индекс: только названия, авторы и публичные ссылки. |
 | [`local-bot-api-repair.md`](local-bot-api-repair.md) | The local `telegram-bot-api.exe` process opens port `8081`, but |
 | [`model-catalog.md`](model-catalog.md) | Policy: `project-gemini-routing-2026-10-22`. Сгенерировано scripts/render_model_catalog.py из core/model_catalog.py — не редактируйте вручную. |
+| [`runtime-reliability-live-canary.md`](runtime-reliability-live-canary.md) | Документ описывает операторский прогон Telegram → Local Bot API → обработка → provider/publication → доставка → restart recovery и подготовку доказательств без… |
 | [`runtime-reliability.md`](runtime-reliability.md) | LOCAL_BOT_API_EXE=C:\Program Files\TelegramBotAPI\telegram-bot-api.exe |
 | [`tts-weighted-runner.md`](tts-weighted-runner.md) | Этот runbook относится только к manual workflow `TTS Weighted Smoke`. Он не нужен hosted CI и не должен использоваться для запуска кода из pull request. |
 | [`typechecking.md`](typechecking.md) | Строгий `mypy` включён для всей рабочей копии. Production-only этап завершён: |
