@@ -15,7 +15,7 @@ from typing import Any
 
 from core.globals import GEMINI_CLIENTS, HAS_GEMINI, make_audio_config
 from core.model_catalog import MODEL_PRIMARY
-from core.text_utils import normalize_author_name, normalize_title_text, title_case_fragment
+from core.text_utils import normalize_author_name, normalize_hashtag, normalize_title_text, title_case_fragment
 from core.utils import format_timestamp
 
 try:
@@ -147,17 +147,26 @@ def _seconds(value: Any) -> float:
 
 
 def _clean_tags(value: Any) -> list[str]:
+    """Return up to four independent tags without gluing combined model output."""
     if not isinstance(value, list):
         return []
     out: list[str] = []
     seen: set[str] = set()
     for item in value:
-        tag = re.sub(r"[^0-9A-Za-zА-Яа-яЁё_]", "", str(item or "").lstrip("#"))
-        folded = tag.casefold()
-        if tag and folded not in seen:
-            out.append(tag[:40])
+        # Gemini sometimes returns "#One #Two" as one array item. Split only at
+        # hash boundaries: whitespace inside a single phrase still belongs to
+        # that phrase and normalize_hashtag turns it into CamelCase.
+        for part in re.split(r"(?=#)", str(item or "").strip()):
+            tag = normalize_hashtag(part).lstrip("#")
+            tag = re.sub(r"[^0-9A-Za-zА-Яа-яЁё_]", "", tag)
+            folded = tag.casefold()
+            if not tag or len(tag) > 38 or folded in seen:
+                continue
+            out.append(tag)
             seen.add(folded)
-    return out[:4]
+            if len(out) >= 4:
+                return out
+    return out
 
 
 def _normalize_candidate(

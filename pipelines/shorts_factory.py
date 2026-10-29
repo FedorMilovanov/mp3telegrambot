@@ -444,7 +444,7 @@ async def process_shorts_factory(
                 snap_to_silence=False,
             )
             if longs_sent <= 0:
-                raise RuntimeError("SHORTS FACTORY не доставил ни одного длинного клипа")
+                raise RuntimeError("SHORTS FACTORY не подтвердил доставку ни одного длинного клипа")
 
         plan_meta = render_plan.get("metadata") or {}
         full_video_sent = await send_factory_full_translation_if_enabled(

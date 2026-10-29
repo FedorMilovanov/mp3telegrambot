@@ -1,9 +1,11 @@
 import asyncio
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from telegram.error import TimedOut
 
 import pipelines.clips as clips
 from services.media_delivery_probe import MediaProbe
@@ -46,6 +48,12 @@ class _Message:
     async def reply_text(self, text: object, **kwargs: Any) -> SimpleNamespace:
         self.texts.append(str(text))
         return SimpleNamespace()
+
+
+class _TimeoutMessage(_Message):
+    async def reply_video(self, **kwargs: Any) -> SimpleNamespace:
+        self.videos.append(kwargs)
+        raise TimedOut("Timed out")
 
 
 async def _configure_pipeline(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, probe: MediaProbe | None) -> None:
@@ -106,8 +114,51 @@ async def test_clips_use_probed_duration_and_preserve_borrowed_livedub(
 
     assert len(message.videos) == 1
     assert message.videos[0]["duration"] == 126
+    assert message.videos[0]["write_timeout"] == 1800
+    assert message.videos[0]["read_timeout"] == 1800
+    assert message.videos[0]["connect_timeout"] == 120
+    assert message.videos[0]["pool_timeout"] == 120
     assert livedub.exists(), "Clips must not unlink the borrowed LiveDub master"
     assert not (tmp_path / "abc_clip_1.mp4").exists()
+
+
+@pytest.mark.asyncio
+async def test_clips_timeout_is_unconfirmed_and_never_retried_blindly(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    await _configure_pipeline(monkeypatch, tmp_path, probe=_deliverable_probe(120.0))
+
+    livedub = tmp_path / "translated.mp4"
+    livedub.write_bytes(b"owned-by-livedub")
+    message = _TimeoutMessage()
+
+    with caplog.at_level(logging.WARNING):
+        result = await clips.process_and_send_clips(
+            url="https://example.invalid/video",
+            media_id="abc",
+            mp3_path=tmp_path / "audio.mp3",
+            title="Title",
+            performer="Author",
+            duration=600,
+            ai_data={},
+            update=SimpleNamespace(message=message),
+            livedub_video_path=livedub,
+        )
+
+    assert result == 0
+    assert len(message.videos) == 1, "A timed-out upload must not be duplicated automatically"
+    assert "delivery unconfirmed 1/1" in caplog.text
+    assert "no automatic retry to avoid duplicate delivery" in caplog.text
+    assert "no clips confirmed delivered; unconfirmed uploads=1" in caplog.text
+
+
+def test_factory_long_delivery_failure_does_not_claim_proven_non_delivery() -> None:
+    source = Path("pipelines/shorts_factory.py").read_text(encoding="utf-8")
+
+    assert "SHORTS FACTORY не подтвердил доставку ни одного длинного клипа" in source
+    assert "SHORTS FACTORY не доставил ни одного длинного клипа" not in source
 
 
 @pytest.mark.asyncio
