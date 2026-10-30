@@ -22,7 +22,7 @@ python-telegram-bot[socks]>=22.5,<23.0
 # yt-dlp[default] тянет yt-dlp-ejs — обновлять их ВМЕСТЕ.
 # >=2026.10.21: security-релиз (обновлённый certifi/CA-набор против MITM,
 # см. yt-dlp release notes 2026.10.21) + свежие YouTube extractor-фиксы.
-yt-dlp[default]>=2026.10.21
+yt-dlp[default]>=2026.10.26
 # mutagen импортируется напрямую (services/mp3_chapters.py:81-82) для ID3-глав.
 # Он приходит и через yt-dlp[default], но полагаться на extra чужого пакета —
 # значит потерять главы в MP3, если апстрим пересоберёт extras.

@@ -91,5 +91,5 @@ virtualenv==21.14.13
 waitress==3.0.2
 websockets==16.1.1
 Werkzeug==3.1.9
-yt-dlp==2026.10.21
+yt-dlp==2026.10.26
 yt-dlp-ejs==0.8.0
