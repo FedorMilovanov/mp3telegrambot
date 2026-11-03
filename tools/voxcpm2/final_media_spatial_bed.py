@@ -79,10 +79,10 @@ def decode_audio_stereo(path: Path, *, duration: float) -> np.ndarray:
         audio = audio[:-1]
     if len(audio) < SAMPLE_RATE * 4:
         raise RuntimeError("Недостаточно stereo samples для spatial-bed QA.")
-    audio = audio.reshape(-1, 2)
-    if not np.isfinite(audio).all():
+    stereo_audio = audio.reshape(-1, 2)
+    if not np.isfinite(stereo_audio).all():
         raise RuntimeError("Spatial-bed QA получил NaN/Inf после декодирования.")
-    return audio
+    return stereo_audio
 
 
 def _mid_side(audio: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
