@@ -1,6 +1,6 @@
 # MP3Bot — Telegram media conversion and AI-assisted analysis
 
-**[Русский README](README.md)** · **[Architecture](ARCHITECTURE.md)** · **[Contributing](CONTRIBUTING.md)** · **[Security](SECURITY.md)**
+**[Русский README](README.md)** · **[Architecture](ARCHITECTURE.md)** · **[Case study](CASE_STUDY.md)** · **[Ownership and rights](OWNER.md)** · **[Contributing](CONTRIBUTING.md)** · **[Security](SECURITY.md)**
 
 MP3Bot is a locally operated Telegram bot for extracting audio from video and playlists, preparing Russian-language editorial materials, and handling English-to-Russian video dubbing through Yandex LiveDub. It can produce MP3 files, time-coded summaries, transcripts, Telegraph pages, and optional short-form media. The project is developed and maintained by Fedor Milovanov; its editorial and publication decisions remain human-reviewed.
 
