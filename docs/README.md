@@ -19,7 +19,7 @@
 Суффикс `_latest` запрещён: файл с таким именем устаревает молча, и читатель
 не может понять, что перед ним старое.
 
-Всего файлов: **77**.
+Всего файлов: **78**.
 
 ## Эксплуатация и контракты
 
@@ -73,6 +73,7 @@
 | [`voxcpm2/INTEGRATION_PLAN.md`](voxcpm2/INTEGRATION_PLAN.md) | This document defines how the laboratory CPU dubbing path should enter the bot without destabilizing the current LiveDub pipeline. |
 | [`voxcpm2/MODEL_COMPARISON_2026-07-26.md`](voxcpm2/MODEL_COMPARISON_2026-07-26.md) | Этот документ отвечает на практический вопрос проекта: действительно ли VoxCPM2 является лучшей или хотя бы одной из наиболее перспективных открытых моделей… |
 | [`voxcpm2/MODEL_COMPARISON_2026-08-01.md`](voxcpm2/MODEL_COMPARISON_2026-08-01.md) | 1. русский язык и cross-lingual cloning действительно работают, а не только заявлены в демо; |
+| [`voxcpm2/MODEL_LANDSCAPE_UPDATE_2026-11-07.md`](voxcpm2/MODEL_LANDSCAPE_UPDATE_2026-11-07.md) | Сводка реальных CPU-проб VoxCPM2, CosyVoice 3 и MOSS, состояния Higgs TTS 3 и новых кандидатов KittenTTS 2, MOSS-TTS-Nano, Fish Audio Drama 3; первичные… |
 | [`voxcpm2/PRODUCTION_RUNBOOK.md`](voxcpm2/PRODUCTION_RUNBOOK.md) | This runbook turns the MacArthur laboratory work into a repeatable Windows workflow. VoxCPM2 synthesis stays CPU-only. The damaged RTX 3060 may be used only as… |
 | [`voxcpm2/QUALITY_RESEARCH_2026-07-26.md`](voxcpm2/QUALITY_RESEARCH_2026-07-26.md) | This note records a focused review of more than 50 primary pages: official VoxCPM2 documentation, current source files, model configuration, release notes,… |
 | [`voxcpm2/README.md`](voxcpm2/README.md) | VoxCPM2 пока не импортируется основным Telegram bot runtime. Текущий этап — стабильный лабораторный production-контур для Shorts и подготовка архитектуры… |

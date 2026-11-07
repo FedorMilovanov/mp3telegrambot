@@ -128,6 +128,9 @@ def test_source_owned_runtime_routes_agree_on_gemini_38(monkeypatch: pytest.Monk
     from services.gemini_model_status import POLICY, classify_gemini_model
     from services.livedub_quality_runtime import configure_gemini_policy
 
+    # Isolate the removed key from legacy .env / other tests. The policy must
+    # not recreate it; its pre-existing value is not evidence of a regression.
+    monkeypatch.delenv("GEMINI_LIGHT_MODEL", raising=False)
     maximum = configure_max_quality_env()
     livedub = configure_gemini_policy()
 

@@ -1,8 +1,12 @@
 # VoxCPM2 CPU dubbing handbook
 
+> **Current TTS landscape (2026-11-07):** [MODEL_LANDSCAPE_UPDATE_2026-11-07.md](MODEL_LANDSCAPE_UPDATE_2026-11-07.md). November local CPU trials, KittenTTS 2, MOSS-TTS-Nano and Fish Audio Drama 3 (official requirements versus third-party ComfyUI).
+> The August model comparison linked below is a historical snapshot.
+
+
 > Актуальный источник истины для локальной CPU-озвучки, будущей интеграции с LiveDub и передачи задачи другим ИИ/разработчикам. Обновлено 26 июля 2026 года.
 >
-> Актуальное сравнение VoxCPM2 с Qwen3-TTS, Chatterbox V3, Fish S2-Pro, CosyVoice3 и другими моделями: [`MODEL_COMPARISON_2026-08-01.md`](MODEL_COMPARISON_2026-08-01.md).
+> Архивный сравнительный обзор по состоянию на 1 августа 2026 года (VoxCPM2, Qwen3-TTS, Chatterbox V3, Fish S2-Pro, CosyVoice3): [`MODEL_COMPARISON_2026-08-01.md`](MODEL_COMPARISON_2026-08-01.md).
 
 ## 1. Цель проекта
 

@@ -122,12 +122,15 @@ def test_video_within_limit_is_not_refused_by_duration(monkeypatch: pytest.Monke
 
     monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", info)
     monkeypatch.setenv("MAX_VIDEO_DURATION_SEC", "3600")
+    # Stop deterministically at the next guard. A duration-boundary test must
+    # never fall through into actual DB, downloads or Telegram delivery.
+    monkeypatch.setattr(main_pipeline, "lowest_free_gb", lambda *_paths: 0.4)
 
     update = _FakeUpdate()
-    # Дальше нужен реальный Telegram и БД, поэтому пайплайн упадёт — важно, что
-    # отказ пришёл НЕ по длительности.
     assert _run(update) is False
-    assert all("превышает лимит" not in reply for reply in update.message.replies)
+    assert len(update.message.replies) == 1
+    assert "Мало места на диске" in update.message.replies[0]
+    assert "превышает лимит" not in update.message.replies[0]
 
 
 def test_low_disk_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -174,9 +177,21 @@ def test_unknown_disk_space_does_not_block(monkeypatch: pytest.MonkeyPatch) -> N
 
     monkeypatch.setattr(main_pipeline, "_ytdlp_info_inprocess", info)
     monkeypatch.setattr(main_pipeline, "lowest_free_gb", lambda *_paths: None)
+    from pipelines.media_guards import disk_skip as original_disk_skip
 
+    checked: list[float | None] = []
+
+    def stop_after_check(free_gb: float | None) -> None:
+        checked.append(free_gb)
+        assert original_disk_skip(free_gb) is None
+        # The acceptance gate is proven; do not continue into real media
+        # download, DB or Telegram from a test of unknown disk capacity.
+        raise RuntimeError("disk guard accepted unknown capacity")
+
+    monkeypatch.setattr(main_pipeline, "disk_skip", stop_after_check)
     update = _FakeUpdate()
     assert _run(update) is False
+    assert checked == [None]
     assert all("Мало места" not in reply for reply in update.message.replies)
 
 
@@ -1243,8 +1258,16 @@ def test_fresh_caption_finalization_reaches_delivery_boundary(
     livedub_background_calls = []
     full_qa_calls = []
     if mode.startswith("eng"):
+        import services.livedub_publication as livedub_publication
         import services.yandex_live_dub as live_dub
 
+        async def no_network_publication(source_line: str, source_url: str) -> dict[str, str]:
+            # The test verifies the delivery/error boundary, not Gemini API.
+            # Keep the real publication stage but replace only its remote call.
+            assert source_line and source_url == VIDEO_URL
+            return {"title": "Fresh lecture title with enough detail", "author": "John Smith"}
+
+        monkeypatch.setattr(livedub_publication, "build_publication_card", no_network_publication)
         real_create_task = asyncio.create_task
 
         async def no_cache(_media_id: str) -> None:
