@@ -9,6 +9,7 @@
 3. [`VOICE_REPAIR_AND_MODEL_PRACTICE.md`](VOICE_REPAIR_AND_MODEL_PRACTICE.md) — VoxCPM2, ссылки на модельные исследования, тембр, временные вставки и звук.
 4. [`CLIPS_SHORTS_AND_HANDOFF.md`](CLIPS_SHORTS_AND_HANDOFF.md) — речь, Shorts, нарезки 15 минут, блюр, SRT, передача в Downloads.
 5. [`PIPER_MACARTHUR_2007_CASE.md`](PIPER_MACARTHUR_2007_CASE.md) — реальный 53-минутный кейс, что получилось, что потребовало переделки.
+6. [`PIPER_SPROUL_2011_CASE.md`](PIPER_SPROUL_2011_CASE.md) — ошибки 82-минутного Q&A и отдельного выпуска об Иове: библейские ссылки как часы, Desiring God как «Бог», Елиуй, род говорящего, VoxCPM2 и версии YouTube.
 
 Смежные **встроенные** механизмы бота — [`../translation_editorial_review.md`](../translation_editorial_review.md), [`../translation_editorial_composition.md`](../translation_editorial_composition.md), [`../voxcpm2/PRODUCTION_RUNBOOK.md`](../voxcpm2/PRODUCTION_RUNBOOK.md), [`../voxcpm2/REFERENCE_AUDIO_PLAYBOOK.md`](../voxcpm2/REFERENCE_AUDIO_PLAYBOOK.md). Черпай оттуда принципы QA; **не переключай `/mode` и не правь бота ради работы агента в чате**.
 
