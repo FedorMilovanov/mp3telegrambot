@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import html
 import json
 import logging
@@ -30,6 +31,10 @@ from services.shorts_factory_execution_guard import (
     enforce_factory_translation_preflight,
     factory_language_needs_translation,
     resolve_factory_spoken_language,
+)
+from services.shorts_factory_delivery_ledger import (
+    FactoryDeliveryJournal,
+    FactoryDeliveryReconciliationRequired,
 )
 from services.shorts_factory_full_video import send_factory_full_translation_if_enabled
 from services.shorts_factory_media import validated_factory_source_duration
@@ -100,7 +105,9 @@ def _media_id(info: dict[str, Any], url: str) -> str:
     value = str(info.get("id") or "").strip()
     if value:
         return re.sub(r"[^A-Za-z0-9_-]", "", value)[:80]
-    return str(abs(hash(url)))
+    # Python hash() is process-randomized, so it cannot serve as a durable
+    # checkpoint/delivery identity after a crash or restart.
+    return hashlib.sha256(url.strip().encode("utf-8")).hexdigest()[:24]
 
 
 def _cleanup_expired_factory_sources() -> None:
@@ -226,6 +233,8 @@ async def process_shorts_factory(
     keep_source = False
     workdir = Path(tempfile.mkdtemp(prefix="shorts_factory_"))
     source_task: asyncio.Task[Any] | None = None
+    delivery_journal: FactoryDeliveryJournal | None = None
+    job_lease_owner: str | None = None
 
     try:
         enforce_factory_preflight()
@@ -254,6 +263,8 @@ async def process_shorts_factory(
             raise RuntimeError(f"Источник {duration // 60} мин превышает лимит режима {max_duration // 60} мин")
 
         media_id = _media_id(info, url)
+        delivery_journal = FactoryDeliveryJournal.for_update(update, media_id=media_id, source_url=url)
+        job_lease_owner = await asyncio.to_thread(delivery_journal.acquire_job_lease)
         full_title = str(info.get("title") or "Видео").strip()
         channel_name = str(info.get("channel") or info.get("uploader") or "").strip()
         performer, title = parse_title(full_title, channel_name)
@@ -412,6 +423,7 @@ async def process_shorts_factory(
                 candidates=render_shorts,
                 source_video_path=persistent_source_path,
                 update=update,
+                delivery_journal=delivery_journal,
             )
             if shorts_sent <= 0:
                 raise RuntimeError("SHORTS FACTORY не доставил ни одного Short с обязательными субтитрами")
@@ -442,6 +454,7 @@ async def process_shorts_factory(
                 public_max_seconds=FACTORY_LONG_PUBLIC_MAX_SEC,
                 factory_publication=True,
                 snap_to_silence=False,
+                delivery_journal=delivery_journal,
             )
             if longs_sent <= 0:
                 raise RuntimeError("SHORTS FACTORY не подтвердил доставку ни одного длинного клипа")
@@ -454,6 +467,7 @@ async def process_shorts_factory(
             duration=render_source_duration,
             translation_required=translation_required,
             silent_errors=silent_errors,
+            delivery_journal=delivery_journal,
         )
 
         if translation_required and factory_editorial_pack_enabled():
@@ -481,8 +495,9 @@ async def process_shorts_factory(
                         pack_path=pack_path,
                         review_path=review_path,
                         markdown_path=markdown_path,
+                        delivery_journal=delivery_journal,
                     )
-            except asyncio.CancelledError:
+            except (asyncio.CancelledError, FactoryDeliveryReconciliationRequired):
                 raise
             except Exception as editorial_exc:
                 mark_latency_partial("editorial_review_failed")
@@ -533,18 +548,25 @@ async def process_shorts_factory(
                 await update.message.reply_text(message)
         return False
     finally:
-        if source_task is not None and not source_task.done():
-            source_task.cancel()
-            with contextlib.suppress(BaseException):
-                await source_task
+        try:
+            if source_task is not None and not source_task.done():
+                source_task.cancel()
+                with contextlib.suppress(BaseException):
+                    await source_task
 
-        await asyncio.to_thread(
-            _cleanup_factory_files,
-            mp3_path=mp3_path,
-            persistent_source_path=persistent_source_path,
-            keep_source=keep_source,
-            workdir=workdir,
-        )
+            await asyncio.to_thread(
+                _cleanup_factory_files,
+                mp3_path=mp3_path,
+                persistent_source_path=persistent_source_path,
+                keep_source=keep_source,
+                workdir=workdir,
+            )
+        finally:
+            if delivery_journal is not None and job_lease_owner is not None:
+                try:
+                    await asyncio.to_thread(delivery_journal.release_job_lease, job_lease_owner)
+                except Exception:
+                    logger.exception("Factory job lease cleanup failed; another run will be safely blocked")
 
 
 __all__ = ["FACTORY_LONG_PUBLIC_MAX_SEC", "process_shorts_factory"]

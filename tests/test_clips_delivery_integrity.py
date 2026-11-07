@@ -196,3 +196,58 @@ def test_clips_delivery_boundary_uses_media_probe_and_borrowed_ownership() -> No
     assert "delivery_duration = float(clip_probe.duration)" in source
     assert "duration=max(1, int(round(delivery_duration)))" in source
     assert "if not keep and not borrowed_video" in source
+
+
+@pytest.mark.asyncio
+async def test_factory_long_delivery_journal_suppresses_confirmed_duplicate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from services.shorts_factory_delivery_ledger import FactoryDeliveryJournal
+
+    await _configure_pipeline(monkeypatch, tmp_path, probe=_deliverable_probe(120.0))
+    monkeypatch.setattr(clips, "_FACTORY_CLIP_CAPTION_BUILDER", lambda **kwargs: "Confirmed long clip")
+    livedub = tmp_path / "translated.mp4"
+    livedub.write_bytes(b"already-probed-source")
+
+    class ConfirmedMessage(_Message):
+        chat_id = 123
+
+        async def reply_video(self, **kwargs: Any) -> SimpleNamespace:
+            self.videos.append(kwargs)
+            return SimpleNamespace(message_id=900, chat_id=123)
+
+    message = ConfirmedMessage()
+    update = SimpleNamespace(message=message)
+    url = "https://example.invalid/video"
+
+    async def send(journal: FactoryDeliveryJournal) -> int:
+        return await clips.process_and_send_clips(
+            url=url,
+            media_id="abc",
+            mp3_path=tmp_path / "audio.mp3",
+            title="Title",
+            performer="Author",
+            duration=600,
+            ai_data={},
+            update=update,
+            livedub_video_path=livedub,
+            candidates_override=[_candidate()],
+            factory_publication=True,
+            snap_to_silence=False,
+            delivery_journal=journal,
+        )
+
+    def journal() -> FactoryDeliveryJournal:
+        return FactoryDeliveryJournal(
+            chat_id=123,
+            source_id="abc",
+            source_url=url,
+            path=tmp_path / "delivery.sqlite3",
+        )
+
+    assert await send(journal()) == 1
+    assert await send(journal()) == 1
+    assert len(message.videos) == 1
+    receipt = journal().status("long:1")
+    assert receipt is not None
+    assert receipt["message_id"] == 900

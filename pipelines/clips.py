@@ -22,6 +22,11 @@ from services.clip_renderer import clip_snap_ceiling, render_clip
 from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
 from services.render_clips_montage import build_clip_caption, create_clip_snapshot
 from services.shorts_candidates import create_clips_candidates
+from services.shorts_factory_delivery_ledger import (
+    FactoryDeliveryJournal,
+    FactoryDeliveryReconciliationRequired,
+    factory_delivery_media_sha256,
+)
 from services.shorts_factory_long_fit import fit_factory_long_clip_to_limit
 from services.shorts_factory_media import (
     align_livedub_candidates,
@@ -95,12 +100,15 @@ async def process_and_send_clips(
     snapshot_override: bool | None = None,
     factory_publication: bool = False,
     snap_to_silence: bool = True,
+    delivery_journal: FactoryDeliveryJournal | None = None,
 ) -> int:
     """Render and send long clips, returning the number confirmed delivered."""
     video_path: Path | None = None
     borrowed_video = False
     clip_paths: list[Path] = []
     snap_paths: list[Path] = []
+    if delivery_journal is not None and not factory_publication:
+        raise ValueError("Factory Telegram journal cannot be used for ordinary Clips delivery")
     sent = 0
     unconfirmed = 0
     try:
@@ -349,18 +357,45 @@ async def process_and_send_clips(
                 caption = safe_trim_caption(caption, 1024)
 
             try:
-                await update.message.reply_video(
-                    video=clip_path,
-                    caption=caption,
-                    duration=max(1, int(round(delivery_duration))),
-                    thumbnail=thumb_buf,
-                    supports_streaming=True,
-                    parse_mode="HTML",
-                    write_timeout=1800,
-                    read_timeout=1800,
-                    connect_timeout=120,
-                    pool_timeout=120,
-                )
+
+                async def _send_clip(
+                    video: Path = clip_path,
+                    caption_text: str = caption,
+                    delivery_duration: float = delivery_duration,
+                    thumbnail: InputFile | None = thumb_buf,
+                ) -> Any:
+                    return await update.message.reply_video(
+                        video=video,
+                        caption=caption_text,
+                        duration=max(1, int(round(delivery_duration))),
+                        thumbnail=thumbnail,
+                        supports_streaming=True,
+                        parse_mode="HTML",
+                        write_timeout=1800,
+                        read_timeout=1800,
+                        connect_timeout=120,
+                        pool_timeout=120,
+                    )
+
+                if delivery_journal is not None:
+                    media_digest = await factory_delivery_media_sha256(clip_path)
+                    receipt = await delivery_journal.send_once(
+                        f"long:{i}",
+                        semantic={
+                            "kind": "long",
+                            "index": i,
+                            "start_seconds": round(start_seconds, 3),
+                            "end_seconds": round(end_seconds, 3),
+                            "media_sha256": media_digest,
+                            "caption": caption,
+                            "delivery_duration": round(delivery_duration, 3),
+                        },
+                        sender=_send_clip,
+                    )
+                    if not receipt.newly_delivered:
+                        logger.info("Factory long %d previously confirmed; duplicate suppressed", i)
+                else:
+                    await _send_clip()
                 sent += 1
                 logger.info(
                     "Clips: sent %d/%d (%s-%s) %r, final=%.3fs",
@@ -371,6 +406,8 @@ async def process_and_send_clips(
                     candidate.get("title", ""),
                     delivery_duration,
                 )
+            except FactoryDeliveryReconciliationRequired:
+                raise
             except TimedOut as send_err:
                 unconfirmed += 1
                 logger.warning(
@@ -393,7 +430,7 @@ async def process_and_send_clips(
             logger.info("Clips: delivered %d/%d", sent, total)
         return sent
 
-    except asyncio.CancelledError:
+    except (asyncio.CancelledError, FactoryDeliveryReconciliationRequired):
         raise
     except Exception as exc:
         logger.warning("Clips process_and_send error: %s", exc)
