@@ -41,7 +41,11 @@ _VALID_DOMAINS = {"inference", "files"}
 
 
 class GeminiCapacityCircuitOpen(RuntimeError):
-    """Raised before network I/O while a known-overloaded domain is open."""
+    """Local capacity rejection before network I/O, with a typed retry delay."""
+
+    def __init__(self, message: str, *, retry_after_seconds: float = 0.0) -> None:
+        super().__init__(message)
+        self.retry_after_seconds = max(0.0, float(retry_after_seconds))
 
 
 def is_timeout_error(exc: BaseException) -> bool:
@@ -218,7 +222,8 @@ def require_domain_available(domain: str = "inference") -> None:
     if remaining > 0:
         note_latency_event(f"gemini_{_domain(domain)}_circuit_open")
         raise GeminiCapacityCircuitOpen(
-            f"Gemini {_domain(domain)} 503 overload circuit open; retry after about {remaining:.1f}s"
+            f"Gemini {_domain(domain)} 503 overload circuit open; retry after about {remaining:.1f}s",
+            retry_after_seconds=remaining,
         )
 
 

@@ -27,9 +27,12 @@ logger = logging.getLogger(__name__)
 _FACTORY_CAPACITY_PASS_ATTEMPTS = 5
 _FACTORY_INFERENCE_TRANSIENT_ATTEMPTS = 5
 _FACTORY_UPLOAD_WAIT_SECONDS = 600.0
+_FACTORY_LOCAL_CIRCUIT_MAX_WAIT_SECONDS = 600.0
 
 
 def factory_client_retry_action(exc: BaseException) -> str:
+    if isinstance(exc, capacity_control.GeminiCapacityCircuitOpen):
+        return "circuit"
     if capacity.factory_overload_error(exc):
         return "capacity"
     if capacity.factory_quota_error(exc):
@@ -80,14 +83,22 @@ async def _run_pass_with_capacity_retry(
     import services.shorts_factory_candidates as candidates
 
     last_error: BaseException | None = None
-    for client_attempt in range(1, _FACTORY_CAPACITY_PASS_ATTEMPTS + 1):
+    loop = asyncio.get_running_loop()
+    local_circuit_deadline = loop.time() + _FACTORY_LOCAL_CIRCUIT_MAX_WAIT_SECONDS
+    network_attempts = 0
+    while network_attempts < _FACTORY_CAPACITY_PASS_ATTEMPTS:
         if retry_budget.exhausted:
             if last_error is not None:
                 raise last_error
             raise RuntimeError("Gemini transient retry budget exhausted")
 
-        retry_budget.claim()
+        claimed = False
         try:
+            # Check before claiming, then handle a second check raced while
+            # waiting for the heavy slot. Neither is a network request.
+            capacity_control.require_domain_available("inference")
+            retry_budget.claim()
+            claimed = True
             return await capacity_control.run_heavy_gemini_call(
                 lambda: capacity.await_with_heartbeat(
                     candidates._run_pass(
@@ -104,18 +115,30 @@ async def _run_pass_with_capacity_retry(
             )
         except asyncio.CancelledError:
             raise
+        except capacity_control.GeminiCapacityCircuitOpen as exc:
+            # The circuit rejected the call locally. No provider request was
+            # sent, even if the second gate check raced after budget.claim().
+            if claimed:
+                retry_budget.refund_last_claim()
+            wait = max(0.01, exc.retry_after_seconds)
+            if loop.time() + wait > local_circuit_deadline:
+                raise
+            logger.info("Shorts Factory local inference circuit: wait %.2fs without network-attempt charge", wait)
+            await asyncio.sleep(wait)
+            continue
         except Exception as exc:
+            network_attempts += 1
             last_error = exc
             if not capacity.factory_overload_error(exc):
                 raise
-            if client_attempt >= _FACTORY_CAPACITY_PASS_ATTEMPTS or retry_budget.exhausted:
+            if network_attempts >= _FACTORY_CAPACITY_PASS_ATTEMPTS or retry_budget.exhausted:
                 raise
 
             delay = _capacity_retry_delay(retry_budget.used)
             capacity_control.trip_overload_circuit(domain="inference", seconds=delay)
             logger.warning(
                 "Shorts Factory HIGH pass capacity retry %d/%d; window attempt %d/%d after %s: %s",
-                client_attempt + 1,
+                network_attempts + 1,
                 _FACTORY_CAPACITY_PASS_ATTEMPTS,
                 retry_budget.used + 1,
                 retry_budget.limit,
@@ -347,6 +370,17 @@ async def create_factory_plan_resumable(
                 type(exc).__name__,
                 str(exc)[:500],
             )
+            if action == "circuit":
+                # No SDK request was issued when a local gate rejected the
+                # upload. A previously completed upload/poll must still count.
+                if upload_in_progress and not uploaded_name and budget.used > 0:
+                    budget.refund_last_claim()
+                await capacity.safe_status(
+                    status_msg,
+                    f"⏳ {stage}: локальный Gemini circuit breaker уже открыт. "
+                    "Сетевой ответ 503 не получен; ключи не перебираются.",
+                )
+                raise
             if action == "capacity":
                 delay = _capacity_retry_delay(max(1, budget.used))
                 capacity_control.note_overload(delay, domain=domain)
