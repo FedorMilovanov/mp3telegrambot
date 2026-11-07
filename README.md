@@ -1,5 +1,7 @@
 # MP3Bot — Telegram Media Converter и AI-анализ
 
+**Видеоперевод с AI-агентом непосредственно в чате (не режим бота):** [инструктаж — от Яндекс LiveDub и VoxCPM2 до Shorts, длинных нарезок, QA и Downloads](docs/agent_direct_dubbing/README.md).
+
 [English README](README_EN.md) · [Доказательный кейс проекта](CASE_STUDY.md) · [Авторство и права](OWNER.md) · Русская документация — ниже.
 
 MP3Bot принимает ссылки на видео и плейлисты, извлекает аудио, строит русскоязычные публикационные материалы и поддерживает режимы перевода через Yandex LiveDub.

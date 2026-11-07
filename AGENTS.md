@@ -1,6 +1,11 @@
 # AGENTS.md — mp3telegrambot engineering contract
 
 Scope: the whole repository. This file is for AI/code agents and human maintainers. Follow it before changing production code.
+## Direct AI-agent video dubbing (documentation only)
+
+For work requested **in the chat through an authorized user computer** (Yandex translated video, manual editorial repair, VoxCPM2 speaker patches, 10–180 second Shorts, 7–15 minute excerpts, full masters, YouTube Studio handoff), read **[docs/agent_direct_dubbing/README.md](docs/agent_direct_dubbing/README.md)** and all linked files **before any media actions**.
+
+This is a **human/agent instruction section, not a new MP3Bot mode**. Do not change bot code, restart its runtime, add dependencies or create worker/API endpoints merely to carry out a direct video-translation request. Keep media outside Git; do not interfere with other agents, production workers or user assets. A technically valid FFmpeg output does **not** prove bilingual meaning, natural Russian speech, rights clearance or publication readiness.
 
 ## Mission
 
