@@ -1,5 +1,14 @@
 # Quality audit history
 
+## 2026-11-07 — Factory local Gemini circuit rejection is not a provider request
+
+- Reproduced a real accounting defect in the existing Factory runner: `GeminiCapacityCircuitOpen` contains the string `503`, so a locally rejected operation was classified as a new Google `503`, consuming an inference or upload retry claim and in some paths rotating credentials. A local rejection is not evidence of an HTTP response.
+- The shared exception now carries typed `retry_after_seconds` rather than requiring callers to parse a human-readable message. Factory checks the gate before claiming an inference attempt and refunds the claim if the gate races open while acquiring the heavy semaphore.
+- Local inference circuit waits are bounded (10-minute wall clock limit per pass), cancellation remains propagated, and no additional Gemini credentials are tried for a local-only rejection. The original five genuine network attempts and no-quality-downgrade policy remain unchanged.
+- A local Files upload rejection does not consume an unissued upload claim. Previously completed uploads retain their budget accounting and Files/inference domains remain separate.
+- Regressions cover pre-open circuit, a race after claiming the budget, expiry without network calls, and refusal to upload/rotate on a Files-local circuit. The prior baseline fails the new contract; the focused capacity test suite passes with these changes.
+- No live API requests, model selection, credentials, or bot runtime settings were changed. Cross-process checkpoint/recovery and broader Gemini consumers require separate verification.
+
 ## 2026-06-16 — Gemini 3.5 / Shepherds' Conference batch
 
 Source: operator runtime log excerpt, 10:42–15:34 Europe/Moscow.
