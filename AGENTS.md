@@ -29,7 +29,21 @@ from primary sources (do not infer them from upload date). Comply separately
 with YouTube Studio's current AI-use disclosure controls, especially when
 realistically cloning someone else's voice; never falsely present the audio as
 an original Russian-language recording. Check speaker attribution, translation,
-saved draft status and links before declaring metadata complete. See
+saved draft status and links before declaring metadata complete.
+
+**Pinned-comment factuality gate:** a YouTube pinned comment for translated
+talks must add verified, video-relevant **historical, biographical, conference,
+Scripture, or doctrinal facts** with inspectable references; never generic
+AI-sounding inspiration, promotional calls-to-action, claims without primary
+evidence or invented quotes. Cross-check claims against the source recording,
+official archive and independent primary scholarship when applicable; label
+personal reminiscences as a speaker's recollection, not objective history.
+If evidence is weak, omit the claim or leave the video **without a pin**.
+Drafting/pinning/updating an existing comment are separate from editing titles
+and descriptions; never publish/replace/pin without the user's authorization.
+See [pinned-comment evidence and editorial QA](docs/agent_direct_dubbing/CLIPS_SHORTS_AND_HANDOFF.md).
+
+See
 [YouTube naming, descriptions and Studio QA](docs/agent_direct_dubbing/CLIPS_SHORTS_AND_HANDOFF.md#5а-youtube-редактура-названий-описаний-и-черновиков).
 
 ## Mission
