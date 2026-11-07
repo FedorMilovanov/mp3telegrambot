@@ -331,7 +331,7 @@ def _try_acquire_lock(fd: int) -> bool:
     import fcntl
 
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        getattr(fcntl, "flock")(fd, getattr(fcntl, "LOCK_EX") | getattr(fcntl, "LOCK_NB"))
     except OSError as exc:
         if _lock_contention_errno(exc):
             return False
@@ -349,7 +349,7 @@ def _release_lock(fd: int) -> None:
 
     import fcntl
 
-    fcntl.flock(fd, fcntl.LOCK_UN)
+    getattr(fcntl, "flock")(fd, getattr(fcntl, "LOCK_UN"))
 
 
 @contextmanager

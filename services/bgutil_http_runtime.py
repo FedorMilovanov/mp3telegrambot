@@ -196,7 +196,7 @@ def _force_stop_tree(process: subprocess.Popen[Any]) -> None:
         return
 
     try:
-        os.killpg(process.pid, signal.SIGKILL)
+        getattr(os, "killpg")(process.pid, getattr(signal, "SIGKILL", 9))
     except (ProcessLookupError, PermissionError, OSError):
         with contextlib.suppress(OSError):
             process.kill()
@@ -213,7 +213,7 @@ def stop_owned_bgutil_http_runtime() -> None:
         if os.name == "nt":
             process.terminate()
         else:
-            os.killpg(process.pid, signal.SIGTERM)
+            getattr(os, "killpg")(process.pid, signal.SIGTERM)
         process.wait(timeout=_STOP_GRACE_SEC)
         return
     except (OSError, ProcessLookupError, subprocess.TimeoutExpired):

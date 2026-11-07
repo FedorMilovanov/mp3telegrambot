@@ -1196,6 +1196,12 @@ This entry closes the durable-history gap left during the initial documentation 
 - Fix the writer, not the validator: `Path.write_text(..., newline="\\n")` emits the same canonical LF instruction bytes on Windows and POSIX. Tampered instructions remain rejected.
 - Existing independent tests for valid packs and exact review binding now pass on Windows; add a direct ZIP-member line-ending regression to prevent recurrence.
 
+## 2026-11-07 — Platform-specific process APIs and Windows verifier recovery
+
+- Reproduced 19 Windows-mypy failures on unchanged `main` in POSIX-only process-group signaling and `fcntl` advisory locking; two POSIX-simulation tests also failed because the Windows `signal` module has no `SIGKILL` attribute. The actual Windows runtime paths use taskkill or msvcrt, and are not replaced.
+- Use explicit optional-platform attribute access for `killpg`, `SIGKILL` and `fcntl` operations only within existing OS-specific branches. The POSIX SIGKILL fallback value is 9 solely for portable POSIX-contract simulation on Windows, matching the platform's SIGKILL signal number; no quality or process-lifecycle semantics are relaxed.
+- Both Windows and Linux-platform whole-repository mypy report zero issues (937 modules). Full Windows `tools/verify_repo.py` is terminal green: compileall, model catalog, env reference, docs index, complete pytest, Ruff check, Ruff format, strict typecheck, import layer contracts and `git diff --check` all passed. The release still requires GitHub PR CI and review of the exact head.
+
 ## 2026-09-15 — Synopsis transcript/cache/Telegraph root-cause closure
 
 - Re-audited the transcript-backed Synopsis path from the actual `main` entrypoint and removed a whole-chunk caption dedup rule that deleted legitimate rhetorical repetitions. Rolling-caption cleanup now removes only suffix→prefix overlap; `A / B / A` remains verbatim, including across the 25-second chunk boundary.

@@ -257,7 +257,7 @@ def _basic_terminate_process(proc: subprocess.Popen[str]) -> None:
         if os.name == "nt":
             proc.terminate()
         else:
-            os.killpg(proc.pid, signal.SIGTERM)
+            getattr(os, "killpg")(proc.pid, signal.SIGTERM)
     except Exception:
         with contextlib.suppress(Exception):
             proc.kill()
@@ -757,7 +757,7 @@ def _terminate_process(proc: subprocess.Popen[str]) -> None:
                 proc.terminate()
     else:
         try:
-            os.killpg(proc.pid, signal.SIGTERM)
+            getattr(os, "killpg")(proc.pid, signal.SIGTERM)
         except Exception:
             with contextlib.suppress(Exception):
                 proc.terminate()
