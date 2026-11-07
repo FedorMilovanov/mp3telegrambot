@@ -417,7 +417,8 @@ def build_review_pack(
             "identify a same-voice donor candidate, but requires explicit approval and is "
             "intentionally not auto-executed.\n"
         )
-        (root / "REVIEW_INSTRUCTIONS.md").write_text(instructions, encoding="utf-8")
+        # Canonical LF bytes are required by load_verified_review_pack on Windows too.
+        (root / "REVIEW_INSTRUCTIONS.md").write_text(instructions, encoding="utf-8", newline="\n")
 
         suffix = review_pack_id[7:19]
         zip_path = output_dir / f"{safe_id}_translation_editorial_v1_{suffix}.zip"

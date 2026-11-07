@@ -1190,6 +1190,12 @@ Fixes:
 
 This entry closes the durable-history gap left during the initial documentation PR while preserving the repository rule that governance history records production-relevant retry, quota, credential and quality decisions without embedding secrets.
 
+## 2026-11-07 — Windows editorial review-pack LF contract
+
+- Local Windows baseline on `4e76feca` reproduced a production-format regression: `build_review_pack` wrote `REVIEW_INSTRUCTIONS.md` with platform-native CRLF, but `load_verified_review_pack` compared the archive text against canonical LF and rejected its own generated ZIP as modified.
+- Fix the writer, not the validator: `Path.write_text(..., newline="\\n")` emits the same canonical LF instruction bytes on Windows and POSIX. Tampered instructions remain rejected.
+- Existing independent tests for valid packs and exact review binding now pass on Windows; add a direct ZIP-member line-ending regression to prevent recurrence.
+
 ## 2026-09-15 — Synopsis transcript/cache/Telegraph root-cause closure
 
 - Re-audited the transcript-backed Synopsis path from the actual `main` entrypoint and removed a whole-chunk caption dedup rule that deleted legitimate rhetorical repetitions. Rolling-caption cleanup now removes only suffix→prefix overlap; `A / B / A` remains verbatim, including across the 25-second chunk boundary.
