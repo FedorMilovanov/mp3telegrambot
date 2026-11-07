@@ -16,8 +16,14 @@ style**, not just the bot formatter. For «Господь Бог — Сила М
 Piper/MacArthur 2007 case, the operator and live published-title audit
 (2026-11-08) confirmed **Russian headline-style Title Case for VIDEO TITLES**:
 capitalize significant words, keep short prepositions/conjunctions/particles
-lowercase; preserve «Джон МакАртур». **VIDEO DESCRIPTIONS** retain normal
-Russian sentence capitalization. This reverses our earlier mistaken
+lowercase; preserve «Джон МакАртур». For **this channel's YouTube titles**,
+separate the topic and speaker name using exactly ` - ` (U+0020 SPACE,
+U+002D ASCII HYPHEN-MINUS, U+0020 SPACE), e.g.
+«Как не Зависеть от Похвалы и Критики? - Джон Пайпер».
+Do NOT substitute an em dash `—`, an en dash `–`, or a hyphen without
+spaces. This applies specifically to this channel's YouTube title
+separator, not normal punctuation in descriptions, file names or other
+channels. **VIDEO DESCRIPTIONS** retain normal Russian sentence capitalization. This reverses our earlier mistaken
 sentence-case instruction for the six YouTube Shorts: the titles were
 corrected and confirmed saved in YouTube Studio on 2026-11-08. Do not infer
 identical styling for other channels. In public YouTube descriptions, prioritize
