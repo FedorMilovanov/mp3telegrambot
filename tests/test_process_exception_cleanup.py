@@ -134,7 +134,7 @@ def test_runner_sigkill_falls_back_to_single_pid(monkeypatch: pytest.MonkeyPatch
 
     dub_execution.terminate_process_tree(123, timeout=1)
 
-    kill.assert_called_once_with(123, signal.SIGKILL)
+    kill.assert_called_once_with(123, getattr(signal, "SIGKILL", 9))
 
 
 def test_dub_worker_reader_always_closes_pipe() -> None:

@@ -139,7 +139,7 @@ def terminate_process_tree(pid: int, *, timeout: float = 20.0) -> None:
         )
     else:
         try:
-            os.killpg(pid, signal.SIGTERM)
+            getattr(os, "killpg")(pid, signal.SIGTERM)
         except ProcessLookupError:
             return
         except OSError:
@@ -152,10 +152,10 @@ def terminate_process_tree(pid: int, *, timeout: float = 20.0) -> None:
         time.sleep(0.1)
     if _pid_is_running(pid) and os.name != "nt":
         try:
-            os.killpg(pid, signal.SIGKILL)
+            getattr(os, "killpg")(pid, getattr(signal, "SIGKILL", 9))
         except OSError:
             with contextlib.suppress(OSError):
-                os.kill(pid, signal.SIGKILL)
+                os.kill(pid, getattr(signal, "SIGKILL", 9))
 
 
 @dataclass(frozen=True)

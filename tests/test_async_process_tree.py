@@ -116,7 +116,7 @@ def _force_cleanup(pid: int) -> None:
         )
         return
     with contextlib.suppress(ProcessLookupError):
-        os.kill(pid, signal.SIGKILL)
+        os.kill(pid, getattr(signal, "SIGKILL", 9))
 
 
 @pytest.mark.slow

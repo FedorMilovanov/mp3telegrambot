@@ -58,13 +58,13 @@ def _spawn_group_kwargs() -> dict[str, Any]:
 
 def _signal_posix_tree(
     process: asyncio.subprocess.Process,
-    sig: signal.Signals,
+    sig: int,
 ) -> None:
     """Signal the isolated POSIX group, falling back to the direct child."""
     pid = _process_pid(process)
     if pid is not None:
         try:
-            os.killpg(pid, sig)
+            getattr(os, "killpg")(pid, sig)
             return
         except ProcessLookupError:
             return
@@ -76,7 +76,7 @@ def _signal_posix_tree(
     if process.returncode is not None:
         return
     try:
-        if sig == signal.SIGKILL:
+        if sig == getattr(signal, "SIGKILL", 9):
             process.kill()
         else:
             process.terminate()
@@ -179,7 +179,7 @@ async def _stop_posix_tree(
 
     # Always sweep the group with SIGKILL. The leader may have exited after
     # SIGTERM while a grandchild ignored it and kept stdout/stderr pipes open.
-    _signal_posix_tree(process, signal.SIGKILL)
+    _signal_posix_tree(process, getattr(signal, "SIGKILL", 9))
 
     if process.returncode is None:
         try:
