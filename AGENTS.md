@@ -7,6 +7,21 @@ For work requested **in the chat through an authorized user computer** (Yandex t
 
 This is a **human/agent instruction section, not a new MP3Bot mode**. Do not change bot code, restart its runtime, add dependencies or create worker/API endpoints merely to carry out a direct video-translation request. Keep media outside Git; do not interfere with other agents, production workers or user assets. A technically valid FFmpeg output does **not** prove bilingual meaning, natural Russian speech, rights clearance or publication readiness.
 
+## YouTube metadata exception for direct agent dubbing (operator-confirmed, 2026-11-08)
+
+The **bot-generated Russian material titles** keep the existing Title Case rule below.
+For **YouTube video titles/descriptions prepared directly by an agent** in
+`docs/agent_direct_dubbing/`, use the **target channel's verified editorial
+style**, not the bot title formatter. For «Господь Бог — сила моя» in the
+Piper/MacArthur 2007 case, the operator requested normal **Russian sentence
+case**: capitalize the opening word and proper names only, unless actual
+channel examples establish another convention. Use «Джон МакАртур», not
+«Макартур», when matching that channel's editorial spelling. Never force
+Title Case onto YouTube drafts or descriptions to satisfy the bot's rule.
+Check speaker attribution, faithful natural translation, saved draft state
+and links before declaring metadata done. See
+[YouTube naming, descriptions and Studio QA](docs/agent_direct_dubbing/CLIPS_SHORTS_AND_HANDOFF.md#5а-youtube-редактура-названий-описаний-и-черновиков).
+
 ## Mission
 
 This bot is used continuously to generate, inspect, repair, and archive theological conspects and related Telegram outputs. The goal is not to hide bad outputs by default; the goal is to detect defects, log them, repair pages automatically when possible, and improve generators so future conspects are good enough to review and publish.
