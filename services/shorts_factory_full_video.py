@@ -9,6 +9,12 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from services.shorts_factory_delivery_ledger import (
+    FactoryDeliveryJournal,
+    FactoryDeliveryReconciliationRequired,
+    factory_delivery_media_sha256,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -37,6 +43,7 @@ async def send_factory_full_translation_if_enabled(
     duration: int | float,
     translation_required: bool,
     silent_errors: bool = False,
+    delivery_journal: FactoryDeliveryJournal | None = None,
 ) -> bool:
     """Send the already prepared full LiveDub file once; never retranslate it."""
     if not translation_required or not await factory_full_video_requested(update):
@@ -51,20 +58,37 @@ async def send_factory_full_translation_if_enabled(
     clean_title = " ".join(str(title or "Полная проповедь").split())[:700]
     caption = f"🎬 Полная проповедь — русский видео-перевод\n{clean_title}"
     try:
-        with await asyncio.to_thread(path.open, "rb") as handle:
-            await message.reply_video(
-                video=handle,
-                filename=path.name,
-                caption=caption,
-                duration=max(1, int(duration)),
-                supports_streaming=True,
-                write_timeout=1800,
-                read_timeout=1800,
-                connect_timeout=120,
-                pool_timeout=120,
+
+        async def _send_full() -> Any:
+            with await asyncio.to_thread(path.open, "rb") as handle:
+                return await message.reply_video(
+                    video=handle,
+                    filename=path.name,
+                    caption=caption,
+                    duration=max(1, int(duration)),
+                    supports_streaming=True,
+                    write_timeout=1800,
+                    read_timeout=1800,
+                    connect_timeout=120,
+                    pool_timeout=120,
+                )
+
+        if delivery_journal is not None:
+            media_digest = await factory_delivery_media_sha256(path)
+            await delivery_journal.send_once(
+                "full:translated",
+                semantic={
+                    "kind": "full-translation",
+                    "title": clean_title,
+                    "duration": round(float(duration), 3),
+                    "media_sha256": media_digest,
+                },
+                sender=_send_full,
             )
+        else:
+            await _send_full()
         return True
-    except asyncio.CancelledError:
+    except (asyncio.CancelledError, FactoryDeliveryReconciliationRequired):
         raise
     except Exception as exc:
         logger.exception("Factory full translated sermon delivery failed: %s", exc)

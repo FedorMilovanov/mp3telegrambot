@@ -1,5 +1,16 @@
 # Quality audit history
 
+## 2026-11-07 — Telegram Factory durable receipts and single-owner publication
+
+- Prior Factory delivery resumed no durable per-artifact acknowledgement: after a timeout, a restarted run could regenerate/send the same Short, long clip, full translated video or editorial document, with no way to know whether Telegram had already accepted it. Acknowledgement is **not** inferred from the absence of an exception.
+- Introduced a single SQLite `factory_delivery_ledger.sqlite3` under the existing managed Factory downloads. `BEGIN IMMEDIATE` serializes source/chat job ownership and per-artifact send claims across threads/processes. `synchronous=FULL`, WAL and committed `sending` intent precede every Telegram send. Accepted message ID and matching chat ID produce durable `delivered` receipts. A confirmed re-entry never calls Telegram again.
+- Short/long media, full translations and the individual editorial ZIP/review/markdown documents use distinct stable artifact IDs. Exact rendered file SHA-256, caption/timing and (for editorial files) raw byte SHA-256 bind the semantic artifact; a changed artifact is held for reconciliation instead of silently reuploaded.
+- The source/chat identity uses canonical YouTube host and verified video ID, so youtu.be and youtube.com aliases cannot bypass duplicate prevention; the metadata-ID fallback is deterministic SHA-256 instead of Python's process-randomized `hash()`.
+- Interrupted, canceled, timed-out or invalid-receipt attempts stay `sending`; they are **never** automatically retried. A durable job lease prevents two workers from analyzing and publishing the same source/chat simultaneously. A crashed lease remains for explicit reconciliation, not lease stealing.
+- Operator inspection and reconciliation: `python -m tools.factory_delivery_reconcile --db <path> --chat-id <id> --source-id <id> --url <source-url> status --artifact short:1`. Mutations require independent Telegram/process verification, exact fingerprint/owner and **both** `--human-verified --apply`; no command infers non-delivery or talks to Telegram.
+- The ledger does not persist API keys, tokens, audio or video bytes. Ledger receipts are intentionally **not** automatically expired: deleting confirmed receipts would re-enable duplicates. Ordinary non-Factory Clips preserve their existing delivery behavior.
+- Deterministic tests exercise multi-process SQLite claims, restart, delivery timeout, invalid/wrong-chat receipt, cancellation, crash lease, manually reconciled delivery/non-delivery, content change, link aliasing and each artifact family. Do not enable unattended publication retry without a durable scheduler, exact user/job provenance and terminal Telegram reconciliation: those remaining recovery requirements remain issue #444.
+
 ## 2026-11-07 — Durable strict HIGH-pass checkpoints before publication
 
 - The prior audio retry cache preserved verified source audio but not Gemini scout, judge or audited pass results. A real 503 on pass 3 required both completed upstream passes to be requested again, even when the exact source/model/prompts had not changed.

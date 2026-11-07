@@ -20,6 +20,7 @@ from services.async_process import run_cancellable_process
 from services.ffmpeg import YTDLP_BASE_ARGS
 from services.gemini_quota_domains import ProjectQuotaDomainTracker
 from services.media_delivery_probe import media_probe_is_deliverable, probe_media_async
+from services.shorts_factory_delivery_ledger import FactoryDeliveryJournal
 from services.translation_editorial import (
     REVIEW_SCHEMA_NAME,
     REVIEW_SCHEMA_VERSION,
@@ -561,40 +562,75 @@ async def prepare_factory_editorial_review(
     return pack, review_path, markdown_path
 
 
+async def _send_factory_editorial_document(
+    message: Any,
+    *,
+    path: Path,
+    artifact_key: str,
+    caption: str,
+    delivery_journal: FactoryDeliveryJournal | None,
+) -> None:
+    async def _send() -> Any:
+        with await asyncio.to_thread(path.open, "rb") as stream:
+            return await message.reply_document(
+                document=stream,
+                filename=path.name,
+                caption=caption,
+            )
+
+    if delivery_journal is None:
+        await _send()
+    else:
+        # A byte-level editorial change requires reconciliation rather than
+        # silently replacing or duplicating a document already sent to chat.
+        content_hash = await asyncio.to_thread(sha256_file, path)
+        await delivery_journal.send_once(
+            artifact_key,
+            semantic={"kind": artifact_key, "filename": path.name, "sha256": content_hash},
+            sender=_send,
+        )
+
+
 async def send_factory_editorial_files(
     update: Any,
     *,
     pack_path: Path,
     review_path: Path | None = None,
     markdown_path: Path | None = None,
+    delivery_journal: FactoryDeliveryJournal | None = None,
 ) -> None:
     message = getattr(update, "message", None)
     if message is None:
+        if delivery_journal is not None:
+            raise RuntimeError("Factory editorial recipient is missing; delivery journal cannot confirm destination")
         return
-    with await asyncio.to_thread(Path(pack_path).open, "rb") as stream:
-        await message.reply_document(
-            document=stream,
-            filename=Path(pack_path).name,
-            caption=(
-                "🔎 Translation Editorial Review: оригинальный SRT + Russian Whisper "
-                "large-v3 + кандидаты. ZIP привязан к точным исходным байтам и может быть "
-                "передан ChatGPT для полной редакционной проверки."
-            ),
-        )
+    await _send_factory_editorial_document(
+        message,
+        path=Path(pack_path),
+        artifact_key="editorial:pack",
+        caption=(
+            "🔎 Translation Editorial Review: оригинальный SRT + Russian Whisper "
+            "large-v3 + кандидаты. ZIP привязан к точным исходным байтам и может быть "
+            "передан ChatGPT для полной редакционной проверки."
+        ),
+        delivery_journal=delivery_journal,
+    )
     if review_path is not None and await asyncio.to_thread(Path(review_path).exists):
-        with await asyncio.to_thread(Path(review_path).open, "rb") as stream:
-            await message.reply_document(
-                document=stream,
-                filename=Path(review_path).name,
-                caption=f"🧠 Gemini {FACTORY_EDITORIAL_GEMINI_MODEL} · HIGH — редакционный review.json",
-            )
+        await _send_factory_editorial_document(
+            message,
+            path=Path(review_path),
+            artifact_key="editorial:review",
+            caption=f"🧠 Gemini {FACTORY_EDITORIAL_GEMINI_MODEL} · HIGH — редакционный review.json",
+            delivery_journal=delivery_journal,
+        )
     if markdown_path is not None and await asyncio.to_thread(Path(markdown_path).exists):
-        with await asyncio.to_thread(Path(markdown_path).open, "rb") as stream:
-            await message.reply_document(
-                document=stream,
-                filename=Path(markdown_path).name,
-                caption="📋 Читаемая сводка редакционного аудита",
-            )
+        await _send_factory_editorial_document(
+            message,
+            path=Path(markdown_path),
+            artifact_key="editorial:markdown",
+            caption="📋 Читаемая сводка редакционного аудита",
+            delivery_journal=delivery_journal,
+        )
 
 
 __all__ = [

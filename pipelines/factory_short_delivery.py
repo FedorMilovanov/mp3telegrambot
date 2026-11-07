@@ -15,6 +15,11 @@ from telegram import InputFile
 from converters.md_telegraph import safe_trim_caption, visible_length
 from core.database import get_max_file_size_mb
 from core.globals import DOWNLOAD_DIR
+from services.shorts_factory_delivery_ledger import (
+    FactoryDeliveryJournal,
+    FactoryDeliveryReconciliationRequired,
+    factory_delivery_media_sha256,
+)
 from services.media_delivery_probe import (
     file_size_mb,
     media_probe_is_deliverable,
@@ -91,6 +96,7 @@ async def process_and_send_factory_shorts(
     update: Any,
     rutube_url: str = "",
     vk_url: str = "",
+    delivery_journal: FactoryDeliveryJournal | None = None,
 ) -> int:
     """Render judged Factory candidates and count only proved Telegram deliveries."""
     if not HAS_FASTER_WHISPER:
@@ -272,18 +278,45 @@ async def process_and_send_factory_shorts(
                     rutube_url=rutube_url,
                 )
             )
-            await update.message.reply_video(
-                video=sub_path,
-                caption=caption,
-                duration=max(1, int(round(final_probe.duration))),
-                width=720,
-                height=1280,
-                thumbnail=thumb,
-                parse_mode="HTML",
-                write_timeout=120,
-                read_timeout=120,
-                connect_timeout=30,
-            )
+
+            async def _send_short(
+                video: Path = sub_path,
+                caption_text: str = caption,
+                delivery_duration: float = final_probe.duration,
+                thumbnail: InputFile | None = thumb,
+            ) -> Any:
+                return await update.message.reply_video(
+                    video=video,
+                    caption=caption_text,
+                    duration=max(1, int(round(delivery_duration))),
+                    width=720,
+                    height=1280,
+                    thumbnail=thumbnail,
+                    parse_mode="HTML",
+                    write_timeout=120,
+                    read_timeout=120,
+                    connect_timeout=30,
+                )
+
+            if delivery_journal is not None:
+                media_digest = await factory_delivery_media_sha256(sub_path)
+                receipt = await delivery_journal.send_once(
+                    f"short:{index}",
+                    semantic={
+                        "kind": "short",
+                        "index": index,
+                        "start_seconds": round(start, 3),
+                        "end_seconds": round(end, 3),
+                        "media_sha256": media_digest,
+                        "caption": caption,
+                        "delivery_duration": round(float(final_probe.duration), 3),
+                    },
+                    sender=_send_short,
+                )
+                if not receipt.newly_delivered:
+                    logger.info("Factory Short %d previously confirmed in Telegram; duplicate suppressed", index)
+            else:
+                await _send_short()
             sent += 1
             logger.info(
                 "Factory Short delivered %d/%d: %.3f..%.3f final=%.3fs model=%s",
@@ -294,7 +327,7 @@ async def process_and_send_factory_shorts(
                 final_probe.duration,
                 subtitle_profile["model_name"],
             )
-        except asyncio.CancelledError:
+        except (asyncio.CancelledError, FactoryDeliveryReconciliationRequired):
             raise
         except Exception as exc:
             logger.warning(
