@@ -11,15 +11,25 @@ This is a **human/agent instruction section, not a new MP3Bot mode**. Do not cha
 
 The **bot-generated Russian material titles** keep the existing Title Case rule below.
 For **YouTube video titles/descriptions prepared directly by an agent** in
-`docs/agent_direct_dubbing/`, use the **target channel's verified editorial
-style**, not the bot title formatter. For «Господь Бог — сила моя» in the
-Piper/MacArthur 2007 case, the operator requested normal **Russian sentence
-case**: capitalize the opening word and proper names only, unless actual
-channel examples establish another convention. Use «Джон МакАртур», not
-«Макартур», when matching that channel's editorial spelling. Never force
-Title Case onto YouTube drafts or descriptions to satisfy the bot's rule.
-Check speaker attribution, faithful natural translation, saved draft state
-and links before declaring metadata done. See
+`docs/agent_direct_dubbing/`, first verify the **target channel's editorial
+style**, not just the bot formatter. For «Господь Бог — Сила Моя» in the
+Piper/MacArthur 2007 case, the operator and live published-title audit
+(2026-11-08) confirmed **Russian headline-style Title Case for VIDEO TITLES**:
+capitalize significant words, keep short prepositions/conjunctions/particles
+lowercase; preserve «Джон МакАртур». **VIDEO DESCRIPTIONS** retain normal
+Russian sentence capitalization. This reverses our earlier mistaken
+sentence-case instruction for the six YouTube Shorts: the titles were
+corrected and confirmed saved in YouTube Studio on 2026-11-08. Do not infer
+identical styling for other channels. In public YouTube descriptions, prioritize
+the actual talk and verified event: do NOT automatically inject "this is not
+original Russian speech", Yandex/VoxCPM2 credits, QA status or voice-processing
+boilerplate. Preserve model/repair provenance internally. For a full interview
+or long excerpt, verify event, participants, moderator, event date and location
+from primary sources (do not infer them from upload date). Comply separately
+with YouTube Studio's current AI-use disclosure controls, especially when
+realistically cloning someone else's voice; never falsely present the audio as
+an original Russian-language recording. Check speaker attribution, translation,
+saved draft status and links before declaring metadata complete. See
 [YouTube naming, descriptions and Studio QA](docs/agent_direct_dubbing/CLIPS_SHORTS_AND_HANDOFF.md#5а-youtube-редактура-названий-описаний-и-черновиков).
 
 ## Mission
