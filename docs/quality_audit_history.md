@@ -1,5 +1,12 @@
 # Quality audit history
 
+## 2026-11-07 — Common Gemini router must not retry local circuit rejection
+
+- After the Factory-specific fix (#440), a distinct but related bug remained in `services/gemini_router.py`, used by generic Gemini consumers. The global route claimed a network attempt before entering `run_heavy_gemini_call`, and caught the local `GeminiCapacityCircuitOpen` string containing `503` as if it were Google's HTTP 503. A live provider call never happened, but all three global retry attempts were consumed and an overload was logged three times.
+- Deterministic regressions reproduce both an already-open circuit and a race after a budget claim: zero network calls, zero overload notifications, zero charged network attempts and no spurious client rotation are required. Both tests fail against the previous router and pass with the fix.
+- The common router now checks the circuit before choosing a key and before each network claim; the typed local circuit exception is caught before generic provider error heuristics, with the claimed budget refunded and client index restored if the entire operation made no real request.
+- Real HTTP 503 behavior remains bounded at three global attempts and the existing 429 project/quota routing is preserved. No retries or credential expansion are introduced by this fix.
+
 ## 2026-11-07 — Factory local Gemini circuit rejection is not a provider request
 
 - Reproduced a real accounting defect in the existing Factory runner: `GeminiCapacityCircuitOpen` contains the string `503`, so a locally rejected operation was classified as a new Google `503`, consuming an inference or upload retry claim and in some paths rotating credentials. A local rejection is not evidence of an HTTP response.
