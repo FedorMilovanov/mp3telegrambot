@@ -854,6 +854,7 @@ async def run_bot_async() -> str | None:
 
     from handlers.dub_studio_registration import register_dub_studio
     from services.dub_studio_runtime import start_dub_studio_services
+    from pipelines.factory_retry_runtime import start_factory_retry_services, stop_factory_retry_services
 
     register_dub_studio(app)
 
@@ -970,6 +971,10 @@ async def run_bot_async() -> str | None:
     async def _stop_started_application() -> None:
         """Останавливает polling/application перед выходом из async context."""
         try:
+            await stop_factory_retry_services(app)
+        except Exception as _e:
+            logger.warning("Factory retry scheduler shutdown failed: %s", _e)
+        try:
             if app.updater and app.updater.running:
                 await app.updater.stop()
         except Exception as _e:
@@ -984,6 +989,7 @@ async def run_bot_async() -> str | None:
         await app.initialize()
         await app.start()
         start_dub_studio_services(app)
+        start_factory_retry_services(app)
         logger.info("📡 Запускаю polling getUpdates...")
         try:
             # PTB 22.8: Updater.start_polling no longer accepts read_timeout /

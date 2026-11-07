@@ -94,7 +94,9 @@ def test_factory_orchestration_uses_post_alignment_render_plan_and_single_timeou
     assert "longs_sent <= 0" in source
     assert "factory_completed_delivery_counts()" not in source
     assert "send_factory_full_translation_if_enabled(" in source
-    assert "return bool(shorts_sent or longs_sent or full_video_sent)" in source
+    assert "delivered = bool(shorts_sent or longs_sent or full_video_sent)" in source
+    assert "FactoryDeferredRetryStore(delivery_journal.path).mark_completed" in source
+    assert "return delivered" in source
 
 
 def _factory_candidate(title: str, score: float | None = None) -> dict[str, Any]:

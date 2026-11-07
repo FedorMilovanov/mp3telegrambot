@@ -37,6 +37,9 @@ from services.shorts_factory_delivery_ledger import (
     FactoryDeliveryReconciliationRequired,
 )
 from services.shorts_factory_full_video import send_factory_full_translation_if_enabled
+from services.shorts_factory_provider_status import FactoryProviderOverloaded
+from services.shorts_factory_retry_store import FactoryDeferredRetryStore
+from pipelines.factory_retry_runtime import factory_deferred_retries_enabled
 from services.shorts_factory_media import validated_factory_source_duration
 from services.shorts_factory_publication import enrich_factory_candidates
 from services.shorts_factory_source import (
@@ -534,10 +537,66 @@ async def process_shorts_factory(
             spoken_language,
             full_video_sent,
         )
-        return bool(shorts_sent or longs_sent or full_video_sent)
+        delivered = bool(shorts_sent or longs_sent or full_video_sent)
+        if delivered and delivery_journal is not None:
+            await asyncio.to_thread(
+                FactoryDeferredRetryStore(delivery_journal.path).mark_completed, delivery_journal.scope
+            )
+        return delivered
 
     except asyncio.CancelledError:
         raise
+    except FactoryProviderOverloaded as exc:
+        # An exhausted *real* provider budget may be retried in a later,
+        # strictly bounded job window; never schedule local circuit/429.
+        if not factory_deferred_retries_enabled():
+            message = "Gemini 503: очередь возобновления отключена, повторите Factory вручную позже."
+            if not silent_errors:
+                if status_msg is not None:
+                    await _safe_status(status_msg, message)
+                else:
+                    await update.message.reply_text(message)
+            return False
+        if delivery_journal is None:
+            logger.error("Factory real provider 503 but no verified Telegram job scope exists")
+            return False
+        user = getattr(update, "effective_user", None)
+        user_id = int(getattr(user, "id", 0) or 0)
+        try:
+            deferred = await asyncio.to_thread(
+                FactoryDeferredRetryStore(delivery_journal.path).record_real_overload,
+                scope=delivery_journal.scope,
+                chat_id=delivery_journal.chat_id,
+                user_id=user_id,
+                source_id=media_id,
+                source_url=url,
+                stage=exc.stage,
+                actual_requests=exc.actual_attempts,
+            )
+        except Exception:
+            logger.exception("Factory provider unavailable but durable scheduling failed")
+            message = "❌ Gemini 503: не удалось надёжно сохранить очередь. Повторите Factory вручную позже."
+        else:
+            if deferred["status"] == "scheduled":
+                minutes = max(1, int((deferred["retry_after"] - time.time() + 59) // 60))
+                message = (
+                    "⏳ Gemini 503: сервер перегружен. Завершённые HIGH-проходы сохранены. "
+                    f"Запланировано ограниченное возобновление примерно через {minutes} мин. "
+                    f"Окно {deferred['windows_used']}/3; качество не понижается."
+                )
+            elif deferred["status"] == "exhausted":
+                message = (
+                    "⚠️ Gemini всё ещё перегружен. Исчерпан предел трёх "
+                    "контролируемых окон; дальнейшие запросы остановлены."
+                )
+            else:
+                message = "⚠️ Автоматическое возобновление остановлено: проверьте статус задания вручную."
+        if not silent_errors:
+            if status_msg is not None:
+                await _safe_status(status_msg, message)
+            else:
+                await update.message.reply_text(message)
+        return False
     except Exception as exc:
         logger.exception("Shorts Factory MAX failed: %s", exc)
         if not silent_errors:

@@ -6,6 +6,7 @@ import threading
 import tomllib
 from pathlib import Path
 from types import TracebackType
+from typing import Any, Coroutine
 
 import pytest
 from telegram import Update
@@ -15,6 +16,7 @@ from telegram.ext import Application
 import core.database as database
 from core import runtime_status
 import handlers.dub_studio_registration as dub_registration
+import pipelines.factory_retry_runtime as factory_retry_runtime
 import main
 import services.dub_studio_runtime as dub_runtime
 import services.livedub_mix as livedub_mix
@@ -95,6 +97,10 @@ class _FakeApplication:
     async def start(self) -> None:
         self.events.append("start")
         self.running = True
+
+    def create_task(self, coroutine: Coroutine[Any, Any, Any], *, name: str) -> asyncio.Task[Any]:
+        self.events.append("factory_retry_task")
+        return asyncio.create_task(coroutine, name=name)
 
     async def stop(self) -> None:
         self.events.append("app_stop")
@@ -184,6 +190,12 @@ def _install_offline_application(
     monkeypatch.setattr(polling_runtime, "PollingHeartbeatHTTPXRequest", _request)
     monkeypatch.setattr(dub_registration, "register_dub_studio", _register)
     monkeypatch.setattr(dub_runtime, "start_dub_studio_services", _start_studio)
+
+    class _OfflineNoDueRetryStore:
+        def claim_due(self) -> None:
+            return None
+
+    monkeypatch.setattr(factory_retry_runtime, "FactoryDeferredRetryStore", _OfflineNoDueRetryStore)
     monkeypatch.setattr(runtime_status, "record_polling_started", _polling_started)
     monkeypatch.setattr(signal, "signal", _ignore_signal)
     monkeypatch.setattr(livedub_mix, "get_mix_params", lambda: {})
