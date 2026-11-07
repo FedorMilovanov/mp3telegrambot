@@ -20,7 +20,15 @@ lowercase; preserve «Джон МакАртур». **VIDEO DESCRIPTIONS** retain
 Russian sentence capitalization. This reverses our earlier mistaken
 sentence-case instruction for the six YouTube Shorts: the titles were
 corrected and confirmed saved in YouTube Studio on 2026-11-08. Do not infer
-identical styling for other channels. Check speaker attribution, translation,
+identical styling for other channels. In public YouTube descriptions, prioritize
+the actual talk and verified event: do NOT automatically inject "this is not
+original Russian speech", Yandex/VoxCPM2 credits, QA status or voice-processing
+boilerplate. Preserve model/repair provenance internally. For a full interview
+or long excerpt, verify event, participants, moderator, event date and location
+from primary sources (do not infer them from upload date). Comply separately
+with YouTube Studio's current AI-use disclosure controls, especially when
+realistically cloning someone else's voice; never falsely present the audio as
+an original Russian-language recording. Check speaker attribution, translation,
 saved draft status and links before declaring metadata complete. See
 [YouTube naming, descriptions and Studio QA](docs/agent_direct_dubbing/CLIPS_SHORTS_AND_HANDOFF.md#5а-youtube-редактура-названий-описаний-и-черновиков).
 
