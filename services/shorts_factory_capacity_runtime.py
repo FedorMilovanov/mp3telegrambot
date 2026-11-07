@@ -157,7 +157,7 @@ async def _run_pass_with_capacity_retry(
     raise last_error or AssertionError("unreachable")
 
 
-async def create_factory_plan_resumable(
+async def _create_factory_plan_resumable_impl(
     audio_path: Path,
     *,
     title: str,
@@ -165,6 +165,7 @@ async def create_factory_plan_resumable(
     duration: int,
     source_language: str = "",
     status_msg: Any = None,
+    owned_clients: list[Any],
 ) -> dict[str, Any]:
     """Run strict three-pass Factory planning with bounded capacity retries."""
     import services.shorts_factory_candidates as candidates
@@ -196,6 +197,7 @@ async def create_factory_plan_resumable(
     )
 
     clients = capacity.factory_gemini_clients()
+    owned_clients.extend(clients)
     if not clients or candidates.types is None:
         raise RuntimeError("Gemini is unavailable; SHORTS FACTORY MAX requires Gemini 3.8")
 
@@ -487,6 +489,64 @@ async def create_factory_plan_resumable(
         f"attempted={attempted_clients}/{len(clients)};"
         f"{skip_detail} last_error={last_error}"
     )
+
+
+async def _close_factory_owned_clients(clients: list[Any]) -> None:
+    """Close both SDK transport pools for every per-run Factory client.
+
+    Google GenAI's Client.close() closes only the sync pool; aio.aclose()
+    closes only the async pool. Factory owns these clients and must close
+    both even if a different client was never selected for generation.
+    """
+    for index, client in enumerate(clients, 1):
+        aio = getattr(client, "aio", None)
+        aclose = getattr(aio, "aclose", None)
+        if callable(aclose):
+            try:
+                await aclose()
+            except Exception as exc:
+                logger.warning(
+                    "Factory client %d/%d async transport close failed (%s)",
+                    index,
+                    len(clients),
+                    type(exc).__name__,
+                )
+        close = getattr(client, "close", None)
+        if callable(close):
+            try:
+                await asyncio.to_thread(close)
+            except Exception as exc:
+                logger.warning(
+                    "Factory client %d/%d sync transport close failed (%s)",
+                    index,
+                    len(clients),
+                    type(exc).__name__,
+                )
+
+
+async def create_factory_plan_resumable(
+    audio_path: Path,
+    *,
+    title: str,
+    performer: str,
+    duration: int,
+    source_language: str = "",
+    status_msg: Any = None,
+) -> dict[str, Any]:
+    """Run Factory with strictly owned, deterministic SDK client cleanup."""
+    owned_clients: list[Any] = []
+    try:
+        return await _create_factory_plan_resumable_impl(
+            audio_path,
+            title=title,
+            performer=performer,
+            duration=duration,
+            source_language=source_language,
+            status_msg=status_msg,
+            owned_clients=owned_clients,
+        )
+    finally:
+        await _close_factory_owned_clients(owned_clients)
 
 
 __all__ = ["create_factory_plan_resumable", "factory_client_retry_action"]

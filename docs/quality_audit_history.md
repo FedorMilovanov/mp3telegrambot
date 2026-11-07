@@ -1215,3 +1215,12 @@ This entry closes the durable-history gap left during the initial documentation 
 - Added deterministic regression `tests/test_factory_heartbeat_cancellation.py`: the cancellation test fails against the unmodified commit `4e76feca`, then passes after the fix. No live API calls, keys, or publication policy changes are required.
 - Follow-up research debt (not silently addressed by this atomic patch): Factory pass checkpoints across process restarts, the difference between local circuit rejection and actual network-attempt counting, explicit closure of short-lived Gemini SDK clients, and independent Files API retry classification. Do not claim these follow-ups are fixed.
 - Local validation: 25 targeted regressions pass, repo-wide Ruff check and format pass, full mypy in Linux-platform mode is clean (937 modules). The Windows verifier has six failures (POSIX-only process tests, translation ZIP instruction equality, Windows mypy/typecheck); all six reproduce unchanged on a detached 4e76feca baseline, so this patch does not cause them. The repository gate is not falsely represented as green.
+
+
+## 2026-11-07 — Factory-owned Gemini SDK client lifecycle
+
+- Confirmed against locked google-genai 2.34.0: async `Client.aio.aclose()` closes the async transport pool; sync `Client.close()` closes a distinct sync transport pool. The Factory-created client list previously had no explicit close on normal completion, error or cancellation.
+- Kept the public `create_factory_plan_resumable` signature and the real duration/quality preflight order. Added an inner runner that registers owned clients immediately after construction and an outer `try/finally` scope that closes both SDK transports for every created Factory client, including unused siblings. Global/shared Gemini clients are not touched.
+- Explicit close failures are logged by exception type only, without API credentials, and do not prevent the other clients from closing or mask an otherwise valid Factory result.
+- A new deterministic regression proves the previous source leaks the clients on success; post-fix tests cover successful three-pass plan, failed plan, cancellation of an in-flight pass and one client with failing close methods. No external API calls are required.
+- This change depends on the already merged #439 structured child cancellation to ensure inference is joined before closing its transport. It does not itself implement cross-process checkpointing or retry scheduling.
