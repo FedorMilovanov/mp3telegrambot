@@ -31,6 +31,12 @@ def test_heavy_quality_policy_forces_38_high_and_large_v3(monkeypatch: pytest.Mo
         "LIVEDUB_QA_VERIFY_THINKING",
         "WHISPER_MODEL",
         "SHORTS_FACTORY_WHISPER_MODEL",
+        # Obsolete operator keys must be absent on test entry: another test
+        # may have loaded a legacy .env, but this policy must not recreate them.
+        "GEMINI_MAX_MODEL",
+        "GEMINI_FORCE_THINKING_LEVEL",
+        "LIVEDUB_INFO_THINKING",
+        "WHISPER_ENG_SUBTITLES_MODEL",
     ):
         monkeypatch.delenv(name, raising=False)
     diagnostic = quality.configure_max_quality_env()

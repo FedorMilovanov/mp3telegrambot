@@ -47,7 +47,7 @@ def test_production_policy_keeps_semantic_work_on_38_high() -> None:
     assert runtime.os.environ["LIVEDUB_PUBLICATION_FALLBACK_MODELS"] == ""
 
 
-def test_utility_route_is_lite_only_without_semantic_fallback() -> None:
+def test_utility_route_is_lite_only_without_semantic_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     """Utility — это роль каталога, а не env-ручка.
 
     `GEMINI_LIGHT_*` удалены: код их не читал (маршрут брался из атласа ролей),
@@ -55,6 +55,8 @@ def test_utility_route_is_lite_only_without_semantic_fallback() -> None:
     """
     from core.model_catalog import ROLE_MODELS, ROLE_UTILITY
 
+    # Avoid inheritance of removed env keys from a legacy .env / other tests.
+    monkeypatch.delenv("GEMINI_LIGHT_MODEL", raising=False)
     runtime.configure_gemini_policy()
     assert ROLE_MODELS[ROLE_UTILITY] == "gemini-3.5-flash-lite"
     assert "GEMINI_LIGHT_MODEL" not in runtime.os.environ
