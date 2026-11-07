@@ -61,7 +61,7 @@
 | `GEMINI_API_KEY_4` | `core/globals.py` | `` | да | — |
 | `GEMINI_MODEL` | `services/runtime_build_identity.py` | — | да | да |
 | `GEMINI_PROXY_URL` | `core/globals.py`, `services/livedub_quality_runtime.py` | `` | да | — |
-| `GEMINI_SCHEMA_THINKING` | `core/globals.py` | `1` | да | да |
+| `GEMINI_SCHEMA_THINKING` | `core/globals.py`, `services/shorts_factory_stage_checkpoint.py` | `1` | да | да |
 | `GEMINI_SERVICE_TIER` | `core/globals.py` | `standard` | да | — |
 | `GENERATED_PAGES_DIR` | `core/generated_pages.py` | `data/generated_pages` | да | — |
 | `HF_HUB_DISABLE_SYMLINKS_WARNING` | `bot.py`, `bot_new.py` | — | да | — |

@@ -179,6 +179,7 @@ async def _create_factory_plan_resumable_impl(
         apply_factory_quality_gate,
         validated_factory_plan_language,
     )
+    from services.shorts_factory_stage_checkpoint import StageCheckpointStore
 
     audio_path = Path(audio_path)
     if not audio_path.is_file() or audio_path.stat().st_size < 1024:
@@ -196,6 +197,53 @@ async def _create_factory_plan_resumable_impl(
         verified_audio_duration,
     )
 
+    model = candidates.shorts_factory_model()
+    mime_type = factory_audio_mime_type(audio_path)
+    file_size = audio_path.stat().st_size
+
+    def finalize(audited: dict[str, Any]) -> dict[str, Any]:
+        plan = candidates.validate_factory_plan(audited, duration, require_verified=True)
+        if not plan["shorts_candidates"] and not plan["long_candidates"]:
+            raise RuntimeError("Three-pass Gemini review produced no verified candidates")
+        plan.update(
+            model=model,
+            thinking_level="high",
+            review_passes=3,
+            strict_quality=True,
+            audio_mime_type=mime_type,
+        )
+        gated = apply_factory_quality_gate(plan)
+        gated.setdefault("metadata", {})["language"] = validated_factory_plan_language(gated)
+        if not gated.get("shorts_candidates") and not gated.get("long_candidates"):
+            raise RuntimeError("No candidates passed the final Factory MAX quality gate")
+        return gated
+
+    checkpoint = await StageCheckpointStore.from_audio(
+        audio_path,
+        duration=duration,
+        model=model,
+        schema=candidates.FACTORY_PLAN_RESPONSE_SCHEMA,
+    )
+
+    async def checkpoint_save(stage: str, prompt: str, payload: dict[str, Any]) -> None:
+        try:
+            await asyncio.to_thread(checkpoint.save, stage, prompt, payload)
+        except (OSError, ValueError, TypeError) as exc:
+            logger.warning("Factory HIGH checkpoint write unavailable stage=%s: %s", stage, type(exc).__name__)
+
+    scout_prompt = candidates._scout_prompt(title, performer, duration, source_language)
+    scout = await asyncio.to_thread(checkpoint.load, "scout", scout_prompt)
+    judge_prompt = candidates._judge_prompt(scout, duration) if scout is not None else ""
+    judged = await asyncio.to_thread(checkpoint.load, "judge", judge_prompt) if scout is not None else None
+    audit_prompt = _strict_boundary_prompt(candidates._boundary_prompt(judged, duration)) if judged is not None else ""
+    if judged is not None:
+        cached_audit = await asyncio.to_thread(checkpoint.load, "audit", audit_prompt)
+        if cached_audit is not None:
+            try:
+                return finalize(cached_audit)
+            except (RuntimeError, ValueError, KeyError, TypeError):
+                logger.warning("Factory cached HIGH audit no longer passes final quality verification")
+
     clients = capacity.factory_gemini_clients()
     owned_clients.extend(clients)
     if not clients or candidates.types is None:
@@ -207,11 +255,6 @@ async def _create_factory_plan_resumable_impl(
             "Factory quota-domain metadata/client count mismatch; same-project suppression disabled for this run"
         )
         quota_domains = [""] * len(clients)
-
-    model = candidates.shorts_factory_model()
-    mime_type = factory_audio_mime_type(audio_path)
-    file_size = audio_path.stat().st_size
-    scout = judged = None
     last_error: BaseException | None = None
     client_outcomes: list[str] = []
     attempted_clients = 0
@@ -309,50 +352,41 @@ async def _create_factory_plan_resumable_impl(
                     client,
                     model=model,
                     audio_part=audio_part,
-                    prompt=candidates._scout_prompt(title, performer, duration, source_language),
+                    prompt=scout_prompt,
                     max_tokens=32000,
                     label=(f"🧠 Gemini 3.8 HIGH · клиент {index}/{len(clients)} · проход 1/3…"),
                     retry_budget=scout_budget,
                     status_msg=status_msg,
                 )
+                await checkpoint_save("scout", scout_prompt, scout)
 
+            judge_prompt = candidates._judge_prompt(scout, duration)
             if judged is None:
                 judged = await _run_pass_with_capacity_retry(
                     client,
                     model=model,
                     audio_part=audio_part,
-                    prompt=candidates._judge_prompt(scout, duration),
+                    prompt=judge_prompt,
                     max_tokens=28000,
                     label=(f"🧠 Gemini 3.8 HIGH · клиент {index}/{len(clients)} · проход 2/3…"),
                     retry_budget=judge_budget,
                     status_msg=status_msg,
                 )
+                await checkpoint_save("judge", judge_prompt, judged)
 
+            audit_prompt = _strict_boundary_prompt(candidates._boundary_prompt(judged, duration))
             audited = await _run_pass_with_capacity_retry(
                 client,
                 model=model,
                 audio_part=audio_part,
-                prompt=_strict_boundary_prompt(candidates._boundary_prompt(judged, duration)),
+                prompt=audit_prompt,
                 max_tokens=28000,
                 label=(f"🧠 Gemini 3.8 HIGH · клиент {index}/{len(clients)} · проход 3/3…"),
                 retry_budget=audit_budget,
                 status_msg=status_msg,
             )
-            plan = candidates.validate_factory_plan(audited, duration, require_verified=True)
-            if not plan["shorts_candidates"] and not plan["long_candidates"]:
-                raise RuntimeError("Three-pass Gemini review produced no verified candidates")
-
-            plan.update(
-                model=model,
-                thinking_level="high",
-                review_passes=3,
-                strict_quality=True,
-                audio_mime_type=mime_type,
-            )
-            gated = apply_factory_quality_gate(plan)
-            gated.setdefault("metadata", {})["language"] = validated_factory_plan_language(gated)
-            if not gated.get("shorts_candidates") and not gated.get("long_candidates"):
-                raise RuntimeError("No candidates passed the final Factory MAX quality gate")
+            gated = finalize(audited)
+            await checkpoint_save("audit", audit_prompt, audited)
             return gated
 
         except asyncio.CancelledError:

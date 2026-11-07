@@ -1,5 +1,13 @@
 # Quality audit history
 
+## 2026-11-07 — Durable strict HIGH-pass checkpoints before publication
+
+- The prior audio retry cache preserved verified source audio but not Gemini scout, judge or audited pass results. A real 503 on pass 3 required both completed upstream passes to be requested again, even when the exact source/model/prompts had not changed.
+- Added a **pre-delivery only** stage checkpoint store. Checkpoints bind to decoded audio SHA-256, verified duration, the exact model, the exact stage prompt SHA-256, response schema SHA-256, source-code dependency fingerprints (Factory candidates, source, quality gate, capacity runner, core Gemini config/model catalog) and effective high-thinking configuration. The current final quality gate is always rerun before a cached audited plan is usable.
+- Payloads are structurally bounded and integrity-checked; audited candidates must explicitly have `boundary_verified=true`, and timestamp bounds cannot exceed source duration. Writes use a same-directory fsync and atomic rename; reads reject corrupt, stale, future-dated and mismatched entries. Per-file size, retention and count are bounded; credentials and API keys are never serialized.
+- The existing Telegram handler/video lock restricts concurrent same-video requests within its process; this stage cache adds no new cross-process lease. This change does **not** schedule automatic retries or resume Telegram delivery after partial sends. Cross-process ownership, durable per-artifact receipts and crash-safe publication idempotency remain in P1 issue #444; automatic resend is unsafe until those guarantees exist.
+- Added unit and integration regressions: all-three-pass reuse with zero new Gemini clients/network, final-only rerun after discarding audit, complete invalidation on different decoded audio, prompt/model/schema/code/thinking changes, tamper/expiry/oversize rejection, and no promotion of unaudited boundaries.
+
 ## 2026-11-07 — Common Gemini router must not retry local circuit rejection
 
 - After the Factory-specific fix (#440), a distinct but related bug remained in `services/gemini_router.py`, used by generic Gemini consumers. The global route claimed a network attempt before entering `run_heavy_gemini_call`, and caught the local `GeminiCapacityCircuitOpen` string containing `503` as if it were Google's HTTP 503. A live provider call never happened, but all three global retry attempts were consumed and an overload was logged three times.
