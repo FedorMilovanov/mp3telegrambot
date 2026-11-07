@@ -4,6 +4,8 @@
 
 **Видео:** [A Conversation with John Piper & John MacArthur: 2007](https://youtu.be/3hLbm2kIsPQ); [официальная английская стенограмма Desiring God](https://www.desiringgod.org/interviews/a-conversation-with-john-piper-and-john-macarthur). 53 минуты.
 
+**Паспорт события для полных и длинных видео (проверено по первоисточникам):** **Джон Пайпер** и **Джон МакАртур**, вопросы задаёт **Джастин Тейлор**; конференция **Desiring God 2007 National Conference**, **Миннеаполис (США)**, **28 сентября 2007 года**. Источники: [Desiring God](https://www.desiringgod.org/interviews/a-conversation-with-john-piper-and-john-macarthur) и [свидетельство интервьюера Джастина Тейлора](https://www.thegospelcoalition.org/blogs/justin-taylor/perhaps-my-favorite-interview-an-hourlong-conversation-with-john-piper-and-john-macarthur/). Дата события не равна дате публикации на другом канале. Описывать беседу и её содержание без обязательных оговорок «это не оригинальная русская речь», без списка AI-моделей; техническое происхождение дорожек хранить внутри QA, обязательные поля YouTube Studio проверять отдельно.
+
 ## Что произошло по шагам — первопричины, а не красивые результаты
 
 | Событие | Ошибка ранней попытки | Правильный вывод |
