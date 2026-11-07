@@ -60,15 +60,24 @@ async def await_with_heartbeat(
     loop = asyncio.get_running_loop()
     started = loop.time()
     interval = heartbeat or heartbeat_seconds()
-    while True:
-        done, _pending = await asyncio.wait({task}, timeout=interval)
-        if task in done:
-            return await task
-        elapsed = int(loop.time() - started)
-        await safe_status(
-            status_msg,
-            f"{label}\n⏱ Работа продолжается: {elapsed // 60} мин {elapsed % 60:02d} сек",
-        )
+    try:
+        while True:
+            done, _pending = await asyncio.wait({task}, timeout=interval)
+            if task in done:
+                return await task
+            elapsed = int(loop.time() - started)
+            await safe_status(
+                status_msg,
+                f"{label}\n⏱ Работа продолжается: {elapsed // 60} мин {elapsed % 60:02d} сек",
+            )
+    except BaseException:
+        # Cancellation of asyncio.wait() does not cancel the task it observes.
+        # Join the child before releasing the Factory capacity slot or deleting
+        # its remote Files handle, otherwise inference may outlive its owner.
+        if not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        raise
 
 
 def _factory_api_key_entries() -> list[tuple[str, str]]:
