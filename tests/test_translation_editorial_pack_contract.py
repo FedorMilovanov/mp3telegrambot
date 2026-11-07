@@ -240,3 +240,13 @@ def test_legacy_pr113_pack_contract_remains_supported(tmp_path: Path) -> None:
     loaded = load_verified_review_pack(pack)
 
     assert loaded["review_pack_id"] == manifest["review_pack_id"]
+
+
+def test_review_instructions_zip_member_uses_canonical_lf_on_every_platform(tmp_path: Path) -> None:
+    pack = _current_pack(tmp_path)
+    with zipfile.ZipFile(pack) as archive:
+        raw = archive.read("REVIEW_INSTRUCTIONS.md")
+    assert b"\n" in raw
+    assert b"\r\n" not in raw
+    assert raw.decode("utf-8").count("\n") > 0
+    assert "review_pack_id" in raw.decode("utf-8")
