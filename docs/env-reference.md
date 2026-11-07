@@ -4,7 +4,7 @@
 Курируемая инструкция «что стоит трогать» — `.env.example`; здесь полный перечень,
 включая внутренние и диагностические переменные.
 
-Всего переменных: **179**; описано в `.env.example`: **103**; не описано: **76**; управляется стартовой политикой: **15**.
+Всего переменных: **180**; описано в `.env.example`: **103**; не описано: **77**; управляется стартовой политикой: **15**.
 
 | Переменная | Где читается | Дефолт в коде | В `.env.example` | Политика |
 |---|---|---|---|---|
@@ -140,6 +140,7 @@
 | `PYTORCH_NO_CUDA_MEMORY_CACHING` | `tools/voxcpm2/cuda_probation_probe.py` | — | — | — |
 | `RENDER_GIT_COMMIT` | `services/runtime_build_identity.py` | — | — | — |
 | `RUTUBE_LISTING_CACHE_TTL` | `services/search.py` | `900` | — | — |
+| `SHORTS_FACTORY_DEFERRED_RETRY_ENABLED` | `pipelines/factory_retry_runtime.py` | `1` | — | — |
 | `SHORTS_FACTORY_EDITORIAL_GEMINI_MAX_ATTEMPTS` | `services/translation_editorial_factory.py` | `1` | — | — |
 | `SHORTS_FACTORY_EDITORIAL_GEMINI_TIMEOUT_SEC` | `services/translation_editorial_factory.py` | `300` | — | — |
 | `SHORTS_FACTORY_LIVEDUB_SHIFT_EXTRA_SEC` | `services/translation_editorial_factory.py` | `0.15` | — | — |

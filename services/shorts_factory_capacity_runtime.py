@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Awaitable
 
 from services import gemini_capacity_control as capacity_control
+from services.shorts_factory_provider_status import FactoryProviderOverloaded
 from services import shorts_factory_capacity as capacity
 
 logger = logging.getLogger(__name__)
@@ -493,7 +494,7 @@ async def _create_factory_plan_resumable_impl(
     if capacity_budget_exhausted and last_error is not None:
         attempt_limit = exhausted_attempt_limit or capacity_control.transient_attempt_limit()
         retry_count = max(0, attempt_limit - 1)
-        raise RuntimeError(
+        raise FactoryProviderOverloaded(
             "Gemini сейчас перегружен (503/high demand). "
             f"Для этапа {exhausted_stage or 'Factory'} исчерпан единый лимит "
             f"{attempt_limit} сетевых попыток "
@@ -504,7 +505,9 @@ async def _create_factory_plan_resumable_impl(
             f"{skip_detail} "
             "Качество не понижено: 3.6/3.5/Lite не использовались. "
             "Analysis-аудио сохранено в retry-кэше примерно на "
-            f"{capacity.retry_cache_ttl_seconds() / 3600:.0f} ч — повторите Factory позже."
+            f"{capacity.retry_cache_ttl_seconds() / 3600:.0f} ч — повторите Factory позже.",
+            stage=exhausted_stage or "Factory",
+            actual_attempts=attempt_limit,
         ) from last_error
 
     if capacity_failures:
