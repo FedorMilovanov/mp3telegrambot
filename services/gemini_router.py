@@ -54,6 +54,9 @@ async def gemini_generate(
     exhausted_project_quota_domains: set[str] = set()
     same_project_domain_skipped = 0
     start_idx = _current_client_idx
+    # A process-wide circuit rejection is not a provider request and must not
+    # consume a credential or advance the next-client pointer.
+    capacity_control.require_domain_available("inference")
     for i in range(len(client_list)):
         if budget.exhausted:
             break
@@ -75,6 +78,9 @@ async def gemini_generate(
         same_client_transients = 0
 
         while not budget.exhausted:
+            # A circuit can open while another request is executing or during
+            # the retry delay. Do not claim a network attempt in that case.
+            capacity_control.require_domain_available("inference")
             budget.claim()
             try:
                 # Обычная функция вместо lambda с дефолтным аргументом: у
@@ -87,6 +93,13 @@ async def gemini_generate(
                     last_err = RuntimeError("Gemini response rejected by caller validator")
                     break
                 return result
+            except capacity_control.GeminiCapacityCircuitOpen:
+                # The second capacity gate may reject after we claimed the
+                # attempt but before network I/O; neither rotate nor retry it.
+                budget.refund_last_claim()
+                if budget.used == 0:
+                    _current_client_idx = start_idx
+                raise
             except Exception as e:
                 if is_quota_error(e):
                     project_scoped = bool(quota_domain and quota_domains.is_project_scoped_quota_error(e))
