@@ -19,7 +19,7 @@
 Суффикс `_latest` запрещён: файл с таким именем устаревает молча, и читатель
 не может понять, что перед ним старое.
 
-Всего файлов: **85**.
+Всего файлов: **87**.
 
 ## Эксплуатация и контракты
 
@@ -131,7 +131,9 @@
 | [`agent_direct_dubbing/PIPER_MACARTHUR_2007_CASE.md`](agent_direct_dubbing/PIPER_MACARTHUR_2007_CASE.md) | 1. KTIS-AM: странное «12:30» в раннем русском дубляже. Сверять имя/контекст станции, не заменять на выдуманную частоту. |
 | [`agent_direct_dubbing/PIPER_SPROUL_2011_CASE.md`](agent_direct_dubbing/PIPER_SPROUL_2011_CASE.md) | Подтверждённая ошибка: 2 Коринфянам 3:18 была озвучена Яндексом как «три часа восемнадцать минут». Исправление первоначально позволило правильно назвать главу… |
 | [`agent_direct_dubbing/README.md`](agent_direct_dubbing/README.md) | 1. `README.md` (этот файл) — маршрут от ссылки до сдачи. |
+| [`agent_direct_dubbing/RUSSIAN_NAMING_AND_DELIVERY.md`](agent_direct_dubbing/RUSSIAN_NAMING_AND_DELIVERY.md) | Имя должно сразу показывать кто говорит и о чём выпуск. Если выпуск из конкретной серии и это помогает понять происхождение — включить проверенное название… |
 | [`agent_direct_dubbing/VOICE_REPAIR_AND_MODEL_PRACTICE.md`](agent_direct_dubbing/VOICE_REPAIR_AND_MODEL_PRACTICE.md) | Сначала прочитай существующий `../voxcpm2/PRODUCTION_RUNBOOK.md`, `../voxcpm2/REFERENCE_AUDIO_PLAYBOOK.md`, `../voxcpm2/SEMANTIC_BLOCK_PRODUCTION.md`,… |
 | [`agent_direct_dubbing/YANDEX_TRANSLATION_EDITORIAL.md`](agent_direct_dubbing/YANDEX_TRANSLATION_EDITORIAL.md) | 1. Оригинальное английское выступление + официальная расшифровка (если существует). Для Пайпера/Макартура: стенограмма Desiring God, датирована 28.09.2007.… |
+| [`agent_direct_dubbing/YOUTUBE_PRESENTATION_BY_SURFACE.md`](agent_direct_dubbing/YOUTUBE_PRESENTATION_BY_SURFACE.md) | Для исходного текстового значения поля описания YouTube: |
 | [`ops/deploy_windows.md`](ops/deploy_windows.md) | Документ описывает воспроизводимую установку с нуля: от чистой машины до |
 | [`ops/observability.md`](ops/observability.md) | Что смотреть, когда «бот не отвечает», и как это увидеть раньше, чем напишет |
