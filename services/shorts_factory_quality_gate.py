@@ -42,6 +42,32 @@ def _valid_interval(item: dict[str, Any]) -> bool:
     return bool(start is not None and end is not None and end > start >= 0.0)
 
 
+def _measured_russian_tail_safe(item: dict[str, Any]) -> bool:
+    """Reject cuts through a word when measured RU-master word intervals exist.
+
+    Missing evidence is NOT listening approval; existing boundary_verified
+    remains a separate requirement. Never substitute EN/SRT timestamps here.
+    """
+    words = item.get("ru_master_word_intervals")
+    if words is None:
+        return True
+    if not isinstance(words, list) or not words:
+        return False
+    clip_end = _finite_number(item.get("end_seconds"))
+    if clip_end is None:
+        return False
+    for word in words:
+        if not isinstance(word, dict):
+            return False
+        start = _finite_number(word.get("start"))
+        end = _finite_number(word.get("end"))
+        if start is None or end is None or end <= start:
+            return False
+        if start < clip_end and end > clip_end - 0.12:
+            return False
+    return True
+
+
 def _start(item: dict[str, Any]) -> float:
     value = _finite_number(item.get("start_seconds"))
     return value if value is not None else math.inf
@@ -71,6 +97,7 @@ def apply_factory_quality_gate(plan: dict[str, Any]) -> dict[str, Any]:
         if isinstance(item, dict)
         and item.get("boundary_verified") is True
         and _valid_interval(item)
+        and _measured_russian_tail_safe(item)
         and _score(item) >= short_threshold
         and str(item.get("title") or "").strip()
         and str(item.get("hook") or "").strip()

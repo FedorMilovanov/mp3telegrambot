@@ -82,6 +82,38 @@ def test_factory_quality_gate_rejects_malformed_or_nonfinite_candidate_numbers()
     assert [item["title"] for item in gated["long_candidates"]] == ["Валидный"]
 
 
+def test_factory_quality_gate_rejects_cut_inside_measured_russian_final_word() -> None:
+    clipped = _candidate("Обрезанный Джон", 99)
+    clipped["start_seconds"] = 0.0
+    clipped["end_seconds"] = 51.852
+    clipped["ru_master_word_intervals"] = [{"start": 51.76, "end": 51.94, "word": "Джон"}]
+
+    too_tight = _candidate("Нет места для согласной", 99)
+    too_tight["end_seconds"] = 52.0
+    too_tight["ru_master_word_intervals"] = [{"start": 51.76, "end": 51.94, "word": "Джон"}]
+
+    complete = _candidate("Завершено", 99)
+    complete["end_seconds"] = 52.3
+    complete["ru_master_word_intervals"] = [{"start": 51.76, "end": 51.94, "word": "Джон"}]
+
+    malformed = _candidate("Непроверяемые таймкоды", 99)
+    malformed["ru_master_word_intervals"] = [{"start": 51.7, "end": "nan"}]
+
+    gated = gate.apply_factory_quality_gate(
+        {"shorts_candidates": [clipped, too_tight, complete, malformed], "long_candidates": []}
+    )
+    assert [item["title"] for item in gated["shorts_candidates"]] == ["Завершено"]
+
+
+def test_factory_quality_gate_does_not_claim_listening_approval_without_word_evidence() -> None:
+    # Legacy candidates without authoritative RU-master word times keep their
+    # existing selection policy; passing this gate is not listening QA.
+    gated = gate.apply_factory_quality_gate(
+        {"shorts_candidates": [_candidate("Без пословных данных", 99)], "long_candidates": []}
+    )
+    assert [item["title"] for item in gated["shorts_candidates"]] == ["Без пословных данных"]
+
+
 def test_factory_quality_thresholds_have_explicit_override(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SHORTS_FACTORY_MIN_SHORT_SCORE", "95")
     monkeypatch.setenv("SHORTS_FACTORY_MIN_LONG_SCORE", "93")
