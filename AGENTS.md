@@ -7,6 +7,8 @@ For work requested **in the chat through an authorized user computer** (Yandex t
 
 This is a **human/agent instruction section, not a new MP3Bot mode**. Do not change bot code, restart its runtime, add dependencies or create worker/API endpoints merely to carry out a direct video-translation request. Keep media outside Git; do not interfere with other agents, production workers or user assets. A technically valid FFmpeg output does **not** prove bilingual meaning, natural Russian speech, rights clearance or publication readiness.
 
+**Direct dubbing: approval lock and no scope drift (APJ №1159 postmortem).** Before any GPT Image or FFmpeg job, record the latest operator-approved exact titles, images (source vs approved version and hash), output count, excludes, target layout, caption mode **per output**, optional waveform and already-mixed audio status. An explicit accepted cover must not be regenerated; a changed main-video subtitle policy must not rebuild Shorts. A canceled HIGHLIGHTS must not be reintroduced. If the user requests GPT Image, do not silently substitute PIL or unrelated graphic tools. Use the current authorized desktop connection where available; verify access before claiming it is unavailable. Do not call video technically/visually/audio-editorially/publication-ready on the strength of one check. See [APJ1159 editorial lock case](docs/agent_direct_dubbing/APJ1159_2026-11-08_EDITORIAL_LOCK_CASE.md).
+
 ## YouTube metadata exception for direct agent dubbing (operator-confirmed, 2026-11-08)
 
 The **bot-generated Russian material titles** keep the existing Title Case rule below.
