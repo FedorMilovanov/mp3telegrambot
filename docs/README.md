@@ -19,7 +19,7 @@
 Суффикс `_latest` запрещён: файл с таким именем устаревает молча, и читатель
 не может понять, что перед ним старое.
 
-Всего файлов: **83**.
+Всего файлов: **84**.
 
 ## Эксплуатация и контракты
 
@@ -128,6 +128,7 @@
 |---|---|
 | [`agent_direct_dubbing/CLIPS_SHORTS_AND_HANDOFF.md`](agent_direct_dubbing/CLIPS_SHORTS_AND_HANDOFF.md) | Этот runbook относится к прямой работе агента с файлами, не к Telegram-командам или новой функции бота. Все «чистовые» отрывки должны исходить из одного уже… |
 | [`agent_direct_dubbing/PIPER_MACARTHUR_2007_CASE.md`](agent_direct_dubbing/PIPER_MACARTHUR_2007_CASE.md) | 1. KTIS-AM: странное «12:30» в раннем русском дубляже. Сверять имя/контекст станции, не заменять на выдуманную частоту. |
+| [`agent_direct_dubbing/PIPER_SPROUL_2011_CASE.md`](agent_direct_dubbing/PIPER_SPROUL_2011_CASE.md) | Подтверждённая ошибка: 2 Коринфянам 3:18 была озвучена Яндексом как «три часа восемнадцать минут». Исправление первоначально позволило правильно назвать главу… |
 | [`agent_direct_dubbing/README.md`](agent_direct_dubbing/README.md) | 1. `README.md` (этот файл) — маршрут от ссылки до сдачи. |
 | [`agent_direct_dubbing/VOICE_REPAIR_AND_MODEL_PRACTICE.md`](agent_direct_dubbing/VOICE_REPAIR_AND_MODEL_PRACTICE.md) | Сначала прочитай существующий `../voxcpm2/PRODUCTION_RUNBOOK.md`, `../voxcpm2/REFERENCE_AUDIO_PLAYBOOK.md`, `../voxcpm2/SEMANTIC_BLOCK_PRODUCTION.md`,… |
 | [`agent_direct_dubbing/YANDEX_TRANSLATION_EDITORIAL.md`](agent_direct_dubbing/YANDEX_TRANSLATION_EDITORIAL.md) | 1. Оригинальное английское выступление + официальная расшифровка (если существует). Для Пайпера/Макартура: стенограмма Desiring God, датирована 28.09.2007.… |
