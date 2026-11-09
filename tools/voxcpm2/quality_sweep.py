@@ -182,6 +182,49 @@ def detect_pause_restart(
     return {"suspicious": False}
 
 
+def detect_repeated_room_tone(
+    samples: np.ndarray,
+    sample_rate: int,
+    *,
+    periods_ms: tuple[int, ...] = (120, 180, 240, 300, 360, 480),
+    hop_ms: int = 10,
+) -> dict[str, Any]:
+    """Flag an exactly looped, non-silent quiet bed (e.g. np.resize(room, tail)).
+
+    This is a strong, conservative fingerprint, not a general click detector.
+    Scan short finished edit windows, not a multi-hour master. Zero-filled
+    intentional silence and ordinary voiced periodic tones must not trigger.
+    """
+    mono = np.asarray(samples, dtype=np.float32)
+    if mono.ndim > 1:
+        mono = mono.mean(axis=1)
+    if sample_rate <= 0 or len(mono) < int(sample_rate * 0.55):
+        return {"suspicious": False}
+    overall_rms = float(np.sqrt(np.mean(np.square(mono.astype(np.float64)))))
+    search_start = max(0, len(mono) - 8 * sample_rate)
+    hop = max(1, int(sample_rate * hop_ms / 1000))
+    for period_ms in periods_ms:
+        period = max(1, int(sample_rate * period_ms / 1000))
+        for start in range(search_start, len(mono) - 3 * period + 1, hop):
+            block = mono[start : start + period]
+            if float(np.max(np.abs(block))) < 0.0001:
+                continue  # Deliberate digital silence is not an audio loop.
+            level = float(np.sqrt(np.mean(np.square(block.astype(np.float64)))))
+            if level > max(0.02, overall_rms * 0.25):
+                continue  # Do not flag steady pitched speech/music by itself.
+            if np.array_equal(block, mono[start + period : start + 2 * period]) and np.array_equal(
+                block, mono[start + 2 * period : start + 3 * period]
+            ):
+                return {
+                    "suspicious": True,
+                    "period_ms": period_ms,
+                    "first_repeat_start": round(start / sample_rate, 4),
+                    "detected_repetitions": 3,
+                    "room_rms": round(level, 7),
+                }
+    return {"suspicious": False}
+
+
 def analyze_wave(samples: np.ndarray, sample_rate: int) -> dict[str, Any]:
     mono = np.asarray(samples, dtype=np.float32)
     if mono.ndim > 1:
@@ -193,8 +236,10 @@ def analyze_wave(samples: np.ndarray, sample_rate: int) -> dict[str, Any]:
     rms = float(np.sqrt(np.mean(np.square(mono.astype(np.float64))))) if len(mono) else 0.0
     clipping_ratio = float(np.mean(np.abs(mono) >= 0.999)) if len(mono) else 0.0
     restart = detect_pause_restart(levels, centers, duration)
+    repeated_room = detect_repeated_room_tone(mono, sample_rate)
     artifact_score = (
         (20.0 if restart.get("suspicious") else 0.0)
+        + (40.0 if repeated_room.get("suspicious") else 0.0)
         + max(0.0, leading - 0.35) * 3.0
         + max(0.0, trailing - 0.60) * 2.0
         + clipping_ratio * 1000.0
@@ -207,6 +252,7 @@ def analyze_wave(samples: np.ndarray, sample_rate: int) -> dict[str, Any]:
         "rms": round(rms, 6),
         "clipping_ratio": round(clipping_ratio, 8),
         "pause_restart": restart,
+        "repeated_room_tone": repeated_room,
         "artifact_score": round(artifact_score, 4),
     }
 
