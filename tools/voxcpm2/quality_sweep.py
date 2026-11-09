@@ -182,7 +182,6 @@ def detect_pause_restart(
     return {"suspicious": False}
 
 
-
 def detect_repeated_room_tone(
     samples: np.ndarray,
     sample_rate: int,
@@ -213,9 +212,8 @@ def detect_repeated_room_tone(
             level = float(np.sqrt(np.mean(np.square(block.astype(np.float64)))))
             if level > max(0.02, overall_rms * 0.25):
                 continue  # Do not flag steady pitched speech/music by itself.
-            if (
-                np.array_equal(block, mono[start + period : start + 2 * period])
-                and np.array_equal(block, mono[start + 2 * period : start + 3 * period])
+            if np.array_equal(block, mono[start + period : start + 2 * period]) and np.array_equal(
+                block, mono[start + 2 * period : start + 3 * period]
             ):
                 return {
                     "suspicious": True,
