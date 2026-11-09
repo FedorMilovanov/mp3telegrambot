@@ -219,6 +219,10 @@ Suggested second-pass examples:
 -DelayMs 220,160,0,0
 ```
 
+## Source-clock splice regression (November 2026)
+
+For local dubbing repairs, **do not loop short room tone to fill a long gap**: a 360 ms `np.resize` repeat created audible clicks after otherwise correctly recognized speech. Before acceptance, run the CPU-only `quality_sweep.analyze_wave` on a short contextual PCM segment; reject any `repeated_room_tone.suspicious == True`, then check exact sample preservation outside changed windows and **listen to the final encoded AAC**. A PASS from Whisper/ffprobe is not a seam or prosody PASS. Do not reinterpret an owner-approved exact Russian line solely to force emphasis on one word. See [VOICE_REPAIR_AND_MODEL_PRACTICE.md, section 6](../agent_direct_dubbing/VOICE_REPAIR_AND_MODEL_PRACTICE.md#6-регрессия-тихих-щелчков-и-неверной-интонации-вошер-10112026) for the incident, signal guard, user-approval protocol, and tests.
+
 ## Publication acceptance gate
 
 A final MP4 is not publication-ready until all checks pass:
