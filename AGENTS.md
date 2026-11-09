@@ -25,6 +25,8 @@ This bot is used continuously to generate, inspect, repair, and archive theologi
 
 ## Required verification before handoff
 
+**Use a supported interpreter.** `pyproject.toml` requires Python >=3.12. On Windows, if the repository `.venv` is already provisioned, run `verify_repo.py` and tests with `.venv\Scripts\python.exe`, not an arbitrary system `python` from PATH (which may be Python 3.11). This is separate from the isolated VoxCPM2 synthesis environment; do not replace or reinstall either environment just to run checks.
+
 Install the exact CI-locked dependencies if needed (the floor files alone do not
 reproduce the verifier's cross-platform metadata environment):
 

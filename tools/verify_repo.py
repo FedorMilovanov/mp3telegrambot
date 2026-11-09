@@ -26,6 +26,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+# Local Python environments and vendor trees are not repository source. Compiling
+# them can fail when an installed wheel targets a newer Python than this verifier.
+_COMPILEALL_EXCLUDE = r"(^|[\\/])(?:\.venv|venv|\.git|node_modules)(?:[\\/]|$)"
+
+
 @dataclass(frozen=True)
 class CheckResult:
     name: str
@@ -57,7 +62,7 @@ def run_checks(
 ) -> list[CheckResult]:
     py = sys.executable
     checks: list[tuple[str, list[str]]] = [
-        ("compileall", [py, "-m", "compileall", "-q", "."]),
+        ("compileall", [py, "-m", "compileall", "-q", "-x", _COMPILEALL_EXCLUDE, "."]),
         # Model identifiers are generated from core/model_catalog.py.
         ("model catalog", [py, "scripts/render_model_catalog.py", "--check"]),
         # The env reference is generated from the code; stale means the docs lie.

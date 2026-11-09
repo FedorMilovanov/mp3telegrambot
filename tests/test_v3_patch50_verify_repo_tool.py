@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -38,6 +39,38 @@ def test_verify_repo_executes_ruff_format_gate(monkeypatch: pytest.MonkeyPatch, 
     ) in calls
 
 
+def test_compileall_excludes_local_venv_but_compiles_project_sources(tmp_path: Path) -> None:
+    from tools import verify_repo
+
+    pattern = re.compile(verify_repo._COMPILEALL_EXCLUDE)
+    assert pattern.search(r".venv/Lib/site-packages/numpy/_typing/_shape.py")
+    assert pattern.search(r"venv\Lib\site-packages\package.py")
+    assert not pattern.search("core/analysis.py")
+
+    (tmp_path / ".venv").mkdir()
+    (tmp_path / ".venv" / "bad_vendor.py").write_text("def invalid(", encoding="utf-8")
+    (tmp_path / "core").mkdir()
+    (tmp_path / "core" / "analysis.py").write_text("VALUE = 42", encoding="utf-8")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "compileall", "-q", "-x", verify_repo._COMPILEALL_EXCLUDE, "."],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert list((tmp_path / "core" / "__pycache__").glob("analysis.*.pyc"))
+
+
+def test_repo_verification_uses_supported_python_not_global_311() -> None:
+    instructions = Path("AGENTS.md").read_text(encoding="utf-8")
+    assert "Python >=3.12" in instructions
+    assert r".venv\Scripts\python.exe" in instructions
+    assert "isolated VoxCPM2 synthesis environment" in instructions
+
+
 def test_verify_repo_tool_help_runs() -> None:
     proc = subprocess.run(
         [sys.executable, "tools/verify_repo.py", "--help"],
@@ -52,7 +85,7 @@ def test_verify_repo_tool_help_runs() -> None:
 
 def test_verify_repo_tool_smoke_skip_heavy_checks() -> None:
     proc = subprocess.run(
-        [sys.executable, "tools/verify_repo.py", "--skip-pytest", "--skip-ruff"],
+        [sys.executable, "tools/verify_repo.py", "--skip-pytest", "--skip-ruff", "--skip-typecheck"],
         capture_output=True,
         text=True,
         timeout=120,
