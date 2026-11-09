@@ -78,3 +78,49 @@ def test_edge_silence_is_measured() -> None:
     metrics = quality.analyze_wave(samples, sample_rate)
     assert metrics["leading_silence"] == pytest.approx(0.39, abs=0.03)
     assert metrics["trailing_silence"] == pytest.approx(0.29, abs=0.03)
+
+
+def test_detect_repeated_room_tone_regression() -> None:
+    """Catch the exact 360 ms np.resize bed that made audible repeat clicks."""
+    sample_rate = 16000
+    rng = np.random.default_rng(20261110)
+    speech = _tone(sample_rate, 1.8)
+    room = rng.normal(0.0, 0.001, int(sample_rate * 0.36)).astype(np.float32)
+    broken_tail = np.resize(room, int(sample_rate * 2.4))
+    samples = np.concatenate([speech, broken_tail, np.zeros(3000, dtype=np.float32)])
+
+    metrics = quality.analyze_wave(samples, sample_rate)
+
+    assert metrics["repeated_room_tone"]["suspicious"] is True
+    assert metrics["repeated_room_tone"]["period_ms"] == 360
+    assert metrics["artifact_score"] >= 40.0
+
+
+def test_detect_repeated_room_tone_accepts_nonrepeating_room() -> None:
+    sample_rate = 16000
+    rng = np.random.default_rng(20261110)
+    speech = _tone(sample_rate, 1.8)
+    nonrepeating_room = rng.normal(0.0, 0.001, int(sample_rate * 2.4)).astype(
+        np.float32
+    )
+    samples = np.concatenate(
+        [speech, nonrepeating_room, np.zeros(3000, dtype=np.float32)]
+    )
+
+    metrics = quality.analyze_wave(samples, sample_rate)
+
+    assert metrics["repeated_room_tone"]["suspicious"] is False
+
+
+def test_detect_repeated_room_tone_accepts_digital_silence() -> None:
+    sample_rate = 16000
+    samples = np.concatenate(
+        [
+            _tone(sample_rate, 1.8),
+            np.zeros(int(sample_rate * 2.4), dtype=np.float32),
+        ]
+    )
+
+    metrics = quality.analyze_wave(samples, sample_rate)
+
+    assert metrics["repeated_room_tone"]["suspicious"] is False
