@@ -100,12 +100,8 @@ def test_detect_repeated_room_tone_accepts_nonrepeating_room() -> None:
     sample_rate = 16000
     rng = np.random.default_rng(20261110)
     speech = _tone(sample_rate, 1.8)
-    nonrepeating_room = rng.normal(0.0, 0.001, int(sample_rate * 2.4)).astype(
-        np.float32
-    )
-    samples = np.concatenate(
-        [speech, nonrepeating_room, np.zeros(3000, dtype=np.float32)]
-    )
+    nonrepeating_room = rng.normal(0.0, 0.001, int(sample_rate * 2.4)).astype(np.float32)
+    samples = np.concatenate([speech, nonrepeating_room, np.zeros(3000, dtype=np.float32)])
 
     metrics = quality.analyze_wave(samples, sample_rate)
 
