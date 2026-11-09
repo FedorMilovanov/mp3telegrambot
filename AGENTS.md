@@ -7,6 +7,8 @@ For work requested **in the chat through an authorized user computer** (Yandex t
 
 This is a **human/agent instruction section, not a new MP3Bot mode**. Do not change bot code, restart its runtime, add dependencies or create worker/API endpoints merely to carry out a direct video-translation request. Keep media outside Git; do not interfere with other agents, production workers or user assets. A technically valid FFmpeg output does **not** prove bilingual meaning, natural Russian speech, rights clearance or publication readiness.
 
+**Mandatory surgical-splice preflight (2026-11-10):** Before accepting any replacement in an existing Russian voice track, run `python -m tools.voxcpm2.direct_splice_boundary_audit` against the source and candidate PCM with verified SHA-256 hashes and exact permitted windows. `HOLD_ACTIVE_SOURCE_BOUNDARY` / `BLOCK_*` prohibit accepting the splice; a quiet-edge result is **not** a human-listening approval. Compare old/new and final mixed AAC with surrounding complete words before tagging editorial acceptance. See `docs/agent_direct_dubbing/VOICE_REPAIR_AND_MODEL_PRACTICE.md` §3Б. Do not reuse historical windows; never start Shorts from a voice master still on editorial HOLD.
+
 ## Mission
 
 This bot is used continuously to generate, inspect, repair, and archive theological conspects and related Telegram outputs. The goal is not to hide bad outputs by default; the goal is to detect defects, log them, repair pages automatically when possible, and improve generators so future conspects are good enough to review and publish.

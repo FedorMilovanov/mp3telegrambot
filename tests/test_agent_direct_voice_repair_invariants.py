@@ -59,3 +59,22 @@ def test_preflight_precedes_repeated_full_exports() -> None:
     assert "A/B-фрагмент" in content
     assert "Не плодить полноразмерные" in content
     assert "не перезаписывать" in content
+
+
+def test_source_pcm_boundary_gate_is_mandatory_and_not_human_approval() -> None:
+    guide_text = guide()
+    agents = (ROOT.parents[1] / "AGENTS.md").read_text(encoding="utf-8")
+    model_agents = (ROOT.parents[1] / "tools" / "voxcpm2" / "AGENTS.md").read_text(encoding="utf-8")
+    for text in (guide_text, agents, model_agents):
+        assert "direct_splice_boundary_audit" in text
+        assert "HOLD_ACTIVE_SOURCE_BOUNDARY" in text
+    for term in (
+        "не доказывало, что границы окна находятся между полными словами",
+        "старого",
+        "30 мс",
+        "сэмплов вне разрешённых окон",
+        "READY_FOR_HUMAN_REVIEW",
+        "не означает",
+        "Shorts",
+    ):
+        assert term in guide_text

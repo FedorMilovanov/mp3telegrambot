@@ -55,5 +55,6 @@ This protocol is an experiment, not permission to make MOSS the production defau
 ## Regression and artifact hygiene
 
 - Add deterministic tests for translation preflight, equivalent-graph final QA, and monologue continuity before changing production behavior.
+- For every manual PCM retake/patch, run `python -m tools.voxcpm2.direct_splice_boundary_audit` on the actual old/new mono PCM with SHA-256 + complete window manifest. Source voice activity at either window edge is `HOLD_ACTIVE_SOURCE_BOUNDARY`; unchanged samples outside the window do **not** prove a complete word. Quiet edges only qualify for real contextual human A/B, **never** for a self-issued listening/editorial PASS. Use `docs/agent_direct_dubbing/VOICE_REPAIR_AND_MODEL_PRACTICE.md` §3Б; Shorts stay blocked while the full dubbing master is editorially held.
 - Do not commit generated WAV/MP4 files, downloaded model weights, project directories, checkpoints, or raw runtime logs.
 - Keep confirmed rules here concise; do not create one document per failed render.
