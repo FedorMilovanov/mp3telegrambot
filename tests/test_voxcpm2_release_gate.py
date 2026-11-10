@@ -6,7 +6,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -87,7 +87,7 @@ def case(tmp_path: Path) -> tuple[dict[str, Any], Path]:
 
 def _check(case: tuple[dict[str, Any], Path], target: str = "clip") -> dict[str, Any]:
     manifest, path = case
-    return GATE.assess(manifest, path, target)
+    return cast(dict[str, Any], GATE.assess(manifest, path, target))
 
 
 def test_owner_approved_clip_is_not_a_publication_clearance(case: tuple[dict[str, Any], Path]) -> None:
