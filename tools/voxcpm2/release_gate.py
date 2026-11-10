@@ -231,7 +231,12 @@ def main() -> int:
     try:
         payload = json.loads(args.manifest.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError) as exc:
-        result = {"passed": False, "status": "BLOCKED", "target": args.target, "errors": [f"manifest unreadable: {exc}"]}
+        result = {
+            "passed": False,
+            "status": "BLOCKED",
+            "target": args.target,
+            "errors": [f"manifest unreadable: {exc}"],
+        }
     else:
         result = assess(payload, args.manifest.resolve(), args.target)
     serialized = json.dumps(result, ensure_ascii=False, indent=2)
