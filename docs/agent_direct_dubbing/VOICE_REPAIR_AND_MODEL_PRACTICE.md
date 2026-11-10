@@ -125,3 +125,21 @@
 8. **Никакого scope drift:** пользователь сказал «остальное нормально» — запрещено пересинтезировать остальные 53 минуты, менять принятые формулировки, обложки, Shorts или настройки бота. Для локального медиа сохранять один исходный эталон и отдельный новый кандидат с хешами.
 
 Минимальное доказательство на каждый патч: `issue_id, speaker, en_evidence, old_ru_heard, final_ru_text, old_left_word, old_right_word, raw_time_axis, aac_pts_axis, both_silence_anchors, native_wav_sha, mixed_mp4_sha, operator_audio_verdict`. Без полного набора полей `release_gate = FAIL`. Проверка наличия полей может быть автоматизирована, но **фактическое отсутствие фонетических обрывов подтверждается только прослушиванием конечной записи**.
+
+
+## 7. Машинный release gate для исправленных дубляжей (инцидент Вошера W15)
+
+После слуховой приёмки запустить **отдельный, fail-closed** локальный гейт:
+`python tools/voxcpm2/release_gate.py <acceptance.json> --target clip --report <gate-result.json>`.
+Для внешней публикации нужен **другой, более строгий** вызов с `--target publication`; значение `target` внутри JSON обязано совпасть с аргументом. Гейт не публикует, не изменяет аудио и не требует TTS/Whisper/GPU.
+
+Структура JSON (`schema_version: 1`):
+- `source` и `artifact`: каждый имеет `path` (абсолютный или относительно JSON) и реальный `sha256`. Гейт самостоятельно пересчитывает оба хеша; **отредактированный файл после приёмки блокируется**.
+- `changes`: непустой список непересекающихся областей (`start_s, end_s, issue_id, speaker, source_en, old_ru, new_ru, left_word, right_word`); для каждой нужны `method` (`pcm_edit` или `tts`), `asr_checked: true` и `postmix_aac_listened: true`. Для TTS — `native_wav_sha256`.
+- `checks`: все пять подтверждений должны быть **именно boolean true**: `source_streams_verified, pcm_scope_verified, postmix_asr_completed, meaning_verified, join_tone_verified`. Они отражают фактически выполненные внешние проверки; гейт не заменяет посэмпловое сравнение или прослушивание.
+- `human_review`: реальный `reviewer`, `verdict: APPROVED`, timestamp `reviewed_at` с часовым поясом, `listened_from_final_mp4: true`, **тот же** `artifact_sha256` и `accepted_issue_ids` для всех областей. При ненулевом списке `asr_disagreements` нужна отдельная подтверждённая слухом отметка `asr_disagreements_resolved_by_listening: true` и текст `asr_resolution_note`.
+- `subtitle_status`: `PASS` / `OPEN` / `NOT_APPLICABLE`; `open_issues`: явный список нерешённых дефектов. Для `publication` обязательны `subtitle_status: PASS`, `open_issues: []` и отдельные `publication.whole_film_listened, rights_cleared, publisher_approved: true`.
+
+**Главная граница статусов:** `CLIP_ACCEPTED_ONLY_NOT_RELEASE_READY` означает только принятие **названных** фрагментов, даже если весь MP4 декодируется и пользователь доволен звуком. Это **не** финальный фильм, не исправленные субтитры и не разрешение на публикацию. `PUBLICATION_EVIDENCE_ACCEPTED` тоже подтверждает полноту заявленных свидетельств, но не доказывает их честность и не заменяет независимую проверку прав. `BLOCKED` завершается кодом 1, успешная проверка — кодом 0. Нельзя создавать вымышленную отметку прослушивания только ради зелёного CI: тестовые фикстуры — синтетические, а реальная приёмка — человеком после конечного AAC.
+
+**W15:** владельцем принят короткий звук, но субтитры вокруг 50:23–50:55 и отсутствие полного непрерывного слухового просмотра не позволяют выдавать весь ролик за редакционно закрытый под нуль. Сохранять разделение `clip` и `publication` и не переставлять синтезированные фразы без нового запроса.
