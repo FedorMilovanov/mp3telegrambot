@@ -53,9 +53,7 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _verify_file(
-    data: Any, field: str, manifest_path: Path, errors: list[str]
-) -> tuple[Path | None, str | None]:
+def _verify_file(data: Any, field: str, manifest_path: Path, errors: list[str]) -> tuple[Path | None, str | None]:
     if not isinstance(data, dict):
         errors.append(f"{field}: expected object with path and sha256")
         return None, None
