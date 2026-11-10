@@ -42,20 +42,22 @@ def case(tmp_path: Path) -> tuple[dict[str, Any], Path]:
         "target": "clip",
         "source": {"path": original.name, "sha256": _sha(original)},
         "artifact": {"path": edited.name, "sha256": final_sha},
-        "changes": [{
-            "issue_id": "PW-W15",
-            "speaker": "Paul Washer",
-            "start_s": 2625.31,
-            "end_s": 2637.035,
-            "method": "pcm_edit",
-            "source_en": "Context of the original English line",
-            "old_ru": "Кому вы подражаете? [unwanted sound]",
-            "new_ru": "Кому вы подражаете? Всё равно, цитируете ли вы Джона Кальвина...",
-            "left_word": "подражаете",
-            "right_word": "Джона",
-            "postmix_aac_listened": True,
-            "asr_checked": True,
-        }],
+        "changes": [
+            {
+                "issue_id": "PW-W15",
+                "speaker": "Paul Washer",
+                "start_s": 2625.31,
+                "end_s": 2637.035,
+                "method": "pcm_edit",
+                "source_en": "Context of the original English line",
+                "old_ru": "Кому вы подражаете? [unwanted sound]",
+                "new_ru": "Кому вы подражаете? Всё равно, цитируете ли вы Джона Кальвина...",
+                "left_word": "подражаете",
+                "right_word": "Джона",
+                "postmix_aac_listened": True,
+                "asr_checked": True,
+            }
+        ],
         "checks": {
             "source_streams_verified": True,
             "pcm_scope_verified": True,
@@ -213,13 +215,17 @@ def test_cli_exit_codes_and_report(case: tuple[dict[str, Any], Path]) -> None:
     report_path = path.parent / "report.json"
     passed = subprocess.run(
         [sys.executable, str(MODULE_PATH), str(path), "--target", "clip", "--report", str(report_path)],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     assert passed.returncode == 0
     assert json.loads(report_path.read_text(encoding="utf-8"))["passed"] is True
     denied = subprocess.run(
         [sys.executable, str(MODULE_PATH), str(path), "--target", "publication"],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     assert denied.returncode == 1
     assert json.loads(denied.stdout)["status"] == "BLOCKED"
@@ -230,7 +236,9 @@ def test_cli_bad_json_is_fail_closed(tmp_path: Path) -> None:
     file_path.write_text("{", encoding="utf-8")
     result = subprocess.run(
         [sys.executable, str(MODULE_PATH), str(file_path), "--target", "clip"],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     assert result.returncode == 1
     assert json.loads(result.stdout)["passed"] is False
