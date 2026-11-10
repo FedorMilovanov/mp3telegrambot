@@ -15,7 +15,7 @@ import math
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeGuard
 
 
 HEX_SHA256 = re.compile(r"[0-9a-fA-F]{64}\Z")
@@ -37,11 +37,11 @@ PATCH_TEXT_FIELDS = (
 )
 
 
-def _nonempty(value: Any) -> bool:
+def _nonempty(value: Any) -> TypeGuard[str]:
     return isinstance(value, str) and bool(value.strip())
 
 
-def _sha(value: Any) -> bool:
+def _sha(value: Any) -> TypeGuard[str]:
     return isinstance(value, str) and HEX_SHA256.fullmatch(value) is not None
 
 
@@ -83,8 +83,13 @@ def _verify_file(
     return path, claimed_sha.lower()
 
 
-def _valid_time(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+def _valid_time(value: Any) -> TypeGuard[int | float]:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
 
 
 def _check_windows(data: Any, errors: list[str]) -> list[str]:
@@ -105,10 +110,10 @@ def _check_windows(data: Any, errors: list[str]) -> list[str]:
         if _nonempty(issue_id):
             ids.append(issue_id)
         start, end = item.get("start_s"), item.get("end_s")
-        if not _valid_time(start) or not _valid_time(end) or start < 0 or end <= start:
-            errors.append(f"{prefix}: invalid start_s/end_s")
-        else:
+        if _valid_time(start) and _valid_time(end) and start >= 0 and end > start:
             windows.append((float(start), float(end)))
+        else:
+            errors.append(f"{prefix}: invalid start_s/end_s")
         if item.get("postmix_aac_listened") is not True:
             errors.append(f"{prefix}.postmix_aac_listened: must be true")
         if item.get("asr_checked") is not True:
