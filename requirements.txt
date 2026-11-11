@@ -49,7 +49,7 @@ Pillow>=13.0.0,<14.0.0
 # Floor 2.25: thinking_level появился в 1.51, Gemini 3.8 Flash — в 2.22,
 # Voices API / Gemini 3.8 TTS — в 2.25; lock проверен на 2.32.0.
 # breaking changes 2.x касаются Interactions/continuation API, generate_content не тронут.
-google-genai>=2.34.0,<3.0.0
+google-genai>=3.0.0,<4.0.0
 
 # ── Health-check сервер ────────────────────────────────────────────────────────
 flask>=3.0.0,<4.0.0
