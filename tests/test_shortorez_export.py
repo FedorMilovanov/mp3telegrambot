@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -16,7 +17,7 @@ def _digest(payload: bytes) -> str:
     return "sha256:" + hashlib.sha256(payload).hexdigest()
 
 
-def _fixture(tmp_path: Path, *, start_ms: int = 10_000, end_ms: int = 215_000) -> dict:
+def _fixture(tmp_path: Path, *, start_ms: int = 10_000, end_ms: int = 215_000) -> dict[str, Any]:
     source = tmp_path / "macarthur.ru_postmix.mp4"
     source.write_bytes(b"synthetic-audio-video-source-bytes")
     source_sha256 = _digest(source.read_bytes())
@@ -63,17 +64,17 @@ def _probe(*, duration: float, width: int = 720, height: int = 1280) -> MediaPro
 
 
 async def _run(
-    args: dict,
+    args: dict[str, Any],
     *,
     output_duration: float | None = None,
     output_width: int = 720,
     output_has_audio: bool = True,
     renderer_success: bool = True,
     source_duration: float = 650.0,
-):
-    calls: list[tuple] = []
+) -> tuple[tuple[Path, Path], list[tuple[Path, Path, float, float, dict[str, Any]]]]:
+    calls: list[tuple[Path, Path, float, float, dict[str, Any]]] = []
 
-    async def fake_render(source: Path, output: Path, start: float, end: float, **kwargs) -> bool:
+    async def fake_render(source: Path, output: Path, start: float, end: float, **kwargs: Any) -> bool:
         calls.append((source, output, start, end, kwargs))
         if renderer_success:
             output.write_bytes(b"synthetic-render-not-a-real-mp4" * 1000)
@@ -215,7 +216,7 @@ async def test_failed_renderer_does_not_leave_partial_outputs(tmp_path: Path) ->
 async def test_source_mutation_during_render_fails_provenance(tmp_path: Path) -> None:
     args = _fixture(tmp_path)
 
-    async def mutate_source(source: Path, output: Path, start: float, end: float, **kwargs) -> bool:
+    async def mutate_source(source: Path, output: Path, start: float, end: float, **kwargs: Any) -> bool:
         source.write_bytes(b"concurrently replaced source after initial SHA check")
         output.write_bytes(b"synthetic frame bytes" * 1000)
         return True
