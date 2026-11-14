@@ -74,9 +74,7 @@ def _read_base_manifest(
     if not isinstance(end_ms, int) or isinstance(end_ms, bool):
         raise ValueError("Base manifest end must be integer milliseconds")
     _validate_request(video_id, source_hash, start_ms, end_ms)
-    expected_base_file = (
-        f"shortorez_{video_id}_{start_ms}-{end_ms}_{source_hash[7:19]}_vertical.mp4"
-    )
+    expected_base_file = f"shortorez_{video_id}_{start_ms}-{end_ms}_{source_hash[7:19]}_vertical.mp4"
     if (
         raw.get("source_kind") != "ru_postmix"
         or raw.get("full_video_url") != f"https://www.youtube.com/watch?v={video_id}"
