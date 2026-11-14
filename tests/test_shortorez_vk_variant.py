@@ -28,9 +28,9 @@ def _media(duration_ms: int, *, has_audio: bool = True, width: int = 720) -> Med
 
 
 def _reviewed_base(tmp_path: Path, *, interval_ms: int = 205_000) -> dict[str, Any]:
-    path = tmp_path / "shortorez_5nKCs4bkoxE_10000-215000_accepted_vertical.mp4"
-    path.write_bytes(b"offline synthetic base mp4, not a real recording" * 1000)
     master_hash = "sha256:" + "f" * 64
+    path = tmp_path / f"shortorez_5nKCs4bkoxE_10000-{10_000 + interval_ms}_{master_hash[7:19]}_vertical.mp4"
+    path.write_bytes(b"offline synthetic base mp4, not a real recording" * 1000)
     manifest: dict[str, Any] = {
         "schema_version": 1,
         "kind": "shortorez_review_only",
