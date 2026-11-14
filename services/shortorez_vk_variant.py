@@ -66,6 +66,13 @@ def _read_base_manifest(
     source_hash = raw.get("source_sha256")
     start_ms = raw.get("source_start_ms")
     end_ms = raw.get("source_end_ms")
+    # Strict schema validation before type-sensitive provenance checks.
+    if not isinstance(video_id, str) or not isinstance(source_hash, str):
+        raise ValueError("Base manifest must contain exact string source identity and digest")
+    if not isinstance(start_ms, int) or isinstance(start_ms, bool):
+        raise ValueError("Base manifest start must be integer milliseconds")
+    if not isinstance(end_ms, int) or isinstance(end_ms, bool):
+        raise ValueError("Base manifest end must be integer milliseconds")
     _validate_request(video_id, source_hash, start_ms, end_ms)
     expected_base_file = (
         f"shortorez_{video_id}_{start_ms}-{end_ms}_{source_hash[7:19]}_vertical.mp4"
