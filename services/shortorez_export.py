@@ -113,15 +113,15 @@ async def export_gap_interval(
     reviewed before separate authorization of any provider writer.
     """
     _validate_request(youtube_id, source_sha256, start_ms, end_ms)
-    source = Path(source_path).resolve(strict=True)
+    source = await asyncio.to_thread(Path(source_path).resolve, strict=True)
     if not source.is_file():
         raise ValueError("Source must be an existing local regular MP4")
     if source.suffix.lower() != ".mp4":
         raise ValueError("Source postmix must be an MP4")
-    actual_source_sha256 = _sha256(source)
+    actual_source_sha256 = await asyncio.to_thread(_sha256, source)
     if actual_source_sha256 != source_sha256:
         raise ValueError("Source bytes differ from the reviewed SHA256")
-    record = json.loads(Path(evidence_path).read_text(encoding="utf-8"))
+    record = json.loads(await asyncio.to_thread(Path(evidence_path).read_text, encoding="utf-8"))
     edge_review = _verify_boundary_record(
         record,
         youtube_id=youtube_id,
@@ -137,7 +137,7 @@ async def export_gap_interval(
     if end_ms > round(source_probe.duration * 1000) + 100:
         raise ValueError("Reviewed interval exceeds the real source duration")
 
-    root = Path(output_dir).resolve()
+    root = await asyncio.to_thread(Path(output_dir).resolve)
     # Prevent accidental use of the input filename as an output artifact.
     stem = f"shortorez_{youtube_id}_{start_ms}-{end_ms}_{source_sha256[7:19]}"
     final_mp4 = root / (stem + "_vertical.mp4")
@@ -180,9 +180,9 @@ async def export_gap_interval(
             raise RuntimeError("Final MP4 duration differs from the reviewed complete interval")
         # The operator file is external to the renderer. Recheck after the
         # render so a concurrent replacement cannot falsify source provenance.
-        if _sha256(source) != actual_source_sha256:
+        if await asyncio.to_thread(_sha256, source) != actual_source_sha256:
             raise RuntimeError("Owned source postmix changed during rendering")
-        output_sha256 = _sha256(staged_mp4)
+        output_sha256 = await asyncio.to_thread(_sha256, staged_mp4)
         manifest = {
             "schema_version": 1,
             "kind": "shortorez_review_only",
