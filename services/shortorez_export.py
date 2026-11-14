@@ -13,7 +13,6 @@ import asyncio
 import hashlib
 import json
 import os
-import re
 import tempfile
 from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
@@ -27,8 +26,8 @@ PILOT_CHANNEL = "UCeSJsC6go2c9pdJCuUI1BYA"
 GAP_MIN_MS_EXCLUSIVE = 177_000
 GAP_MAX_MS_EXCLUSIVE = 300_000
 _RENDER_DRIFT_MS = 1_500
-_VIDEO_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{11}\Z")
-_DIGEST_PATTERN = re.compile(r"sha256:[0-9a-f]{64}\Z")
+_YOUTUBE_ID_CHARACTERS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")
+_SHA256_HEX_CHARACTERS = frozenset("0123456789abcdef")
 
 Renderer = Callable[..., Awaitable[bool]]
 Prober = Callable[[Path], Awaitable[MediaProbe | None]]
@@ -48,9 +47,18 @@ def _validate_request(
     start_ms: int,
     end_ms: int,
 ) -> None:
-    if not isinstance(youtube_id, str) or not _VIDEO_ID_PATTERN.fullmatch(youtube_id):
+    if (
+        not isinstance(youtube_id, str)
+        or len(youtube_id) != 11
+        or any(char not in _YOUTUBE_ID_CHARACTERS for char in youtube_id)
+    ):
         raise ValueError("An exact YouTube video ID is required")
-    if not isinstance(source_sha256, str) or not _DIGEST_PATTERN.fullmatch(source_sha256):
+    if (
+        not isinstance(source_sha256, str)
+        or not source_sha256.startswith("sha256:")
+        or len(source_sha256) != 71
+        or any(char not in _SHA256_HEX_CHARACTERS for char in source_sha256[7:])
+    ):
         raise ValueError("Source SHA256 must be sha256: plus 64 lowercase hex digits")
     if type(start_ms) is not int or type(end_ms) is not int or start_ms < 0:
         raise ValueError("Reviewed millisecond boundaries must be nonnegative integers")
