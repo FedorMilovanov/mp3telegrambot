@@ -178,6 +178,10 @@ async def export_gap_interval(
         actual_ms = round(result_probe.duration * 1000)
         if actual_ms >= GAP_MAX_MS_EXCLUSIVE or abs(actual_ms - expected_ms) > _RENDER_DRIFT_MS:
             raise RuntimeError("Final MP4 duration differs from the reviewed complete interval")
+        # The operator file is external to the renderer. Recheck after the
+        # render so a concurrent replacement cannot falsify source provenance.
+        if _sha256(source) != actual_source_sha256:
+            raise RuntimeError("Owned source postmix changed during rendering")
         output_sha256 = _sha256(staged_mp4)
         manifest = {
             "schema_version": 1,
