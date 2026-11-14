@@ -1,6 +1,14 @@
 # Quality audit history
 
 
+## 2026-11-14 — SHORTOREZ VK 1.05–1.20x derivative without publication
+
+- Video Manager's provider-inert planner proposed preserving full sermon thoughts with minimal up-to-1.20x tempo for <=180s native VK Clips, but no media derivation was connected to MP3Bot's actual owned FFmpeg renderer. Introduced a strictly offline operator CLI that takes the canonical SHA-bound 1x local SHORTOREZ MP4 + handoff JSON, reuses pitch-preserving postprocess_short with normalization disabled, and emits only an independent 720×1280 derivative with measured exact duration and SHA256.
+- Reuses the 105/110/115/120% ladder with ceiling arithmetic matching VCM; refuses a full speech interval >216s, output that exceeds 180s, drift beyond 1500ms, missing audio, wrong aspect, mismatched source bytes/YouTube/channel identity and any target collision. Rehashes base after transformation; final audio listening, rights, subtitle, visual and release approval remain explicitly false.
+- Regression tests exercise cutoff-boundary speeds, SHA/identity tampering, long ineligible passages, no-overwrite, media technical defects, source mutation, and genuine failure status. No modifications to production Factory /mode, Gemini candidate selection, Bot runtime, queues or provider accounts. The owner MacArthur media and rights evidence remain unavailable until authorized local desktop reconnection. Technical PR and human QA are distinct from actual platform publication (Video Manager #940).
+
+
+
 ## 2026-11-14 — Security gate follow-up on SHORTOREZ PR
 
 - CI uncovered four real 2026-11-13 Soup Sieve CVEs in the preexisting exact lock pin soupsieve==2.9.1 (including CVE-2026-126190, fixed only in 4.x). The existing grouped Dependabot PR #463 combines this fix with unrelated major model/media dependencies, so using that PR as an emergency fix would expand the risk surface. The SHORTOREZ PR changes **only** the direct transitive lock pin to soupsieve==4.1, an official Nov 10, 2026 PyPI release. No vulnerability scanner waiver or bypass, no extra Gemini/FFmpeg dependencies and no production behavior switches. The project requires Python >=3.12, which satisfies upstream Soup Sieve 4.1's >=3.11.5 requirement; validate the complete runtime through CI.
