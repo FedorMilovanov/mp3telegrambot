@@ -1,5 +1,13 @@
 # Quality audit history
 
+## 2026-11-14 — SHORTOREZ solo speaker full-bleed framing incident
+
+- Six MacArthur pilot files (three 1x TG/IG and three accelerated VK) were first created with `visual_mode="full_frame_vertical"`, whose output is a **wide 16:9 insert with blurred upper/lower duplicate frames**, NOT full-screen 9:16. This was caused by incorrectly generalizing the multi-face Q&A framing instructions to a **single speaker**; the mode name and hardcoded operator exporter were misleading, and 720x1280 technical probing missed the editorial layout defect.
+- Corrective editorial policy in `AGENTS.md`, `docs/agent_direct_dubbing/README.md`, `CLIPS_SHORTS_AND_HANDOFF.md` and `shorts_factory_max.md`: **one visible preacher defaults to 9:16 edge-to-edge for 100% of each clip**, scene-aware subject tracking across front/profile/auditorium shots; no blur fallback. Multi-participant Q&A blur is an explicit contextual exception. Capture screenshots from each angle and across actual camera cuts in both base and VK variants.
+- The legacy offline SHORTOREZ exporter's blur route now rejects an implicit default call; an explicit `--multi-person-context-blur` opt-in is required for legitimate multi-person footage. This does not change legacy telegram Factory or bot runtime. Solo sermon operators must use a shot-aware full-bleed render path with reviewed crop trajectory, rather than invoking the old wide-on-blur exporter. Added offline no-default-blur regression tests.
+- This user-triggered correction also exposed the need for one **shared timebase** for source-frame tracking and FFmpeg output: track frames from a normalized, bounded video segment then crop that exact same file, rather than sampling one long VFR source independently from the renderer. Original 1x source audio and the final speech interval must remain intact. No upload or provider writes in the corrective pass.
+
+
 
 ## 2026-11-14 — SHORTOREZ VK 1.05–1.20x derivative without publication
 
