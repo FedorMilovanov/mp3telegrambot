@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from pathlib import Path
@@ -77,7 +78,7 @@ async def _run(
     async def fake_render(source: Path, output: Path, start: float, end: float, **kwargs: Any) -> bool:
         calls.append((source, output, start, end, kwargs))
         if renderer_success:
-            output.write_bytes(b"synthetic-render-not-a-real-mp4" * 1000)
+            await asyncio.to_thread(output.write_bytes, b"synthetic-render-not-a-real-mp4" * 1000)
         return renderer_success
 
     async def fake_probe(path: Path) -> MediaProbe:
@@ -217,8 +218,8 @@ async def test_source_mutation_during_render_fails_provenance(tmp_path: Path) ->
     args = _fixture(tmp_path)
 
     async def mutate_source(source: Path, output: Path, start: float, end: float, **kwargs: Any) -> bool:
-        source.write_bytes(b"concurrently replaced source after initial SHA check")
-        output.write_bytes(b"synthetic frame bytes" * 1000)
+        await asyncio.to_thread(source.write_bytes, b"concurrently replaced source after initial SHA check")
+        await asyncio.to_thread(output.write_bytes, b"synthetic frame bytes" * 1000)
         return True
 
     async def probed(path: Path) -> MediaProbe:
