@@ -252,13 +252,18 @@ def main(argv: list[str] | None = None) -> int:
             end_ms=args.end_ms,
         )
     )
-    print(json.dumps({
-        "status": "exported_for_review",
-        "media_path": str(media),
-        "manifest_path": str(manifest),
-        "provider_write_performed": False,
-        "release_authorized": False,
-    }, ensure_ascii=False))
+    print(
+        json.dumps(
+            {
+                "status": "exported_for_review",
+                "media_path": str(media),
+                "manifest_path": str(manifest),
+                "provider_write_performed": False,
+                "release_authorized": False,
+            },
+            ensure_ascii=False,
+        )
+    )
     return 0
 
 
