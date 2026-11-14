@@ -135,12 +135,10 @@ async def test_collision_fails_before_any_render_and_preserves_original(tmp_path
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("start", "end"),
-    [(0, 177_000), (0, 300_000), (10_000, 10_000), (10_000, 190_000), (-1, 200_000)],
+    [(0, 177_000), (0, 300_000), (10_000, 10_000), (10_000, 187_000), (-1, 200_000)],
 )
 async def test_range_validation_fail_closed(tmp_path: Path, start: int, end: int) -> None:
     args = _fixture(tmp_path, start_ms=start, end_ms=end)
-    if (end - start) > 177_000 and (end - start) < 300_000 and start >= 0:
-        pytest.skip("This candidate is intentionally within the factory gap")
     with pytest.raises(ValueError):
         await _run(args)
     assert not args["output_dir"].exists()
