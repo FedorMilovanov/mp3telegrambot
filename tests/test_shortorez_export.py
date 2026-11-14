@@ -209,3 +209,20 @@ async def test_failed_renderer_does_not_leave_partial_outputs(tmp_path: Path) ->
     with pytest.raises(RuntimeError, match="renderer failed"):
         await _run(args, renderer_success=False)
     assert list(args["output_dir"].iterdir()) == []
+
+
+@pytest.mark.asyncio
+async def test_source_mutation_during_render_fails_provenance(tmp_path: Path) -> None:
+    args = _fixture(tmp_path)
+
+    async def mutate_source(source: Path, output: Path, start: float, end: float, **kwargs) -> bool:
+        source.write_bytes(b"concurrently replaced source after initial SHA check")
+        output.write_bytes(b"synthetic frame bytes" * 1000)
+        return True
+
+    async def probed(path: Path) -> MediaProbe:
+        return _probe(duration=650.0 if path == args["source_path"].resolve() else 205.0)
+
+    with pytest.raises(RuntimeError, match="changed during rendering"):
+        await export_gap_interval(**args, render=mutate_source, probe=probed)
+    assert list(args["output_dir"].iterdir()) == []
