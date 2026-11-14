@@ -1,6 +1,10 @@
 # Quality audit history
 
 
+## 2026-11-14 — Security gate follow-up on SHORTOREZ PR
+
+- CI uncovered four real 2026-11-13 Soup Sieve CVEs in the preexisting exact lock pin soupsieve==2.9.1 (including CVE-2026-126190, fixed only in 4.x). The existing grouped Dependabot PR #463 combines this fix with unrelated major model/media dependencies, so using that PR as an emergency fix would expand the risk surface. The SHORTOREZ PR changes **only** the direct transitive lock pin to soupsieve==4.1, an official Nov 10, 2026 PyPI release. No vulnerability scanner waiver or bypass, no extra Gemini/FFmpeg dependencies and no production behavior switches. The project requires Python >=3.12, which satisfies upstream Soup Sieve 4.1's >=3.11.5 requirement; validate the complete runtime through CI.
+
 ## 2026-11-14 — SHORTOREZ: reviewed 177–300s vertical export-only gap
 
 - MP3Bot Factory's production candidate planner correctly enforces 35–177s Shorts and 300–897s long highlights, but a complete argument between those ranges could not be materialized through a dedicated source-bound handoff. Video Manager's first platform planner (#940, merged PR #941) alone does not create media.
