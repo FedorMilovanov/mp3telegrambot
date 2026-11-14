@@ -156,14 +156,17 @@ async def test_source_sha_mismatch_rejected_before_export(tmp_path: Path) -> Non
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("field,bad", [
-    ("source_video_id", "AAAAAAAAAAA"),
-    ("source_channel_id", "UCother"),
-    ("source_kind", "en_original"),
-    ("start_ms", 10001),
-    ("source_sha256", "sha256:" + "0" * 64),
-    ("project_key", "legendary-poet"),
-])
+@pytest.mark.parametrize(
+    "field,bad",
+    [
+        ("source_video_id", "AAAAAAAAAAA"),
+        ("source_channel_id", "UCother"),
+        ("source_kind", "en_original"),
+        ("start_ms", 10001),
+        ("source_sha256", "sha256:" + "0" * 64),
+        ("project_key", "legendary-poet"),
+    ],
+)
 async def test_boundary_evidence_is_exactly_source_bound(tmp_path: Path, field: str, bad: object) -> None:
     args = _fixture(tmp_path)
     evidence = json.loads(args["evidence_path"].read_text(encoding="utf-8"))
@@ -191,11 +194,14 @@ async def test_owner_source_duration_must_contain_full_interval(tmp_path: Path) 
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("duration,width,has_audio,reason", [
-    (200.0, 720, True, "duration"),
-    (205.0, 1920, True, "720x1280"),
-    (205.0, 720, False, "audio/video"),
-])
+@pytest.mark.parametrize(
+    "duration,width,has_audio,reason",
+    [
+        (200.0, 720, True, "duration"),
+        (205.0, 1920, True, "720x1280"),
+        (205.0, 720, False, "audio/video"),
+    ],
+)
 async def test_bad_render_cannot_be_transferred(
     tmp_path: Path, duration: float, width: int, has_audio: bool, reason: str
 ) -> None:
