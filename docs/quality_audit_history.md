@@ -1,5 +1,15 @@
 # Quality audit history
 
+
+## 2026-11-14 — SHORTOREZ: reviewed 177–300s vertical export-only gap
+
+- MP3Bot Factory's production candidate planner correctly enforces 35–177s Shorts and 300–897s long highlights, but a complete argument between those ranges could not be materialized through a dedicated source-bound handoff. Video Manager's first platform planner (#940, merged PR #941) alone does not create media.
+- Added a separate operator-invoked, provider-inert local 177–300s adapter using the mature 9:16 Shorts renderer; existing Bot /mode, Gemini plan, Telegram delivery, default playback speed and retry ledger remain untouched. The owned local RU postmix SHA256, exact source identity and genuinely heard first/last Russian words are required.
+- Output is verified for actual video/audio, 720×1280, measured duration, unexpected trims and byte SHA256; write collision fails closed with no overwrite. Handoff JSON always marks rights, listening, subtitle, visual and release approvals false. No automatic speed transform, subtitle removal or social publishing.
+- Offline fake-media regression tests exercise source mismatch, mislabeled RU review, incomplete cut, wrong orientation, missing audio, collisions and failed render. No actual MacArthur MP4/source listening was available via the remote device; no reel/clip/publication is claimed.
+- This does not yet discover 3–5-minute semantic candidates in the three-pass AI planner. Issue #469 tracks the local gap and subsequent integration with Video Manager #940.
+
+
 ## 2026-11-07 — Durable bounded deferred retry after real Gemini provider 503
 
 - Previously each Factory invocation exhausted its genuine five-request HIGH-pass budget on a 503 storm and required the user to manually run the request again. The new **typed** `FactoryProviderOverloaded` is raised only when genuine provider-side capacity attempts are exhausted, never by a locally open circuit, 429 quota, schema error or bad input.
