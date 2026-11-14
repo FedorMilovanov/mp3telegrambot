@@ -91,9 +91,12 @@ async def _render_stub(
     async def probe(path: Path) -> MediaProbe:
         if path == args["base_mp4"].resolve():
             return _media(base_probe_ms if base_probe_ms is not None else base_duration_ms)
-        duration = result_ms if result_ms is not None else (
-            base_duration_ms * 100 + select_vk_speed_percent(base_duration_ms) - 1
-        ) // select_vk_speed_percent(base_duration_ms)
+        duration = (
+            result_ms
+            if result_ms is not None
+            else (base_duration_ms * 100 + select_vk_speed_percent(base_duration_ms) - 1)
+            // select_vk_speed_percent(base_duration_ms)
+        )
         return _media(duration, has_audio=result_has_audio, width=result_width)
 
     output = await export_vk_derivative(**args, transform=transform, probe=probe)
