@@ -48,6 +48,7 @@ def _fixture(tmp_path: Path, *, start_ms: int = 10_000, end_ms: int = 215_000) -
         "source_sha256": source_sha256,
         "start_ms": start_ms,
         "end_ms": end_ms,
+        "allow_multi_person_blur": True,
     }
 
 
@@ -113,6 +114,7 @@ async def test_3_to_5_minute_gap_produces_review_only_9x16_manifest(tmp_path: Pa
     assert data["output_duration_ms"] == 205_000
     assert (data["output_width"], data["output_height"]) == (720, 1280)
     assert data["speed_percent"] == 100
+    assert data["visual_layout"] == "explicit_multi_person_context_only"
     assert data["release_authorized"] is False
     assert data["provider_write_performed"] is False
     assert data["rights_cleared"] is False
@@ -122,6 +124,24 @@ async def test_3_to_5_minute_gap_produces_review_only_9x16_manifest(tmp_path: Pa
     assert calls[0][2:4] == (10.0, 215.0)
     assert calls[0][4] == {"visual_mode": "full_frame_vertical", "snap_to_silence": False}
     assert len(list(args["output_dir"].iterdir())) == 2
+
+
+@pytest.mark.asyncio
+async def test_unreviewed_solo_default_cannot_render_blurred_inset(tmp_path: Path) -> None:
+    args = _fixture(tmp_path)
+    args.pop("allow_multi_person_blur")
+    with pytest.raises(ValueError, match="shot-aware FULL-BLEED"):
+        await _run(args)
+    assert not args["output_dir"].exists()
+
+
+@pytest.mark.asyncio
+async def test_boolean_like_truthy_cannot_override_solo_layout(tmp_path: Path) -> None:
+    args = _fixture(tmp_path)
+    args["allow_multi_person_blur"] = 1
+    with pytest.raises(ValueError, match="FULL-BLEED"):
+        await _run(args)
+    assert not args["output_dir"].exists()
 
 
 @pytest.mark.asyncio
