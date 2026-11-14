@@ -207,7 +207,7 @@ async def test_ineligible_full_thought_is_not_silently_trimmed(tmp_path: Path) -
     [
         (180_001, True, 720, "180s"),
         (170_000, True, 720, "180s"),
-        (178_261, False, 720, "audio"),
+        (178_261, False, 720, "audible media"),
         (178_261, True, 1920, "orientation"),
     ],
 )
@@ -239,6 +239,6 @@ async def test_failed_owned_transform_makes_no_output(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_base_audio_and_duration_must_be_real(tmp_path: Path) -> None:
     args = _reviewed_base(tmp_path)
-    with pytest.raises(ValueError, match="source-reviewed"):
+    with pytest.raises(ValueError, match="recorded duration"):
         await _render_stub(args, base_probe_ms=201_000)
     assert not args["output_dir"].exists()
