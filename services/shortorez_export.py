@@ -1,9 +1,11 @@
 """Offline source-bound SHORTOREZ export for reviewed 3–5 minute Russian passages.
 
 This is a user-invoked local file exporter, NOT a Telegram bot mode, AI scout,
-provider publisher, production worker, or release approval. It reuses the
-existing vertical Shorts renderer and media probe; original Factory settings
-and delivery behavior are unchanged.
+provider publisher, production worker, or release approval. Its existing
+full_frame_vertical renderer preserves a wide Q&A over a BLURRED backdrop,
+which is not full-bleed. Solo speaker use now fails closed by default until
+shot-aware full-bleed reframing is explicitly provided through an operator
+workflow. No production Factory settings or delivery behavior are changed.
 """
 
 from __future__ import annotations
@@ -112,6 +114,7 @@ async def export_gap_interval(
     end_ms: int,
     render: Renderer | None = None,
     probe: Prober | None = None,
+    allow_multi_person_blur: bool = False,
 ) -> tuple[Path, Path]:
     """Export an isolated 9:16 base MP4 + provider-inert manifest.
 
@@ -121,6 +124,12 @@ async def export_gap_interval(
     reviewed before separate authorization of any provider writer.
     """
     _validate_request(youtube_id, source_sha256, start_ms, end_ms)
+    if allow_multi_person_blur is not True:
+        raise ValueError(
+            "Single-speaker SHORTOREZ requires shot-aware FULL-BLEED 9:16 reframing; "
+            "the legacy full_frame_vertical renderer adds BLUR. "
+            "For an actual multi-person Q&A, opt in explicitly to its context layout."
+        )
     source = await asyncio.to_thread(Path(source_path).resolve, strict=True)
     if not source.is_file():
         raise ValueError("Source must be an existing local regular MP4")
@@ -210,6 +219,7 @@ async def export_gap_interval(
             "output_height": result_probe.height,
             "speed_percent": 100,
             "render_mode": "existing_full_frame_vertical",
+            "visual_layout": "explicit_multi_person_context_only",
             "subtitles_reviewed": False,
             "final_encoded_audio_listened": False,
             "visual_safe_zones_reviewed": False,
@@ -240,6 +250,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--start-ms", type=int, required=True)
     parser.add_argument("--end-ms", type=int, required=True)
     parser.add_argument("--output-dir", type=Path, required=True, help="Separate local review output directory")
+    parser.add_argument(
+        "--multi-person-context-blur",
+        action="store_true",
+        help="Explicit Q&A / multiple-speaker exception; never use for a solo sermon",
+    )
     args = parser.parse_args(argv)
     media, manifest = asyncio.run(
         export_gap_interval(
@@ -250,6 +265,7 @@ def main(argv: list[str] | None = None) -> int:
             source_sha256=args.source_sha256,
             start_ms=args.start_ms,
             end_ms=args.end_ms,
+            allow_multi_person_blur=args.multi_person_context_blur,
         )
     )
     print(
