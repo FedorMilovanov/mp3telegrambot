@@ -67,10 +67,14 @@ def _read_base_manifest(
     start_ms = raw.get("source_start_ms")
     end_ms = raw.get("source_end_ms")
     _validate_request(video_id, source_hash, start_ms, end_ms)
+    expected_base_file = (
+        f"shortorez_{video_id}_{start_ms}-{end_ms}_{source_hash[7:19]}_vertical.mp4"
+    )
     if (
         raw.get("source_kind") != "ru_postmix"
         or raw.get("full_video_url") != f"https://www.youtube.com/watch?v={video_id}"
-        or raw.get("output_file") != base_mp4.name
+        or base_mp4.name != expected_base_file
+        or raw.get("output_file") != expected_base_file
         or raw.get("speed_percent") != 100
         or raw.get("render_mode") != "existing_full_frame_vertical"
         or raw.get("output_width") != 720
