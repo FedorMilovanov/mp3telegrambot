@@ -254,3 +254,35 @@ async def test_source_mutation_during_render_fails_provenance(tmp_path: Path) ->
     with pytest.raises(RuntimeError, match="changed during rendering"):
         await export_gap_interval(**args, render=mutate_source, probe=probed)
     assert list(args["output_dir"].iterdir()) == []
+
+
+@pytest.mark.parametrize("multi_person", [False, True])
+def test_cli_blur_opt_in_is_explicit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], multi_person: bool
+) -> None:
+    from services import shortorez_export as exporter
+
+    calls: list[dict[str, Any]] = []
+
+    async def fake_export(**kwargs: Any) -> tuple[Path, Path]:
+        calls.append(kwargs)
+        return tmp_path / "preview.mp4", tmp_path / "manifest.json"
+
+    monkeypatch.setattr(exporter, "export_gap_interval", fake_export)
+    argv = [
+        "--source-path", str(tmp_path / "source.mp4"),
+        "--source-sha256", "sha256:" + "a" * 64,
+        "--ru-boundaries-json", str(tmp_path / "heard_words.json"),
+        "--youtube-id", "5nKCs4bkoxE",
+        "--start-ms", "10000",
+        "--end-ms", "215000",
+        "--output-dir", str(tmp_path / "out"),
+    ]
+    if multi_person:
+        argv.append("--multi-person-context-blur")
+    assert exporter.main(argv) == 0
+    assert len(calls) == 1
+    assert calls[0]["allow_multi_person_blur"] is multi_person
+    response = json.loads(capsys.readouterr().out)
+    assert response["release_authorized"] is False
+    assert response["provider_write_performed"] is False
