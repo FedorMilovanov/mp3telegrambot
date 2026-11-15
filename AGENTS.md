@@ -1,6 +1,17 @@
 # AGENTS.md — mp3telegrambot engineering contract
 
 Scope: the whole repository. This file is for AI/code agents and human maintainers. Follow it before changing production code.
+
+
+## Vertical speaker framing — operator override (2026-11-14)
+
+- **Single visible speaker/sermon/lecture = edge-to-edge 9:16 FULL-BLEED crop by default across 100% of every clip.** Actual source pixels must fill all 720×1280/1080×1920 frames: no blurred duplicate background, letterbox, small centered 16:9 insert, or static poster. This default applies regardless of multiple **camera angles**; one preacher shown from the front, at a podium, or in a wide auditorium shot is still **one speaker**, not Q&A.
+- **Track the real subject when the camera cuts or pans.** A fixed central crop can remove a face when the source switches between frontal, profile and auditorium angles. Build and inspect a shot-aware horizontal crop/focal path from the original, retain face/head in the viewport, smooth within a shot and update on actual camera cuts. Never stretch the source aspect ratio, invent missing image detail, or trim spoken context to accommodate the crop. If essential slides/text or a second person would be lost, stop for an explicit editorial decision instead of silently returning to blur.
+- **Two or more simultaneously relevant faces, interviews, Q&A, diagrams** may need a full widescreen insert with a synchronously moving blurred duplicate background or a split/recomposed layout, only when preserving multiple subjects is necessary. The Q&A-specific example in docs/agent_direct_dubbing/CLIPS_SHORTS_AND_HANDOFF.md must **not** be applied to a solo sermon.
+- **Crucial mode-name trap:** visual_mode=full_frame_vertical in services.shorts_video is **NOT full-bleed**: it renders the complete wide frame over blur. crop_zoom is full-bleed but **center-locked** and may cut a solo speaker in multi-camera footage. Never select either solely by its name. For solo sources use a verified shot-aware full-bleed workflow. A 720×1280 ffprobe result is not visual evidence of screen fill.
+- **Mandatory QA:** inspect start/middle/end and frames before/after every camera-angle transition, on final 1x and accelerated variants; no blurred margins, cut-off heads, disorienting pan jumps or unreadable key visual information. Inspect the actual encoded files and listen to start/end audio. Never mark technical validity as editorial approval.
+- **MacArthur SHORTOREZ correction:** the six real 5nKCs4bkoxE pilot cuts were originally misrendered with blur because agent instructions generalized Q&A layout and the legacy exporter hardcoded full_frame_vertical. Correct the operator outputs; keep source master, runtime, parallel worktrees and publishers untouched. Scope-specific protections are explained in docs/shorts_factory_max.md.
+
 ## Direct AI-agent video dubbing (documentation only)
 
 For work requested **in the chat through an authorized user computer** (Yandex translated video, manual editorial repair, VoxCPM2 speaker patches, 10–180 second Shorts, 7–15 minute excerpts, full masters, YouTube Studio handoff), read **[docs/agent_direct_dubbing/README.md](docs/agent_direct_dubbing/README.md)** and all linked files **before any media actions**.

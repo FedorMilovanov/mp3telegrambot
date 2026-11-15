@@ -48,6 +48,7 @@ def _fixture(tmp_path: Path, *, start_ms: int = 10_000, end_ms: int = 215_000) -
         "source_sha256": source_sha256,
         "start_ms": start_ms,
         "end_ms": end_ms,
+        "allow_multi_person_blur": True,
     }
 
 
@@ -113,6 +114,7 @@ async def test_3_to_5_minute_gap_produces_review_only_9x16_manifest(tmp_path: Pa
     assert data["output_duration_ms"] == 205_000
     assert (data["output_width"], data["output_height"]) == (720, 1280)
     assert data["speed_percent"] == 100
+    assert data["visual_layout"] == "explicit_multi_person_context_only"
     assert data["release_authorized"] is False
     assert data["provider_write_performed"] is False
     assert data["rights_cleared"] is False
@@ -122,6 +124,24 @@ async def test_3_to_5_minute_gap_produces_review_only_9x16_manifest(tmp_path: Pa
     assert calls[0][2:4] == (10.0, 215.0)
     assert calls[0][4] == {"visual_mode": "full_frame_vertical", "snap_to_silence": False}
     assert len(list(args["output_dir"].iterdir())) == 2
+
+
+@pytest.mark.asyncio
+async def test_unreviewed_solo_default_cannot_render_blurred_inset(tmp_path: Path) -> None:
+    args = _fixture(tmp_path)
+    args.pop("allow_multi_person_blur")
+    with pytest.raises(ValueError, match="shot-aware FULL-BLEED"):
+        await _run(args)
+    assert not args["output_dir"].exists()
+
+
+@pytest.mark.asyncio
+async def test_boolean_like_truthy_cannot_override_solo_layout(tmp_path: Path) -> None:
+    args = _fixture(tmp_path)
+    args["allow_multi_person_blur"] = 1
+    with pytest.raises(ValueError, match="FULL-BLEED"):
+        await _run(args)
+    assert not args["output_dir"].exists()
 
 
 @pytest.mark.asyncio
@@ -234,3 +254,42 @@ async def test_source_mutation_during_render_fails_provenance(tmp_path: Path) ->
     with pytest.raises(RuntimeError, match="changed during rendering"):
         await export_gap_interval(**args, render=mutate_source, probe=probed)
     assert list(args["output_dir"].iterdir()) == []
+
+
+@pytest.mark.parametrize("multi_person", [False, True])
+def test_cli_blur_opt_in_is_explicit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], multi_person: bool
+) -> None:
+    from services import shortorez_export as exporter
+
+    calls: list[dict[str, Any]] = []
+
+    async def fake_export(**kwargs: Any) -> tuple[Path, Path]:
+        calls.append(kwargs)
+        return tmp_path / "preview.mp4", tmp_path / "manifest.json"
+
+    monkeypatch.setattr(exporter, "export_gap_interval", fake_export)
+    argv = [
+        "--source-path",
+        str(tmp_path / "source.mp4"),
+        "--source-sha256",
+        "sha256:" + "a" * 64,
+        "--ru-boundaries-json",
+        str(tmp_path / "heard_words.json"),
+        "--youtube-id",
+        "5nKCs4bkoxE",
+        "--start-ms",
+        "10000",
+        "--end-ms",
+        "215000",
+        "--output-dir",
+        str(tmp_path / "out"),
+    ]
+    if multi_person:
+        argv.append("--multi-person-context-blur")
+    assert exporter.main(argv) == 0
+    assert len(calls) == 1
+    assert calls[0]["allow_multi_person_blur"] is multi_person
+    response = json.loads(capsys.readouterr().out)
+    assert response["release_authorized"] is False
+    assert response["provider_write_performed"] is False
