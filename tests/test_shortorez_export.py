@@ -270,13 +270,20 @@ def test_cli_blur_opt_in_is_explicit(
 
     monkeypatch.setattr(exporter, "export_gap_interval", fake_export)
     argv = [
-        "--source-path", str(tmp_path / "source.mp4"),
-        "--source-sha256", "sha256:" + "a" * 64,
-        "--ru-boundaries-json", str(tmp_path / "heard_words.json"),
-        "--youtube-id", "5nKCs4bkoxE",
-        "--start-ms", "10000",
-        "--end-ms", "215000",
-        "--output-dir", str(tmp_path / "out"),
+        "--source-path",
+        str(tmp_path / "source.mp4"),
+        "--source-sha256",
+        "sha256:" + "a" * 64,
+        "--ru-boundaries-json",
+        str(tmp_path / "heard_words.json"),
+        "--youtube-id",
+        "5nKCs4bkoxE",
+        "--start-ms",
+        "10000",
+        "--end-ms",
+        "215000",
+        "--output-dir",
+        str(tmp_path / "out"),
     ]
     if multi_person:
         argv.append("--multi-person-context-blur")
