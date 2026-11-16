@@ -4,6 +4,7 @@ This handler *only* answers callback_query updates. It never sends messages,
 edits posts, accesses the publication ledger, or interferes with the MP3
 converter's existing conversation handlers.
 """
+
 from __future__ import annotations
 
 import logging
