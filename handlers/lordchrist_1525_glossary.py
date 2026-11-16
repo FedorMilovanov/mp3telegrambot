@@ -7,6 +7,7 @@ converter's existing conversation handlers.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from telegram import Update
 from telegram.ext import CallbackQueryHandler, ContextTypes
@@ -69,7 +70,7 @@ async def answer_lordchrist_1525(update: Update, context: ContextTypes.DEFAULT_T
     )
 
 
-def register_lordchrist_1525_glossary(app) -> None:
+def register_lordchrist_1525_glossary(app: Any) -> None:
     """Register before the converter's generic CallbackQueryHandler catch-all."""
     app.add_handler(
         CallbackQueryHandler(
