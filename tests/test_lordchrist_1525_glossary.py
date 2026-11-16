@@ -4,6 +4,10 @@ from __future__ import annotations
 import asyncio
 import re
 from types import SimpleNamespace
+from typing import Any, cast
+
+from telegram import Update
+from telegram.ext import ContextTypes
 
 from handlers.lordchrist_1525_glossary import (
     BOT_ID,
@@ -29,17 +33,17 @@ class FakeQuery:
             chat=SimpleNamespace(id=chat_id),
             message_id=message_id,
         )
-        self.calls: list[dict] = []
+        self.calls: list[dict[str, object]] = []
 
-    async def answer(self, **kwargs) -> None:
+    async def answer(self, **kwargs: object) -> None:
         self.calls.append(kwargs)
 
 
-def invoke(query: FakeQuery, bot_id: int = BOT_ID) -> list[dict]:
+def invoke(query: FakeQuery, bot_id: int = BOT_ID) -> list[dict[str, object]]:
     asyncio.run(
         answer_lordchrist_1525(
-            SimpleNamespace(callback_query=query),
-            SimpleNamespace(bot=SimpleNamespace(id=bot_id)),
+            cast(Update, SimpleNamespace(callback_query=query)),
+            cast(ContextTypes.DEFAULT_TYPE, SimpleNamespace(bot=SimpleNamespace(id=bot_id))),
         )
     )
     return query.calls
@@ -72,9 +76,9 @@ def test_isolated_callback_registration_does_not_intercept_mp3bot() -> None:
 
     class FakeApp:
         def __init__(self) -> None:
-            self.handlers: list = []
+            self.handlers: list[Any] = []
 
-        def add_handler(self, handler) -> None:
+        def add_handler(self, handler: Any) -> None:
             self.handlers.append(handler)
 
     app = FakeApp()
