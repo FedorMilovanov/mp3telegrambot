@@ -917,6 +917,9 @@ async def run_bot_async() -> str | None:
     # -> AttributeError в handle_message). Реагируем только на новые сообщения:
     # редактирование старой ссылки не должно перезапускать обработку видео.
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.UpdateType.MESSAGE, handle_message))
+    from handlers.lordchrist_1525_glossary import register_lordchrist_1525_glossary
+
+    register_lordchrist_1525_glossary(app)
     app.add_handler(CallbackQueryHandler(handle_mode_callback, pattern=r"^(?:set_mode:|mode_menu:)"))
     app.add_handler(CallbackQueryHandler(handle_callback))
     # AUDIT R30: последовательная викторина продвигается по ответам пользователя.
