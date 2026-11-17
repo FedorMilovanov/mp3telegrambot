@@ -6,6 +6,7 @@ Never launch an actual repair, cloud logOut, process stop, or local bot server.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -26,17 +27,16 @@ def _shell() -> str:
 def _safe_call(tmp_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
     # Nonexistent env proves safe-mode and the missing-confirmation guard do
     # not read any credentials. The high-risk execution branch is never entered.
+    command = [_shell(), "-NoProfile", "-NonInteractive"]
+    if os.name == "nt":
+        # Windows PowerShell 5.1 often defaults to Restricted. This process-
+        # scoped setting does not change the user's execution-policy profile.
+        command.extend(["-ExecutionPolicy", "Bypass"])
+    command.extend(
+        ["-File", str(SCRIPT), "-EnvFile", str(tmp_path / "no-local-bot-api-credentials.env"), *args]
+    )
     return subprocess.run(
-        [
-            _shell(),
-            "-NoProfile",
-            "-NonInteractive",
-            "-File",
-            str(SCRIPT),
-            "-EnvFile",
-            str(tmp_path / "no-local-bot-api-credentials.env"),
-            *args,
-        ],
+        command,
         cwd=tmp_path,
         capture_output=True,
         text=True,
