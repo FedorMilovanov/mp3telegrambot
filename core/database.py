@@ -123,7 +123,7 @@ def db_init() -> None:
                 video_path    TEXT NOT NULL,
                 start_seconds INTEGER NOT NULL,
                 end_seconds   INTEGER NOT NULL,
-                visual_mode   TEXT DEFAULT 'full_frame_vertical',
+                visual_mode   TEXT,
                 yt_url        TEXT DEFAULT '',
                 vk_url        TEXT DEFAULT '',
                 rutube_url    TEXT DEFAULT '',
@@ -541,7 +541,7 @@ def short_trim_save(
     video_path: str,
     start_seconds: float,
     end_seconds: float,
-    visual_mode: str = "full_frame_vertical",
+    visual_mode: str,
     yt_url: str = "",
     vk_url: str = "",
     rutube_url: str = "",
@@ -559,7 +559,13 @@ def short_trim_save(
     ``start_seconds``/``end_seconds`` — float, потому что их считает ffprobe.
     У колонок INTEGER affinity: целые значения лягут как INTEGER, дробные
     SQLite сохранит как REAL — ровно то, что уже происходило на практике.
+
+    A Shorts layout must be explicitly selected by its caller; never silently
+    persist the legacy blurred Q&A mode for a solo sermon. Existing DB rows
+    remain untouched.
     """
+    if not isinstance(visual_mode, str) or visual_mode not in {"crop_zoom", "full_frame_vertical"}:
+        raise ValueError("short_trim_save requires an explicit supported visual_mode.")
     with _db_conn() as conn:
         conn.execute("PRAGMA busy_timeout=5000")
         conn.execute(
