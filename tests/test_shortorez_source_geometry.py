@@ -65,6 +65,9 @@ def test_exact_square_pixel_rationals_are_allowed(sar: str) -> None:
         ({"rotate": "90"}, [{"rotation": -90}]),
         (None, {"rotation": 0}),
         (None, ["unparsed display matrix"]),
+        (None, [{"side_data_type": "Display Matrix", "rotation": 0, "displaymatrix": "horizontal flip"}]),
+        (None, [{"side_data_type": "Display Matrix", "displaymatrix": "unknown matrix"}]),
+        ("malformed tags", None),
     ],
 )
 def test_unapproved_or_ambiguous_rotation_holds_solo(tags: object, side_data: object) -> None:
