@@ -32,9 +32,7 @@ def _safe_call(tmp_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
         # Windows PowerShell 5.1 often defaults to Restricted. This process-
         # scoped setting does not change the user's execution-policy profile.
         command.extend(["-ExecutionPolicy", "Bypass"])
-    command.extend(
-        ["-File", str(SCRIPT), "-EnvFile", str(tmp_path / "no-local-bot-api-credentials.env"), *args]
-    )
+    command.extend(["-File", str(SCRIPT), "-EnvFile", str(tmp_path / "no-local-bot-api-credentials.env"), *args])
     return subprocess.run(
         command,
         cwd=tmp_path,
@@ -53,13 +51,11 @@ def test_guard_is_before_config_and_network_side_effects() -> None:
     assert gate < cloud_guard < env_read
     assert "[switch]$Execute" in source
     assert "[switch]$ConfirmCloudLogout" in source
-    assert "throw \"Cloud Bot API logOut requires explicit -ConfirmCloudLogout" in source
+    assert 'throw "Cloud Bot API logOut requires explicit -ConfirmCloudLogout' in source
 
 
 @pytest.mark.parametrize("args", [(), ("-ApplyConfig",), ("-SkipCloudLogout",)])
-def test_default_and_config_only_are_noop_before_reading_env(
-    tmp_path: Path, args: tuple[str, ...]
-) -> None:
+def test_default_and_config_only_are_noop_before_reading_env(tmp_path: Path, args: tuple[str, ...]) -> None:
     result = _safe_call(tmp_path, *args)
     assert result.returncode == 0, result.stderr
     assert "SAFE MODE" in result.stdout
