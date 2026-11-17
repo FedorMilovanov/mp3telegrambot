@@ -499,3 +499,17 @@ async def test_boundary_evidence_over_size_limit_is_rejected_before_output(tmp_p
     with pytest.raises(ValueError, match="64 KiB"):
         await export_gap_interval(**args)
     assert not await asyncio.to_thread(args["output_dir"].exists)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalid_version", [True, False, 1.0, "1"])
+async def test_boundary_evidence_schema_version_cannot_be_boolean_or_coerced(
+    tmp_path: Path, invalid_version: object
+) -> None:
+    args = _fixture(tmp_path)
+    record = json.loads(await asyncio.to_thread(args["evidence_path"].read_text, encoding="utf-8"))
+    record["schema_version"] = invalid_version
+    await asyncio.to_thread(args["evidence_path"].write_text, json.dumps(record), encoding="utf-8")
+    with pytest.raises(ValueError, match="version 1 reviewer boundary record"):
+        await export_gap_interval(**args)
+    assert not await asyncio.to_thread(args["output_dir"].exists)
