@@ -40,7 +40,7 @@ class ReviewedSoloPlan:
 def _exact_int(value: object, field: str) -> int:
     if type(value) is not int:
         raise ValueError(f"Shot plan {field} must be an integer")
-    return value
+    return int(value)
 
 
 def validate_reviewed_solo_plan(
@@ -89,7 +89,7 @@ def validate_reviewed_solo_plan(
         or source_width % 2
         or source_height % 2
     ):
-        raise ValueError("Square-pixel even source dimensions are required")
+        raise ValueError("Even source dimensions are required; pixel aspect ratio needs separate review")
     # Closest even pixel width to the 9:16 source crop, within ~1 source pixel.
     crop_width = (source_height * 9 + 8) // 16
     crop_width += crop_width % 2
