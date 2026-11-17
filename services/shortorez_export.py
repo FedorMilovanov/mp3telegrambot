@@ -171,6 +171,7 @@ async def export_gap_interval(
 
     solo_plan: ReviewedSoloPlan | None = None
     solo_plan_sha: str | None = None
+    shot_file: Path | None = None
     if solo_shot_plan_path is not None:
         shot_file = await asyncio.to_thread(Path(solo_shot_plan_path).resolve, strict=True)
         solo_plan_sha = await asyncio.to_thread(_sha256, shot_file)
@@ -234,9 +235,7 @@ async def export_gap_interval(
         # render so a concurrent replacement cannot falsify source provenance.
         if await asyncio.to_thread(_sha256, source) != actual_source_sha256:
             raise RuntimeError("Owned source postmix changed during rendering")
-        if solo_shot_plan_path is not None and (
-            await asyncio.to_thread(_sha256, Path(solo_shot_plan_path).resolve())
-        ) != solo_plan_sha:
+        if shot_file is not None and (await asyncio.to_thread(_sha256, shot_file)) != solo_plan_sha:
             raise RuntimeError("Reviewed camera-shot plan changed during rendering")
         output_sha256 = await asyncio.to_thread(_sha256, staged_mp4)
         manifest = {
