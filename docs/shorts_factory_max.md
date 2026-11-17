@@ -149,3 +149,75 @@ The exporter computes and rechecks base SHA256 before/after transformation, veri
 
 Actual MacArthur source `5nKCs4bkoxE` is still not on the authorized reachable desktop; this change has not exported a real video, established source rights, or published any TG/VK/Instagram posts. Upstream semantics remain Video Manager [issue #940](https://github.com/FedorMilovanov/video-channel-manager/issues/940); implementation tracked in [mp3telegrambot #472](https://github.com/FedorMilovanov/mp3telegrambot/issues/472).
 
+
+## SOLO SHORTOREZ: reviewed fixed camera-shot plan (offline, not Factory)
+
+The separate **local** `python -m services.shortorez_export` now has two
+**mutually exclusive** workflows for its 177–300-second RU-postmix gap:
+
+- **One speaker:** provide `--solo-shot-plan-json <path>` with a *human-reviewed*
+  list of the actual source-camera edits and one unchanging source-pixel `crop_x`
+  for each original shot. This uses the new independent full-bleed 720×1280
+  encoder, **not** the generic centre-locked `crop_zoom` or blurred Q&A mode.
+- **Actual multi-person Q&A / panel:** explicitly select
+  `--multi-person-context-blur` to preserve the whole widescreen context.
+  This retains the original reviewed legacy behavior.
+
+The usual `--source-path`, exact SHA, RU boundary record, YouTube ID, start/end
+milliseconds and `--output-dir` remain mandatory in **both** workflows. Do not
+turn this into a new Telegram bot mode or change production Factory configuration.
+
+Example `--solo-shot-plan-json` (illustrative coordinates and camera boundaries
+**only**, not factual source observations or permission to publish):
+
+```json
+{
+  "schema_name": "mp3bot.shortorez-fixed-shot-plan",
+  "schema_version": 1,
+  "project_key": "lord-god-strength",
+  "source_channel_id": "UCeSJsC6go2c9pdJCuUI1BYA",
+  "source_video_id": "5nKCs4bkoxE",
+  "source_sha256": "sha256:<exact 64 lowercase hex of RU postmix>",
+  "start_ms": 10000,
+  "end_ms": 215000,
+  "source_width": 640,
+  "source_height": 358,
+  "layout": "solo_static_crop_per_source_camera_shot",
+  "camera_cut_review": {
+    "status": "original_camera_edits_reviewed",
+    "reviewer": "actual human reviewer",
+    "method": "Compare original source edit frames and three samples in every camera take"
+  },
+  "shots": [
+    {"start_ms": 10000, "end_ms": 100000, "crop_x": 20, "camera_shot_id": "front"},
+    {"start_ms": 100000, "end_ms": 215000, "crop_x": 436, "camera_shot_id": "side"}
+  ]
+}
+```
+
+Exact bounds must cover the entire reviewed RU interval with **no gaps or overlaps**.
+The first and last timestamps equal the heard first/last speech boundaries.
+`crop_x` is an even, nonnegative **source pixel** X coordinate: crop width is
+derived from the actual source height at approximately 9:16; the crop must
+remain inside the source frame. Every camera shot has its **own fixed X**.
+Never interpolate an X trajectory, invent additional cuts, track the head
+during a shot, reuse demo coordinates, or conflate a changed camera angle with
+a second simultaneously visible speaker. If the source has a non-square pixel
+aspect ratio or unusual rotation, **HOLD** for manual normalization and review:
+the regular media probe does not certify sample-aspect-ratio correctness.
+
+Rendering uses FFmpeg's original-frame time PTS, one crop filter per reviewed
+shot, a hard concat at the source edit, and a **single continuous audio trim**
+for the full interval. It does not shorten speech to `-shortest` or use
+`gblur`/picture-in-picture. The result is a staged 720×1280 MP4 and an inert
+source-SHA-bound manifest. A reported 9:16 geometry is **NOT** evidence of
+accurate face framing, shot alignment, lack of visual jitter or source audio
+completeness.
+
+**Release remains HOLD:** the operator must inspect the *encoded* first,
+middle and last frames of **each** source shot, both sides of **every actual
+camera edit**, and listen through the first/last speech and edit seams.
+Compare original/master vs the final MP4 and provider derivative separately.
+`final_encoded_audio_listened`, `visual_safe_zones_reviewed`,
+`rights_cleared` and `release_authorized` stay `false` in the resulting
+manifest; source-bound records alone cannot authorize YouTube/VK upload.
