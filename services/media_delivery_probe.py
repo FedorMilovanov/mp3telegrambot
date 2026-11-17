@@ -150,6 +150,8 @@ def _display_rotation_from_video(video: dict[str, Any]) -> float | None:
     """
     candidates: list[float] = []
     tags = video.get("tags")
+    if tags is not None and not isinstance(tags, dict):
+        return None
     if isinstance(tags, dict) and "rotate" in tags:
         try:
             candidates.append(float(tags["rotate"]))
@@ -160,6 +162,10 @@ def _display_rotation_from_video(video: dict[str, Any]) -> float | None:
         return None
     for item in side_data or []:
         if not isinstance(item, dict):
+            return None
+        # An arbitrary display matrix can include flips even when its angle
+        # prints 0°. Require offline normalization, not a silent source crop.
+        if item.get("displaymatrix"):
             return None
         if "rotation" in item:
             try:
@@ -231,7 +237,7 @@ def probe_media(path: Path, *, timeout: int = 20) -> MediaProbe | None:
         "-v",
         "error",
         "-show_entries",
-        "format=duration:stream=codec_type,codec_name,duration,width,height,sample_rate,sample_aspect_ratio:stream_tags=rotate:stream_side_data=rotation",
+        "format=duration:stream=codec_type,codec_name,duration,width,height,sample_rate,sample_aspect_ratio:stream_tags=rotate:stream_side_data=rotation,displaymatrix",
         "-of",
         "json",
         str(path),
