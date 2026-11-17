@@ -24,6 +24,8 @@ class MediaProbe:
     has_video: bool = False
     has_audio: bool = False
     size_mb: float = 0.0
+    video_sample_aspect_ratio: str = ""  # unknown unless ffprobe proves pixel geometry
+    video_display_rotation: float | None = None  # unknown unless ffprobe inspects transforms
 
 
 @dataclass(frozen=True)
@@ -140,6 +142,53 @@ def select_delivery_file(
     )
 
 
+def _display_rotation_from_video(video: dict[str, Any]) -> float | None:
+    """Read optional display-transform metadata without guessing invalid values.
+
+    Absent rotation metadata means the stream declares no transform (0°);
+    explicitly malformed or contradictory metadata remains unknown (HOLD).
+    """
+    candidates: list[float] = []
+    tags = video.get("tags")
+    if isinstance(tags, dict) and "rotate" in tags:
+        try:
+            candidates.append(float(tags["rotate"]))
+        except (TypeError, ValueError, OverflowError):
+            return None
+    side_data = video.get("side_data_list")
+    if side_data is not None and not isinstance(side_data, list):
+        return None
+    for item in side_data or []:
+        if not isinstance(item, dict):
+            return None
+        if "rotation" in item:
+            try:
+                candidates.append(float(item["rotation"]))
+            except (TypeError, ValueError, OverflowError):
+                return None
+    if not all(math.isfinite(value) for value in candidates):
+        return None
+    if candidates and any(abs(value - candidates[0]) > 0.01 for value in candidates[1:]):
+        return None
+    return candidates[0] if candidates else 0.0
+
+
+def source_video_geometry_is_plain_square_pixels(probe: MediaProbe | None) -> bool:
+    """Only normalized, unrotated, square-pixel sources can use raw crop X."""
+    if probe is None or probe.video_display_rotation is None:
+        return False
+    sar = probe.video_sample_aspect_ratio.strip().split(":")
+    if len(sar) != 2 or not all(part.isdecimal() for part in sar):
+        return False
+    numerator, denominator = (int(part) for part in sar)
+    return bool(
+        denominator > 0
+        and numerator == denominator
+        and math.isfinite(probe.video_display_rotation)
+        and abs(probe.video_display_rotation) < 0.01
+    )
+
+
 def _probe_from_payload(path: Path, payload: dict[str, Any]) -> MediaProbe:
     streams = payload.get("streams") if isinstance(payload, dict) else []
     streams = streams if isinstance(streams, list) else []
@@ -168,6 +217,8 @@ def _probe_from_payload(path: Path, payload: dict[str, Any]) -> MediaProbe:
         has_video=bool(video),
         has_audio=bool(audio),
         size_mb=file_size_mb(path),
+        video_sample_aspect_ratio=str(video.get("sample_aspect_ratio") or "").strip(),
+        video_display_rotation=_display_rotation_from_video(video),
     )
 
 
@@ -180,7 +231,7 @@ def probe_media(path: Path, *, timeout: int = 20) -> MediaProbe | None:
         "-v",
         "error",
         "-show_entries",
-        "format=duration:stream=codec_type,codec_name,duration,width,height,sample_rate",
+        "format=duration:stream=codec_type,codec_name,duration,width,height,sample_rate,sample_aspect_ratio:stream_tags=rotate:stream_side_data=rotation",
         "-of",
         "json",
         str(path),
