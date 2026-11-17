@@ -158,7 +158,14 @@ async def export_gap_interval(
     actual_source_sha256 = await asyncio.to_thread(_sha256, source)
     if actual_source_sha256 != source_sha256:
         raise ValueError("Source bytes differ from the reviewed SHA256")
-    record = json.loads(await asyncio.to_thread(Path(evidence_path).read_text, encoding="utf-8"))
+    evidence_file = await asyncio.to_thread(Path(evidence_path).resolve, strict=True)
+    evidence_bytes = await asyncio.to_thread(evidence_file.read_bytes)
+    if len(evidence_bytes) > 65_536:
+        raise ValueError("Boundary evidence exceeds the safe 64 KiB JSON limit")
+    boundary_evidence_sha256 = "sha256:" + hashlib.sha256(evidence_bytes).hexdigest()
+    record = json.loads(evidence_bytes.decode("utf-8"))
+    if await asyncio.to_thread(_sha256, evidence_file) != boundary_evidence_sha256:
+        raise ValueError("Reviewed Russian boundary evidence changed during initial read")
     edge_review = _verify_boundary_record(
         record,
         youtube_id=youtube_id,
@@ -248,6 +255,8 @@ async def export_gap_interval(
             raise RuntimeError("Owned source postmix changed during rendering")
         if shot_file is not None and (await asyncio.to_thread(_sha256, shot_file)) != solo_plan_sha:
             raise RuntimeError("Reviewed camera-shot plan changed during rendering")
+        if await asyncio.to_thread(_sha256, evidence_file) != boundary_evidence_sha256:
+            raise RuntimeError("Reviewed Russian boundary evidence changed during rendering")
         output_sha256 = await asyncio.to_thread(_sha256, staged_mp4)
         manifest = {
             "schema_version": 1,
@@ -261,6 +270,7 @@ async def export_gap_interval(
             "source_start_ms": start_ms,
             "source_end_ms": end_ms,
             "boundary_review": edge_review,
+            "boundary_evidence_sha256": boundary_evidence_sha256,
             "output_file": final_mp4.name,
             "output_sha256": output_sha256,
             "output_duration_ms": actual_ms,
