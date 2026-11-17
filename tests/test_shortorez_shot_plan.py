@@ -150,6 +150,8 @@ def test_ffmpeg_has_fixed_x_per_shot_exact_camera_cuts_and_continuous_audio() ->
     assert "trim=start=110.000:end=215.000" in graph
     assert "crop=202:358:40:0" in graph
     assert "crop=202:358:430:0" in graph
+    assert "force_original_aspect_ratio=increase:force_divisible_by=2" in graph
+    assert graph.count("crop=720:1280") == 2
     assert "[v0][v1]concat=n=2:v=1:a=0[v]" in graph
     assert graph.count("[0:a]atrim=") == 1
     assert "atrim=start=10.000:end=215.000,asetpts=PTS-STARTPTS[a]" in graph
