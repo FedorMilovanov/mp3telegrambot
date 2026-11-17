@@ -141,6 +141,10 @@ async def export_gap_interval(
         )
     if allow_multi_person_blur is not False and allow_multi_person_blur is not True:
         raise ValueError("Layout flag must be a real boolean")
+    if solo_shot_plan_path is not None and render is not None:
+        raise ValueError("Solo plan cannot use the legacy blurred-context renderer")
+    if solo_shot_plan_path is None and render_solo is not None:
+        raise ValueError("Solo renderer requires a reviewed camera-shot plan")
     source = await asyncio.to_thread(Path(source_path).resolve, strict=True)
     if not source.is_file():
         raise ValueError("Source must be an existing local regular MP4")
@@ -192,8 +196,8 @@ async def export_gap_interval(
         raise FileExistsError("Existing SHORTOREZ media or manifest needs reconciliation")
     root.mkdir(parents=True, exist_ok=True)
 
-    if render is None:
-        # Existing owned Shorts renderer; no new FFmpeg engine. Import on demand,
+    if render is None and solo_plan is None:
+        # Existing owned Shorts renderer; only the reviewed Q&A path imports it.
         # so checking manifests never imports the bot or starts production tasks.
         from services.shorts_video import render_short_clip
 
