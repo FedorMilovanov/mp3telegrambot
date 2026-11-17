@@ -133,7 +133,8 @@ def build_solo_ffmpeg_command(source: Path, output: Path, plan: ReviewedSoloPlan
         filters.append(
             f"[0:v]trim=start={start:.3f}:end={end:.3f},setpts=PTS-STARTPTS,"
             f"crop={plan.crop_width}:{plan.source_height}:{shot.crop_x}:0,"
-            f"scale=720:1280:flags=lanczos,setsar=1,format=yuv420p[v{index}]"
+            "scale=720:1280:flags=lanczos:force_original_aspect_ratio=increase:force_divisible_by=2,"
+            f"crop=720:1280,setsar=1,format=yuv420p[v{index}]"
         )
     inputs = "".join(f"[v{index}]" for index in range(len(plan.shots)))
     filters.append(f"{inputs}concat=n={len(plan.shots)}:v=1:a=0[v]")
@@ -142,11 +143,32 @@ def build_solo_ffmpeg_command(source: Path, output: Path, plan: ReviewedSoloPlan
         f"[0:a]atrim=start={first / 1000:.3f}:end={last / 1000:.3f},asetpts=PTS-STARTPTS[a]"
     )
     return [
-        ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-n",
-        "-i", str(source), "-filter_complex", ";".join(filters),
-        "-map", "[v]", "-map", "[a]",
-        "-c:v", "libx264", "-preset", "slow", "-crf", "18",
-        "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
+        ffmpeg,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-nostdin",
+        "-n",
+        "-i",
+        str(source),
+        "-filter_complex",
+        ";".join(filters),
+        "-map",
+        "[v]",
+        "-map",
+        "[a]",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "slow",
+        "-crf",
+        "18",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-movflags",
+        "+faststart",
         str(output),
     ]
 
