@@ -191,7 +191,7 @@ async def test_solo_renderer_cannot_overwrite_existing_media(
 ) -> None:
     plan = _validated(_raw_plan())
     output = tmp_path / "existing.mp4"
-    output.write_bytes(b"do-not-overwrite")
+    await asyncio.to_thread(output.write_bytes, b"do-not-overwrite")
     monkeypatch.setattr(shutil, "which", lambda _: "ffmpeg")
 
     async def unexpected_process(*_args: object, **_kwargs: object) -> SimpleNamespace:
@@ -199,4 +199,4 @@ async def test_solo_renderer_cannot_overwrite_existing_media(
 
     monkeypatch.setattr(solo, "run_cancellable_process", unexpected_process)
     assert await solo.render_reviewed_solo_shots(tmp_path / "source.mp4", output, plan) is False
-    assert output.read_bytes() == b"do-not-overwrite"
+    assert await asyncio.to_thread(output.read_bytes) == b"do-not-overwrite"
