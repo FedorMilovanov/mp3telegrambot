@@ -62,6 +62,8 @@ def _probe(*, duration: float, width: int = 720, height: int = 1280) -> MediaPro
         has_video=True,
         has_audio=True,
         size_mb=0.1,
+        video_sample_aspect_ratio="1:1",
+        video_display_rotation=0.0,
     )
 
 
@@ -408,3 +410,43 @@ async def test_shot_plan_file_replaced_during_solo_render_fails_without_public_o
     with pytest.raises(RuntimeError, match="plan changed during rendering"):
         await export_gap_interval(**args, render_solo=mutate_plan, probe=probed)
     assert await asyncio.to_thread(lambda: list(args["output_dir"].iterdir())) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("sar", "rotation"),
+    [
+        ("", None),
+        ("N/A", 0.0),
+        ("4:3", 0.0),
+        ("1:1", 90.0),
+        ("1:1", None),
+    ],
+)
+async def test_solo_source_geometry_requires_normalized_square_pixels_before_render(
+    tmp_path: Path, sar: str, rotation: float | None
+) -> None:
+    args = _fixture(tmp_path)
+    args["allow_multi_person_blur"] = False
+    args["solo_shot_plan_path"] = _solo_plan_file(args, tmp_path)
+
+    async def prohibited_render(*_args: Any) -> bool:
+        raise AssertionError("Unsupported pixel geometry must not reach FFmpeg")
+
+    async def probed(_path: Path) -> MediaProbe:
+        return MediaProbe(
+            duration=650.0,
+            width=640,
+            height=358,
+            audio_sample_rate=48000,
+            audio_codec="aac",
+            has_video=True,
+            has_audio=True,
+            size_mb=0.1,
+            video_sample_aspect_ratio=sar,
+            video_display_rotation=rotation,
+        )
+
+    with pytest.raises(ValueError, match="pixel aspect or display rotation"):
+        await export_gap_interval(**args, render_solo=prohibited_render, probe=probed)
+    assert not await asyncio.to_thread(args["output_dir"].exists)

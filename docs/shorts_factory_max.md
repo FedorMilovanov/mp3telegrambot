@@ -202,9 +202,16 @@ derived from the actual source height at approximately 9:16; the crop must
 remain inside the source frame. Every camera shot has its **own fixed X**.
 Never interpolate an X trajectory, invent additional cuts, track the head
 during a shot, reuse demo coordinates, or conflate a changed camera angle with
-a second simultaneously visible speaker. If the source has a non-square pixel
-aspect ratio or unusual rotation, **HOLD** for manual normalization and review:
-the regular media probe does not certify sample-aspect-ratio correctness.
+a second simultaneously visible speaker. Source dimensions alone do **not**
+prove square pixels or correct physical display orientation. Before SOLO shot
+coordinates are accepted, the source media probe must now report **1:1**
+sample-aspect-ratio and no declared display rotation or unknown/nontrivial
+transform. Unknown SAR, non-square pixels, rotated or ambiguous display matrices
+are **HOLD before rendering**: normalize the source, recalculate its exact
+SHA-256 and review/rebind all original camera-shot boundaries and crop X
+coordinates. Never bypass this gate by editing the JSON plan, and never treat
+an encoded 720×1280 result as proof the source geometry was safe. The older Q&A
+context-layout path is intentionally unaffected.
 
 Rendering uses FFmpeg's original-frame time PTS, one crop filter per reviewed
 shot, a hard concat at the source edit, and a **single continuous audio trim**

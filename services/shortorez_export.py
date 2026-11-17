@@ -20,7 +20,12 @@ from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
 from typing import Any
 
-from services.media_delivery_probe import MediaProbe, media_probe_is_deliverable, probe_media_async
+from services.media_delivery_probe import (
+    MediaProbe,
+    media_probe_is_deliverable,
+    probe_media_async,
+    source_video_geometry_is_plain_square_pixels,
+)
 from services.shortorez_shot_plan import (
     ReviewedSoloPlan,
     render_reviewed_solo_shots,
@@ -173,6 +178,11 @@ async def export_gap_interval(
     solo_plan_sha: str | None = None
     shot_file: Path | None = None
     if solo_shot_plan_path is not None:
+        if not source_video_geometry_is_plain_square_pixels(source_probe):
+            raise ValueError(
+                "Solo source pixel aspect or display rotation is unknown/non-square/rotated; "
+                "normalize the source and rebind its SHA plus the camera-shot plan before rendering"
+            )
         shot_file = await asyncio.to_thread(Path(solo_shot_plan_path).resolve, strict=True)
         solo_plan_sha = await asyncio.to_thread(_sha256, shot_file)
         solo_record = json.loads(await asyncio.to_thread(shot_file.read_text, encoding="utf-8"))
@@ -264,6 +274,8 @@ async def export_gap_interval(
             "camera_shot_plan_sha256": solo_plan_sha,
             "camera_shot_count": len(solo_plan.shots) if solo_plan else 0,
             "source_camera_cuts_reviewer": solo_plan.reviewer if solo_plan else None,
+            "source_sample_aspect_ratio": source_probe.video_sample_aspect_ratio if solo_plan else None,
+            "source_display_rotation": source_probe.video_display_rotation if solo_plan else None,
             "subtitles_reviewed": False,
             "final_encoded_audio_listened": False,
             "visual_safe_zones_reviewed": False,
