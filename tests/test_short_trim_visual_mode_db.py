@@ -20,9 +20,7 @@ def test_trim_store_requires_a_mode_and_new_schema_has_no_blur_default() -> None
 
 
 @pytest.mark.parametrize("mode", ["", "auto", "blur", cast(str, None)])
-def test_invalid_trim_layout_is_rejected_before_database_write(
-    monkeypatch: pytest.MonkeyPatch, mode: str
-) -> None:
+def test_invalid_trim_layout_is_rejected_before_database_write(monkeypatch: pytest.MonkeyPatch, mode: str) -> None:
     def forbidden_connection() -> None:
         raise AssertionError("Invalid mode reached SQLite")
 
@@ -57,9 +55,7 @@ class _RecordingConnection:
 
 
 @pytest.mark.parametrize("mode", ["crop_zoom", "full_frame_vertical"])
-def test_explicit_trim_layout_is_persisted_unchanged(
-    monkeypatch: pytest.MonkeyPatch, mode: str
-) -> None:
+def test_explicit_trim_layout_is_persisted_unchanged(monkeypatch: pytest.MonkeyPatch, mode: str) -> None:
     connection = _RecordingConnection()
     monkeypatch.setattr(database, "_db_conn", lambda: connection)
     database.short_trim_save(
