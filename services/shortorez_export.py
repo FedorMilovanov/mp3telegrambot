@@ -87,7 +87,11 @@ def _verify_boundary_record(
     start_ms: int,
     end_ms: int,
 ) -> dict[str, str]:
-    if not isinstance(record, Mapping) or record.get("schema_version") != 1:
+    if (
+        not isinstance(record, Mapping)
+        or type(record.get("schema_version")) is not int
+        or record.get("schema_version") != 1
+    ):
         raise ValueError("A version 1 reviewer boundary record is required")
     identity = {
         "project_key": PILOT_PROJECT,
