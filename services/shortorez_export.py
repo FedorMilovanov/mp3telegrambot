@@ -159,6 +159,8 @@ async def export_gap_interval(
     if actual_source_sha256 != source_sha256:
         raise ValueError("Source bytes differ from the reviewed SHA256")
     evidence_file = await asyncio.to_thread(Path(evidence_path).resolve, strict=True)
+    if (await asyncio.to_thread(evidence_file.stat)).st_size > 65_536:
+        raise ValueError("Boundary evidence exceeds the safe 64 KiB JSON limit")
     evidence_bytes = await asyncio.to_thread(evidence_file.read_bytes)
     if len(evidence_bytes) > 65_536:
         raise ValueError("Boundary evidence exceeds the safe 64 KiB JSON limit")
