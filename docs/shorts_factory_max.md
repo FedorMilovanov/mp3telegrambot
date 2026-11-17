@@ -221,6 +221,15 @@ source-SHA-bound manifest. A reported 9:16 geometry is **NOT** evidence of
 accurate face framing, shot alignment, lack of visual jitter or source audio
 completeness.
 
+**Recorded RU speech boundaries are immutable evidence too.** The operator's
+`--ru-boundaries-json` is read as one bounded UTF-8 snapshot (up to 64 KiB),
+SHA-256 checked immediately and **again after final video rendering**, alongside
+the original source MP4 and camera-shot plan. The local handoff manifest
+records `boundary_evidence_sha256` but never treats a reviewer assertion as
+proof that the first and last Russian syllables are audible in the final
+encoded MP4. If the review record is replaced or edited, the exporter must
+refuse a finished output; do not silently reuse its previous acceptance.
+
 **Release remains HOLD:** the operator must inspect the *encoded* first,
 middle and last frames of **each** source shot, both sides of **every actual
 camera edit**, and listen through the first/last speech and edit seams.

@@ -114,6 +114,7 @@ async def test_3_to_5_minute_gap_produces_review_only_9x16_manifest(tmp_path: Pa
     assert data["source_start_ms"] == 10_000 and data["source_end_ms"] == 215_000
     assert data["output_sha256"] == _digest(media.read_bytes())
     assert data["output_duration_ms"] == 205_000
+    assert data["boundary_evidence_sha256"] == _digest(await asyncio.to_thread(args["evidence_path"].read_bytes))
     assert (data["output_width"], data["output_height"]) == (720, 1280)
     assert data["speed_percent"] == 100
     assert data["visual_layout"] == "explicit_multi_person_context_only"
@@ -449,4 +450,62 @@ async def test_solo_source_geometry_requires_normalized_square_pixels_before_ren
 
     with pytest.raises(ValueError, match="pixel aspect or display rotation"):
         await export_gap_interval(**args, render_solo=prohibited_render, probe=probed)
+    assert not await asyncio.to_thread(args["output_dir"].exists)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("solo", [False, True])
+async def test_boundary_evidence_replaced_during_render_blocks_any_review_artifact(tmp_path: Path, solo: bool) -> None:
+    """A concurrent editor cannot invalidate verified spoken edges silently."""
+    args = _fixture(tmp_path)
+    if solo:
+        args["allow_multi_person_blur"] = False
+        args["solo_shot_plan_path"] = _solo_plan_file(args, tmp_path)
+
+    async def write_tampered_stage(output: Path) -> bool:
+        await asyncio.to_thread(output.write_bytes, b"staged-synthetic-MP4" * 100)
+        await asyncio.to_thread(
+            args["evidence_path"].write_text,
+            '{"schema_version": 999, "changed_by": "concurrent_editor"}',
+            encoding="utf-8",
+        )
+        return True
+
+    async def render_context(_source: Path, output: Path, _start: float, _end: float, **_kwargs: Any) -> bool:
+        return await write_tampered_stage(output)
+
+    async def render_solo(_source: Path, output: Path, _plan: Any) -> bool:
+        return await write_tampered_stage(output)
+
+    async def probed(path: Path) -> MediaProbe:
+        if path.name == args["source_path"].name:
+            return _probe(duration=650.0, width=640, height=358)
+        return _probe(duration=205.0)
+
+    renderer = {"render_solo": render_solo} if solo else {"render": render_context}
+    with pytest.raises(RuntimeError, match="boundary evidence changed during rendering"):
+        await export_gap_interval(**args, probe=probed, **renderer)
+    assert await asyncio.to_thread(lambda: list(args["output_dir"].iterdir())) == []
+
+
+@pytest.mark.asyncio
+async def test_boundary_evidence_over_size_limit_is_rejected_before_output(tmp_path: Path) -> None:
+    args = _fixture(tmp_path)
+    await asyncio.to_thread(args["evidence_path"].write_bytes, b"X" * 65_537)
+    with pytest.raises(ValueError, match="64 KiB"):
+        await export_gap_interval(**args)
+    assert not await asyncio.to_thread(args["output_dir"].exists)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalid_version", [True, False, 1.0, "1"])
+async def test_boundary_evidence_schema_version_cannot_be_boolean_or_coerced(
+    tmp_path: Path, invalid_version: object
+) -> None:
+    args = _fixture(tmp_path)
+    record = json.loads(await asyncio.to_thread(args["evidence_path"].read_text, encoding="utf-8"))
+    record["schema_version"] = invalid_version
+    await asyncio.to_thread(args["evidence_path"].write_text, json.dumps(record), encoding="utf-8")
+    with pytest.raises(ValueError, match="version 1 reviewer boundary record"):
+        await export_gap_interval(**args)
     assert not await asyncio.to_thread(args["output_dir"].exists)
