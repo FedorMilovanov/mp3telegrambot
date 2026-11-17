@@ -55,3 +55,34 @@ def test_channel_and_source_safety() -> None:
     ):
         assert required in guide
     assert "не перегружать" in guide and "утверждённые владельцем" in guide
+
+
+def test_finished_copy_preflight_is_required_before_handoff() -> None:
+    route = read("README.md")
+    guide = read("YOUTUBE_PRESENTATION_BY_SURFACE.md")
+    assert "Перед передачей обязательно проверь именно готовый текст" in route
+    assert "Приёмка готового YouTube-текста" in guide
+    for required in (
+        "цитату Писания",
+        "окончательным принятым MP4",
+        "5000 **UTF-8 байт**",
+        "validate_youtube_copy.py",
+        "TEXT_PREPARED_NOT_LIVE_VERIFIED",
+    ):
+        assert required in guide
+
+
+def test_p0_semantic_audio_evidence_cannot_be_substituted_with_srt() -> None:
+    guide = read("YANDEX_TRANSLATION_EDITORIAL.md")
+    assert "P0: смысловые подмены" in guide
+    for evidence in (
+        "EN-оригинал",
+        "RU-аудиофрагмент",
+        "RU ASR-гипотезу",
+        "AUDIO_FIXED",
+        "LISTENING_APPROVED",
+        "MASTER_ACCEPTED",
+        "BLOCKED/NOT_FOR_PUBLICATION",
+    ):
+        assert evidence in guide
+    assert "Правильная строка SRT не исправляет" in guide
