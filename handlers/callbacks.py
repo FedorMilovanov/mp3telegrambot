@@ -550,6 +550,10 @@ async def _handle_strim_retrim(
     candidate["end_seconds"] = end_s
     candidate["duration_seconds"] = end_s - start_s
 
+    visual_mode = rec.get("visual_mode")
+    if visual_mode not in {"crop_zoom", "full_frame_vertical"}:
+        await query.message.reply_text("Режим кадрирования не подтверждён. Повторная обрезка остановлена.")
+        return
     out_path = DOWNLOAD_DIR / f"{uuid.uuid4().hex[:16]}_trim.mp4"
     try:
         ok = await render_short_clip(
@@ -557,7 +561,7 @@ async def _handle_strim_retrim(
             output_path=out_path,
             start_seconds=start_s,
             end_seconds=end_s,
-            visual_mode=rec.get("visual_mode", "full_frame_vertical"),
+            visual_mode=visual_mode,
         )
         if not ok or not out_path.exists():
             await query.message.reply_text("❌ Не удалось перерезать Short.")
@@ -576,7 +580,7 @@ async def _handle_strim_retrim(
                 video_path=str(video_path),
                 start_seconds=start_s,
                 end_seconds=end_s,
-                visual_mode=rec.get("visual_mode", "full_frame_vertical"),
+                visual_mode=visual_mode,
                 yt_url=rec.get("yt_url", ""),
                 vk_url=rec.get("vk_url", ""),
                 rutube_url=rec.get("rutube_url", ""),

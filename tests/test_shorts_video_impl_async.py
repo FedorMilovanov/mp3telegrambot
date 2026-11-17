@@ -145,7 +145,9 @@ async def test_legacy_short_render_uses_single_nonempty_size_gate(
 
     _patch_render_runtime(monkeypatch, fake_run)
 
-    result = await shorts_video_impl._unowned_render_short_clip(source_path, output_path, 10, 40)
+    result = await shorts_video_impl._unowned_render_short_clip(
+        source_path, output_path, 10, 40, visual_mode="crop_zoom"
+    )
 
     assert result is expected
     if expected:

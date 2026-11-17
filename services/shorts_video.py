@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from services import shorts_video_impl
+from services.shorts_visual_mode_contract import has_explicit_visual_mode
 
 # The implementation remains a dynamic legacy/monkeypatch boundary.
 _impl: Any = shorts_video_impl
@@ -112,11 +113,14 @@ async def _owned_render_short_clip(
     start_seconds: float,
     end_seconds: float,
     *,
-    visual_mode: str = "full_frame_vertical",
+    visual_mode: str | None = None,
     silence_snap_max_end: float | None = None,
     snap_to_silence: bool = True,
 ) -> bool:
     """Render one vertical clip with explicit silence-snap policy and ceiling."""
+    if not has_explicit_visual_mode(visual_mode):
+        _impl.logger.warning("render_short_clip: missing/unknown explicit visual_mode; no blurred fallback")
+        return False
     source_video_path = Path(source_video_path)
     output_path = Path(output_path)
     hard_ceiling = _finite_ceiling(silence_snap_max_end)
@@ -438,11 +442,14 @@ async def render_short_clip(
     start_seconds: float,
     end_seconds: float,
     *,
-    visual_mode: str = "full_frame_vertical",
+    visual_mode: str | None = None,
     silence_snap_max_end: float | None = None,
     snap_to_silence: bool = True,
 ) -> bool:
-    """Public renderer with explicit silence-snap ownership."""
+    """Public renderer requires explicit choice; never silently blur a sermon."""
+    if not has_explicit_visual_mode(visual_mode):
+        _impl.logger.warning("render_short_clip: explicit visual_mode required")
+        return False
     return cast(
         bool,
         await _impl.await_owned_coroutine(

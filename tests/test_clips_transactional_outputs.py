@@ -282,6 +282,7 @@ async def test_montage_cancellation_removes_all_partial_artifacts(
                 {"start_seconds": 0, "end_seconds": 10},
                 {"start_seconds": 20, "end_seconds": 30},
             ],
+            visual_mode="crop_zoom",
         )
 
     for path in (output_path, part0, part1, concat):
@@ -327,6 +328,7 @@ async def test_montage_rejects_empty_successful_output_and_cleans_artifacts(
             {"start_seconds": 0, "end_seconds": 10},
             {"start_seconds": 20, "end_seconds": 30},
         ],
+        visual_mode="crop_zoom",
     )
 
     assert result is False

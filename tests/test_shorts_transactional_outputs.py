@@ -89,6 +89,7 @@ async def test_stale_render_is_not_accepted_when_ffmpeg_writes_nothing(
         output_path,
         10,
         40,
+        visual_mode="crop_zoom",
     )
 
     assert result is False
@@ -117,6 +118,7 @@ async def test_render_cancellation_removes_partial_output(
             output_path,
             10,
             40,
+            visual_mode="crop_zoom",
         )
 
     assert output_path.exists() is False

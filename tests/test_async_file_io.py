@@ -722,6 +722,7 @@ async def test_highlights_render_commits_nonempty_output(monkeypatch: pytest.Mon
         source_path,
         output_path,
         [{"start_seconds": 0.0, "end_seconds": 5.0}],
+        visual_mode="crop_zoom",
     )
 
     assert result is True
@@ -744,6 +745,7 @@ async def test_highlights_render_missing_source_preserves_existing_output(
         source_path,
         output_path,
         [{"start_seconds": 0.0, "end_seconds": 5.0}],
+        visual_mode="crop_zoom",
     )
 
     assert result is False
@@ -777,6 +779,7 @@ async def test_highlights_render_failure_cleans_partial_output(
         source_path,
         output_path,
         [{"start_seconds": 0.0, "end_seconds": 5.0}],
+        visual_mode="crop_zoom",
     )
 
     assert result is False
@@ -802,6 +805,7 @@ async def test_highlights_render_cancellation_cleans_partial_output(
             source_path,
             output_path,
             [{"start_seconds": 0.0, "end_seconds": 5.0}],
+            visual_mode="crop_zoom",
         )
 
     assert not _path_exists(output_path)
@@ -1459,6 +1463,7 @@ async def test_montage_writes_expected_concat_list_in_worker_thread(
             {"start_seconds": 0.0, "end_seconds": 1.0},
             {"start_seconds": 2.0, "end_seconds": 4.0},
         ],
+        visual_mode="crop_zoom",
     )
 
     expected = _expected_concat(tmp_path)
