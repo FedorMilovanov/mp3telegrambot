@@ -227,3 +227,31 @@ def test_factory_source_persistence_replaces_stale_variant(monkeypatch: pytest.M
 
     assert destination.read_bytes() == b"x" * 2048
     assert not stale.exists()
+
+
+@pytest.mark.asyncio
+async def test_retrim_missing_visual_mode_stops_before_render(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    async def unexpected_render(**_kwargs: Any) -> bool:
+        raise AssertionError("Missing layout must not dispatch an FFmpeg render")
+
+    monkeypatch.setattr(callbacks, "DOWNLOAD_DIR", tmp_path)
+    monkeypatch.setattr(callbacks, "render_short_clip", unexpected_render)
+    query = SimpleNamespace(message=SimpleNamespace(reply_text=AsyncMock()))
+
+    await callbacks._handle_strim_retrim(
+        query,
+        {"candidate_json": "{}"},
+        tmp_path / "source.mp4",
+        0,
+        10,
+        "Trim",
+        30,
+    )
+
+    query.message.reply_text.assert_awaited_once_with(
+        "Режим кадрирования не подтверждён. Повторная обрезка остановлена."
+    )
+    assert not list(tmp_path.glob("*_trim.mp4"))
