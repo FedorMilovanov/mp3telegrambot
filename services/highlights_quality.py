@@ -36,6 +36,7 @@ from services.async_process import run_cancellable_process
 from services.async_worker import await_owned_coroutine
 from services.ffmpeg import _get_video_encoder
 from services.shorts_video import HAS_FASTER_WHISPER, transcribe_short_clip
+from services.shorts_visual_mode_contract import has_explicit_visual_mode
 
 logger = logging.getLogger(__name__)
 
@@ -886,7 +887,7 @@ async def render_verified_highlights(
     output_path: Path,
     fragments: list[dict[str, Any]],
     *,
-    visual_mode: str = "full_frame_vertical",
+    visual_mode: str | None = None,
 ) -> bool:
     """Render all verified cuts from source in one owned encode.
 
@@ -895,6 +896,9 @@ async def render_verified_highlights(
     cancellation, so the GPU semaphore and output path cannot be released while
     FFmpeg is still writing in a background executor thread.
     """
+    if not has_explicit_visual_mode(visual_mode):
+        logger.warning("verified highlights: explicit visual_mode required; refusing implicit blur")
+        return False
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg or not await asyncio.to_thread(_path_exists, source_video_path) or not fragments:
         return False
