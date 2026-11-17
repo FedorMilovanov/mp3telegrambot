@@ -73,3 +73,20 @@ def test_force_cpu_overrides_stale_cuda_environment_without_gpu_probe(
     assert instance.model == "large-v3"
     assert instance.device == "cpu"
     assert instance.compute_type == "int8"
+
+
+def test_passive_hold_policy_requires_no_early_word_advance() -> None:
+    policy = (ROOT / "docs/agent_direct_dubbing/SHORTS_MANROPE01_LARGEV3_CPU.md").read_text(encoding="utf8")
+    for required in (
+        "BodyHold",
+        "Body + BodyHold",
+        "3,00",
+        "Manrope Q54",
+        "янтарного",
+        "fade",
+        "SUBTITLE_TIMING_HOLD",
+        "FFprobe",
+        "низкой вероятностью",
+        "не вставлять",
+    ):
+        assert required in policy, required
