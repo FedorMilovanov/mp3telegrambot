@@ -144,9 +144,7 @@ def build_solo_ffmpeg_command(source: Path, output: Path, plan: ReviewedSoloPlan
     inputs = "".join(f"[v{index}]" for index in range(len(plan.shots)))
     filters.append(f"{inputs}concat=n={len(plan.shots)}:v=1:a=0[v]")
     # Audio is never trimmed or restarted at the camera edits. Do not use -shortest.
-    filters.append(
-        f"[0:a]atrim=start={first / 1000:.3f}:end={last / 1000:.3f},asetpts=PTS-STARTPTS[a]"
-    )
+    filters.append(f"[0:a]atrim=start={first / 1000:.3f}:end={last / 1000:.3f},asetpts=PTS-STARTPTS[a]")
     return [
         ffmpeg,
         "-hide_banner",
