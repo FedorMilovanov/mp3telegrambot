@@ -19,6 +19,7 @@ from services.async_process import run_cancellable_process
 from services.async_worker import await_owned_coroutine
 from core.utils import format_timestamp
 from services.shorts_video import _build_links_block  # FIX render
+from services.shorts_visual_mode_contract import has_explicit_visual_mode
 from core.text_utils import _clean_field, title_case_fragment  # FIX render
 from core.core_utils import time_to_seconds  # FIX: moved to core_utils (был в json_parser)
 from core.json_parser import _recover_truncated_json  # V3-P0: partial JSON recovery
@@ -302,9 +303,12 @@ async def render_montage_short(
     output_path: Path,
     fragments: list[dict[str, Any]],
     *,
-    visual_mode: str = "full_frame_vertical",
+    visual_mode: str | None = None,
 ) -> bool:
     """Склеивает несколько фрагментов в один Short 9:16 через ffmpeg concat."""
+    if not has_explicit_visual_mode(visual_mode):
+        logger.warning("montage: explicit visual_mode required; refusing implicit blur")
+        return False
     # FIX AUDIT R4: temp_parts/concat_list_path объявляем ДО try — except ниже
     # их итерирует, и OSError из mkdir превращался в NameError из хендлера.
     temp_parts = [output_path.parent / f"{output_path.stem}_part{i}.mp4" for i in range(len(fragments))]

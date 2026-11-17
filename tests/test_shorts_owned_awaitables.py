@@ -120,6 +120,7 @@ async def test_render_wrapper_survives_repeated_outer_cancellation(
             tmp_path / "output.mp4",
             0,
             20,
+            visual_mode="crop_zoom",
         )
     )
     await asyncio.wait_for(started.wait(), timeout=1.0)

@@ -17,6 +17,7 @@ from services.ffmpeg import (
     _is_static_video,
 )  # FIX shorts_video
 from services.async_worker import await_owned_coroutine
+from services.shorts_visual_mode_contract import has_explicit_visual_mode
 from services.async_process import run_cancellable_process
 from core.database import settings_get  # FIX shorts_video
 from core.text_utils import normalize_common_typos, title_case_fragment  # FIX shorts_video
@@ -149,7 +150,7 @@ async def _unowned_render_short_clip(
     start_seconds: int,
     end_seconds: int,
     *,
-    visual_mode: str = "full_frame_vertical",
+    visual_mode: str | None = None,
 ) -> bool:
     """
     Вырезает short-клип из исходного видео через ffmpeg.
@@ -164,6 +165,9 @@ async def _unowned_render_short_clip(
 
     Возвращает True при успехе, False при ошибке.
     """
+    if not has_explicit_visual_mode(visual_mode):
+        logger.warning("legacy render_short_clip: explicit visual_mode required")
+        return False
     try:
         ffmpeg = shutil.which("ffmpeg")
         if not ffmpeg:
@@ -1764,8 +1768,11 @@ async def render_short_clip(
     start_seconds: int,
     end_seconds: int,
     *,
-    visual_mode: str = "full_frame_vertical",
+    visual_mode: str | None = None,
 ) -> bool:
+    if not has_explicit_visual_mode(visual_mode):
+        logger.warning("legacy public render_short_clip: explicit visual_mode required")
+        return False
     return await await_owned_coroutine(
         _unowned_render_short_clip(
             source_video_path,

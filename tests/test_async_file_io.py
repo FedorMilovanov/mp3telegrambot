@@ -1459,6 +1459,7 @@ async def test_montage_writes_expected_concat_list_in_worker_thread(
             {"start_seconds": 0.0, "end_seconds": 1.0},
             {"start_seconds": 2.0, "end_seconds": 4.0},
         ],
+        visual_mode="crop_zoom",
     )
 
     expected = _expected_concat(tmp_path)

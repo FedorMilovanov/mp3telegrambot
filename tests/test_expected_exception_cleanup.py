@@ -122,7 +122,7 @@ async def test_retrim_invalid_json_and_render_failure_still_clean_up(
 
     await callbacks._handle_strim_retrim(
         query,
-        {"candidate_json": "not-json"},
+        {"candidate_json": "not-json", "visual_mode": "crop_zoom"},
         tmp_path / "source.mp4",
         0,
         10,
@@ -164,7 +164,7 @@ async def test_retrim_success_preserves_source_and_conditional_nosub_button(
 
     await callbacks._handle_strim_retrim(
         query,
-        {"candidate_json": "{}", "video_path_nosub": str(nosub)},
+        {"candidate_json": "{}", "video_path_nosub": str(nosub), "visual_mode": "crop_zoom"},
         source,
         0,
         10,
