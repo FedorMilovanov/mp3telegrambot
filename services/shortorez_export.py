@@ -211,6 +211,7 @@ async def export_gap_interval(
             solo_renderer = render_solo or render_reviewed_solo_shots
             success = await solo_renderer(source, staged_mp4, solo_plan)
         else:
+            assert render is not None  # Q&A renderer is selected above, never for solo.
             success = await render(
                 source,
                 staged_mp4,
