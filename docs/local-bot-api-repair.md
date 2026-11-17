@@ -44,10 +44,12 @@ starts.
 From the repository root, enable TUN/VPN first and run:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\repair-local-bot-api.ps1 -ApplyConfig
+powershell -ExecutionPolicy Bypass -File .\scripts\repair-local-bot-api.ps1 -ApplyConfig -Execute -ConfirmCloudLogout
 ```
 
-The script:
+**Safety gate:** Running the script without `-Execute` is a no-op: it reads no `.env`, sends no requests, does not log the bot out, does not stop processes or change configuration. A real cloud-to-local transition requires both `-Execute` and `-ConfirmCloudLogout`; when deliberately keeping cloud authorization, use `-Execute -SkipCloudLogout` instead. `-ApplyConfig` alone never authorizes a repair.
+
+The explicitly authorized repair:
 
 - backs up `.env`;
 - clears unsupported local SOCKS/TDLib proxy settings;

@@ -11,7 +11,7 @@ route (TUN/WireGuard/VPN). This script:
 1. Reads BOT_TOKEN, TELEGRAM_API_ID and TELEGRAM_API_HASH from .env.
 2. Optionally rewrites the local Bot API settings to a known-good configuration.
 3. Verifies that Windows itself can reach Telegram before starting the server.
-4. Calls the cloud Bot API logOut method once before moving the bot locally.
+4. With explicit -Execute -ConfirmCloudLogout, calls cloud Bot API logOut before moving the bot locally.
 5. Stops stale telegram-bot-api processes, starts a clean local server and waits
    for /getMe using a real elapsed-time deadline.
 6. Prints the relevant server-log tail when authorization still fails.
@@ -19,10 +19,10 @@ route (TUN/WireGuard/VPN). This script:
 Run the proxy/VPN client with TUN enabled before invoking this script.
 
 .EXAMPLE
-powershell -ExecutionPolicy Bypass -File .\scripts\repair-local-bot-api.ps1 -ApplyConfig
+powershell -ExecutionPolicy Bypass -File .\scripts\repair-local-bot-api.ps1 -ApplyConfig -Execute -ConfirmCloudLogout
 
 .EXAMPLE
-powershell -ExecutionPolicy Bypass -File .\scripts\repair-local-bot-api.ps1 -ApplyConfig -SkipCloudLogout
+powershell -ExecutionPolicy Bypass -File .\scripts\repair-local-bot-api.ps1 -ApplyConfig -Execute -SkipCloudLogout
 #>
 
 [CmdletBinding()]
@@ -33,11 +33,24 @@ param(
     [int]$TimeoutSec = 90,
     [switch]$ApplyConfig,
     [switch]$SkipCloudLogout,
-    [switch]$SkipNetworkCheck
+    [switch]$SkipNetworkCheck,
+    [switch]$Execute,
+    [switch]$ConfirmCloudLogout
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+# The no-argument command must be safe even if .env, the network and the
+# local Telegram server are present. Gate all mutation paths before reading
+# credentials, creating directories, probing routes or touching processes.
+if (-not $Execute) {
+    Write-Host "SAFE MODE: no credentials read, no cloud logOut, no server restart and no configuration changes. Use -Execute and explicitly choose -ConfirmCloudLogout or -SkipCloudLogout." -ForegroundColor Yellow
+    return
+}
+if (-not $SkipCloudLogout -and -not $ConfirmCloudLogout) {
+    throw "Cloud Bot API logOut requires explicit -ConfirmCloudLogout. Use -SkipCloudLogout only when retaining the current cloud authorization is intentional."
+}
 
 function Write-Step([string]$Message) {
     Write-Host "`n==> $Message" -ForegroundColor Cyan

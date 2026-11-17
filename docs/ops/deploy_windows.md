@@ -54,8 +54,10 @@ notepad .env
 ## 3. Локальный Bot API
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\repair-local-bot-api.ps1 -ApplyConfig
+powershell -ExecutionPolicy Bypass -File .\scripts\repair-local-bot-api.ps1 -ApplyConfig -Execute -ConfirmCloudLogout
 ```
+
+Без `-Execute` скрипт только выводит безопасное уведомление: не читает `.env`, не вызывает облачный `logOut` и не перезапускает локальный сервер. `-ConfirmCloudLogout` отдельно разрешает вывод бота из облачного API; альтернативный осознанный путь — `-Execute -SkipCloudLogout`.
 
 Скрипт проверяет сеть, чистит зависшие процессы, поднимает сервер и ждёт
 `/getMe`. Если сеть требует прокси/VPN — включите TUN: `telegram-bot-api` не
