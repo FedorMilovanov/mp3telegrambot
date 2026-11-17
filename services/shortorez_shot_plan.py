@@ -192,6 +192,9 @@ async def render_reviewed_solo_shots(source: Path, output: Path, plan: ReviewedS
 
 
 __all__ = [
-    "ReviewedShot", "ReviewedSoloPlan", "validate_reviewed_solo_plan",
-    "build_solo_ffmpeg_command", "render_reviewed_solo_shots",
+    "ReviewedShot",
+    "ReviewedSoloPlan",
+    "validate_reviewed_solo_plan",
+    "build_solo_ffmpeg_command",
+    "render_reviewed_solo_shots",
 ]
