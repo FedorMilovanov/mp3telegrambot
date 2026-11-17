@@ -54,7 +54,12 @@ def validate_reviewed_solo_plan(
     source_height: int,
 ) -> ReviewedSoloPlan:
     """Check exact source binding, full coverage and one fixed X per camera take."""
-    if not isinstance(record, Mapping) or record.get("schema_name") != _SCHEMA or record.get("schema_version") != 1:
+    if (
+        not isinstance(record, Mapping)
+        or record.get("schema_name") != _SCHEMA
+        or type(record.get("schema_version")) is not int
+        or record.get("schema_version") != 1
+    ):
         raise ValueError("A version 1 reviewed fixed-camera-shot plan is required")
     identity: dict[str, object] = {
         "project_key": "lord-god-strength",
