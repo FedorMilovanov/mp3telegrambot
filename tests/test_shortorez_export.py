@@ -455,9 +455,7 @@ async def test_solo_source_geometry_requires_normalized_square_pixels_before_ren
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("solo", [False, True])
-async def test_boundary_evidence_replaced_during_render_blocks_any_review_artifact(
-    tmp_path: Path, solo: bool
-) -> None:
+async def test_boundary_evidence_replaced_during_render_blocks_any_review_artifact(tmp_path: Path, solo: bool) -> None:
     """A concurrent editor cannot invalidate verified spoken edges silently."""
     args = _fixture(tmp_path)
     if solo:
@@ -473,9 +471,7 @@ async def test_boundary_evidence_replaced_during_render_blocks_any_review_artifa
         )
         return True
 
-    async def render_context(
-        _source: Path, output: Path, _start: float, _end: float, **_kwargs: Any
-    ) -> bool:
+    async def render_context(_source: Path, output: Path, _start: float, _end: float, **_kwargs: Any) -> bool:
         return await write_tampered_stage(output)
 
     async def render_solo(_source: Path, output: Path, _plan: Any) -> bool:
