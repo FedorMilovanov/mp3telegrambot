@@ -66,7 +66,5 @@ async def test_verified_highlights_rejects_implicit_mode_without_deleting_old_ou
     source.write_bytes(b"source")
     output.write_bytes(b"important old output")
     fragments = [{"start_seconds": 0, "end_seconds": 20}]
-    assert await highlights_quality.render_verified_highlights(
-        source, output, fragments, visual_mode=mode
-    ) is False
+    assert await highlights_quality.render_verified_highlights(source, output, fragments, visual_mode=mode) is False
     assert output.read_bytes() == b"important old output"
