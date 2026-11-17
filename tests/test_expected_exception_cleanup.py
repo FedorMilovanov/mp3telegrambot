@@ -254,4 +254,4 @@ async def test_retrim_missing_visual_mode_stops_before_render(
     query.message.reply_text.assert_awaited_once_with(
         "Режим кадрирования не подтверждён. Повторная обрезка остановлена."
     )
-    assert not list(tmp_path.glob("*_trim.mp4"))
+    assert not await asyncio.to_thread(_glob_paths, tmp_path, "*_trim.mp4")
