@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import copy
+import shutil
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -178,7 +178,7 @@ async def test_solo_renderer_is_cancellable_process_owned(
         await asyncio.to_thread(Path(command[-1]).write_bytes, b"synthetic-final-mp4")
         return SimpleNamespace(returncode=0, stderr="")
 
-    monkeypatch.setattr(solo.shutil, "which", lambda _: "ffmpeg")
+    monkeypatch.setattr(shutil, "which", lambda _: "ffmpeg")
     monkeypatch.setattr(solo, "run_cancellable_process", process)
     output = tmp_path / "stage.mp4"
     assert await solo.render_reviewed_solo_shots(tmp_path / "input.mp4", output, plan) is True
@@ -192,7 +192,7 @@ async def test_solo_renderer_cannot_overwrite_existing_media(
     plan = _validated(_raw_plan())
     output = tmp_path / "existing.mp4"
     output.write_bytes(b"do-not-overwrite")
-    monkeypatch.setattr(solo.shutil, "which", lambda _: "ffmpeg")
+    monkeypatch.setattr(shutil, "which", lambda _: "ffmpeg")
 
     async def unexpected_process(*_args: object, **_kwargs: object) -> SimpleNamespace:
         raise AssertionError("Must not dispatch FFmpeg for existing output")
