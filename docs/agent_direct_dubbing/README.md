@@ -93,3 +93,7 @@
 - Названия, каналы, правообладатели, загрузка и расписание — с проверкой фактического состояния и разрешений. **Без подтверждённого слухового контроля писать «инженерно готово, редакторски не принято».**
 
 Этот раздел документации **не означает**, что права на повторную публикацию исходных видео автоматически получены. Формат Shorts и загрузки сверяй по [YouTube Help](https://support.google.com/youtubecreatorstudio/answer/12779649) и [YouTube Studio](https://support.google.com/youtube/answer/57407) на день исполнения.
+
+## Operator-selected Manrope 01 / Large-v3 CPU profile
+
+For local Russian 9:16 Shorts with the approved **Manrope 01** subtitle design, agents MUST first read [SHORTS_MANROPE01_LARGEV3_CPU.md](SHORTS_MANROPE01_LARGEV3_CPU.md). This documents Manrope ExtraBold 800, amber word highlighting, separate reviewed red accents, a source-identifying opening, **Whisper large-v3 CPU/int8 with no CUDA fallback** on the affected Windows workstation, frame/word-boundary QA, and the no-burn rule for unchanged 16:9 masters. It is an operator review contract, not a new Telegram bot mode or publication authorization.
