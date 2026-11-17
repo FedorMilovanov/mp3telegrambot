@@ -7,12 +7,12 @@ The encoded artifact still requires independent beginning/middle/end + seam QA.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import shutil
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from services.async_process import run_cancellable_process
 
@@ -176,14 +176,14 @@ def build_solo_ffmpeg_command(source: Path, output: Path, plan: ReviewedSoloPlan
 async def render_reviewed_solo_shots(source: Path, output: Path, plan: ReviewedSoloPlan) -> bool:
     """Cancellable process-tree-owned FFmpeg; no existing output is overwritten."""
     ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg or output.exists():
+    if not ffmpeg or await asyncio.to_thread(output.exists):
         return False
     command = build_solo_ffmpeg_command(source, output, plan, ffmpeg=ffmpeg)
     process = await run_cancellable_process(command, timeout=1800, text=True)
     if process.returncode != 0:
         logger.warning("SHORTOREZ solo shot render failed: %s", (process.stderr or "")[-500:])
         return False
-    return output.is_file() and output.stat().st_size > 0
+    return await asyncio.to_thread(lambda: output.is_file() and output.stat().st_size > 0)
 
 
 __all__ = [
