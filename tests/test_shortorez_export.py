@@ -342,15 +342,15 @@ async def test_reviewed_solo_export_stays_local_and_fullbleed(tmp_path: Path) ->
         return _probe(duration=205.0)
 
     media, receipt = await export_gap_interval(**args, render_solo=solo_render, probe=probed)
-    assert media.is_file()
-    manifest = json.loads(receipt.read_text(encoding="utf-8"))
+    assert await asyncio.to_thread(media.is_file)
+    manifest = json.loads(await asyncio.to_thread(receipt.read_text, encoding="utf-8"))
     assert len(calls) == 1
     assert calls[0][1].shots[0].crop_x == 20
     assert calls[0][1].shots[1].crop_x == 436
     assert manifest["render_mode"] == "fixed_source_camera_shots"
     assert manifest["visual_layout"] == "solo_fixed_per_camera_shot_full_bleed"
     assert manifest["camera_shot_count"] == 2
-    assert manifest["camera_shot_plan_sha256"] == _digest(shot_file.read_bytes())
+    assert manifest["camera_shot_plan_sha256"] == _digest(await asyncio.to_thread(shot_file.read_bytes))
     assert manifest["final_encoded_audio_listened"] is False
     assert manifest["visual_safe_zones_reviewed"] is False
     assert manifest["rights_cleared"] is False
@@ -364,7 +364,7 @@ async def test_solo_plan_and_context_blur_are_mutually_exclusive(tmp_path: Path)
     args["solo_shot_plan_path"] = _solo_plan_file(args, tmp_path)
     with pytest.raises(ValueError, match="exactly one layout"):
         await export_gap_interval(**args)
-    assert not args["output_dir"].exists()
+    assert not await asyncio.to_thread(args["output_dir"].exists)
 
 
 @pytest.mark.asyncio
@@ -372,9 +372,9 @@ async def test_unbound_solo_plan_fails_before_render_or_output(tmp_path: Path) -
     args = _fixture(tmp_path)
     args["allow_multi_person_blur"] = False
     shot_file = _solo_plan_file(args, tmp_path)
-    record = json.loads(shot_file.read_text(encoding="utf-8"))
+    record = json.loads(await asyncio.to_thread(shot_file.read_text, encoding="utf-8"))
     record["source_sha256"] = "sha256:" + "f" * 64
-    shot_file.write_text(json.dumps(record), encoding="utf-8")
+    await asyncio.to_thread(shot_file.write_text, json.dumps(record), encoding="utf-8")
     args["solo_shot_plan_path"] = shot_file
 
     async def unexpected_render(*_args: Any) -> bool:
@@ -385,7 +385,7 @@ async def test_unbound_solo_plan_fails_before_render_or_output(tmp_path: Path) -
 
     with pytest.raises(ValueError, match="source source_sha256"):
         await export_gap_interval(**args, render_solo=unexpected_render, probe=probed)
-    assert not args["output_dir"].exists()
+    assert not await asyncio.to_thread(args["output_dir"].exists)
 
 
 @pytest.mark.asyncio
@@ -407,4 +407,4 @@ async def test_shot_plan_file_replaced_during_solo_render_fails_without_public_o
 
     with pytest.raises(RuntimeError, match="plan changed during rendering"):
         await export_gap_interval(**args, render_solo=mutate_plan, probe=probed)
-    assert list(args["output_dir"].iterdir()) == []
+    assert await asyncio.to_thread(lambda: list(args["output_dir"].iterdir())) == []
