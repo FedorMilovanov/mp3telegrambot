@@ -722,6 +722,7 @@ async def test_highlights_render_commits_nonempty_output(monkeypatch: pytest.Mon
         source_path,
         output_path,
         [{"start_seconds": 0.0, "end_seconds": 5.0}],
+        visual_mode="crop_zoom",
     )
 
     assert result is True
@@ -744,6 +745,7 @@ async def test_highlights_render_missing_source_preserves_existing_output(
         source_path,
         output_path,
         [{"start_seconds": 0.0, "end_seconds": 5.0}],
+        visual_mode="crop_zoom",
     )
 
     assert result is False
@@ -777,6 +779,7 @@ async def test_highlights_render_failure_cleans_partial_output(
         source_path,
         output_path,
         [{"start_seconds": 0.0, "end_seconds": 5.0}],
+        visual_mode="crop_zoom",
     )
 
     assert result is False
@@ -802,6 +805,7 @@ async def test_highlights_render_cancellation_cleans_partial_output(
             source_path,
             output_path,
             [{"start_seconds": 0.0, "end_seconds": 5.0}],
+            visual_mode="crop_zoom",
         )
 
     assert not _path_exists(output_path)
