@@ -166,9 +166,7 @@ def test_ffmpeg_has_fixed_x_per_shot_exact_camera_cuts_and_continuous_audio() ->
 
 
 @pytest.mark.asyncio
-async def test_solo_renderer_is_cancellable_process_owned(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_solo_renderer_is_cancellable_process_owned(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     plan = _validated(_raw_plan())
     seen: list[list[str]] = []
 
@@ -186,9 +184,7 @@ async def test_solo_renderer_is_cancellable_process_owned(
 
 
 @pytest.mark.asyncio
-async def test_solo_renderer_cannot_overwrite_existing_media(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_solo_renderer_cannot_overwrite_existing_media(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     plan = _validated(_raw_plan())
     output = tmp_path / "existing.mp4"
     await asyncio.to_thread(output.write_bytes, b"do-not-overwrite")
