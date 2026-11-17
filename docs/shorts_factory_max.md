@@ -202,9 +202,16 @@ derived from the actual source height at approximately 9:16; the crop must
 remain inside the source frame. Every camera shot has its **own fixed X**.
 Never interpolate an X trajectory, invent additional cuts, track the head
 during a shot, reuse demo coordinates, or conflate a changed camera angle with
-a second simultaneously visible speaker. If the source has a non-square pixel
-aspect ratio or unusual rotation, **HOLD** for manual normalization and review:
-the regular media probe does not certify sample-aspect-ratio correctness.
+a second simultaneously visible speaker. Source dimensions alone do **not**
+prove square pixels or correct physical display orientation. Before SOLO shot
+coordinates are accepted, the source media probe must now report **1:1**
+sample-aspect-ratio and no declared display rotation or unknown/nontrivial
+transform. Unknown SAR, non-square pixels, rotated or ambiguous display matrices
+are **HOLD before rendering**: normalize the source, recalculate its exact
+SHA-256 and review/rebind all original camera-shot boundaries and crop X
+coordinates. Never bypass this gate by editing the JSON plan, and never treat
+an encoded 720×1280 result as proof the source geometry was safe. The older Q&A
+context-layout path is intentionally unaffected.
 
 Rendering uses FFmpeg's original-frame time PTS, one crop filter per reviewed
 shot, a hard concat at the source edit, and a **single continuous audio trim**
@@ -213,6 +220,15 @@ for the full interval. It does not shorten speech to `-shortest` or use
 source-SHA-bound manifest. A reported 9:16 geometry is **NOT** evidence of
 accurate face framing, shot alignment, lack of visual jitter or source audio
 completeness.
+
+**Recorded RU speech boundaries are immutable evidence too.** The operator's
+`--ru-boundaries-json` is read as one bounded UTF-8 snapshot (up to 64 KiB),
+SHA-256 checked immediately and **again after final video rendering**, alongside
+the original source MP4 and camera-shot plan. The local handoff manifest
+records `boundary_evidence_sha256` but never treats a reviewer assertion as
+proof that the first and last Russian syllables are audible in the final
+encoded MP4. If the review record is replaced or edited, the exporter must
+refuse a finished output; do not silently reuse its previous acceptance.
 
 **Release remains HOLD:** the operator must inspect the *encoded* first,
 middle and last frames of **each** source shot, both sides of **every actual
