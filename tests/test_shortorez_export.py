@@ -293,3 +293,118 @@ def test_cli_blur_opt_in_is_explicit(
     response = json.loads(capsys.readouterr().out)
     assert response["release_authorized"] is False
     assert response["provider_write_performed"] is False
+
+
+def _solo_plan_file(args: dict[str, Any], tmp_path: Path) -> Path:
+    plan = {
+        "schema_name": "mp3bot.shortorez-fixed-shot-plan",
+        "schema_version": 1,
+        "project_key": "lord-god-strength",
+        "source_channel_id": "UCeSJsC6go2c9pdJCuUI1BYA",
+        "source_video_id": args["youtube_id"],
+        "source_sha256": args["source_sha256"],
+        "start_ms": args["start_ms"],
+        "end_ms": args["end_ms"],
+        "source_width": 640,
+        "source_height": 358,
+        "layout": "solo_static_crop_per_source_camera_shot",
+        "camera_cut_review": {
+            "status": "original_camera_edits_reviewed",
+            "reviewer": "Operator review fixture",
+            "method": "Original camera cut checked at the exact adjacent frames",
+        },
+        "shots": [
+            {"start_ms": 10_000, "end_ms": 100_000, "crop_x": 20, "camera_shot_id": "wide"},
+            {"start_ms": 100_000, "end_ms": 215_000, "crop_x": 436, "camera_shot_id": "close"},
+        ],
+    }
+    path = tmp_path / "camera_shots.json"
+    path.write_text(json.dumps(plan), encoding="utf-8")
+    return path
+
+
+@pytest.mark.asyncio
+async def test_reviewed_solo_export_stays_local_and_fullbleed(tmp_path: Path) -> None:
+    args = _fixture(tmp_path)
+    args["allow_multi_person_blur"] = False
+    shot_file = _solo_plan_file(args, tmp_path)
+    args["solo_shot_plan_path"] = shot_file
+    calls: list[Any] = []
+
+    async def solo_render(source: Path, output: Path, plan: Any) -> bool:
+        calls.append((source, plan))
+        await asyncio.to_thread(output.write_bytes, b"fixture:final-vertical-mp4" * 100)
+        return True
+
+    async def probed(path: Path) -> MediaProbe:
+        if path == args["source_path"].resolve():
+            return _probe(duration=650.0, width=640, height=358)
+        return _probe(duration=205.0)
+
+    media, receipt = await export_gap_interval(**args, render_solo=solo_render, probe=probed)
+    assert await asyncio.to_thread(media.is_file)
+    manifest = json.loads(await asyncio.to_thread(receipt.read_text, encoding="utf-8"))
+    assert len(calls) == 1
+    assert calls[0][1].shots[0].crop_x == 20
+    assert calls[0][1].shots[1].crop_x == 436
+    assert manifest["render_mode"] == "fixed_source_camera_shots"
+    assert manifest["visual_layout"] == "solo_fixed_per_camera_shot_full_bleed"
+    assert manifest["camera_shot_count"] == 2
+    assert manifest["camera_shot_plan_sha256"] == _digest(await asyncio.to_thread(shot_file.read_bytes))
+    assert manifest["final_encoded_audio_listened"] is False
+    assert manifest["visual_safe_zones_reviewed"] is False
+    assert manifest["rights_cleared"] is False
+    assert manifest["release_authorized"] is False
+    assert manifest["provider_write_performed"] is False
+
+
+@pytest.mark.asyncio
+async def test_solo_plan_and_context_blur_are_mutually_exclusive(tmp_path: Path) -> None:
+    args = _fixture(tmp_path)
+    args["solo_shot_plan_path"] = _solo_plan_file(args, tmp_path)
+    with pytest.raises(ValueError, match="exactly one layout"):
+        await export_gap_interval(**args)
+    assert not await asyncio.to_thread(args["output_dir"].exists)
+
+
+@pytest.mark.asyncio
+async def test_unbound_solo_plan_fails_before_render_or_output(tmp_path: Path) -> None:
+    args = _fixture(tmp_path)
+    args["allow_multi_person_blur"] = False
+    shot_file = _solo_plan_file(args, tmp_path)
+    record = json.loads(await asyncio.to_thread(shot_file.read_text, encoding="utf-8"))
+    record["source_sha256"] = "sha256:" + "f" * 64
+    await asyncio.to_thread(shot_file.write_text, json.dumps(record), encoding="utf-8")
+    args["solo_shot_plan_path"] = shot_file
+
+    async def unexpected_render(*_args: Any) -> bool:
+        raise AssertionError("Never render unbound source")
+
+    async def probed(path: Path) -> MediaProbe:
+        return _probe(duration=650.0, width=640, height=358)
+
+    with pytest.raises(ValueError, match="source source_sha256"):
+        await export_gap_interval(**args, render_solo=unexpected_render, probe=probed)
+    assert not await asyncio.to_thread(args["output_dir"].exists)
+
+
+@pytest.mark.asyncio
+async def test_shot_plan_file_replaced_during_solo_render_fails_without_public_output(tmp_path: Path) -> None:
+    args = _fixture(tmp_path)
+    args["allow_multi_person_blur"] = False
+    shot_file = _solo_plan_file(args, tmp_path)
+    args["solo_shot_plan_path"] = shot_file
+
+    async def mutate_plan(_source: Path, output: Path, _plan: Any) -> bool:
+        await asyncio.to_thread(output.write_bytes, b"temporary staged preview" * 100)
+        await asyncio.to_thread(shot_file.write_text, "concurrently modified", encoding="utf-8")
+        return True
+
+    async def probed(path: Path) -> MediaProbe:
+        if path == args["source_path"].resolve():
+            return _probe(duration=650.0, width=640, height=358)
+        return _probe(duration=205.0)
+
+    with pytest.raises(RuntimeError, match="plan changed during rendering"):
+        await export_gap_interval(**args, render_solo=mutate_plan, probe=probed)
+    assert await asyncio.to_thread(lambda: list(args["output_dir"].iterdir())) == []

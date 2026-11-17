@@ -21,6 +21,11 @@ from pathlib import Path
 from typing import Any
 
 from services.media_delivery_probe import MediaProbe, media_probe_is_deliverable, probe_media_async
+from services.shortorez_shot_plan import (
+    ReviewedSoloPlan,
+    render_reviewed_solo_shots,
+    validate_reviewed_solo_plan,
+)
 
 PILOT_PROJECT = "lord-god-strength"
 PILOT_CHANNEL = "UCeSJsC6go2c9pdJCuUI1BYA"
@@ -33,6 +38,7 @@ _SHA256_HEX_CHARACTERS = frozenset("0123456789abcdef")
 
 Renderer = Callable[..., Awaitable[bool]]
 Prober = Callable[[Path], Awaitable[MediaProbe | None]]
+SoloRenderer = Callable[[Path, Path, ReviewedSoloPlan], Awaitable[bool]]
 
 
 def _sha256(path: Path) -> str:
@@ -115,6 +121,8 @@ async def export_gap_interval(
     render: Renderer | None = None,
     probe: Prober | None = None,
     allow_multi_person_blur: bool = False,
+    solo_shot_plan_path: Path | None = None,
+    render_solo: SoloRenderer | None = None,
 ) -> tuple[Path, Path]:
     """Export an isolated 9:16 base MP4 + provider-inert manifest.
 
@@ -124,12 +132,19 @@ async def export_gap_interval(
     reviewed before separate authorization of any provider writer.
     """
     _validate_request(youtube_id, source_sha256, start_ms, end_ms)
-    if allow_multi_person_blur is not True:
+    if allow_multi_person_blur is True and solo_shot_plan_path is not None:
+        raise ValueError("Choose exactly one layout: solo shot plan OR multi-person context blur")
+    if allow_multi_person_blur is not True and solo_shot_plan_path is None:
         raise ValueError(
             "Single-speaker SHORTOREZ requires shot-aware FULL-BLEED 9:16 reframing; "
-            "the legacy full_frame_vertical renderer adds BLUR. "
-            "For an actual multi-person Q&A, opt in explicitly to its context layout."
+            "supply a reviewed --solo-shot-plan-json. For Q&A use explicit multi-person blur."
         )
+    if allow_multi_person_blur is not False and allow_multi_person_blur is not True:
+        raise ValueError("Layout flag must be a real boolean")
+    if solo_shot_plan_path is not None and render is not None:
+        raise ValueError("Solo plan cannot use the legacy blurred-context renderer")
+    if solo_shot_plan_path is None and render_solo is not None:
+        raise ValueError("Solo renderer requires a reviewed camera-shot plan")
     source = await asyncio.to_thread(Path(source_path).resolve, strict=True)
     if not source.is_file():
         raise ValueError("Source must be an existing local regular MP4")
@@ -154,6 +169,23 @@ async def export_gap_interval(
     if end_ms > round(source_probe.duration * 1000) + 100:
         raise ValueError("Reviewed interval exceeds the real source duration")
 
+    solo_plan: ReviewedSoloPlan | None = None
+    solo_plan_sha: str | None = None
+    shot_file: Path | None = None
+    if solo_shot_plan_path is not None:
+        shot_file = await asyncio.to_thread(Path(solo_shot_plan_path).resolve, strict=True)
+        solo_plan_sha = await asyncio.to_thread(_sha256, shot_file)
+        solo_record = json.loads(await asyncio.to_thread(shot_file.read_text, encoding="utf-8"))
+        solo_plan = validate_reviewed_solo_plan(
+            solo_record,
+            youtube_id=youtube_id,
+            source_sha256=source_sha256,
+            start_ms=start_ms,
+            end_ms=end_ms,
+            source_width=source_probe.width,
+            source_height=source_probe.height,
+        )
+
     root = await asyncio.to_thread(Path(output_dir).resolve)
     # Prevent accidental use of the input filename as an output artifact.
     stem = f"shortorez_{youtube_id}_{start_ms}-{end_ms}_{source_sha256[7:19]}"
@@ -165,8 +197,8 @@ async def export_gap_interval(
         raise FileExistsError("Existing SHORTOREZ media or manifest needs reconciliation")
     root.mkdir(parents=True, exist_ok=True)
 
-    if render is None:
-        # Existing owned Shorts renderer; no new FFmpeg engine. Import on demand,
+    if render is None and solo_plan is None:
+        # Existing owned Shorts renderer; only the reviewed Q&A path imports it.
         # so checking manifests never imports the bot or starts production tasks.
         from services.shorts_video import render_short_clip
 
@@ -175,14 +207,19 @@ async def export_gap_interval(
     with tempfile.TemporaryDirectory(prefix=".shortorez-", dir=root) as temp:
         staged_mp4 = Path(temp) / "rendered.mp4"
         staged_json = Path(temp) / "handoff.json"
-        success = await render(
-            source,
-            staged_mp4,
-            start_ms / 1000.0,
-            end_ms / 1000.0,
-            visual_mode="full_frame_vertical",
-            snap_to_silence=False,
-        )
+        if solo_plan is not None:
+            solo_renderer = render_solo or render_reviewed_solo_shots
+            success = await solo_renderer(source, staged_mp4, solo_plan)
+        else:
+            assert render is not None  # Q&A renderer is selected above, never for solo.
+            success = await render(
+                source,
+                staged_mp4,
+                start_ms / 1000.0,
+                end_ms / 1000.0,
+                visual_mode="full_frame_vertical",
+                snap_to_silence=False,
+            )
         if not success or not staged_mp4.is_file() or staged_mp4.stat().st_size <= 0:
             raise RuntimeError("Owned vertical renderer failed; no delivery artifact created")
         result_probe = await actual_probe(staged_mp4)
@@ -199,6 +236,8 @@ async def export_gap_interval(
         # render so a concurrent replacement cannot falsify source provenance.
         if await asyncio.to_thread(_sha256, source) != actual_source_sha256:
             raise RuntimeError("Owned source postmix changed during rendering")
+        if shot_file is not None and (await asyncio.to_thread(_sha256, shot_file)) != solo_plan_sha:
+            raise RuntimeError("Reviewed camera-shot plan changed during rendering")
         output_sha256 = await asyncio.to_thread(_sha256, staged_mp4)
         manifest = {
             "schema_version": 1,
@@ -218,8 +257,13 @@ async def export_gap_interval(
             "output_width": result_probe.width,
             "output_height": result_probe.height,
             "speed_percent": 100,
-            "render_mode": "existing_full_frame_vertical",
-            "visual_layout": "explicit_multi_person_context_only",
+            "render_mode": "fixed_source_camera_shots" if solo_plan else "existing_full_frame_vertical",
+            "visual_layout": (
+                "solo_fixed_per_camera_shot_full_bleed" if solo_plan else "explicit_multi_person_context_only"
+            ),
+            "camera_shot_plan_sha256": solo_plan_sha,
+            "camera_shot_count": len(solo_plan.shots) if solo_plan else 0,
+            "source_camera_cuts_reviewer": solo_plan.reviewer if solo_plan else None,
             "subtitles_reviewed": False,
             "final_encoded_audio_listened": False,
             "visual_safe_zones_reviewed": False,
@@ -251,6 +295,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--end-ms", type=int, required=True)
     parser.add_argument("--output-dir", type=Path, required=True, help="Separate local review output directory")
     parser.add_argument(
+        "--solo-shot-plan-json",
+        type=Path,
+        help="Reviewed, source-SHA-bound fixed X crop plan for every original camera shot",
+    )
+    parser.add_argument(
         "--multi-person-context-blur",
         action="store_true",
         help="Explicit Q&A / multiple-speaker exception; never use for a solo sermon",
@@ -266,6 +315,7 @@ def main(argv: list[str] | None = None) -> int:
             start_ms=args.start_ms,
             end_ms=args.end_ms,
             allow_multi_person_blur=args.multi_person_context_blur,
+            solo_shot_plan_path=args.solo_shot_plan_json,
         )
     )
     print(
