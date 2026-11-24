@@ -3,6 +3,17 @@
 Scope: the whole repository. This file is for AI/code agents and human maintainers. Follow it before changing production code.
 
 
+## Local execution and Remote Commander economy
+
+Follow the shared [local execution resource protocol](https://github.com/FedorMilovanov/AuditRepo/blob/ad9b5c3df44985a5f7aba2fbb283dd8178b1c92d/LOCAL_EXECUTION_RESOURCE_PROTOCOL.md). These execution limits apply independently of link availability and do not weaken existing evidence, publication, media or security gates.
+
+- Use GitHub/authorized API and hosted sandbox/CI for repo analysis, edits, PR/checks and supported compute; RDC only for device-bound files, approved handoff or Windows-specific evidence. Justify local need, batch related commands, preserve one process/call ID, compact results, reconcile unknown outcomes before retrying. No repetitive polling, duplicate worktrees or switching accounts to evade limits.
+- For heavy owner-PC jobs, require fresh Commit/RAM/disk counters and common machine-wide admission. Warn at 75% Commit, deny new heavy work at 80%, diagnose at 90%; deny if free RAM < 6 GiB, target disk free < 15 GiB or coordination unknown. Until verified controller rollout, maximum one heavy job across the workstation with positive coordination; otherwise use hosted execution or HOLD. After verified rollout, maximum two controlled slots. No parallel browser engines in a slot.
+- Local Windows WebKit and CUDA are off by default; only explicitly approved bounded exceptions. Browser probe 10 min, heavy build/QA 20 min; long media/ASR jobs require a separately justified deadline, disk reserve and cancel path. Close owned resources in finally and use an external watchdog; terminate only verified owned job trees, never owner tabs, unrelated agents or dirty checkouts.
+- Report actual transport/call count, evidence, cleanup and HOLD. No claim of installed controller until verified; no change to evidence, rights, release or provider-write authority.
+
+Preserve the selected CPU INT8 Large-v3 ASR and media QC contract. Prefer existing verified subtitles and exact media hashes when the task permits; never silently downgrade an explicitly selected ASR model or skip final listening/frame QA. Provider actions remain with VIDEO MANAGER.
+
 ## Vertical speaker framing — operator override (2026-11-14)
 
 - **Single visible speaker/sermon/lecture = edge-to-edge 9:16 FULL-BLEED crop by default across 100% of every clip.** Actual source pixels must fill all 720×1280/1080×1920 frames: no blurred duplicate background, letterbox, small centered 16:9 insert, or static poster. This default applies regardless of multiple **camera angles**; one preacher shown from the front, at a podium, or in a wide auditorium shot is still **one speaker**, not Q&A.
