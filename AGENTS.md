@@ -28,6 +28,8 @@ This is a **human/agent instruction section, not a new MP3Bot mode**. Do not cha
 
 ## YouTube metadata exception for direct agent dubbing (operator-confirmed, 2026-11-08)
 
+For chapter/timecode authoring and any owner-requested official YouTube API handoff, follow [the semantic chapter and provider boundary](docs/agent_direct_dubbing/YOUTUBE_PRESENTATION_BY_SURFACE.md#5-неочевидные-технические-ограничения-youtube). Do not equate fixed-grid ASR anchors, structural QA, or a self-hash with editorial approval. Reuse the current canonical VIDEO MANAGER writer and quota/reconciliation contract; do not create an MP3Bot provider writer or fallback path.
+
 The **bot-generated Russian material titles** keep the existing Title Case rule below.
 For **YouTube video titles/descriptions prepared directly by an agent** in
 `docs/agent_direct_dubbing/`, first verify the **target channel's editorial
