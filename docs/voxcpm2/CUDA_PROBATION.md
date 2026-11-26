@@ -1,12 +1,14 @@
 # RTX 3060 CUDA probation
 
-Updated: 2026-07-26.
+Updated: 2026-11-26.
 
 ## Scope
 
 The local RTX 3060 has a confirmed history of `nvlddmkm` Event ID 153, LiveKernelEvent/WATCHDOG, CUBLAS failures, illegal memory access and BF16/FP16 failures. Short successful jobs prove that the failure is not constant; they do not erase the historical incidents.
 
 VoxCPM2 production synthesis remains CPU-only. CUDA is allowed only through the staged probation launchers documented here.
+
+**2026-11-26 update:** the historical July stages below are not current authorization to run a GPU model smoke. See the consolidated record at the end; CUDA production and further stress testing remain HOLD pending independent repair/verification.
 
 ## Non-negotiable rules
 
@@ -194,7 +196,7 @@ This still does not prove:
 - multi-minute or unattended CUDA stability;
 - absence of intermittent hardware faults.
 
-## Next permitted test: one VoxCPM2 model smoke
+## Historical July plan: one VoxCPM2 model smoke (superseded by HOLD)
 
 The next step is one model load and one short generation, in a separate process, with no retry. It uses a 70% per-process VRAM ceiling; if the model cannot fit, the correct result is a controlled OOM failure rather than raising the limit.
 
@@ -253,3 +255,69 @@ C:\AI-Archive\RTX3060-VOXCPM2-MODEL-SMOKE\<timestamp>
 ```
 
 Retain failed reports, stdout, stderr and exact PowerShell output. Do not rerun after a failure until it has been classified.
+
+## 2026-11-26 — consolidated RTX 3060 diagnostic record
+
+**Disposition: CUDA production HOLD; CPU-only contracts unchanged.** This is an evidence update, not a new runtime mode or permission to run further stress tests. Sources: operator's historical test and repair notes (not independently rerun), July probation and [postmortem](CUDA_RTX3060_POSTMORTEM_2026-07-27.md), direct read-only workstation observations and bounded diagnostic runs on 2026-11-26. Preserve raw evidence outside the public repository.
+
+### Historical configuration and pre-reball evidence (operator-reported)
+
+- ASUS TUF-RTX3060-O12G-GAMING, RTX 3060 12 GB LHR, GA106-302, Samsung GDDR6; Resizable BAR enabled. Used card.
+- Two different platforms (i3-12100-class / DDR4 and i5-14600K / MSI B760 GAMING PLUS WIFI / 32 GB DDR5-6800) reproduced the defect; both initially used the same Thermaltake Smart SE 730W PSU. The repair technician reportedly tested on a separate bench/PSU; exact bench setup and waveforms were not provided.
+- Windows 11 clean installation, DISM/SFC, multiple NVIDIA drivers (591.74, 595.71, Studio 595.79), clean driver install, PCIe Gen3, XMP disabled, PL 70%, core -200 MHz / memory -500 MHz did not resolve the defect.
+- Reported original VBIOS 94.06.25.00.CC, then official ASUS update to 94.06.2F.40.67 without improvement. Current readback is different; see below. Do not infer firmware corruption or flash a ROM from this discrepancy.
+
+| Historical test | Operator-reported result |
+|---|---|
+| FurMark ~15 min; OCCT VRAM | PASS, no reported VRAM errors |
+| FFmpeg H.264 NVENC / NVDEC, 1080p60, 3600 frames | PASS, ~4.74x / ~12.7x |
+| Heaven DX11 High 1680x1050 | PASS, score 6513, avg 258.6 FPS |
+| Superposition 1080p High; Extreme OpenGL; 8K Optimized | PASS, scores 11257 / 4533 / 2778, max temperatures 77–79 C |
+| Superposition VR Maximum DX/OpenGL | PASS, scores 9197 / 8121 |
+| SPECviewperf 15 | maya, blender, catia, creo, energy, medical, snx passed; 3dsmax, solidworks, enscape (Vulkan DeviceLost), unreal_engine failed |
+| DaVinci Resolve | Same clip opened without reported TDR, unlike CapCut |
+| OCCT 3D Adaptive Light/Heavy | Crash about 5 s, before and after VBIOS update |
+| 3DMark Fire Strike | GT2 failed / no results |
+| Time Spy / Steel Nomad DX12 | CreateCommittedResource failure / DXGI_ERROR_DEVICE_HUNG (0x887a0006) |
+| Witcher 3 | DX12 startup failure; DX11 intermittent application/system crash |
+| CapCut | Black preview, UI stall, TDR; hardware decoding exacerbated symptom |
+
+Historical logs include nvlddmkm 153, LiveKernelEvent 141, bugcheck 0x10E VIDEO_MEMORY_MANAGEMENT_INTERNAL, Kernel-Power 41, occasional volmgr 161, WHEA-Logger ID 3 and rising HWiNFO PCIe Recovery Count. These are reported observations, not decoded dump evidence. OCCT 3D Adaptive is a graphics workload, not proof of a CUDA-specific failure. Some failures occurred around 49 W / 50–60 C with sensor readings 11.54–11.61 V (slot), 11.5–11.7 V (8-pin); other gaming runs reached 97–99% utilization and 68–77 C with readings near 11.86–12.07 V.
+
+### Post-reball evidence (operator-reported)
+
+Reball changed time-to-failure, not the ultimate outcome. Light often stabilized (some runs much longer than 3 min); Heavy/Hard failures at 27, 32, 45, 50, 66, 78 s, up to ~226 s in reduced mode. Extreme stock reached 170 W / 100% / ~1732 MHz / 0.975 V / 58 C, then failed at ~26 s; reduced modes sometimes survived 2+ min. Core offset as low as -500 MHz and reduced PL extended runs but did not restore stability.
+
+| Sensor | Idle | Minimum during reported heavy runs |
+|---|---:|---:|
+| PCIe slot +12 V | 11.92–11.96 V | ~11.15 V |
+| 8-pin +12 V | 12.03 V | ~10.52–10.54 V |
+| Misc0 input | 11.95–12.01 V | ~10.39–10.42 V |
+
+Light sometimes recovered from a startup reading near 10.5 V to 11.7–11.8 V; softer Heavy modes often read 11.3–11.5 V at 8-pin. Recovery Count was reported around 478–484. Stock Extreme input power readings: slot 56.82 W, 8-pin 111.33 W, Misc0 21.74 W, NVVDD2 input 106.90 W; these channels can overlap and must not be summed as independent rails. Min/avg/max alone cannot establish event order or whether telemetry was valid during a reset. The technician's independent PSU test weakens, but does not rigorously eliminate, external power as a contributing factor.
+
+### Direct observations, 2026-11-26 (MSK)
+
+After reboot: Studio driver 621.40, reported CUDA driver support 13.5, installed Toolkit/nvcc 13.3.33, GPU 12 GiB, WDDM, VBIOS **94.06.25.00.CB**. Default Python 3.11.9 contained torch 2.12.0+cpu: torch.cuda.is_available() false is expected for this build, not a driver test. Do not reinstall it or change existing archived CPU/GPU environments. CUDA Driver API cuInit, cuDriverGetVersion (13050), cuDeviceGetCount (1) succeeded. Device PL 120 W vs default 170 W is intentional: existing logon task GPU-PowerLimit-120W executes nvidia-smi -pl 120. Leave it unchanged.
+
+| ID | Diagnostic | Observed result |
+|---|---|---|
+| N01 | Context and 32 MiB cuMemsetD32 / DtoH exact verification | PASS, exit 0 |
+| N02 | Handwritten PTX load | INVALID TEST: CUDA 218 invalid PTX; not evidence of GPU failure |
+| N03 | NVRTC compile and custom CUDA pattern kernel; 512 MiB allocation, four patterns with exact readback | PASS, 2 GiB cumulative, 1.59 s, exit 0 |
+| N04 | NVRTC pattern kernel; 6 GiB allocation; two large dispatches planned | First 6 GiB pattern PASS; second cuCtxSynchronize returned CUDA 700, cleanup also returned 700, exit 1 |
+| N05 | 6 GiB cuMemsetD32, 32 MiB blocks, two patterns, exact DtoH compare | PASS, 12 GiB cumulative, 2.22 s; cleanup and exit 0 |
+| N06 | NVRTC bounds-checked kernel, explicit ctypes signatures, 6 GiB allocation, 192 short dispatches per pattern, two patterns with exact readback | PASS, 12 GiB cumulative, 15.04 s, cleanup and exit 0 |
+
+N04 temporally coincided with two nvlddmkm 153 records at 15:52:06–07 and a WER LiveKernelEvent 141 report. The initial kernel did not use explicit ctypes signatures or a per-thread bound; this is a test-design limitation, not proof of defective silicon or a TDR caused by one long kernel. N05/N06 are separate discriminating tests, not retries of N04. No additional nvlddmkm/Display/WHEA system events were detected after N05/N06 in the checked window through 16:01:12. Post-test temperatures 45–50 C are snapshots, not continuous hotspot maxima. The 14-day System query returned 167 nvlddmkm 153 records (historical incidents confirmed); WER reports can duplicate one incident. The first attempted remote extended diagnostic timed out at transport level; no execution/result was confirmed.
+
+Further read-only inspection: PCIe x16/x16, Gen1 at idle, Gen4 maximum; nvidia-smi Replays Since Reset = 0 and Replay Number Rollovers = 0 at one sample. These counters are not the same as HWiNFO Recovery Count and cannot rule out intermittent link faults. TdrDelay, TdrDdiDelay, TdrLevel, HwSchMode were absent in the checked GraphicsDrivers registry key. No WHEA records were returned by the current 14-day query; historical WHEA reports remain unverified. Both system WATCHDOG and Minidump directories returned UnauthorizedAccessException; debugger not found in checked PATH/SDK locations. Dump existence and bugcheck parameters are unresolved, not negative findings.
+
+### Interpretation and next discriminating evidence
+
+- Short kernel and exact memory PASS do not establish stability of all physical VRAM, large dispatches, graphics, mixed engine workloads, or actual model inference. 6 GiB is the allocated test region, not all 12 GiB; cumulative bytes are not unique capacity.
+- TDR 141 is an engine timeout; 0x10E is a video-memory-manager bugcheck; CUDA 700 is illegal address. None individually localizes a physical component. A reset may invalidate contexts and produce secondary CUDA/API errors.
+- Prioritize electrical/board diagnostics: separate known-good PSU and native cables (confirm bench conditions), time-correlated scope measurements of actual 12 V at connector/board and VRM outputs NVVDD/FBVDD/PEX rails, ripple and phase behavior, inspect power path, current sense, connectors, filtering, PCIe signaling, GPU/BGA/package. Distinguish whether rail disturbance precedes the reset or follows it. Software sensor minima are leads, not calibrated oscilloscope readings.
+- Next software evidence: authorized elevated **read-only** dump analysis (WinDbg bugcheck arguments, !analyze -v, WHEA records if present), verify VBIOS and physical BIOS switch position if applicable without flashing, compare PCIe counters against a same-run baseline. No unapproved privilege escalation or raw dump upload.
+- Current native driver API results do not supersede July model-shaped CUBLAS failures. No further GPU stress, model loads, production CUDA, TDR changes, clock/voltage/PL changes, firmware updates or automatic retry without independent repair/verification and a separately authorized bounded test. Existing CPU INT8 large-v3 / VoxCPM2 CPU-only policy remains authoritative.
+
