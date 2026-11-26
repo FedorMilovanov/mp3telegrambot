@@ -331,3 +331,25 @@ Further read-only inspection: PCIe x16/x16, Gen1 at idle, Gen4 maximum; nvidia-s
 - Separate workstation reliability lead: one disk event 154 on November 6 for Disk 2 (hardware I/O error), two NTFS 130 repair records for G: on November 12, nine volmgr 161 and one volmgr 162 in the 90-day query. Current Disk 2 is a WDC WD1002FAEX SATA HDD hosting G:/H:, while system C: is on a different NVMe drive. Historical disk number must be corroborated before attributing the I/O event to a physical device. All four disks reported Healthy/OK by Windows, but detailed Get-StorageReliabilityCounter returned PermissionDenied. Health status does not exclude bad sectors or link faults. Treat storage as a parallel issue, not established explanation of CUDA/TDR. Prioritize existing-data backup and read-only SMART/transport diagnostics with owner-authorized access; no write-heavy disk scan or repair while data is at risk.
 
 No new GPU kernel, memory stress, firmware write, power or clock changes were made in this follow-up. CUDA production HOLD remains unchanged. Next high-value evidence is a local authorized elevated read-only dump analysis, physical confirmation of Dual BIOS state and independent electrical measurements; do not repeat crash workloads to obtain more of the same symptoms.
+
+### Primary historical HWiNFO telemetry recovered (read-only, 2026-11-26)
+
+Located original CSV recorded 2026-03-24, 04:54:12.649–05:37:31.945 local time, 3,162,380 bytes, SHA-256 fd0d8e2d7a47ccc0b8617ea9c0849c92148a580d4e7c5fa2bca9a771b6c54112. Parsed 1,300 valid data rows, 556 columns, ~2 s cadence. Raw CSV retained outside Git. The time window overlaps the operator-reported WATCHDOG-20260324-0458 filename; exact crash second remains unknown.
+
+- Recovery Count: 53 → 154 (+101), 82 sampled intervals with increments. Of these, 77 coincided with a sampled PCIe link-speed change (2.5/5/16 GT/s); five had the same speed at both samples, which does not exclude intermediate retraining. Across all 1,299 intervals, all 77 sampled speed changes coincided with an increment. Receiver, Replay, Replay Rollover, LCRC, Correctable/Non-Fatal/Fatal and lane 0–15 error counters were zero throughout. Recovery is used for PCIe retraining/speed changes as well as error recovery ([PCI-SIG LTSSM FAQ](https://pcisig.com/faq?keys=LTSSM)); the observed counter is therefore not independent evidence of a PHY defect. Do not equate it with an AER error count.
+- Across the full session GPU power 11.73–50.856 W, temperature 39.1–47.5 C, hotspot 49.1–58.1 C. Lowest sampled board +12 V 11.712 V, GPU PCIe 11.559 V, 8-pin 11.601 V, Misc0 11.537 V, all at 04:58:22.728. These March readings do not independently confirm the later reported post-reball 10.4–10.5 V minima.
+
+| Local time | Board 12 V | GPU slot V | 8-pin V | Misc0 V | GPU W | GPU clock MHz | Core load % | Recovery | Link GT/s |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 04:58:18.720 | 11.856 | 11.727 | 11.730 | 11.627 | 23.977 | 1837 | 7 | 67 | 16 |
+| 04:58:22.728 | 11.712 | 11.559 | 11.601 | 11.537 | 27.994 | 1837 | 5 | 69 | 16 |
+| 04:58:24.736 | 11.808 | 11.682 | 11.644 | 11.606 | 46.427 | 1882 | 100 | 69 | 16 |
+| 04:58:26.742 | 11.856 | 11.735 | 11.709 | 11.622 | 50.856 | 1882 | 4 | 69 | 16 |
+| 04:58:28.736 | 11.976 | 11.835 | 11.905 | 11.842 | 42.274 | 330 | 0 | 71 | 2.5 |
+| 04:58:34.747 | 11.976 | 11.931 | 12.067 | 11.983 | 27.005 | 382 | 0 | 74 | 2.5 |
+
+Correlated board and GPU sensor dips merit external PSU/cable and board-power-path measurement, even though the technician used another PSU. Sensor readings are not calibrated probes, and their ~2 s sampling and possibly asynchronous updates cannot establish transient chronology, causality or the precise TDR moment. This is evidence against overconfident localization to PCIe or VRM alone, not proof of PSU failure.
+
+### Storage/crash correlation follow-up (read-only)
+
+All seven retained 0x154 Kernel-Power 41 records and both 0xEF records had volmgr 161 within three minutes; 0x1000007E had volmgr 162. No nvlddmkm 153 in those same +/-3 minute reboot windows; reboot timestamps are not exact crash timestamps, so absence does not exclude earlier GPU activity. volmgr 161 reported HarddiskVolume3 and BugCheckProgress 0x00040049 or 0x00060049 in checked samples. Volume-device mapping via fltmc denied; do not identify HarddiskVolume3 from partition number alone. Pagefile on C: allocated 49152 MiB, current usage 167 MiB at sample; C: free 26.48 GiB. SMART WMI FailurePredictStatus/Data denied, no smartctl or CrystalDiskInfo found in checked PATH/install locations; HWiNFO 8.46 and GPU-Z 2.69 installed. No admin access, SMART diagnosis remains open. Prioritize backing up unique G:/H: data and obtaining authorized read-only SMART raw attributes before any disk stress or repair. No GPU stress or hardware/software configuration changes in this wave.
