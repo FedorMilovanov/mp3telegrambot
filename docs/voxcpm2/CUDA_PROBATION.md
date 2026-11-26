@@ -379,3 +379,26 @@ All seven failed generation reports recorded the same post-load allocation 5,027
 ### Storage follow-up: current volume mapping
 
 Non-elevated read-only QueryDosDeviceW returned C: -> HarddiskVolume3, G: -> HarddiskVolume14, H: -> HarddiskVolume15, PhysicalDrive2 -> Harddisk2/DR2. Therefore the currently mapped device in volmgr 161 is the system C: volume (NVMe), not the separate G:/H: HDD. Historical mapping at the event date is not independently established. The disk 154 record contains Harddisk2/DR2, matching current WDC HDD mapping, subject to the same historical-number limitation. Keep both storage paths in the investigation: system NVMe/pagefile/dump writer and separate HDD I/O/NTFS repair. Current C: pagefile allocation 49,152 MiB, usage 167 MiB, free disk space ~26.5 GiB; insufficient pagefile size is not established. SMART WMI FailurePredictStatus/Data denied. HWiNFO and GPU-Z installed; no additional post-reball sensor CSV identified in bounded top-level directory search. Do not infer absence elsewhere. No new stress tests, disk writes, registry or permission changes.
+
+### Exact CUDA/TDR correlation and storage-channel evidence (2026-11-26)
+
+Correlated the original July 27 JSON run completion timestamps with retained System and Application event records. All times local MSK. Each of the five CUDA/cuBLAS failures has two nvlddmkm 153 events and two subsequent WER 141 report records (not necessarily distinct incidents).
+
+| Run failure | JSON finish | First NVIDIA 153 | Second NVIDIA 153 | System RecordIds | First WER 141 |
+|---|---|---|---|---|---|
+| One-step illegal address | 01:03:56.272 | 01:03:53.833 | 01:03:57.038 | 46957, 46958 | 01:04:14.606 |
+| BF16 cuBLAS internal error | 01:24:01.074 | 01:24:00.834 | 01:24:01.507 | 46961, 46962 | 01:24:06.000 |
+| Torch 2.11 illegal address | 01:33:52.422 | 01:33:52.101 | 01:33:53.224 | 46963, 46964 | 01:33:57.313 |
+| BF16 without cuDNN | 01:48:30.337 | 01:48:30.114 | 01:48:31.230 | 46967, 46968 | 01:48:35.331 |
+| FP16 without cuDNN | 02:02:39.794 | 02:02:39.564 | 02:02:40.981 | 46970, 46971 | 02:02:44.151 |
+
+All five second WER reports carry LKD_0x141_Tdr:6_IMAGE_nvlddmkm.sys_Ampere. No NVIDIA 153 or WER 141 in the corresponding execution windows of the two Python harness failures (01:38:13–24 and 01:42:52–01:43:05), or isolated BF16 GEMM PASS (01:29:10–11). This distinguishes application/harness errors from confirmed GPU subsystem timeouts. Correlation does not distinguish an initiating hardware defect from driver/invalid-workload causes.
+
+Storage investigation:
+- All seven retained 0x154 reboots and two 0xEF reboots carry BugcheckInfoFromEFI=true, nonzero parameter 1, parameters 2–4 zero. No exception record or process identity can be recovered from those fields alone; 0x154 parameter 2 normally points to exception information. Do not equate 0x154 with confirmed SSD failure.
+- Current standard Microsoft SATA AHCI and NVM Express drivers both 10.0.26100.9974. System NVMe model GIGABYTE AG470S1TB-SI B10, firmware EIOM31.4; G:/H: WD1002FAEX firmware 05.01D05. No retained stornvme/storahci System events returned in 90-day query. StorPort provider query failed, rather than proving absence; Storport/Admin and ATAPort channels disabled. Storage-NvmeDisk/Operational and Kernel-StoreMgr/Operational enabled but empty at inspection. No new WHEA error/warning records returned in checked Kernel-WHEA channels for the 90-day interval.
+- Storage-ClassPnP/Operational events 503 and 506, 2026-11-06 13:01:28.566, corroborate the exact Disk 154 timestamp: failed upper-level paging write and failed Write SCSI SRB. This confirms a real failed write in the storage stack, not a generic GPU symptom. Physical disk attribution remains conditional on historical device mapping.
+- NTFS/Operational returned 46 warning/error records in 90 days: 34 ID 141 (disk full), six ID 147 (high latency I/O), six ID 149 (high latency/failure summaries). For C: on November 23 14:33:49, browser file open took 30,389 ms; 15:03:03 summary reports three high latency I/Os over 3,603 seconds, zero failed reads/writes. On November 22 19:59:20, C: operation failed because disk full: free 2,857,377,792 bytes, reserved 2,851,799,040 bytes, requested 1,400,832 bytes; pagefile size 51,556,384,768 bytes. Another C: disk-full record at 01:50:25 showed free 4,270,350,336 bytes, reserved 4,265,598,976 bytes. Available unreserved space was only a few MiB despite nominal free space. Historical space pressure and latency are confirmed, but physical NVMe failure and causal connection to BSOD/Commander remain unproven.
+- Current Balanced power plan AC PCIe ASPM moderate, DC maximum. This is a configuration observation, not proof of faulty ASPM. No power plan changes. No dump archives found in bounded top-level search; admin-only dump access and SMART remain blocked.
+
+No new stress tests or configuration changes. A further grouped NTFS/SRB query was still executing at last remote result check; no unreturned output was used.
