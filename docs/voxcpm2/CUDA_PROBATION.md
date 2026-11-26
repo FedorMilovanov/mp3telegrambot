@@ -353,3 +353,29 @@ Correlated board and GPU sensor dips merit external PSU/cable and board-power-pa
 ### Storage/crash correlation follow-up (read-only)
 
 All seven retained 0x154 Kernel-Power 41 records and both 0xEF records had volmgr 161 within three minutes; 0x1000007E had volmgr 162. No nvlddmkm 153 in those same +/-3 minute reboot windows; reboot timestamps are not exact crash timestamps, so absence does not exclude earlier GPU activity. volmgr 161 reported HarddiskVolume3 and BugCheckProgress 0x00040049 or 0x00060049 in checked samples. Volume-device mapping via fltmc denied; do not identify HarddiskVolume3 from partition number alone. Pagefile on C: allocated 49152 MiB, current usage 167 MiB at sample; C: free 26.48 GiB. SMART WMI FailurePredictStatus/Data denied, no smartctl or CrystalDiskInfo found in checked PATH/install locations; HWiNFO 8.46 and GPU-Z 2.69 installed. No admin access, SMART diagnosis remains open. Prioritize backing up unique G:/H: data and obtaining authorized read-only SMART raw attributes before any disk stress or repair. No GPU stress or hardware/software configuration changes in this wave.
+
+### Recovered June report and July primary experiment artifacts (read-only, 2026-11-26)
+
+Original June 10 diagnostic report records driver 595.79, Toolkit 12.6.85, 170 W PL, 28 nvlddmkm events in its preceding seven-day window, and several WER Python records. The retained Application log for June 9–11 independently returned 22 LiveKernelEvent 141 report records: 10 with bucket LKD_0x141_Tdr:C_IMAGE_nvlddmkm.sys_Ampere and 12 without a named bucket. Thus the older Tdr:C signature is now directly corroborated; report records need not represent distinct incidents.
+
+**Legacy diagnostic methodology defect:** the original report prints two ECC alerts for [N/A], matching current root diagnose_gpu.ps1 logic (literal N/A comparison misses brackets). Unsupported ECC telemetry is not a positive error count. Also, dmon is passive sampling, not a CUDA compute stress test; GPU utilization of zero during passive monitoring does not establish a reset. The memory section queries free/used capacity, not malloc/fill/readback integrity. The PyTorch section calls current_device without guarding cuda availability and can confound a CPU build or import failure with an absent/broken GPU. Treat these historical labels/verdict as invalid evidence; actual event counts remain useful. Do not execute this legacy script under the current HOLD because it can attempt CUDA matmul automatically. Future maintenance should separate passive telemetry, unsupported counters, skipped probes, and explicitly authorized bounded compute tests. No script/runtime changes were made in this research wave.
+
+Read 22 existing structured stage reports from the RTX3060 July archive without rerunning anything: 15 passed, seven failed. These are stage/report counts, not independent trial counts. Five failed reports contain actual CUDA/cuBLAS exceptions; two are software/harness errors (unexpected seed keyword and uninitialized latent_pred) and must not be counted as hardware evidence. Two early empty probation folders and an incomplete recovery folder were not counted as runs.
+
+| July 27 local time / run | Primary report result |
+|---|---|
+| 00:58:19 | Load-only PASS, 10.449 s load; report shows free 6,751,780,864 of 12,884,377,600 bytes after load, but allocator counters zero, so do not equate allocator counters to total GPU use |
+| 01:03:35 | One-step generation, torch 2.7.1+cu126, illegal memory access |
+| 01:23:37 | Zero-shot no reference, torch 2.7.1+cu126, BF16 CUBLAS_STATUS_INTERNAL_ERROR |
+| 01:29:10 | Isolated BF16 GEMM PASS: m/k/n 32/1024/4096, 256/1024/4096, 128/2048/8192, four repeats each; reported shapes and checksums, not a full numerical reference comparison |
+| 01:33:19 | Zero-shot torch 2.11.0+cu126, illegal memory access |
+| 01:38:13 | TypeError unexpected seed keyword — software failure |
+| 01:42:52 | UnboundLocalError latent_pred — software failure |
+| 01:48:17 | BF16 CUBLAS_STATUS_EXECUTION_FAILED, torch 2.11.0+cu126, cuDNN disabled, no reference |
+| 02:02:20 | FP16 CUBLAS_STATUS_EXECUTION_FAILED, torch 2.11.0+cu126, cuDNN disabled, no reference |
+
+All seven failed generation reports recorded the same post-load allocation 5,027,139,072 bytes and reservation 5,085,593,600 bytes, with fraction limit 0.70. This weakens simple model-load OOM as an explanation; it does not exclude transient allocation pressure during generation. The retained System log has 14 nvlddmkm 153 records across July 26–28; exact per-run correlation was not established in this query. The 20.023 s FP32 synthetic stage passed. Together the primary records corroborate workload-dependent instability across PyTorch versions and FP16/BF16, rather than a blanket inability to execute CUDA. No causal component localization.
+
+### Storage follow-up: current volume mapping
+
+Non-elevated read-only QueryDosDeviceW returned C: -> HarddiskVolume3, G: -> HarddiskVolume14, H: -> HarddiskVolume15, PhysicalDrive2 -> Harddisk2/DR2. Therefore the currently mapped device in volmgr 161 is the system C: volume (NVMe), not the separate G:/H: HDD. Historical mapping at the event date is not independently established. The disk 154 record contains Harddisk2/DR2, matching current WDC HDD mapping, subject to the same historical-number limitation. Keep both storage paths in the investigation: system NVMe/pagefile/dump writer and separate HDD I/O/NTFS repair. Current C: pagefile allocation 49,152 MiB, usage 167 MiB, free disk space ~26.5 GiB; insufficient pagefile size is not established. SMART WMI FailurePredictStatus/Data denied. HWiNFO and GPU-Z installed; no additional post-reball sensor CSV identified in bounded top-level directory search. Do not infer absence elsewhere. No new stress tests, disk writes, registry or permission changes.
